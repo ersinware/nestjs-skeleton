@@ -1,0 +1,12 @@
+services:
+    api:
+        # Build context is common for both envs
+        build:
+            context: .
+
+        networks:
+            - api-network
+
+networks:
+    api-network:
+        driver: bridge

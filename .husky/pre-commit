@@ -1,0 +1,2 @@
+npm run check:shadow-api
+npx lint-staged
