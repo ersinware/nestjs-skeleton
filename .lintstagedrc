@@ -1,0 +1,5 @@
+{
+    "**/*": ["npm run format --"],
+    "**/*.{js,mjs,cjs,ts,mts,cts}": ["npm run lint:fix --"],
+    "**/*.ts": ["bash -c 'tsc --noEmit'"]
+}

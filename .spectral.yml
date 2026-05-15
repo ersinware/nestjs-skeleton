@@ -1,0 +1,130 @@
+extends: spectral:oas
+rules:
+    info-contact: error
+    info-description: error
+    info-license: error
+    operation-description: error
+    operation-operationId: error
+    operation-tags: error
+    path-keys-no-trailing-slash: error
+    typed-enum: error
+    oas3-api-servers: error
+    operation-tag-defined: error
+    operation-summary:
+        description: Operation must have a concise summary.
+        severity: error
+        given: $.paths[*][*]
+        then:
+            field: summary
+            function: truthy
+    schema-property-description:
+        description: Every property in schemas must have a description (min 5 chars).
+        severity: error
+        given: $..properties[*]
+        then:
+            field: description
+            function: length
+            functionOptions:
+                min: 5
+    schema-property-type:
+        description: Every property in schemas must have a type defined.
+        severity: error
+        given: $..properties[*]
+        then:
+            field: type
+            function: truthy
+    schema-property-example:
+        description: Every property in schemas must have an example defined for documentation.
+        severity: error
+        given: $..properties[*]
+        then:
+            field: example
+            function: truthy
+    operation-request-body:
+        description: POST, PUT, and PATCH operations must have a requestBody.
+        severity: error
+        given: $.paths[*][post,put,patch]
+        then:
+            field: requestBody
+            function: truthy
+    response-description:
+        description: Every response must have a description.
+        severity: error
+        given: $.paths[*][*].responses[*]
+        then:
+            field: description
+            function: truthy
+    operation-success-response:
+        description: Every operation must have at least one 2xx success response.
+        severity: error
+        given: $.paths[*][*].responses
+        then:
+            function: schema
+            functionOptions:
+                schema:
+                    type: object
+                    anyOf:
+                        - required: ['200']
+                        - required: ['201']
+                        - required: ['202']
+                        - required: ['204']
+    all-param-description:
+        description: All parameters (path, query, header, cookie) must have descriptions.
+        severity: error
+        given: $.paths[*][*].parameters[*]
+        then:
+            field: description
+            function: truthy
+    path-param-required:
+        description: Path parameters must be marked as required.
+        severity: error
+        given: $.paths[*][*].parameters[?(@.in == 'path')]
+        then:
+            field: required
+            function: truthy
+    api-version-semver:
+        description: API version should follow semantic versioning.
+        severity: error
+        given: $.info.version
+        then:
+            function: pattern
+            functionOptions:
+                match: ^\d+\.\d+\.\d+
+    schema-names-pascal-case:
+        description: Schema names must be PascalCase.
+        severity: error
+        given: $.components.schemas[*]~
+        then:
+            function: pattern
+            functionOptions:
+                match: ^[A-Z][a-zA-Z0-9]+$
+    no-verbs-in-paths:
+        description: Paths should represent resources (nouns), not actions (verbs).
+        severity: error
+        given: $.paths[*]~
+        then:
+            function: pattern
+            functionOptions:
+                notMatch: /(get|post|put|delete|update|create|list|fetch|search|remove|add)/i
+    operation-id-format:
+        description: OperationId should follow standard naming conventions.
+        severity: error
+        given: $.paths[*][*].operationId
+        then:
+            function: pattern
+            functionOptions:
+                match: ^[a-zA-Z][a-zA-Z0-9_]*$
+    tag-no-empty:
+        description: Tag names must not be empty strings.
+        severity: error
+        given: $.tags[*].name
+        then:
+            field: name
+            function: truthy
+    tag-description-required:
+        description: All tags must have a description for documentation.
+        severity: error
+        given: $.tags[*]
+        then:
+            field: description
+            function: truthy
