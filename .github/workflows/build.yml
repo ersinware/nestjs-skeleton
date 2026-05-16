@@ -1,0 +1,40 @@
+name: Build
+on:
+    workflow_call:
+
+jobs:
+    build:
+        name: Build
+        runs-on: ubuntu-24.04
+        steps:
+            - name: Check out code
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  cache: 'npm'
+                  node-version: '24'
+
+            - name: Cache TypeScript build results
+              uses: actions/cache@v4
+              with:
+                  path: ${{ github.workspace }}/.tsbuildinfo
+                  key: ${{ runner.os }}-ts-cache-${{ hashFiles('package-lock.json', 'tsconfig.json') }}-${{ github.run_id }}
+                  restore-keys: |
+                      ${{ runner.os }}-ts-cache-${{ hashFiles('package-lock.json', 'tsconfig.json') }}-
+                      ${{ runner.os }}-ts-cache-
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build app & generate Swagger files
+              run: npm run build:ci
+
+            - name: Upload build artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: dist
+                  path: dist/
+                  retention-days: 1
+                  overwrite: true

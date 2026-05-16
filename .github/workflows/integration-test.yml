@@ -1,0 +1,68 @@
+name: Integration test
+on:
+    workflow_call:
+
+jobs:
+    integration-test:
+        name: Integration tests
+        runs-on: ubuntu-24.04
+
+        steps:
+            - name: Check out code
+              uses: actions/checkout@v4
+
+            - name: Cache Jest E2E results
+              uses: actions/cache@v4
+              with:
+                  path: ${{ github.workspace }}/.jest-cache-e2e
+                  key: ${{ runner.os }}-jest-e2e-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}
+                  restore-keys: |
+                      ${{ runner.os }}-jest-e2e-${{ hashFiles('package-lock.json') }}-
+                      ${{ runner.os }}-jest-e2e-
+
+            - name: Cache Schemathesis results
+              uses: actions/cache@v4
+              with:
+                  path: ${{ github.workspace }}/.hypothesis
+                  key: ${{ runner.os }}-schemathesis-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}
+                  restore-keys: |
+                      ${{ runner.os }}-schemathesis-${{ hashFiles('package-lock.json') }}-
+                      ${{ runner.os }}-schemathesis-
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  cache: 'npm'
+                  node-version: '24'
+
+            - name: Install Node dependencies
+              run: npm ci
+
+            - name: Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: dist
+                  path: dist/
+
+            - name: Lint Swagger contract
+              run: npm run lint:contract
+
+            - name: Run end-to-end tests
+              if: always()
+              run: npm run test:e2e -- --cache --cacheDirectory="${{ github.workspace }}/.jest-cache-e2e"
+
+            - name: Setup Python
+              if: always()
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.13'
+
+            - name: Install Schemathesis
+              if: always()
+              run: pip install schemathesis
+
+            - name: Run dynamic contract tests
+              if: always()
+              run: |
+                  npm run start:wait
+                  npm run test:contract
