@@ -42,6 +42,10 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .eslintcache
 .prettiercache
+.act-artifacts
+.tsbuildinfo
+.jest-cache
+.jest-cache-e2e
 .npm
 .cache
 jspm_packages

@@ -15,7 +15,10 @@ build
 !.env.example
 .eslintcache
 .prettiercache
+.act-artifacts
 *.tsbuildinfo
+.jest-cache
+.jest-cache-e2e
 coverage
 test
 **/*.spec.ts

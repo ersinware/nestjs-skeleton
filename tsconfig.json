@@ -12,6 +12,7 @@
         "sourceMap": true,
         "removeComments": true,
         "incremental": true,
+        "tsBuildInfoFile": ".tsbuildinfo",
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "emitDecoratorMetadata": true,

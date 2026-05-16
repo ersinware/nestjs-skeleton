@@ -17,17 +17,19 @@
         "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
         "test:e2e": "jest --config ./test/jest-e2e.json",
         "prepare": "husky",
+        "start:wait": "node dist/main.js & wait-on http://localhost:3000/api/health -t 30000",
         "check:shadow-api": "if grep -rE --exclude-dir=node_modules --exclude-dir=dist \"(@ApiExcludeEndpoint\\(true\\)|@Controller\\('_dev'\\))\" .; then echo \"Shadow API found!\"; exit 1; else echo \"No Shadow API found.\"; fi",
         "format": "prettier --write --cache --cache-location .prettiercache --ignore-unknown .",
         "format:check": "prettier --check --cache --cache-location .prettiercache .",
-        "lint": "eslint . --cache --max-warnings 0 --no-warn-ignored && tsc --noEmit",
+        "lint": "eslint . --cache --max-warnings 0 --no-warn-ignored",
         "lint:fix": "eslint . --fix --cache --max-warnings 0 --no-warn-ignored",
+        "test:type": "tsc --noEmit --incremental",
         "build:swagger": "node dist/script/build-swagger.js",
         "build:ci": "npm run build && npm run build:swagger",
         "lint:contract": "spectral lint dist/docs/swagger-v1.json --ruleset .spectral.yml",
         "test:contract": "schemathesis run dist/docs/swagger-v1.json --url http://localhost:3000 --checks all --exclude-checks unsupported_method",
-        "test:contract:ci": "npx wait-on http://localhost:3000 && npm run test:contract",
-        "audit": "audit-ci --critical"
+        "audit": "audit-ci --critical",
+        "ci:local": "act --artifact-server-path ./.act-artifacts"
     },
     "dependencies": {
         "@nestjs/common": "^11.0.1",
