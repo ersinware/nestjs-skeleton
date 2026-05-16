@@ -9,10 +9,10 @@ jobs:
 
         steps:
             - name: Check out code
-              uses: actions/checkout@v4
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
             - name: Cache Jest E2E results
-              uses: actions/cache@v4
+              uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
               with:
                   path: ${{ github.workspace }}/.jest-cache-e2e
                   key: ${{ runner.os }}-jest-e2e-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}
@@ -21,7 +21,7 @@ jobs:
                       ${{ runner.os }}-jest-e2e-
 
             - name: Cache Schemathesis results
-              uses: actions/cache@v4
+              uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
               with:
                   path: ${{ github.workspace }}/.hypothesis
                   key: ${{ runner.os }}-schemathesis-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}
@@ -30,7 +30,7 @@ jobs:
                       ${{ runner.os }}-schemathesis-
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
               with:
                   cache: 'npm'
                   node-version: '24'
@@ -39,7 +39,7 @@ jobs:
               run: npm ci
 
             - name: Download build artifacts
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
               with:
                   name: dist
                   path: dist/
@@ -53,7 +53,7 @@ jobs:
 
             - name: Setup Python
               if: always()
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
               with:
                   python-version: '3.13'
 
