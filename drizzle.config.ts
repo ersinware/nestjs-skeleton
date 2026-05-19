@@ -1,6 +1,11 @@
 import { defineConfig } from 'drizzle-kit';
 import fs from 'fs';
 
+const envFile = process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env';
+if (fs.existsSync(envFile)) {
+    process.loadEnvFile(envFile);
+}
+
 let databaseUrl = process.env['DATABASE_URL'];
 if (!databaseUrl) {
     throw new Error('DATABASE_URL environment variable is not defined.');
