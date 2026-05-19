@@ -1,6 +1,7 @@
 import { Module, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateConfig } from './common/config/env.validation.config';
 import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
 import { DatabaseModule } from './database/database.module';
@@ -14,6 +15,16 @@ import { UserModule } from './v1/user/user.module';
             envFilePath: process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env',
             validate: validateConfig,
         }),
+        ThrottlerModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => [
+                {
+                    ttl: config.getOrThrow<number>('THROTTLE_TTL'),
+                    limit: config.getOrThrow<number>('THROTTLE_LIMIT'),
+                },
+            ],
+        }),
         HealthModule,
         DatabaseModule,
         UserModule,
@@ -22,6 +33,10 @@ import { UserModule } from './v1/user/user.module';
         {
             provide: APP_FILTER,
             useClass: GlobalExceptionFilter,
+        },
+        {
+            provide: APP_GUARD,
+            useClass: ThrottlerGuard,
         },
         {
             provide: APP_PIPE,

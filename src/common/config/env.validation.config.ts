@@ -25,6 +25,12 @@ class EnvironmentVariables {
 
     @IsNumber()
     readonly HEALTH_RSS_LIMIT_MB!: number;
+
+    @IsNumber()
+    readonly THROTTLE_TTL!: number;
+
+    @IsNumber()
+    readonly THROTTLE_LIMIT!: number;
 }
 
 export function validateConfig(config: Record<string, unknown>) {

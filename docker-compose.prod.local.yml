@@ -1,6 +1,7 @@
 services:
     api:
         build:
+            context: .
             target: production
 
         env_file:
