@@ -3,33 +3,44 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ACTIVE_VERSIONS, APIVersion, VERSION_CONFIG } from 'src/common/config/documentation.config';
 
 export class SwaggerConfigManager {
-    /**
-     * Creates and filters the OpenAPI document for a specific version.
-     */
     static createDocument(app: INestApplication, version: APIVersion) {
-        const config = this.getBuilder(version).build(),
-            document = SwaggerModule.createDocument(app, config, {
-                ignoreGlobalPrefix: false,
-                operationIdFactory: (_, methodKey: string) =>
-                    version === '1' ? methodKey : `${methodKey}V${version as string}`,
-            });
+        const document = SwaggerModule.createDocument(app, this.getBuilder(version).build(), {
+            ignoreGlobalPrefix: false,
+            operationIdFactory: (_, methodKey: string) =>
+                version === '1' ? methodKey : `${methodKey}V${version as string}`,
+        });
 
-        // Keep only paths that belong to the current version
-        // This removes any shared modules' paths that belong to other versions
         document.paths = Object.fromEntries(
-            Object.entries(document.paths).filter(([path]) => {
-                const otherVersions = ACTIVE_VERSIONS.filter((v) => v !== version);
-
-                return !otherVersions.some((v) => path.includes(`/v${v as string}/`));
-            }),
+            Object.entries(document.paths).filter(
+                ([path]) =>
+                    !ACTIVE_VERSIONS.filter((v) => v !== version).some((v) => path.includes(`/v${v as string}/`)),
+            ),
         );
+
+        const schemas = document.components?.schemas;
+        if (schemas) {
+            for (const schemaName in schemas) {
+                const schema = schemas[schemaName] as Record<string, unknown>;
+                if (schema['x-force-required']) {
+                    schema['required'] = schema['x-force-required'];
+                    delete schema['x-force-required'];
+                }
+
+                // Align with NestJS forbidNonWhitelisted: true
+                if (schema['type'] === 'object') {
+                    schema['additionalProperties'] = false;
+                }
+
+                // Align Patch schemas with NotEmptyBodyPipe
+                if (schemaName.includes('Patch')) {
+                    schema['minProperties'] = 1;
+                }
+            }
+        }
 
         return document;
     }
 
-    /**
-     * Builds the base configuration for a specific API version.
-     */
     static getBuilder(version: APIVersion) {
         const config = VERSION_CONFIG[version],
             builder = new DocumentBuilder()
@@ -40,7 +51,6 @@ export class SwaggerConfigManager {
                 .setContact('API Support', 'admin@digipact.co', 'admin@digipact.co')
                 .setLicense('MIT', 'https://opensource.org/licenses/MIT');
 
-        // Add version-specific tags
         Object.entries(config.tags).forEach(([name, description]) => {
             builder.addTag(name, description);
         });
@@ -48,9 +58,6 @@ export class SwaggerConfigManager {
         return builder;
     }
 
-    /**
-     * Generates a static Scalar HTML wrapper that loads the JSON from a relative path.
-     */
     static generateStaticScalarHtml(jsonFilename: string, title: string) {
         return `<!doctype html>
 <html>

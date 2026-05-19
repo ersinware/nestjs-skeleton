@@ -1,5 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { VersioningType } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { apiReference } from '@scalar/nestjs-api-reference';
@@ -8,25 +9,23 @@ import { SwaggerConfigManager } from 'src/common/util/swagger.util';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter()),
+        configService = app.get(ConfigService);
 
     app.enableShutdownHooks();
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     app.setGlobalPrefix('api');
 
-    setupDocumentation(app);
+    if (configService.getOrThrow<string>('NODE_ENV') !== 'production') {
+        setupDocumentation(app);
+    }
 
-    await app.listen(process.env['PORT'] ?? 3000, '0.0.0.0');
+    await app.listen(configService.getOrThrow<number>('PORT'), '0.0.0.0');
 }
 
 function setupDocumentation(app: NestFastifyApplication): void {
-    if (process.env['NODE_ENV'] === 'production') {
-        return;
-    }
-
     ACTIVE_VERSIONS.forEach((version) => {
-        const document = SwaggerConfigManager.createDocument(app, version),
-            path = `/api/v${version}/docs`;
+        const path = `/api/v${version}/docs`;
 
         app.use(
             path,
@@ -49,7 +48,7 @@ function setupDocumentation(app: NestFastifyApplication): void {
         app.use(
             path,
             apiReference({
-                spec: { content: document },
+                spec: { content: SwaggerConfigManager.createDocument(app, version) },
                 showOperationId: true,
             } as unknown as Parameters<typeof apiReference>[0]),
         );

@@ -18,15 +18,16 @@ async function bootstrap() {
     }
 
     ACTIVE_VERSIONS.forEach((version) => {
-        const config = VERSION_CONFIG[version],
-            document = SwaggerConfigManager.createDocument(app, version),
-            jsonFilename = `swagger-v${version}.json`,
+        const jsonFilename = `swagger-v${version}.json`,
             htmlFilename = `docs-v${version}.html`;
 
-        fs.writeFileSync(path.join(docsDir, jsonFilename), JSON.stringify(document, null, 2));
+        fs.writeFileSync(
+            path.join(docsDir, jsonFilename),
+            JSON.stringify(SwaggerConfigManager.createDocument(app, version), null, 2),
+        );
         fs.writeFileSync(
             path.join(docsDir, htmlFilename),
-            SwaggerConfigManager.generateStaticScalarHtml(jsonFilename, config.title),
+            SwaggerConfigManager.generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
         );
 
         console.log(`Generated: dist/docs/${jsonFilename} & dist/docs/${htmlFilename}`);
