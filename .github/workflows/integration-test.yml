@@ -69,21 +69,17 @@ jobs:
               run: npm run db:push -- --force
 
             - name: Run end-to-end tests
-              if: always()
               run: npm run test:e2e -- --cache --cacheDirectory="${{ github.workspace }}/.jest-cache-e2e"
 
             - name: Setup Python
-              if: always()
               uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
               with:
                   python-version: '3.13'
 
             - name: Install Schemathesis
-              if: always()
               run: pip install schemathesis
 
             - name: Run dynamic contract tests
-              if: always()
               run: |
                   npm run start:wait
                   npm run test:contract
