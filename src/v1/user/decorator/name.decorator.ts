@@ -4,7 +4,8 @@ import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-valid
 
 const USER_NAME_MIN_LENGTH = 2,
     USER_NAME_MAX_LENGTH = 100,
-    USER_NAME_REGEX = /^[^0-9]+$/;
+    // eslint-disable-next-line no-control-regex
+    USER_NAME_REGEX = /^[^0-9\x00]+$/;
 
 export function IsUserName(descriptionPrefix: string = 'The full name') {
     return applyDecorators(
