@@ -9,7 +9,7 @@ import { SwaggerConfigManager } from 'src/common/util/swagger.util';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter()),
+    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true })),
         configService = app.get(ConfigService);
 
     app.enableShutdownHooks();
