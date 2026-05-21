@@ -29,13 +29,13 @@ export class ErrorDefaultDto {
     @ApiProperty({
         type: 'string',
         example: 'Bad Request',
-        description: 'Short description of the error',
+        description: 'Short description of the error status',
         minLength: 1,
         maxLength: 255,
     })
-    @IsString({ message: 'Error description must be a string.' })
-    @IsNotEmpty({ message: 'Error description cannot be empty.' })
-    @MinLength(1, { message: 'Error description must be at least 1 character.' })
-    @MaxLength(255, { message: 'Error description cannot exceed 255 characters.' })
-    readonly error!: string;
+    @IsString({ message: 'Status text must be a string.' })
+    @IsNotEmpty({ message: 'Status text cannot be empty.' })
+    @MinLength(1, { message: 'Status text must be at least 1 character.' })
+    @MaxLength(255, { message: 'Status text cannot exceed 255 characters.' })
+    readonly statusText!: string;
 }

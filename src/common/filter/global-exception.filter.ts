@@ -13,7 +13,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         let statusCode = HttpStatus.INTERNAL_SERVER_ERROR,
             messages: string[] = ['An unexpected internal server error occurred.'],
-            error = 'Internal Server Error';
+            statusText = 'Internal Server Error';
 
         if (exception instanceof HttpException) {
             statusCode = exception.getStatus();
@@ -21,14 +21,20 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             const resObj = exception.getResponse();
 
             if ((ctx.getRequest<{ url?: string }>()?.url || '').includes('/health')) {
-                this.httpAdapterHost.httpAdapter.reply(response, resObj, statusCode);
+                this.httpAdapterHost.httpAdapter.reply(
+                    response,
+                    {
+                        error: resObj,
+                    },
+                    statusCode,
+                );
 
                 return;
             }
 
             const statusName = HttpStatus[statusCode];
 
-            error =
+            statusText =
                 typeof statusName === 'string'
                     ? statusName
                           .toLowerCase()
@@ -43,7 +49,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                     message = _resObj['message'];
 
                 if (typeof _resObj['error'] === 'string') {
-                    error = _resObj['error'];
+                    statusText = _resObj['error'];
                 }
 
                 if (Array.isArray(message)) {
@@ -66,7 +72,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                     case '23505':
                         statusCode = HttpStatus.CONFLICT;
                         messages = [this.formatUniqueViolationMessage(_error.detail)];
-                        error = 'Conflict';
+                        statusText = 'Conflict';
 
                         break;
                     case '23503':
@@ -74,7 +80,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                         messages = [
                             'Foreign key constraint violation. A related record does not exist or is still referenced.',
                         ];
-                        error = 'Conflict';
+                        statusText = 'Conflict';
 
                         break;
                     default:
@@ -90,9 +96,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         this.httpAdapterHost.httpAdapter.reply(
             response,
             {
-                statusCode,
-                message: messages,
-                error,
+                error: {
+                    statusCode,
+                    message: messages,
+                    statusText,
+                },
             },
             statusCode,
         );

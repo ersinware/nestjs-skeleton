@@ -97,6 +97,7 @@ function createUnhealthyInfoSchema(description: string): Record<string, unknown>
             memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
             database: createHealthyIndicator('Database connection indicator status.'),
+            redis: createHealthyIndicator('Redis connection indicator status.'),
         },
         additionalProperties: false,
         example: {
@@ -123,12 +124,17 @@ function createUnhealthyErrorSchema(description: string): Record<string, unknown
                 'Database connection indicator status.',
                 'Database connection failed or unreachable',
             ),
+            redis: createErrorIndicator('Redis connection indicator status.', 'Redis connection failed or unreachable'),
         },
         additionalProperties: false,
         example: {
             database: {
                 status: 'down',
                 message: 'Database connection failed.',
+            },
+            redis: {
+                status: 'down',
+                message: 'Redis connection failed.',
             },
         },
     };
@@ -138,7 +144,7 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
     return {
         description,
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database'],
+        required: ['memory_heap', 'memory_rss', 'database', 'redis'],
         properties: {
             memory_heap: createDetailIndicator('Heap memory usage indicator status.', 'up'),
             memory_rss: createDetailIndicator('Resident set size memory usage indicator status.', 'up'),
@@ -147,16 +153,21 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
                 'down',
                 'Database connection failed.',
             ),
+            redis: createDetailIndicator('Redis connection indicator status.', 'down', 'Redis connection failed.'),
         },
         additionalProperties: false,
-        minProperties: 3,
-        maxProperties: 3,
+        minProperties: 4,
+        maxProperties: 4,
         example: {
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },
             database: {
                 status: 'down',
                 message: 'Database connection failed.',
+            },
+            redis: {
+                status: 'down',
+                message: 'Redis connection failed.',
             },
         },
     };

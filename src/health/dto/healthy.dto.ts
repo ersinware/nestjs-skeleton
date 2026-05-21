@@ -40,15 +40,21 @@ function createHealthDetailsSchema(description: string): Record<string, unknown>
     return {
         description,
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database'],
+        required: ['memory_heap', 'memory_rss', 'database', 'redis'],
         properties: {
             memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
             database: createHealthyIndicator('Database connection indicator status.'),
+            redis: createHealthyIndicator('Redis connection indicator status.'),
         },
         additionalProperties: false,
-        minProperties: 3,
-        maxProperties: 3,
-        example: { memory_heap: { status: 'up' }, memory_rss: { status: 'up' }, database: { status: 'up' } },
+        minProperties: 4,
+        maxProperties: 4,
+        example: {
+            memory_heap: { status: 'up' },
+            memory_rss: { status: 'up' },
+            database: { status: 'up' },
+            redis: { status: 'up' },
+        },
     };
 }

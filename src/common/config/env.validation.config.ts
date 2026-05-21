@@ -31,6 +31,21 @@ class EnvironmentVariables {
 
     @IsNumber()
     readonly THROTTLE_LIMIT!: number;
+
+    @IsString()
+    readonly REDIS_HOST!: string;
+
+    @IsNumber()
+    readonly REDIS_PORT!: number;
+
+    @IsString()
+    readonly REDIS_PASSWORD!: string;
+
+    @IsNumber()
+    readonly REDIS_MAX_RETRIES_PER_REQUEST!: number;
+
+    @IsNumber()
+    readonly REDIS_COMMAND_TIMEOUT!: number;
 }
 
 export function validateConfig(config: Record<string, unknown>) {

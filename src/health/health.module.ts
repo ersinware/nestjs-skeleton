@@ -4,7 +4,11 @@ import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
 
 @Module({
-    imports: [TerminusModule],
+    imports: [
+        TerminusModule.forRoot({
+            logger: false,
+        }),
+    ],
     controllers: [HealthController],
     providers: [HealthService],
 })

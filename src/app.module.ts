@@ -1,11 +1,17 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import Redis from 'ioredis';
 import { validateConfig } from './common/config/env.validation.config';
 import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
+import { FailSafeThrottlerGuard } from './common/guard/fail-safe-throttler.guard';
+import { ResponseInterceptor } from './common/interceptor/response.interceptor';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { REDIS_CLIENT } from './redis/constant/redis.constant';
+import { RedisModule } from './redis/redis.module';
 import { UserModule } from './v1/user/user.module';
 
 @Module({
@@ -15,15 +21,20 @@ import { UserModule } from './v1/user/user.module';
             envFilePath: process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env',
             validate: validateConfig,
         }),
+        RedisModule,
         ThrottlerModule.forRootAsync({
             imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: (config: ConfigService) => [
-                {
-                    ttl: config.getOrThrow<number>('THROTTLE_TTL'),
-                    limit: config.getOrThrow<number>('THROTTLE_LIMIT'),
-                },
-            ],
+            inject: [ConfigService, REDIS_CLIENT],
+            useFactory: (config: ConfigService, redis: Redis) => ({
+                errorMessage: 'Too many requests.',
+                throttlers: [
+                    {
+                        ttl: config.getOrThrow<number>('THROTTLE_TTL'),
+                        limit: config.getOrThrow<number>('THROTTLE_LIMIT'),
+                    },
+                ],
+                storage: new ThrottlerStorageRedisService(redis),
+            }),
         }),
         HealthModule,
         DatabaseModule,
@@ -31,12 +42,12 @@ import { UserModule } from './v1/user/user.module';
     ],
     providers: [
         {
-            provide: APP_FILTER,
-            useClass: GlobalExceptionFilter,
+            provide: APP_GUARD,
+            useClass: FailSafeThrottlerGuard,
         },
         {
-            provide: APP_GUARD,
-            useClass: ThrottlerGuard,
+            provide: APP_INTERCEPTOR,
+            useClass: ResponseInterceptor,
         },
         {
             provide: APP_PIPE,
@@ -50,6 +61,10 @@ import { UserModule } from './v1/user/user.module';
                 },
                 transform: true,
             }),
+        },
+        {
+            provide: APP_FILTER,
+            useClass: GlobalExceptionFilter,
         },
     ],
 })

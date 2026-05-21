@@ -16,9 +16,9 @@ async function bootstrap() {
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     app.setGlobalPrefix('api');
 
-    if (configService.getOrThrow<string>('NODE_ENV') !== 'production') {
-        setupDocumentation(app);
-    }
+    // if (configService.getOrThrow<string>('NODE_ENV') !== 'production') {
+    setupDocumentation(app);
+    // }
 
     await app.listen(configService.getOrThrow<number>('PORT'), '0.0.0.0');
 }
