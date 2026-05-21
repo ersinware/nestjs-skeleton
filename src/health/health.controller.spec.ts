@@ -29,12 +29,14 @@ describe('HealthController', () => {
                 memory_heap: { status: 'up' },
                 memory_rss: { status: 'up' },
                 database: { status: 'up' },
+                redis: { status: 'up' },
             },
             error: {},
             details: {
                 memory_heap: { status: 'up' },
                 memory_rss: { status: 'up' },
                 database: { status: 'up' },
+                redis: { status: 'up' },
             },
         };
 

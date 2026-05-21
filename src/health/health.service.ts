@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { HealthCheckService, HealthIndicatorService, MemoryHealthIndicator } from '@nestjs/terminus';
 import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import Redis from 'ioredis';
 import { DRIZZLE_DB } from 'src/database/constant';
+import { REDIS_CLIENT } from 'src/redis/constant/redis.constant';
 
 @Injectable()
 export class HealthService {
@@ -13,6 +15,7 @@ export class HealthService {
         private readonly healthIndicatorService: HealthIndicatorService,
         private readonly configService: ConfigService,
         @Inject(DRIZZLE_DB) private readonly db: PostgresJsDatabase,
+        @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
     ) {}
 
     async check() {
@@ -28,6 +31,7 @@ export class HealthService {
                     this.configService.getOrThrow<number>('HEALTH_RSS_LIMIT_MB') * 1024 * 1024,
                 ),
             () => this.checkDatabase(),
+            () => this.checkRedis(),
         ]);
     }
 
@@ -40,6 +44,18 @@ export class HealthService {
             return indicator.up();
         } catch {
             return indicator.down({ message: 'Database connection failed.' });
+        }
+    }
+
+    private async checkRedis() {
+        const indicator = this.healthIndicatorService.check('redis');
+
+        try {
+            await this.redisClient.ping();
+
+            return indicator.up();
+        } catch {
+            return indicator.down({ message: `Redis connection failed.` });
         }
     }
 }

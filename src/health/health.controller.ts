@@ -1,10 +1,12 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { HealthyDto } from './dto/healthy.dto';
 import { UnhealthyDto } from './dto/unhealthy.dto';
 import { HealthService } from './health.service';
 
 @ApiTags('health')
+@SkipThrottle()
 @Controller({
     path: 'health',
     version: VERSION_NEUTRAL,
