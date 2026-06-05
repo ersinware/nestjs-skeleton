@@ -1,3 +1,8 @@
+/**
+ * @file main.ts
+ * @description Application entry point. Configures Fastify, API versioning, routes, and Scalar API documentation.
+ */
+
 import { IncomingMessage, ServerResponse } from 'http';
 import { VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -5,25 +10,36 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { ACTIVE_VERSIONS } from 'src/common/config/documentation.config';
-import { SwaggerConfigManager } from 'src/common/util/swagger.util';
+import { ENV } from 'src/common/config/constant/env.constant';
+import { SwaggerManager } from 'src/common/util/swagger.util';
 import { AppModule } from './app.module';
 
+/**
+ * Initializes and starts the NestJS application with the Fastify adapter.
+ * Sets up global configurations such as URI-based versioning, API prefix, shutdown hooks, and runs the listener.
+ */
 async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true })),
         configService = app.get(ConfigService);
 
-    app.enableShutdownHooks();
-    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-    app.setGlobalPrefix('api');
+    app.enableShutdownHooks()
+        .enableVersioning({ type: VersioningType.URI, defaultVersion: '1' })
+        .setGlobalPrefix('api');
 
-    // if (configService.getOrThrow<string>('NODE_ENV') !== 'production') {
+    // if (configService.getOrThrow<string>(ENV.NODE_ENV) !== 'production') {
     setupDocumentation(app);
     // }
 
-    await app.listen(configService.getOrThrow<number>('PORT'), '0.0.0.0');
+    await app.listen(configService.getOrThrow<number>(ENV.PORT), '0.0.0.0');
 }
 
-function setupDocumentation(app: NestFastifyApplication): void {
+/**
+ * Registers Scalar documentation endpoints for all active API versions.
+ * Integrates customized Swagger documents and ensures response streams are handled correctly under Fastify.
+ *
+ * @param app The NestJS application instance using Fastify.
+ */
+function setupDocumentation(app: NestFastifyApplication) {
     ACTIVE_VERSIONS.forEach((version) => {
         const path = `/api/v${version}/docs`;
 
@@ -48,8 +64,9 @@ function setupDocumentation(app: NestFastifyApplication): void {
         app.use(
             path,
             apiReference({
-                spec: { content: SwaggerConfigManager.createDocument(app, version) },
+                spec: { content: SwaggerManager.createDocument(app, version) },
                 showOperationId: true,
+                operationsSorter: 'method',
             } as unknown as Parameters<typeof apiReference>[0]),
         );
     });

@@ -16,6 +16,8 @@
 .idea
 .jest-cache
 .jest-cache-e2e
+.vitest-cache
+.vitest-cache-e2e
 .lintstagedrc*
 .prettiercache
 .prettierignore
@@ -31,6 +33,7 @@ docker-compose.*.yml
 docker-compose.yml
 Dockerfile
 docs
+drizzle
 eslint.config.mjs
 LICENSE
 node_modules

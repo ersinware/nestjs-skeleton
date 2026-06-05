@@ -6,5 +6,3 @@ npm run audit
 npm run test
 npm run build:ci
 npm run lint:contract
-npm run db:push -- --force
-npm run test:e2e

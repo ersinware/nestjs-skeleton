@@ -1,16 +1,33 @@
-import { ApiSchema } from '@nestjs/swagger';
-import { IsUserEmail } from '../decorator/email.decorator';
-import { IsUserName } from '../decorator/name.decorator';
-import { IsStrongPassword } from '../decorator/password.decorator';
+/**
+ * @file post-user.dto.ts
+ * @description Input validation DTO for creating a new user account.
+ */
 
-@ApiSchema({ name: 'PostUser', description: 'Schema for creating a new user' })
+import { ApiSchema } from '@nestjs/swagger';
+import { IsUserEmail } from 'src/common/decorator/email.decorator';
+import { IsUserName } from 'src/common/decorator/name.decorator';
+import { IsStrongPassword } from 'src/common/decorator/password.decorator';
+
+/**
+ * DTO for validating new user account details.
+ */
+@ApiSchema({ name: 'PostUser', description: 'Input validation schema for user registration and creation.' })
 export class PostUserDto {
+    /**
+     * Unique email address for the new user account.
+     */
     @IsUserEmail('The email address')
     readonly email!: string;
 
+    /**
+     * The full name of the user.
+     */
     @IsUserName('The full name')
     readonly name!: string;
 
+    /**
+     * Cleartext password for securing the account.
+     */
     @IsStrongPassword('The password')
     readonly password!: string;
 }

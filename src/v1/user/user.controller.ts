@@ -1,99 +1,229 @@
+/**
+ * @file user.controller.ts
+ * @description REST API controller exposing CRUD endpoints for user management, protected by JWT and RBAC guards.
+ */
+
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import {
-    ApiBadRequestResponse,
-    ApiConflictResponse,
+    ApiBearerAuth,
     ApiCreatedResponse,
-    ApiInternalServerErrorResponse,
     ApiNoContentResponse,
-    ApiNotFoundResponse,
     ApiOkResponse,
     ApiOperation,
     ApiTags,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
+import {
+    ApiDefaultBadRequestResponse,
+    BadRequestType,
+} from 'src/common/decorator/api-default-bad-request-response.decorator';
+import { ApiDefaultConflictResponse } from 'src/common/decorator/api-default-conflict-response.decorator';
+import { ApiDefaultForbiddenResponse } from 'src/common/decorator/api-default-forbidden-response.decorator';
+import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/api-default-internal-server-error-response.decorator';
+import { ApiDefaultNotFoundResponse } from 'src/common/decorator/api-default-not-found-response.decorator';
+import {
+    ApiDefaultUnauthorizedResponse,
+    UnauthorizedType,
+} from 'src/common/decorator/api-default-unauthorized-response.decorator';
+import { AccessTokenPayloadDecorator } from 'src/common/decorator/access-token-payload.decorator';
+import { Public } from 'src/common/decorator/public.decorator';
+import { Roles } from 'src/common/decorator/roles.decorator';
 import { ParamIdDto } from 'src/common/dto/param-id.dto';
+import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { NotEmptyBodyPipe } from 'src/common/pipe/not-empty-body.pipe';
 import { GetUserDto } from './dto/get-user.dto';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
+import { PatchUserStatusDto } from './dto/patch-user-status.dto';
 import { PatchUserDto } from './dto/patch-user.dto';
 import { PostUserDto } from './dto/post-user.dto';
 import { UserService } from './user.service';
 
-@ApiTags('user')
+/**
+ * Controller class providing routing and handling for User API requests.
+ */
 @Controller({
     path: 'user',
     version: '1',
 })
+@ApiTags('user')
+@ApiDefaultInternalServerErrorResponse()
 export class UserController {
+    /**
+     * Creates an instance of UserController.
+     *
+     * @param userService User business logic service.
+     */
     constructor(private readonly userService: UserService) {}
 
+    /**
+     * Endpoint to register a new user account.
+     *
+     * @param postUserDto Payload with account details.
+     * @returns A promise resolving to the created and serialized GetUserDto.
+     */
+    @Public()
     @Post()
-    @ApiOperation({ summary: 'Create a new user', description: 'Creates a new user and hashes their password.' })
-    @ApiCreatedResponse({ description: 'The user has been successfully created.', type: GetUserDto })
-    @ApiBadRequestResponse({ description: 'Invalid input data.', type: ErrorDefaultDto })
-    @ApiConflictResponse({ description: 'The email address is already in use.', type: ErrorDefaultDto })
-    @ApiInternalServerErrorResponse({ description: 'Failed to create user record.', type: ErrorDefaultDto })
-    async create(@Body() postUserDto: PostUserDto): Promise<GetUserDto> {
+    @ApiOperation({
+        summary: 'Register user',
+        description: 'Creates a new user profile.',
+    })
+    @ApiCreatedResponse({ description: 'User account successfully created.', type: GetUserDto })
+    @ApiDefaultBadRequestResponse(BadRequestType.PAYLOAD)
+    @ApiDefaultConflictResponse()
+    async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto): Promise<GetUserDto> {
         return plainToInstance(GetUserDto, await this.userService.create(postUserDto));
     }
 
+    /**
+     * Endpoint to retrieve all users. Requires administrator-level authorization.
+     *
+     * @returns A promise resolving to an array of serialized GetUserDto.
+     */
     @Get()
-    @ApiOperation({ summary: 'Get all users', description: 'Retrieves a list of all registered users.' })
-    @ApiOkResponse({ description: 'A list of users has been retrieved.', type: GetUserDto, isArray: true })
+    @Roles(AuthUserRole.ADMIN, AuthUserRole.SUPER_ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Get all users',
+        description: 'Retrieves all registered users. Requires administrator-level authorization.',
+    })
+    @ApiOkResponse({ description: 'Users successfully retrieved.', type: GetUserDto, isArray: true })
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultForbiddenResponse()
     async findAll(): Promise<GetUserDto[]> {
         return plainToInstance(GetUserDto, await this.userService.findAll());
     }
 
+    /**
+     * Endpoint to retrieve details of the currently authenticated user's profile.
+     *
+     * @param payload The authenticated access token payload.
+     * @returns A promise resolving to the serialized GetUserDto.
+     */
+    @Get('me')
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Get current user profile',
+        description: 'Retrieves profile details of the currently authenticated user.',
+    })
+    @ApiOkResponse({ description: 'User details successfully retrieved.', type: GetUserDto })
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultNotFoundResponse()
+    async findMe(@AccessTokenPayloadDecorator() payload: AccessTokenPayload): Promise<GetUserDto> {
+        return plainToInstance(GetUserDto, await this.userService.findById(payload.sub));
+    }
+
+    /**
+     * Endpoint to retrieve details of a specific user. Requires administrator-level authorization.
+     *
+     * @param params URL path parameters containing the user ID.
+     * @returns A promise resolving to the serialized GetUserDto.
+     */
     @Get(':id')
-    @ApiOperation({ summary: 'Get a user by ID', description: 'Retrieves details of a specific user.' })
-    @ApiOkResponse({ description: 'The user details have been retrieved.', type: GetUserDto })
-    @ApiBadRequestResponse({ description: 'Invalid user ID format.', type: ErrorDefaultDto })
-    @ApiNotFoundResponse({ description: 'User not found.', type: ErrorDefaultDto })
+    @Roles(AuthUserRole.ADMIN, AuthUserRole.SUPER_ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Get user by ID',
+        description: 'Retrieves details of a specific user. Requires administrator-level authorization.',
+    })
+    @ApiOkResponse({ description: 'User details successfully retrieved.', type: GetUserDto })
+    @ApiDefaultBadRequestResponse(BadRequestType.PARAM)
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultForbiddenResponse()
+    @ApiDefaultNotFoundResponse()
     async findById(@Param() params: ParamIdDto): Promise<GetUserDto> {
         return plainToInstance(GetUserDto, await this.userService.findById(params.id));
     }
 
-    @Patch(':id')
+    /**
+     * Endpoint to update the currently authenticated user's profile details.
+     *
+     * @param payload The authenticated access token payload.
+     * @param patchUserDto Payload with update details.
+     * @returns A promise resolving to the updated and serialized GetUserDto.
+     */
+    @Patch('me')
+    @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Update a user',
-        description: "Updates a user's details.",
+        summary: 'Update current user profile',
+        description: "Updates details of the currently authenticated user's profile.",
     })
-    @ApiOkResponse({ description: 'The user has been successfully updated.', type: GetUserDto })
-    @ApiBadRequestResponse({ description: 'Invalid input data.', type: ErrorDefaultDto })
-    @ApiNotFoundResponse({ description: 'User not found.', type: ErrorDefaultDto })
-    @ApiConflictResponse({ description: 'The email address is already in use.', type: ErrorDefaultDto })
-    async update(@Param() params: ParamIdDto, @Body(NotEmptyBodyPipe) patchUserDto: PatchUserDto): Promise<GetUserDto> {
-        return plainToInstance(GetUserDto, await this.userService.update(params.id, patchUserDto));
+    @ApiOkResponse({ description: 'User successfully updated.', type: GetUserDto })
+    @ApiDefaultBadRequestResponse(BadRequestType.PAYLOAD)
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultNotFoundResponse()
+    @ApiDefaultConflictResponse()
+    async updateMe(
+        @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
+        @Body(NotEmptyBodyPipe) patchUserDto: PatchUserDto,
+    ): Promise<GetUserDto> {
+        return plainToInstance(GetUserDto, await this.userService.update(payload.sub, patchUserDto));
     }
 
-    @Patch(':id/password')
+    /**
+     * Endpoint to change the currently authenticated user's password.
+     *
+     * @param payload The authenticated access token payload.
+     * @param patchUserPasswordDto Payload with current and new password.
+     */
+    @Patch('me/password')
+    @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Change user password',
-        description: "Updates a user's password after verifying the old one.",
+        summary: 'Change current user password',
+        description: "Updates the currently authenticated user's password.",
     })
-    @ApiNoContentResponse({ description: 'The password has been successfully changed.' })
-    @ApiBadRequestResponse({ description: 'Invalid current password or input data.', type: ErrorDefaultDto })
-    @ApiNotFoundResponse({ description: 'User not found.', type: ErrorDefaultDto })
-    async changePassword(
-        @Param() params: ParamIdDto,
-        @Body() patchUserPasswordDto: PatchUserPasswordDto,
-    ): Promise<void> {
-        await this.userService.changePassword(params.id, patchUserPasswordDto);
+    @ApiNoContentResponse({ description: 'Password successfully changed.' })
+    @ApiDefaultBadRequestResponse(BadRequestType.PAYLOAD)
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultNotFoundResponse()
+    async changePasswordMe(
+        @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
+        @Body(NotEmptyBodyPipe) patchUserPasswordDto: PatchUserPasswordDto,
+    ) {
+        await this.userService.changePassword(payload.sub, patchUserPasswordDto);
     }
 
-    @Delete(':id')
+    /**
+     * Endpoint to delete (deactivate) the currently authenticated user's account.
+     *
+     * @param payload The authenticated access token payload.
+     */
+    @Delete('me')
+    @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiOperation({ summary: 'Delete a user', description: 'Removes a user from the system permanently.' })
-    @ApiNoContentResponse({ description: 'The user has been successfully deleted.' })
-    @ApiBadRequestResponse({ description: 'Invalid user ID format.', type: ErrorDefaultDto })
-    @ApiNotFoundResponse({ description: 'User not found.', type: ErrorDefaultDto })
-    @ApiConflictResponse({
-        description: 'Foreign key constraint violation. The user is still referenced in other records.',
-        type: ErrorDefaultDto,
+    @ApiOperation({
+        summary: 'Delete current user account',
+        description: 'Soft deletes the currently authenticated user account.',
     })
-    async delete(@Param() params: ParamIdDto): Promise<void> {
-        await this.userService.delete(params.id);
+    @ApiNoContentResponse({ description: 'User account successfully deleted.' })
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultNotFoundResponse()
+    async deleteMe(@AccessTokenPayloadDecorator() payload: AccessTokenPayload) {
+        await this.userService.delete(payload.sub);
+    }
+
+    /**
+     * Update a user account status (active/inactive). Requires administrator-level authorization.
+     *
+     * @param params URL path parameters containing the user ID.
+     * @param dto User status update payload.
+     */
+    @Patch(':id/status')
+    @Roles(AuthUserRole.ADMIN, AuthUserRole.SUPER_ADMIN)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({
+        summary: 'Update user status',
+        description:
+            'Updates active status and revokes sessions if deactivated. Requires administrator-level authorization.',
+    })
+    @ApiNoContentResponse({ description: 'User status successfully updated.' })
+    @ApiDefaultBadRequestResponse(BadRequestType.BOTH)
+    @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
+    @ApiDefaultForbiddenResponse()
+    @ApiDefaultNotFoundResponse()
+    async updateStatus(@Param() params: ParamIdDto, @Body(NotEmptyBodyPipe) dto: PatchUserStatusDto) {
+        await this.userService.updateStatus(params.id, dto.active);
     }
 }

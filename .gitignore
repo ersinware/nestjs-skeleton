@@ -17,6 +17,8 @@
 .hypothesis/
 .jest-cache
 .jest-cache-e2e
+.vitest-cache
+.vitest-cache-e2e
 .npm
 .prettiercache
 .project
