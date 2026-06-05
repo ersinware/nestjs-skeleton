@@ -1,3 +1,9 @@
+/**
+ * @file build-swagger.ts
+ * @description CLI script to statically compile and export Swagger OpenAPI JSON specs and Scalar HTML files.
+ * Used during build time to generate static artifacts for client SDK generation or documentation hosting.
+ */
+
 import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -5,8 +11,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, VERSION_CONFIG } from 'src/common/config/documentation.config';
-import { SwaggerConfigManager } from 'src/common/util/swagger.util';
+import { SwaggerManager } from 'src/common/util/swagger.util';
 
+/**
+ * Scaffolds a minimal application context to inspect NestJS metadata,
+ * generates the OpenAPI schema, and saves JSON and HTML output files to the build folder.
+ */
 async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: false });
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
@@ -23,11 +33,11 @@ async function bootstrap() {
 
         fs.writeFileSync(
             path.join(docsDir, jsonFilename),
-            JSON.stringify(SwaggerConfigManager.createDocument(app, version), null, 2),
+            JSON.stringify(SwaggerManager.createDocument(app, version), null, 2),
         );
         fs.writeFileSync(
             path.join(docsDir, htmlFilename),
-            SwaggerConfigManager.generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
+            SwaggerManager.generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
         );
 
         console.log(`Generated: dist/docs/${jsonFilename} & dist/docs/${htmlFilename}`);

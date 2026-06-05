@@ -1,13 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
 
 describe('HealthController', () => {
-    let controller: HealthController;
-
     const mockHealthService = {
-        check: jest.fn(),
+        check: vi.fn(),
     };
+
+    let controller: HealthController;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -22,29 +23,17 @@ describe('HealthController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('should return health check result', async () => {
-        const mockResult = {
-            status: 'ok',
-            info: {
-                memory_heap: { status: 'up' },
-                memory_rss: { status: 'up' },
-                database: { status: 'up' },
-                redis: { status: 'up' },
-            },
-            error: {},
-            details: {
-                memory_heap: { status: 'up' },
-                memory_rss: { status: 'up' },
-                database: { status: 'up' },
-                redis: { status: 'up' },
-            },
-        };
+    it('should return the result of healthService.check', async () => {
+        mockHealthService.check.mockResolvedValueOnce('mocked-result');
 
-        mockHealthService.check.mockResolvedValueOnce(mockResult);
+        await expect(controller.check()).resolves.toBe('mocked-result');
+        expect(mockHealthService.check).toHaveBeenCalledTimes(1);
+    });
 
-        const result = await controller.check();
+    it('should propagate service exception if health service throws an error', async () => {
+        mockHealthService.check.mockRejectedValueOnce(new Error());
 
-        expect(result).toEqual(mockResult);
-        expect(mockHealthService.check).toHaveBeenCalled();
+        await expect(controller.check()).rejects.toThrow(Error);
+        expect(mockHealthService.check).toHaveBeenCalledTimes(1);
     });
 });

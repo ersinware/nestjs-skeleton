@@ -1,19 +1,36 @@
+/**
+ * @file app.module.ts
+ * @description Main application module aggregating configuration, security, database, and business modules.
+ * Sets up global guards, pipes, interceptors, and exception filters.
+ */
+
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
+import { CacheModule } from './cache/cache.module';
+import { TOKEN_CACHE_CLIENT } from './cache/constant/cache.constant';
+import { ENV } from './common/config/constant/env.constant';
 import { validateConfig } from './common/config/env.validation.config';
 import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
 import { FailSafeThrottlerGuard } from './common/guard/fail-safe-throttler.guard';
+import { AuthGuard } from './common/guard/auth.guard';
+import { AuthRolesGuard } from './common/guard/auth-roles.guard';
 import { ResponseInterceptor } from './common/interceptor/response.interceptor';
 import { DatabaseModule } from './database/database.module';
+import { HashingModule } from './common/hashing/hashing.module';
 import { HealthModule } from './health/health.module';
-import { REDIS_CLIENT } from './redis/constant/redis.constant';
-import { RedisModule } from './redis/redis.module';
+import { AdminModule } from './v1/admin/admin.module';
+import { AuthModule } from './v1/auth/auth.module';
 import { UserModule } from './v1/user/user.module';
+import { NotEmptyBodyPipe } from './common/pipe/not-empty-body.pipe';
 
+/**
+ * The root module of the NestJS application.
+ * Imports essential modules and registers application-wide cross-cutting concerns.
+ */
 @Module({
     imports: [
         ConfigModule.forRoot({
@@ -21,24 +38,27 @@ import { UserModule } from './v1/user/user.module';
             envFilePath: process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env',
             validate: validateConfig,
         }),
-        RedisModule,
+        CacheModule,
         ThrottlerModule.forRootAsync({
             imports: [ConfigModule],
-            inject: [ConfigService, REDIS_CLIENT],
+            inject: [ConfigService, TOKEN_CACHE_CLIENT],
             useFactory: (config: ConfigService, redis: Redis) => ({
                 errorMessage: 'Too many requests.',
                 throttlers: [
                     {
-                        ttl: config.getOrThrow<number>('THROTTLE_TTL'),
-                        limit: config.getOrThrow<number>('THROTTLE_LIMIT'),
+                        ttl: config.getOrThrow<number>(ENV.THROTTLE_TTL),
+                        limit: config.getOrThrow<number>(ENV.THROTTLE_LIMIT),
                     },
                 ],
                 storage: new ThrottlerStorageRedisService(redis),
             }),
         }),
-        HealthModule,
         DatabaseModule,
+        HealthModule,
+        HashingModule,
+        AuthModule,
         UserModule,
+        AdminModule,
     ],
     providers: [
         {
@@ -46,8 +66,20 @@ import { UserModule } from './v1/user/user.module';
             useClass: FailSafeThrottlerGuard,
         },
         {
+            provide: APP_GUARD,
+            useClass: AuthGuard,
+        },
+        {
+            provide: APP_GUARD,
+            useClass: AuthRolesGuard,
+        },
+        {
             provide: APP_INTERCEPTOR,
             useClass: ResponseInterceptor,
+        },
+        {
+            provide: APP_PIPE,
+            useClass: NotEmptyBodyPipe,
         },
         {
             provide: APP_PIPE,

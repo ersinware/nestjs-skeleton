@@ -1,17 +1,35 @@
+/**
+ * @file swagger.util.ts
+ * @description Utility manager for generating, customizing, and post-processing OpenAPI (Swagger) documents.
+ * Automates response wrapping in standard success/error envelopes and configures Scalar UI options.
+ */
+
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ACTIVE_VERSIONS, APIVersion, VERSION_CONFIG } from 'src/common/config/documentation.config';
 
-export class SwaggerConfigManager {
+/**
+ * Manager class responsible for Swagger document lifecycle, structure transformation, and formatting.
+ */
+export class SwaggerManager {
     /**
-     * Creates and post-processes the Swagger OpenAPI document for a specific version.
-     * Integrates programmatic data/error response wrapping and schema sanity constraints.
+     * Generates and refines the Swagger OpenAPI document for a specific API version.
+     * Applies routing path filters, wraps payloads in response envelopes, and post-processes component schemas.
+     *
+     * @param app The NestJS application instance.
+     * @param version The targeted API version for generation.
+     * @returns The fully processed OpenAPI document object.
      */
     static createDocument(app: INestApplication, version: APIVersion) {
         const document = SwaggerModule.createDocument(app, this.getBuilder(version).build(), {
             ignoreGlobalPrefix: false,
-            operationIdFactory: (_, methodKey: string) =>
-                version === '1' ? methodKey : `${methodKey}V${version as string}`,
+            operationIdFactory: (controllerKey: string, methodKey: string) => {
+                // Formats the operation ID as [moduleName][FunctionName] (e.g., userCreate, authLogin)
+                // to prevent method collisions and ensure clean signatures in generated frontend SDK clients.
+                const id = `${controllerKey.replace(/Controller$/, '').replace(/^\w/, (c) => c.toLowerCase())}${methodKey.replace(/^\w/, (c) => c.toUpperCase())}`;
+
+                return version === '1' ? id : `${id}V${version as string}`;
+            },
         });
 
         // Filter paths to keep only routes belonging to the requested version
@@ -34,7 +52,10 @@ export class SwaggerConfigManager {
     }
 
     /**
-     * Reusable builder configuration factory for Swagger document creation.
+     * Creates and configures a DocumentBuilder instance pre-populated with version-specific metadata.
+     *
+     * @param version The targeted API version.
+     * @returns A configured Swagger DocumentBuilder.
      */
     static getBuilder(version: APIVersion) {
         const config = VERSION_CONFIG[version],
@@ -44,7 +65,8 @@ export class SwaggerConfigManager {
                 .setVersion(`${version}.0.0`)
                 .addServer('http://localhost:3000', 'Development server')
                 .setContact('API Support', 'admin@digipact.co', 'admin@digipact.co')
-                .setLicense('MIT', 'https://opensource.org/licenses/MIT');
+                .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+                .addBearerAuth();
 
         Object.entries(config.tags).forEach(([name, description]) => {
             builder.addTag(name, description);
@@ -54,29 +76,38 @@ export class SwaggerConfigManager {
     }
 
     /**
-     * Iterates over all endpoint paths to identify and wrap responses in global envelopes.
+     * Walks through all routes and operations in the document to apply global success and error envelopes.
+     *
+     * @param paths OpenAPI paths dictionary.
+     * @param componentsSchemas Dictionary containing all reusable component schemas.
      */
     private static wrapResponsePaths(paths: Record<string, unknown>, componentsSchemas: Record<string, unknown>) {
         if (!paths) return;
 
-        for (const pathKey in paths) {
+        Object.keys(paths).forEach((pathKey) => {
             const pathItem = paths[pathKey] as Record<string, unknown>;
-            if (!pathItem) continue;
 
-            for (const methodKey in pathItem) {
-                const operation = pathItem[methodKey] as Record<string, unknown>;
-                const responses = operation?.['responses'] as Record<string, unknown>;
-                if (!responses) continue;
+            if (!pathItem) return;
 
-                for (const statusCode in responses) {
+            Object.keys(pathItem).forEach((methodKey) => {
+                const operation = pathItem[methodKey] as Record<string, unknown>,
+                    responses = operation?.['responses'] as Record<string, unknown>;
+
+                if (!responses) return;
+
+                Object.keys(responses).forEach((statusCode) => {
                     this.wrapSingleResponse(responses[statusCode], statusCode, componentsSchemas);
-                }
-            }
-        }
+                });
+            });
+        });
     }
 
     /**
-     * Envelopes a single HTTP response schema in either a success (data) or error (error) wrapper.
+     * Formats a single HTTP response schema, wrapping it inside a 'data' (success) or 'error' (failure) envelope.
+     *
+     * @param response The response configuration object.
+     * @param statusCode The HTTP status code of the response.
+     * @param componentsSchemas Dictionary of all component schemas.
      */
     private static wrapSingleResponse(
         response: unknown,
@@ -85,17 +116,17 @@ export class SwaggerConfigManager {
     ) {
         if (!response || typeof response !== 'object') return;
 
-        const resObj = response as Record<string, unknown>;
-        const statusInt = parseInt(statusCode, 10);
-        const isSuccessToWrap = statusInt >= 200 && statusInt < 300 && statusInt !== 204;
-        const isErrorToWrap = statusInt >= 400 && statusInt < 600;
+        const _response = response as Record<string, unknown>,
+            _statusCode = parseInt(statusCode, 10),
+            isSuccessToWrap = _statusCode >= 200 && _statusCode < 300 && _statusCode !== 204,
+            isErrorToWrap = _statusCode >= 400 && _statusCode < 600;
 
         if (!isSuccessToWrap && !isErrorToWrap) return;
 
-        let content = resObj['content'] as Record<string, unknown>;
+        let content = _response['content'] as Record<string, unknown>;
         if (!content) {
-            resObj['content'] = {};
-            content = resObj['content'] as Record<string, unknown>;
+            _response['content'] = {};
+            content = _response['content'] as Record<string, unknown>;
         }
 
         let jsonContent = content['application/json'] as Record<string, unknown>;
@@ -110,9 +141,21 @@ export class SwaggerConfigManager {
             default: null,
         };
 
-        const hasRef = typeof schemaVal === 'object' && schemaVal !== null && '$ref' in schemaVal;
-        const schemaType = getSchemaType(schemaVal, componentsSchemas);
-        const schemaExample = resolveExample(schemaVal, componentsSchemas);
+        // Prevent duplicate wrapping if the schema is shared by reference across operations
+        if (
+            schemaVal &&
+            typeof schemaVal === 'object' &&
+            'properties' in schemaVal &&
+            schemaVal.properties &&
+            typeof schemaVal.properties === 'object' &&
+            ('data' in schemaVal.properties || 'error' in schemaVal.properties)
+        ) {
+            return;
+        }
+
+        const hasRef = typeof schemaVal === 'object' && schemaVal !== null && '$ref' in schemaVal,
+            schemaType = getSchemaType(schemaVal, componentsSchemas),
+            schemaExample = resolveExample(schemaVal, componentsSchemas);
 
         if (isSuccessToWrap) {
             if (hasRef) {
@@ -172,12 +215,15 @@ export class SwaggerConfigManager {
     }
 
     /**
-     * Post-processes standard DTO schemas to apply global API validation rules (e.g. forbid extra properties).
+     * Post-processes component schemas to align Swagger models with class-validator configurations.
+     * Forbids extra properties for objects, extracts x-force-required tags, and forces min properties for PATCH models.
+     *
+     * @param componentsSchemas Dictionary of component schemas to process in-place.
      */
     private static postProcessComponents(componentsSchemas: Record<string, unknown>) {
-        for (const schemaName in componentsSchemas) {
+        Object.keys(componentsSchemas).forEach((schemaName) => {
             const schema = componentsSchemas[schemaName] as Record<string, unknown>;
-            if (!schema) continue;
+            if (!schema) return;
 
             // Enforce custom forced fields if declared
             if (schema['x-force-required']) {
@@ -194,11 +240,15 @@ export class SwaggerConfigManager {
             if (schemaName.includes('Patch')) {
                 schema['minProperties'] = 1;
             }
-        }
+        });
     }
 
     /**
-     * Generates standard static HTML reference page for Scalar integration.
+     * Generates a static HTML template string configured to load Scalar API reference pointing to a local JSON file.
+     *
+     * @param jsonFilename Name of the static JSON specification file.
+     * @param title Title of the documentation webpage.
+     * @returns HTML document template string.
      */
     static generateStaticScalarHtml(jsonFilename: string, title: string) {
         return `<!doctype html>
@@ -210,7 +260,7 @@ export class SwaggerConfigManager {
     <style>body { margin: 0; }</style>
   </head>
   <body>
-    <script id="api-reference" data-url="./${jsonFilename}" data-configuration='{ "showOperationId": true }'></script>
+    <script id="api-reference" data-url="./${jsonFilename}" data-configuration='{ "showOperationId": true, "operationsSorter": "method" }'></script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>`;
@@ -218,25 +268,31 @@ export class SwaggerConfigManager {
 }
 
 /**
- * Resolves the underlying primitive or object type of a Swagger schema,
- * recursively following $ref references if necessary.
+ * Recursively resolves the underlying data type of a schema, following $ref pointers if necessary.
+ *
+ * @param schema The schema or schema reference to evaluate.
+ * @param componentsSchemas Dictionary of component schemas.
+ * @returns The resolved type name (e.g., 'object', 'string').
  */
 function getSchemaType(schema: unknown, componentsSchemas: Record<string, unknown>): string {
     if (!schema || typeof schema !== 'object') {
         return 'object';
     }
 
-    const s = schema as Record<string, unknown>;
-    const type = s['type'];
+    const _schema = schema as Record<string, unknown>,
+        type = _schema['type'];
+
     if (typeof type === 'string') {
         return type;
     }
 
-    const ref = s['$ref'];
+    const ref = _schema['$ref'];
     if (typeof ref === 'string') {
         const schemaName = ref.split('/').pop();
+
         if (schemaName) {
             const refSchema = componentsSchemas[schemaName];
+
             if (refSchema) {
                 return getSchemaType(refSchema, componentsSchemas);
             }
@@ -247,45 +303,54 @@ function getSchemaType(schema: unknown, componentsSchemas: Record<string, unknow
 }
 
 /**
- * Dynamically resolves/constructs a sample example object for a given schema,
- * resolving nested properties and $ref references to comply with Spectral schema rules.
+ * Recursively extracts or builds an example payload matching the structure of a given schema.
+ * Resolves properties and references to ensure validity.
+ *
+ * @param schema The schema object to inspect.
+ * @param componentsSchemas Dictionary of component schemas.
+ * @returns An example object representing the schema shape.
  */
 function resolveExample(schema: unknown, componentsSchemas: Record<string, unknown>): unknown {
     if (!schema || typeof schema !== 'object') {
         return null;
     }
 
-    const s = schema as Record<string, unknown>;
+    const _schema = schema as Record<string, unknown>,
+        ref = _schema['$ref'];
 
-    const ref = s['$ref'];
     if (typeof ref === 'string') {
         const schemaName = ref.split('/').pop();
+
         if (schemaName) {
             const refSchema = componentsSchemas[schemaName];
+
             if (refSchema) {
                 return resolveExample(refSchema, componentsSchemas);
             }
         }
     }
 
-    const example = s['example'];
+    const example = _schema['example'];
     if (example !== undefined) {
         return example;
     }
 
-    const type = s['type'];
+    const type = _schema['type'];
     if (type === 'array') {
-        const itemExample = resolveExample(s['items'], componentsSchemas);
+        const itemExample = resolveExample(_schema['items'], componentsSchemas);
+
         return itemExample !== null ? [itemExample] : [];
     }
 
-    const properties = s['properties'];
+    const properties = _schema['properties'];
     if (type === 'object' && properties && typeof properties === 'object') {
-        const props = properties as Record<string, unknown>;
-        const objExample: Record<string, unknown> = {};
-        for (const propKey in props) {
+        const props = properties as Record<string, unknown>,
+            objExample: Record<string, unknown> = {};
+
+        Object.keys(props).forEach((propKey) => {
             objExample[propKey] = resolveExample(props[propKey], componentsSchemas);
-        }
+        });
+
         return objExample;
     }
 

@@ -60,14 +60,14 @@ jobs:
         needs: quality
         uses: ./.github/workflows/build.yml
 
-    integration-test:
-        name: Integration test
+    e2e-test:
+        name: E2E test
         needs: [unit-test, build]
-        uses: ./.github/workflows/integration-test.yml
+        uses: ./.github/workflows/e2e-test.yml
 
     publish-docs:
         name: Publish documentation
-        needs: integration-test
+        needs: e2e-test
         runs-on: ubuntu-24.04
         steps:
             - name: Download build artifacts

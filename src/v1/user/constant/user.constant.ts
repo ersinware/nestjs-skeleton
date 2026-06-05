@@ -1,1 +1,9 @@
-export const USERS_REPOSITORY_TOKEN = Symbol('USERS_REPOSITORY_TOKEN');
+/**
+ * @file user.constant.ts
+ * @description Dependency injection tokens and constants for the user module.
+ */
+
+/**
+ * Dependency injection token representing the users repository contract interface.
+ */
+export const TOKEN_USERS_REPOSITORY = Symbol('TOKEN_USERS_REPOSITORY');

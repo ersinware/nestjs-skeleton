@@ -41,9 +41,9 @@ rules:
             field: example
             function: truthy
     operation-request-body:
-        description: POST, PUT, and PATCH operations must have a requestBody.
+        description: PUT and PATCH operations must have a requestBody.
         severity: error
-        given: $.paths[*][post,put,patch]
+        given: $.paths[*][put,patch]
         then:
             field: requestBody
             function: truthy

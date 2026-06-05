@@ -8,6 +8,20 @@
             "when": 1779101535267,
             "tag": "0000_init_database",
             "breakpoints": true
+        },
+        {
+            "idx": 1,
+            "version": "7",
+            "when": 1780344720394,
+            "tag": "0001_tricky_sway",
+            "breakpoints": true
+        },
+        {
+            "idx": 2,
+            "version": "7",
+            "when": 1780344733887,
+            "tag": "0002_burly_gabe_jones",
+            "breakpoints": true
         }
     ]
 }

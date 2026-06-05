@@ -1,51 +1,78 @@
+/**
+ * @file healthy.dto.ts
+ * @description Data transfer object defining the structure of a successful system health check response.
+ * Used by Swagger/Scalar to document the shape of HTTP 200 health responses.
+ */
+
 import { ApiExtension, ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Equals, IsObject, IsString } from 'class-validator';
 import { createHealthyIndicator } from '../util/dto.util';
 
+/**
+ * Data transfer object representing a healthy application status response.
+ */
 @ApiSchema({
     name: 'Healthy',
     description: 'Successful health check response status',
 })
 @ApiExtension('x-force-required', ['status', 'info', 'error', 'details'])
 export class HealthyDto {
+    /**
+     * The overall status indicating the app is healthy.
+     */
+    @IsString()
+    @Equals('ok', { message: 'Status must be exactly "ok".' })
     @ApiProperty({
         type: 'string',
         description: 'The overall health status indicating success.',
         example: 'ok',
         enum: ['ok'],
     })
-    @IsString()
-    @Equals('ok', { message: 'Status must be exactly "ok".' })
     readonly status!: string;
 
-    @ApiProperty(createHealthDetailsSchema('Information about healthy indicators.'))
+    /**
+     * Contains detailed information about healthy indicator components (memory, database, Cache).
+     */
     @IsObject({ message: 'Info must be an object.' })
+    @ApiProperty(createHealthDetailsSchema('Information about healthy indicators.'))
     readonly info!: Record<string, unknown>;
 
+    /**
+     * An empty error object indicating no errors occurred.
+     */
+    @IsObject({ message: 'Error must be an object.' })
     @ApiProperty({
         description: 'No errors present for a healthy status.',
         type: 'object',
         additionalProperties: false,
         example: {},
     })
-    @IsObject({ message: 'Error must be an object.' })
     readonly error!: Record<string, never>;
 
-    @ApiProperty(createHealthDetailsSchema('Combined details of healthy indicators.'))
+    /**
+     * Combined map of all indicators and their healthy status.
+     */
     @IsObject({ message: 'Details must be an object.' })
+    @ApiProperty(createHealthDetailsSchema('Combined details of healthy indicators.'))
     readonly details!: Record<string, unknown>;
 }
 
+/**
+ * Creates Swagger schema definition metadata for healthy system components (heap, RSS, database, Cache).
+ *
+ * @param description Description of the detail schema object.
+ * @returns Swagger-compliant property details schema.
+ */
 function createHealthDetailsSchema(description: string): Record<string, unknown> {
     return {
         description,
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database', 'redis'],
+        required: ['memory_heap', 'memory_rss', 'database', 'cache'],
         properties: {
             memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
             database: createHealthyIndicator('Database connection indicator status.'),
-            redis: createHealthyIndicator('Redis connection indicator status.'),
+            cache: createHealthyIndicator('Cache connection indicator status.'),
         },
         additionalProperties: false,
         minProperties: 4,
@@ -54,7 +81,7 @@ function createHealthDetailsSchema(description: string): Record<string, unknown>
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },
             database: { status: 'up' },
-            redis: { status: 'up' },
+            cache: { status: 'up' },
         },
     };
 }
