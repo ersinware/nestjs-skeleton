@@ -4,8 +4,8 @@
  */
 
 import type { FastifyRequest } from 'fastify';
-import { AuthUserRole } from '../enum/auth-user-role.enum';
-import { AuthTokenType } from '../enum/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 
 /**
  * Extended HTTP Request context carrying parsed security attributes.

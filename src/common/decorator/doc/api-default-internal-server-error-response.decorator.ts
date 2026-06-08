@@ -5,7 +5,7 @@
 
 import { ApiInternalServerErrorResponse } from '@nestjs/swagger';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { InternalServerErrorType } from './enum/internal-server-error-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 
 export { InternalServerErrorType };
 

@@ -4,10 +4,10 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { ConflictType } from 'src/common/decorator/api-default-conflict-response.decorator';
-import { InternalServerErrorType } from 'src/common/decorator/api-default-internal-server-error-response.decorator';
-import { NotFoundType } from 'src/common/decorator/enum/not-found-type.enum';
-import { ServiceUnavailableType } from 'src/common/decorator/enum/service-unavailable-type.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
 import { UnhealthyDto } from 'src/health/dto/unhealthy.dto';
 import request from 'supertest';

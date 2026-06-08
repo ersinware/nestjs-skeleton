@@ -7,8 +7,8 @@ import { GetCreatedAdminDto } from './dto/get-created-admin.dto';
 import { GetAdminDto } from './dto/get-admin.dto';
 import { PatchAdminStatusDto } from './dto/patch-admin-status.dto';
 import { ParamIdDto } from 'src/common/dto/param-id.dto';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
 import { Admin } from './type/admin.type';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
 describe('AdminController', () => {
     let controller: AdminController;

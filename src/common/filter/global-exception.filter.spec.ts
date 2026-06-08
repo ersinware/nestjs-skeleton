@@ -4,10 +4,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { ErrorDefaultDto } from '../dto/error-default.dto';
-import { ConflictType } from '../decorator/api-default-conflict-response.decorator';
-import { InternalServerErrorType } from '../decorator/api-default-internal-server-error-response.decorator';
-import { NotFoundType } from '../decorator/enum/not-found-type.enum';
-import { ServiceUnavailableType } from '../decorator/enum/service-unavailable-type.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
 
 describe('GlobalExceptionFilter', () => {
     const mockHttpAdapterHost = {

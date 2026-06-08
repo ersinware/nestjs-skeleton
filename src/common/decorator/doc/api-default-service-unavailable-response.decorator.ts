@@ -5,7 +5,7 @@
 
 import { ApiServiceUnavailableResponse } from '@nestjs/swagger';
 import { UnhealthyDto } from 'src/health/dto/unhealthy.dto';
-import { ServiceUnavailableType } from './enum/service-unavailable-type.enum';
+import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
 
 export { ServiceUnavailableType };
 

@@ -14,7 +14,7 @@ import { PostUserDto } from './dto/post-user.dto';
 import type { IUsersRepository } from './interface/users.repository.interface';
 import { UserService } from './user.service';
 import { AuthService } from 'src/v1/auth/auth.service';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 
 describe('UserService', () => {

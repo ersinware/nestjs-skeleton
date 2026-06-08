@@ -5,9 +5,9 @@
 
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { UnauthorizedType } from 'src/common/decorator/enum/unauthorized-type.enum';
-import { AuthTokenType } from 'src/common/guard/enum/auth-token-type.enum';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { RefreshTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
 import type { IAdminsRepository } from 'src/v1/admin/interface/admins.repository.interface';

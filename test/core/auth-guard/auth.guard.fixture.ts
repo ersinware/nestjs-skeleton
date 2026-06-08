@@ -5,7 +5,7 @@
 
 import { Controller, Get, Req } from '@nestjs/common';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Public } from 'src/common/decorator/public.decorator';
+import { Public } from 'src/common/decorator/auth/public.decorator';
 import { createTestApp } from '../../shared/test-app.factory';
 import type { AccessTokenPayload, AuthenticatedRequest } from 'src/common/guard/interface/auth.interface';
 

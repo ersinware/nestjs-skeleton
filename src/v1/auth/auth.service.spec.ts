@@ -7,8 +7,8 @@ import { SessionService } from './session.service';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';
 import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
-import { AuthTokenType } from 'src/common/guard/enum/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { PostAuthLoginDto } from './dto/post-auth-login.dto';
 
 describe('AuthService', () => {

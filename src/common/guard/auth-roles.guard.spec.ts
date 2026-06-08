@@ -3,9 +3,9 @@ import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthRolesGuard } from './auth-roles.guard';
-import { AuthUserRole } from './enum/auth-user-role.enum';
-import { KEY_DECORATOR_ROLES } from '../decorator/roles.decorator';
-import { ForbiddenType } from '../decorator/enum/forbidden-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { KEY_DECORATOR_ROLES } from '../decorator/auth/roles.decorator';
+import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
 
 describe('AuthRolesGuard', () => {
     let guard: AuthRolesGuard, reflector: Reflector;

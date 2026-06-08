@@ -4,7 +4,7 @@
  */
 
 import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
-import { BadRequestType } from 'src/common/decorator/enum/bad-request-type.enum';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
 
 /**
  * Validates that incoming payload is a non-empty object.

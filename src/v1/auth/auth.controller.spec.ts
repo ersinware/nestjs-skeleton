@@ -1,15 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import type { Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
-import { AuthTokenType } from 'src/common/guard/enum/auth-token-type.enum';
+import { GetAuthTokensDto } from './dto/get-auth-tokens.dto';
 import { PostAuthLoginDto } from './dto/post-auth-login.dto';
 import { PostAuthRefreshDto } from './dto/post-auth-refresh.dto';
-import { GetAuthTokensDto } from './dto/get-auth-tokens.dto';
-import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 
 describe('AuthController', () => {
     const mockAuthService: Record<keyof AuthService, Mock> = {

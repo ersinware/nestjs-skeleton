@@ -5,10 +5,10 @@
 
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { KEY_DECORATOR_ROLES } from '../decorator/roles.decorator';
+import { KEY_DECORATOR_ROLES } from '../decorator/auth/roles.decorator';
 import type { AuthenticatedRequest } from './interface/auth.interface';
-import { AuthUserRole } from './enum/auth-user-role.enum';
-import { ForbiddenType } from '../decorator/enum/forbidden-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
 
 /**
  * Authorization guard matching user role claims against route role requirements.

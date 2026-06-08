@@ -7,7 +7,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { getStorageToken } from '@nestjs/throttler';
-import { Public } from 'src/common/decorator/public.decorator';
+import { Public } from 'src/common/decorator/auth/public.decorator';
 import { vi } from 'vitest';
 import { createTestApp } from '../../shared/test-app.factory';
 

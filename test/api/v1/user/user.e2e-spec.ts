@@ -1,11 +1,11 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BadRequestType } from 'src/common/decorator/enum/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/decorator/enum/forbidden-type.enum';
-import { InternalServerErrorType } from 'src/common/decorator/enum/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/decorator/enum/not-found-type.enum';
-import { UnauthorizedType } from 'src/common/decorator/enum/unauthorized-type.enum';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
+import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { SessionService } from 'src/v1/auth/session.service';
 import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';

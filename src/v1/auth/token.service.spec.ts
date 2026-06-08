@@ -4,8 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TokenService } from './token.service';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
-import { AuthTokenType } from 'src/common/guard/enum/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { ENV } from 'src/common/config/constant/env.constant';
 import { AccessTokenPayload, RefreshTokenPayload } from 'src/common/guard/interface/auth.interface';
 

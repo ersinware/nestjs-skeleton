@@ -5,7 +5,7 @@
 
 import { ApiBadRequestResponse } from '@nestjs/swagger';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { BadRequestType } from './enum/bad-request-type.enum';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
 
 export { BadRequestType };
 

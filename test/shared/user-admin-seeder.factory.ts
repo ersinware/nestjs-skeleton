@@ -1,5 +1,5 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
 import { IAdminsRepository } from 'src/v1/admin/interface/admins.repository.interface';

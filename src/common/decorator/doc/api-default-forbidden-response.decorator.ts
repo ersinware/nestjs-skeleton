@@ -5,7 +5,7 @@
 
 import { ApiForbiddenResponse } from '@nestjs/swagger';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { ForbiddenType } from './enum/forbidden-type.enum';
+import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
 
 export { ForbiddenType };
 

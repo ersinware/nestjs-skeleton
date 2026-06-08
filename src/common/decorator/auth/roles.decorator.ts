@@ -4,7 +4,7 @@
  */
 
 import { SetMetadata } from '@nestjs/common';
-import { AuthUserRole } from '../guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
 /**
  * Metadata key used to store required roles for authorization.
