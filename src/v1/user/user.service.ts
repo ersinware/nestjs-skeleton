@@ -13,16 +13,16 @@ import {
     forwardRef,
 } from '@nestjs/common';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { TOKEN_USERS_REPOSITORY } from './constant/user.constant';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserDto } from './dto/patch-user.dto';
 import { PostUserDto } from './dto/post-user.dto';
 import type { IUsersRepository } from './interface/users.repository.interface';
-import { ConflictType } from 'src/common/decorator/enum/conflict-type.enum';
-import { NotFoundType } from 'src/common/decorator/enum/not-found-type.enum';
-import { InternalServerErrorType } from 'src/common/decorator/enum/internal-server-error-type.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 
 /**
  * Service orchestrating user domain logic and interacting with the persistence repository.

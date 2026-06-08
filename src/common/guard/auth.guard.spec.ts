@@ -8,9 +8,9 @@ import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { KEY_DECORATOR_PUBLIC } from '../decorator/public.decorator';
+import { KEY_DECORATOR_PUBLIC } from '../decorator/auth/public.decorator';
 import { AuthGuard } from './auth.guard';
-import { AuthUserRole } from './enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { TokenService } from 'src/v1/auth/token.service';
 
 describe('AuthGuard', () => {

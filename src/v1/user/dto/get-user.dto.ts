@@ -5,9 +5,9 @@
 
 import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEntityId } from 'src/common/decorator/entity-id.decorator';
-import { IsUserEmail } from 'src/common/decorator/email.decorator';
-import { IsUserName } from 'src/common/decorator/name.decorator';
+import { IsEntityId } from 'src/common/decorator/validator/entity-id.decorator';
+import { IsUserEmail } from 'src/common/decorator/validator/email.decorator';
+import { IsUserName } from 'src/common/decorator/validator/name.decorator';
 
 /**
  * DTO representing user response data.

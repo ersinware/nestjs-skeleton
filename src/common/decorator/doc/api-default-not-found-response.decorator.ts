@@ -5,7 +5,7 @@
 
 import { ApiNotFoundResponse } from '@nestjs/swagger';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { NotFoundType } from './enum/not-found-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 
 export { NotFoundType };
 

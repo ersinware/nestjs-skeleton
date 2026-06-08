@@ -6,7 +6,7 @@
 import { boolean, pgEnum, pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
 import { timestamps } from '../base.schema';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
 export const adminRoleEnum = pgEnum('admin_role', [AuthUserRole.ADMIN, AuthUserRole.SUPER_ADMIN]);
 

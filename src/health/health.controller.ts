@@ -7,9 +7,9 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
-import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/api-default-internal-server-error-response.decorator';
-import { ApiDefaultServiceUnavailableResponse } from 'src/common/decorator/api-default-service-unavailable-response.decorator';
-import { Public } from 'src/common/decorator/public.decorator';
+import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/doc/api-default-internal-server-error-response.decorator';
+import { ApiDefaultServiceUnavailableResponse } from 'src/common/decorator/doc/api-default-service-unavailable-response.decorator';
+import { Public } from 'src/common/decorator/auth/public.decorator';
 import { HealthyDto } from './dto/healthy.dto';
 import { UnhealthyDto } from './dto/unhealthy.dto';
 import { HealthService } from './health.service';

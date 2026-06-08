@@ -4,8 +4,8 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { IsUserEmail } from 'src/common/decorator/email.decorator';
-import { IsStrongPassword } from 'src/common/decorator/password.decorator';
+import { IsUserEmail } from 'src/common/decorator/validator/email.decorator';
+import { IsStrongPassword } from 'src/common/decorator/validator/password.decorator';
 
 /**
  * DTO for validating user/admin credentials during authentication login.

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionService } from './session.service';
 import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { ENV } from 'src/common/config/constant/env.constant';
 
 describe('SessionService', () => {

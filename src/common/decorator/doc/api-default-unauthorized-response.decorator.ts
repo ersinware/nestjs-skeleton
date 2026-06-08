@@ -5,7 +5,7 @@
 
 import { ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { UnauthorizedType } from './enum/unauthorized-type.enum';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 
 export { UnauthorizedType };
 

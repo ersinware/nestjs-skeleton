@@ -14,10 +14,10 @@ import {
 import { Reflector } from '@nestjs/core';
 import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
 import type { ICacheService } from 'src/cache/interface/cache-service.interface';
-import { KEY_DECORATOR_PUBLIC } from '../decorator/public.decorator';
+import { KEY_DECORATOR_PUBLIC } from '../decorator/auth/public.decorator';
 import type { AccessTokenPayload, AuthenticatedRequest } from './interface/auth.interface';
-import { UnauthorizedType } from 'src/common/decorator/enum/unauthorized-type.enum';
-import { InternalServerErrorType } from 'src/common/decorator/enum/internal-server-error-type.enum';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { TokenService } from 'src/v1/auth/token.service';
 
 /**

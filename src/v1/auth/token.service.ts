@@ -8,8 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { ENV } from 'src/common/config/constant/env.constant';
-import { AuthTokenType } from 'src/common/guard/enum/auth-token-type.enum';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { AccessTokenPayload, RefreshTokenPayload } from 'src/common/guard/interface/auth.interface';
 
 @Injectable()

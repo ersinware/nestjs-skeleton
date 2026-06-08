@@ -13,23 +13,19 @@ import {
     ApiTags,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import {
-    ApiDefaultBadRequestResponse,
-    BadRequestType,
-} from 'src/common/decorator/api-default-bad-request-response.decorator';
-import { ApiDefaultConflictResponse } from 'src/common/decorator/api-default-conflict-response.decorator';
-import { ApiDefaultForbiddenResponse } from 'src/common/decorator/api-default-forbidden-response.decorator';
-import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/api-default-internal-server-error-response.decorator';
-import { ApiDefaultNotFoundResponse } from 'src/common/decorator/api-default-not-found-response.decorator';
-import {
-    ApiDefaultUnauthorizedResponse,
-    UnauthorizedType,
-} from 'src/common/decorator/api-default-unauthorized-response.decorator';
-import { AccessTokenPayloadDecorator } from 'src/common/decorator/access-token-payload.decorator';
-import { Public } from 'src/common/decorator/public.decorator';
-import { Roles } from 'src/common/decorator/roles.decorator';
+import { ApiDefaultBadRequestResponse } from 'src/common/decorator/doc/api-default-bad-request-response.decorator';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
+import { ApiDefaultConflictResponse } from 'src/common/decorator/doc/api-default-conflict-response.decorator';
+import { ApiDefaultForbiddenResponse } from 'src/common/decorator/doc/api-default-forbidden-response.decorator';
+import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/doc/api-default-internal-server-error-response.decorator';
+import { ApiDefaultNotFoundResponse } from 'src/common/decorator/doc/api-default-not-found-response.decorator';
+import { ApiDefaultUnauthorizedResponse } from 'src/common/decorator/doc/api-default-unauthorized-response.decorator';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
+import { AccessTokenPayloadDecorator } from 'src/common/decorator/auth/access-token-payload.decorator';
+import { Public } from 'src/common/decorator/auth/public.decorator';
+import { Roles } from 'src/common/decorator/auth/roles.decorator';
 import { ParamIdDto } from 'src/common/dto/param-id.dto';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { NotEmptyBodyPipe } from 'src/common/pipe/not-empty-body.pipe';
 import { GetUserDto } from './dto/get-user.dto';

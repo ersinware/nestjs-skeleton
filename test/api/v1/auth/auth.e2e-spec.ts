@@ -4,11 +4,11 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BadRequestType } from 'src/common/decorator/enum/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/decorator/enum/forbidden-type.enum';
-import { UnauthorizedType } from 'src/common/decorator/enum/unauthorized-type.enum';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
+import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
 import { IAdminsRepository } from 'src/v1/admin/interface/admins.repository.interface';

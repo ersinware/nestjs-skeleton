@@ -6,10 +6,10 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsEnum } from 'class-validator';
-import { IsEntityId } from 'src/common/decorator/entity-id.decorator';
-import { IsUserEmail } from 'src/common/decorator/email.decorator';
-import { IsUserName } from 'src/common/decorator/name.decorator';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { IsEntityId } from 'src/common/decorator/validator/entity-id.decorator';
+import { IsUserEmail } from 'src/common/decorator/validator/email.decorator';
+import { IsUserName } from 'src/common/decorator/validator/name.decorator';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
 /**
  * DTO representing admin response data.

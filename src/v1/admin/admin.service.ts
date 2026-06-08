@@ -13,11 +13,11 @@ import {
     forwardRef,
 } from '@nestjs/common';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { ConflictType } from 'src/common/decorator/enum/conflict-type.enum';
-import { ForbiddenType } from 'src/common/decorator/enum/forbidden-type.enum';
-import { InternalServerErrorType } from 'src/common/decorator/enum/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/decorator/enum/not-found-type.enum';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
 import { PostAdminDto } from './dto/post-admin.dto';

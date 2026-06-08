@@ -4,7 +4,7 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { IsStrongPassword } from 'src/common/decorator/password.decorator';
+import { IsStrongPassword } from 'src/common/decorator/validator/password.decorator';
 
 /**
  * DTO containing current and new password payloads to update credentials.

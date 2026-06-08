@@ -5,10 +5,10 @@
 
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { InternalServerErrorType } from '../decorator/api-default-internal-server-error-response.decorator';
-import { ConflictType } from '../decorator/api-default-conflict-response.decorator';
-import { NotFoundType } from '../decorator/enum/not-found-type.enum';
-import { ServiceUnavailableType } from '../decorator/enum/service-unavailable-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
 
 /**
  * Database error payload shape.

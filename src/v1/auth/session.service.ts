@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
 import type { ICacheService } from 'src/cache/interface/cache-service.interface';
 import { ENV } from 'src/common/config/constant/env.constant';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
 @Injectable()
 export class SessionService {

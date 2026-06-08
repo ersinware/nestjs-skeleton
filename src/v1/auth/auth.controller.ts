@@ -6,17 +6,13 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import { AccessTokenPayloadDecorator } from 'src/common/decorator/access-token-payload.decorator';
-import {
-    ApiDefaultBadRequestResponse,
-    BadRequestType,
-} from 'src/common/decorator/api-default-bad-request-response.decorator';
-import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/api-default-internal-server-error-response.decorator';
-import {
-    ApiDefaultUnauthorizedResponse,
-    UnauthorizedType,
-} from 'src/common/decorator/api-default-unauthorized-response.decorator';
-import { Public } from 'src/common/decorator/public.decorator';
+import { AccessTokenPayloadDecorator } from 'src/common/decorator/auth/access-token-payload.decorator';
+import { ApiDefaultBadRequestResponse } from 'src/common/decorator/doc/api-default-bad-request-response.decorator';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
+import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/doc/api-default-internal-server-error-response.decorator';
+import { ApiDefaultUnauthorizedResponse } from 'src/common/decorator/doc/api-default-unauthorized-response.decorator';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
+import { Public } from 'src/common/decorator/auth/public.decorator';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { NotEmptyBodyPipe } from 'src/common/pipe/not-empty-body.pipe';
 import { AuthService } from './auth.service';

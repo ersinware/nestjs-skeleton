@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, InternalServerErrorException, No
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { AdminService } from './admin.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';

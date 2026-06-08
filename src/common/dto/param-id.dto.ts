@@ -5,7 +5,7 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { IsEntityId } from 'src/common/decorator/entity-id.decorator';
+import { IsEntityId } from 'src/common/decorator/validator/entity-id.decorator';
 
 /**
  * Path parameter validation schema containing a unique resource identifier.

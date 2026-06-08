@@ -1,17 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
-import { UserController } from './user.controller';
-import { UserService } from './user.service';
-import { PostUserDto } from './dto/post-user.dto';
-import { PatchUserDto } from './dto/patch-user.dto';
+import { ParamIdDto } from 'src/common/dto/param-id.dto';
+import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
+import { beforeEach, describe, expect, it, Mock, vi } from 'vitest';
+import { GetUserDto } from './dto/get-user.dto';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserStatusDto } from './dto/patch-user-status.dto';
-import { GetUserDto } from './dto/get-user.dto';
-import { ParamIdDto } from 'src/common/dto/param-id.dto';
+import { PatchUserDto } from './dto/patch-user.dto';
+import { PostUserDto } from './dto/post-user.dto';
 import { User } from './type/user.type';
-import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
-import { AuthUserRole } from 'src/common/guard/enum/auth-user-role.enum';
-import { AuthTokenType } from 'src/common/guard/enum/auth-token-type.enum';
+import { UserController } from './user.controller';
+import { UserService } from './user.service';
 
 describe('UserController', () => {
     let controller: UserController;

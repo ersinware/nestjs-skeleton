@@ -5,7 +5,7 @@
 
 import { ApiConflictResponse } from '@nestjs/swagger';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { ConflictType } from './enum/conflict-type.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 
 export { ConflictType };
 
