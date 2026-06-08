@@ -4,6 +4,7 @@ import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { beforeEach, describe, expect, it, Mock, vi } from 'vitest';
+import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { GetUserDto } from './dto/get-user.dto';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserStatusDto } from './dto/patch-user-status.dto';
@@ -12,6 +13,7 @@ import { PostUserDto } from './dto/post-user.dto';
 import { User } from './type/user.type';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 
 describe('UserController', () => {
     let controller: UserController;
@@ -82,33 +84,40 @@ describe('UserController', () => {
     });
 
     describe('findAll', () => {
-        it('should return all users mapped to GetUserDto', async () => {
+        it('should return paginated users mapped to GetUserDto', async () => {
             const users: Partial<User>[] = [
-                { id: '00000000-0000-0000-0000-000000000001', email: 'test1@example.com', name: 'User One' },
-                { id: '00000000-0000-0000-0000-000000000002', email: 'test2@example.com', name: 'User Two' },
-            ];
+                    { id: '00000000-0000-0000-0000-000000000001', email: 'test1@example.com', name: 'User One' },
+                    { id: '00000000-0000-0000-0000-000000000002', email: 'test2@example.com', name: 'User Two' },
+                ],
+                query: QueryPaginationDto = { page: 1, limit: 20 },
+                total = 2;
 
-            mockUserService.findAll.mockResolvedValueOnce(users);
+            mockUserService.findAll.mockResolvedValueOnce({ data: users, total });
 
-            const result = await controller.findAll();
+            const result = await controller.findAll(query);
 
-            expect(result).toBeInstanceOf(Array);
-            expect(result).toHaveLength(2);
-            expect(result[0]).toBeInstanceOf(GetUserDto);
-            expect(result[1]).toBeInstanceOf(GetUserDto);
-            expect(result).toEqual(
+            expect(result).toBeInstanceOf(ResponsePaginationDto);
+            expect(result.total).toBe(total);
+            expect(result.page).toBe(query.page);
+            expect(result.limit).toBe(query.limit);
+            expect(result.totalPages).toBe(Math.ceil(total / query.limit));
+            expect(result.items).toHaveLength(users.length);
+            expect(result.items[0]).toBeInstanceOf(GetUserDto);
+            expect(result.items[1]).toBeInstanceOf(GetUserDto);
+            expect(result.items).toEqual(
                 users.map((user) => {
                     return { id: user.id!, email: user.email!, name: user.name! };
                 }) satisfies GetUserDto[],
             );
-            expect(mockUserService.findAll).toHaveBeenCalledTimes(1);
+            expect(mockUserService.findAll).toHaveBeenCalledWith(query);
         });
 
         it('should propagate service error', async () => {
+            const query: QueryPaginationDto = { page: 1, limit: 10 };
             mockUserService.findAll.mockRejectedValueOnce(new Error());
 
-            await expect(controller.findAll()).rejects.toThrow(Error);
-            expect(mockUserService.findAll).toHaveBeenCalledTimes(1);
+            await expect(controller.findAll(query)).rejects.toThrow(Error);
+            expect(mockUserService.findAll).toHaveBeenCalledWith(query);
         });
     });
 

@@ -3,8 +3,9 @@
  * @description Database table definition for the 'admins' entity using Drizzle ORM.
  */
 
-import { boolean, pgEnum, pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, pgEnum, pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
+import { sql } from 'drizzle-orm';
 import { timestamps } from '../base.schema';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
@@ -13,44 +14,52 @@ export const adminRoleEnum = pgEnum('admin_role', [AuthUserRole.ADMIN, AuthUserR
 /**
  * The Drizzle ORM table definition for the 'admins' table.
  */
-export const admins = pgTable('admins', {
-    /**
-     * Primary key as UUID v7.
-     */
-    id: uuid('id')
-        .primaryKey()
-        .$defaultFn(() => uuidv7()),
+export const admins = pgTable(
+    'admins',
+    {
+        /**
+         * Primary key as UUID v7.
+         */
+        id: uuid('id')
+            .primaryKey()
+            .$defaultFn(() => uuidv7()),
 
-    /**
-     * Email address associated with the admin account.
-     * Enforced as globally unique at the database level.
-     */
-    email: text('email').notNull().unique(),
+        /**
+         * Email address associated with the admin account.
+         * Enforced as globally unique at the database level.
+         */
+        email: text('email').notNull().unique(),
 
-    /**
-     * The full name of the admin.
-     */
-    name: text('name').notNull(),
+        /**
+         * The full name of the admin.
+         */
+        name: text('name').notNull(),
 
-    /**
-     * The hashed password of the admin.
-     */
-    password: text('password').notNull(),
+        /**
+         * The hashed password of the admin.
+         */
+        password: text('password').notNull(),
 
-    /**
-     * The role assigned to the admin account.
-     */
-    role: adminRoleEnum('role').notNull().default(AuthUserRole.ADMIN),
+        /**
+         * The role assigned to the admin account.
+         */
+        role: adminRoleEnum('role').notNull().default(AuthUserRole.ADMIN),
 
-    /**
-     * Flag indicating whether the admin account is active.
-     */
-    isActive: boolean('is_active').notNull().default(true),
+        /**
+         * Flag indicating whether the admin account is active.
+         */
+        isActive: boolean('is_active').notNull().default(true),
 
-    /**
-     * Timestamp indicating when the admin was soft-deleted.
-     */
-    deletedAt: timestamp('deleted_at'),
+        /**
+         * Timestamp indicating when the admin was soft-deleted.
+         */
+        deletedAt: timestamp('deleted_at'),
 
-    ...timestamps,
-});
+        ...timestamps,
+    },
+    (table) => ({
+        idDeletedAtIdx: index('admins_id_deleted_at_idx')
+            .on(table.id)
+            .where(sql`deleted_at IS NULL`),
+    }),
+);

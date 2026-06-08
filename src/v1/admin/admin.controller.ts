@@ -3,33 +3,29 @@
  * @description Controller handling administrative user actions and account creation.
  */
 
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
-import {
-    ApiBearerAuth,
-    ApiCreatedResponse,
-    ApiNoContentResponse,
-    ApiOkResponse,
-    ApiOperation,
-    ApiTags,
-} from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import { Roles } from 'src/common/decorator/auth/roles.decorator';
 import { ApiDefaultBadRequestResponse } from 'src/common/decorator/doc/api-default-bad-request-response.decorator';
-import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
 import { ApiDefaultConflictResponse } from 'src/common/decorator/doc/api-default-conflict-response.decorator';
 import { ApiDefaultForbiddenResponse } from 'src/common/decorator/doc/api-default-forbidden-response.decorator';
 import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/doc/api-default-internal-server-error-response.decorator';
 import { ApiDefaultNotFoundResponse } from 'src/common/decorator/doc/api-default-not-found-response.decorator';
 import { ApiDefaultUnauthorizedResponse } from 'src/common/decorator/doc/api-default-unauthorized-response.decorator';
-import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
-import { Roles } from 'src/common/decorator/auth/roles.decorator';
+import { ApiDefaultOkResponsePaginated } from 'src/common/decorator/doc/api-default-ok-response-paginated.decorator';
 import { ParamIdDto } from 'src/common/dto/param-id.dto';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
+import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { NotEmptyBodyPipe } from 'src/common/pipe/not-empty-body.pipe';
 import { AdminService } from './admin.service';
+import { GetAdminDto } from './dto/get-admin.dto';
 import { GetCreatedAdminDto } from './dto/get-created-admin.dto';
 import { PatchAdminStatusDto } from './dto/patch-admin-status.dto';
 import { PostAdminDto } from './dto/post-admin.dto';
-import { GetAdminDto } from './dto/get-admin.dto';
 
 /**
  * Controller handling admin management endpoints.
@@ -71,19 +67,28 @@ export class AdminController {
     }
 
     /**
-     * Get all admins. Requires super administrator-level authorization.
+     * Get all admins with pagination. Requires super administrator-level authorization.
      *
-     * @returns A promise resolving to an array of admin profiles.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to a paginated response of GetAdminDto.
      */
     @Get()
     @ApiOperation({
         summary: 'Get all admins',
         description:
-            'Retrieves all registered administrative accounts. Requires super administrator-level authorization.',
+            'Retrieves registered administrative accounts with pagination. Requires super administrator-level authorization.',
     })
-    @ApiOkResponse({ description: 'Admins successfully retrieved.', type: GetAdminDto, isArray: true })
-    async findAll(): Promise<GetAdminDto[]> {
-        return plainToInstance(GetAdminDto, await this.adminService.findAll());
+    @ApiDefaultOkResponsePaginated({ description: 'Admins successfully retrieved.', type: GetAdminDto })
+    @ApiDefaultBadRequestResponse(BadRequestType.PARAM)
+    async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<GetAdminDto>> {
+        const { data, total } = await this.adminService.findAll(query);
+
+        return new ResponsePaginationDto<GetAdminDto>(
+            plainToInstance(GetAdminDto, data),
+            total,
+            query.page,
+            query.limit,
+        );
     }
 
     /**

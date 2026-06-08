@@ -22,8 +22,8 @@ export class ErrorDefaultDto {
         type: 'integer',
         minimum: 400,
         maximum: 599,
-        example: 400,
         description: 'HTTP Status Code',
+        example: 400,
     })
     readonly statusCode!: number;
 
@@ -36,8 +36,8 @@ export class ErrorDefaultDto {
     @ApiProperty({
         type: [String],
         minItems: 1,
-        example: ['This is an error message.', 'This is another error message.'],
         description: 'List of error messages detailing what went wrong',
+        example: ['This is an error message.', 'This is another error message.'],
     })
     readonly message!: string[];
 
@@ -50,10 +50,10 @@ export class ErrorDefaultDto {
     @MaxLength(255, { message: 'Status text cannot exceed 255 characters.' })
     @ApiProperty({
         type: 'string',
-        example: 'Bad Request',
-        description: 'Short description of the error status',
         minLength: 1,
         maxLength: 255,
+        description: 'Short description of the error status',
+        example: 'Bad Request',
     })
     readonly statusText!: string;
 }

@@ -12,12 +12,13 @@ import {
     NotFoundException,
     forwardRef,
 } from '@nestjs/common';
-import { HashingService } from 'src/common/hashing/service/hashing.service';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
 import { PostAdminDto } from './dto/post-admin.dto';
@@ -69,12 +70,13 @@ export class AdminService {
     }
 
     /**
-     * Retrieves all registered admin records.
+     * Retrieves all registered admin records with pagination.
      *
-     * @returns A promise resolving to an array of all admins.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to an object containing active admins array and total count.
      */
-    async findAll() {
-        return this.adminsRepository.findAll();
+    async findAll(query: QueryPaginationDto) {
+        return this.adminsRepository.findAll(query);
     }
 
     /**

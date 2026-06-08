@@ -27,9 +27,9 @@ export function IsUserEmail(descriptionPrefix: string = 'The email address') {
         ApiProperty({
             type: 'string',
             format: 'email',
-            description: `${descriptionPrefix}.`,
             minLength: EMAIL_MIN_LENGTH,
             maxLength: EMAIL_MAX_LENGTH,
+            description: `${descriptionPrefix}.`,
             example: 'user@example.com',
         }),
     );

@@ -22,8 +22,9 @@ export class GetCreatedAdminDto extends GetAdminDto {
     @Expose()
     @Equals(AuthUserRole.ADMIN)
     @ApiProperty({
-        description: 'The role assigned to the admin.',
+        type: 'string',
         enum: [AuthUserRole.ADMIN],
+        description: 'The role assigned to the admin.',
         example: AuthUserRole.ADMIN,
     })
     declare readonly role: AuthUserRole.ADMIN;

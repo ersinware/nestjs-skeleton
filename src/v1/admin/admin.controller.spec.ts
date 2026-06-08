@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { PostAdminDto } from './dto/post-admin.dto';
 import { GetCreatedAdminDto } from './dto/get-created-admin.dto';
 import { GetAdminDto } from './dto/get-admin.dto';
@@ -9,6 +10,7 @@ import { PatchAdminStatusDto } from './dto/patch-admin-status.dto';
 import { ParamIdDto } from 'src/common/dto/param-id.dto';
 import { Admin } from './type/admin.type';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 
 describe('AdminController', () => {
     let controller: AdminController;
@@ -73,31 +75,37 @@ describe('AdminController', () => {
     });
 
     describe('findAll', () => {
-        it('should return all admins mapped to GetAdminDto', async () => {
+        it('should return paginated admins mapped to GetAdminDto', async () => {
             const admins: Partial<Admin>[] = [
-                {
-                    id: '00000000-0000-0000-0000-000000000001',
-                    email: 'admin1@example.com',
-                    name: 'Admin One',
-                    role: AuthUserRole.ADMIN,
-                },
-                {
-                    id: '00000000-0000-0000-0000-000000000002',
-                    email: 'admin2@example.com',
-                    name: 'Admin Two',
-                    role: AuthUserRole.SUPER_ADMIN,
-                },
-            ];
+                    {
+                        id: '00000000-0000-0000-0000-000000000001',
+                        email: 'admin1@example.com',
+                        name: 'Admin One',
+                        role: AuthUserRole.ADMIN,
+                    },
+                    {
+                        id: '00000000-0000-0000-0000-000000000002',
+                        email: 'admin2@example.com',
+                        name: 'Admin Two',
+                        role: AuthUserRole.SUPER_ADMIN,
+                    },
+                ],
+                query: QueryPaginationDto = { page: 1, limit: 20 },
+                total = 2;
 
-            mockAdminService.findAll.mockResolvedValueOnce(admins);
+            mockAdminService.findAll.mockResolvedValueOnce({ data: admins, total });
 
-            const result = await controller.findAll();
+            const result = await controller.findAll(query);
 
-            expect(result).toBeInstanceOf(Array);
-            expect(result).toHaveLength(2);
-            expect(result[0]).toBeInstanceOf(GetAdminDto);
-            expect(result[1]).toBeInstanceOf(GetAdminDto);
-            expect(result).toEqual(
+            expect(result).toBeInstanceOf(ResponsePaginationDto);
+            expect(result.total).toBe(total);
+            expect(result.page).toBe(query.page);
+            expect(result.limit).toBe(query.limit);
+            expect(result.totalPages).toBe(Math.ceil(total / query.limit));
+            expect(result.items).toHaveLength(admins.length);
+            expect(result.items[0]).toBeInstanceOf(GetAdminDto);
+            expect(result.items[1]).toBeInstanceOf(GetAdminDto);
+            expect(result.items).toEqual(
                 admins.map((admin) => {
                     return {
                         id: admin.id!,
@@ -107,14 +115,16 @@ describe('AdminController', () => {
                     };
                 }) satisfies GetAdminDto[],
             );
-            expect(mockAdminService.findAll).toHaveBeenCalledTimes(1);
+            expect(mockAdminService.findAll).toHaveBeenCalledWith(query);
         });
 
         it('should propagate service error', async () => {
+            const query: QueryPaginationDto = { page: 1, limit: 20 };
+
             mockAdminService.findAll.mockRejectedValueOnce(new Error());
 
-            await expect(controller.findAll()).rejects.toThrow(Error);
-            expect(mockAdminService.findAll).toHaveBeenCalledTimes(1);
+            await expect(controller.findAll(query)).rejects.toThrow(Error);
+            expect(mockAdminService.findAll).toHaveBeenCalledWith(query);
         });
     });
 

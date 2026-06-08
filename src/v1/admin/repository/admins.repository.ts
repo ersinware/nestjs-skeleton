@@ -4,10 +4,11 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, count, desc } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/database/constant/database.constant';
 import * as schema from 'src/database/schema';
+import type { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import type { IAdminsRepository } from '../interface/admins.repository.interface';
 import type { Admin, NewAdmin } from '../type/admin.type';
 
@@ -34,12 +35,26 @@ export class AdminsRepository implements IAdminsRepository {
     }
 
     /**
-     * Retrieves all non-deleted admin records from the database.
+     * Retrieves all non-deleted admin records from the database with pagination.
      *
-     * @returns A promise resolving to an array of all active admins.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to an object containing active admins array and total count.
      */
-    async findAll(): Promise<Admin[]> {
-        return this.db.select().from(schema.admins).where(isNull(schema.admins.deletedAt));
+    async findAll(query: QueryPaginationDto): Promise<{ data: Admin[]; total: number }> {
+        const conditions = isNull(schema.admins.deletedAt);
+
+        const [data, countResult] = await Promise.all([
+            this.db
+                .select()
+                .from(schema.admins)
+                .where(conditions)
+                .orderBy(desc(schema.admins.id))
+                .limit(query.limit)
+                .offset((query.page - 1) * query.limit),
+            this.db.select({ total: count() }).from(schema.admins).where(conditions),
+        ]);
+
+        return { data, total: countResult[0]?.total ?? 0 };
     }
 
     /**
