@@ -1,5 +1,5 @@
 /**
- * @file fail-safe-throttler.fixture.ts
+ * @file fail-safe-throttler.guard.fixture.ts
  * @description Test utility helpers and mock trigger controller to facilitate E2E tests for Throttler guard.
  */
 

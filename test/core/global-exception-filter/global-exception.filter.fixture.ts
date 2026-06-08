@@ -1,5 +1,5 @@
 /**
- * @file global-exception.fixture.ts
+ * @file global-exception.filter.fixture.ts
  * @description Controllers and DTOs designed to trigger various runtime and database exceptions to test the global exception filter.
  */
 
