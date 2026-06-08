@@ -5,6 +5,8 @@ import { InternalServerErrorType } from 'src/common/enum/error/internal-server-e
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
@@ -223,7 +225,11 @@ describe('AdminController', () => {
         it('should successfully return a list of all admins for super administrators', async () => {
             const superAdminEmail = 'super@example.com',
                 superAdmin = await registerAndLoginAdmin(app, { email: superAdminEmail }),
-                newAdminEmail = 'admin1@example.com';
+                newAdminEmail = 'admin1@example.com',
+                query: QueryPaginationDto = {
+                    page: 1,
+                    limit: 20,
+                };
 
             await adminsRepository.create({
                 email: newAdminEmail,
@@ -235,13 +241,20 @@ describe('AdminController', () => {
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/admin')
+                    .query(query)
                     .set('Authorization', `Bearer ${superAdmin.accessToken}`)
                     .expect(200),
-                data = expectDataArrayDto(res.body, GetAdminDto);
+                data = expectDataDto(res.body, ResponsePaginationDto),
+                items = expectDataArrayDto({ data: data.items }, GetAdminDto);
 
-            expect(data.length).toBeGreaterThanOrEqual(2);
+            expect(data.total).toEqual(2);
+            expect(data.page).toBe(query.page);
+            expect(data.limit).toBe(query.limit);
+            expect(data.totalPages).toEqual(Math.ceil(data.total / data.limit));
 
-            const emails = data.map((admin) => admin.email);
+            expect(items.length).toBeGreaterThanOrEqual(2);
+
+            const emails = items.map((admin) => admin.email);
             expect(emails).toContain(superAdminEmail);
             expect(emails).toContain(newAdminEmail);
         });

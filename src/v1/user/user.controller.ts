@@ -3,7 +3,7 @@
  * @description REST API controller exposing CRUD endpoints for user management, protected by JWT and RBAC guards.
  */
 
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import {
     ApiBearerAuth,
     ApiCreatedResponse,
@@ -12,8 +12,11 @@ import {
     ApiOperation,
     ApiTags,
 } from '@nestjs/swagger';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { plainToInstance } from 'class-transformer';
 import { ApiDefaultBadRequestResponse } from 'src/common/decorator/doc/api-default-bad-request-response.decorator';
+import { ApiDefaultOkResponsePaginated } from 'src/common/decorator/doc/api-default-ok-response-paginated.decorator';
 import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
 import { ApiDefaultConflictResponse } from 'src/common/decorator/doc/api-default-conflict-response.decorator';
 import { ApiDefaultForbiddenResponse } from 'src/common/decorator/doc/api-default-forbidden-response.decorator';
@@ -72,22 +75,26 @@ export class UserController {
     }
 
     /**
-     * Endpoint to retrieve all users. Requires administrator-level authorization.
+     * Endpoint to retrieve all users with pagination. Requires administrator-level authorization.
      *
-     * @returns A promise resolving to an array of serialized GetUserDto.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to a paginated response of GetUserDto.
      */
     @Get()
     @Roles(AuthUserRole.ADMIN, AuthUserRole.SUPER_ADMIN)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get all users',
-        description: 'Retrieves all registered users. Requires administrator-level authorization.',
+        description: 'Retrieves registered users with pagination. Requires administrator-level authorization.',
     })
-    @ApiOkResponse({ description: 'Users successfully retrieved.', type: GetUserDto, isArray: true })
+    @ApiDefaultOkResponsePaginated({ description: 'Users successfully retrieved.', type: GetUserDto })
+    @ApiDefaultBadRequestResponse(BadRequestType.PARAM)
     @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
     @ApiDefaultForbiddenResponse()
-    async findAll(): Promise<GetUserDto[]> {
-        return plainToInstance(GetUserDto, await this.userService.findAll());
+    async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<GetUserDto>> {
+        const { data, total } = await this.userService.findAll(query);
+
+        return new ResponsePaginationDto<GetUserDto>(plainToInstance(GetUserDto, data), total, query.page, query.limit);
     }
 
     /**

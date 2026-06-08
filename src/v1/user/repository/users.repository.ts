@@ -4,10 +4,11 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, count, desc } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/database/constant/database.constant';
 import * as schema from 'src/database/schema';
+import type { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import type { IUsersRepository } from '../interface/users.repository.interface';
 import type { NewUser, User } from '../type/user.type';
 
@@ -34,12 +35,26 @@ export class UsersRepository implements IUsersRepository {
     }
 
     /**
-     * Retrieves all non-deleted user records from the database.
+     * Retrieves all non-deleted user records from the database with pagination.
      *
-     * @returns A promise resolving to an array of all active users.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to an object containing active users array and total count.
      */
-    async findAll(): Promise<User[]> {
-        return this.db.select().from(schema.users).where(isNull(schema.users.deletedAt));
+    async findAll(query: QueryPaginationDto): Promise<{ data: User[]; total: number }> {
+        const conditions = isNull(schema.users.deletedAt);
+
+        const [data, countResult] = await Promise.all([
+            this.db
+                .select()
+                .from(schema.users)
+                .where(conditions)
+                .orderBy(desc(schema.users.id))
+                .limit(query.limit)
+                .offset((query.page - 1) * query.limit),
+            this.db.select({ total: count() }).from(schema.users).where(conditions),
+        ]);
+
+        return { data, total: countResult[0]?.total ?? 0 };
     }
 
     /**

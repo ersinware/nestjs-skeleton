@@ -24,9 +24,9 @@ export class HealthyDto {
     @Equals('ok', { message: 'Status must be exactly "ok".' })
     @ApiProperty({
         type: 'string',
+        enum: ['ok'],
         description: 'The overall health status indicating success.',
         example: 'ok',
-        enum: ['ok'],
     })
     readonly status!: string;
 
@@ -42,9 +42,9 @@ export class HealthyDto {
      */
     @IsObject({ message: 'Error must be an object.' })
     @ApiProperty({
-        description: 'No errors present for a healthy status.',
         type: 'object',
         additionalProperties: false,
+        description: 'No errors present for a healthy status.',
         example: {},
     })
     readonly error!: Record<string, never>;
@@ -65,7 +65,6 @@ export class HealthyDto {
  */
 function createHealthDetailsSchema(description: string): Record<string, unknown> {
     return {
-        description,
         type: 'object',
         required: ['memory_heap', 'memory_rss', 'database', 'cache'],
         properties: {
@@ -77,6 +76,7 @@ function createHealthDetailsSchema(description: string): Record<string, unknown>
         additionalProperties: false,
         minProperties: 4,
         maxProperties: 4,
+        description,
         example: {
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },

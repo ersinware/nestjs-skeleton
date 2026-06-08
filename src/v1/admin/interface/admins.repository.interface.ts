@@ -3,6 +3,7 @@
  * @description Repository interface defining contract for Admin entity database persistence operations.
  */
 
+import type { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import type { Admin, NewAdmin } from '../type/admin.type';
 
 export interface IAdminsRepository {
@@ -15,11 +16,12 @@ export interface IAdminsRepository {
     create(data: NewAdmin): Promise<Admin | null>;
 
     /**
-     * Retrieves all non-deleted admin records from the database.
+     * Retrieves all non-deleted admin records from the database with pagination.
      *
-     * @returns A promise resolving to an array of all active admins.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to an object containing active admins array and total count.
      */
-    findAll(): Promise<Admin[]>;
+    findAll(query: QueryPaginationDto): Promise<{ data: Admin[]; total: number }>;
 
     /**
      * Finds a single admin record by their ID where they are not deleted.

@@ -35,9 +35,9 @@ export function IsUserName(descriptionPrefix: string = 'The full name') {
         ApiProperty({
             type: 'string',
             pattern: NAME_REGEX.source,
-            description: `${descriptionPrefix}.`,
             minLength: NAME_MIN_LENGTH,
             maxLength: NAME_MAX_LENGTH,
+            description: `${descriptionPrefix}.`,
             example: 'John Doe',
         }),
     );

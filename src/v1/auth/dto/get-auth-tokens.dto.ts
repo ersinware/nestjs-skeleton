@@ -24,10 +24,11 @@ export class GetAuthTokensDto {
     @IsJWT()
     @MaxLength(TOKEN_MAX_LENGTH)
     @ApiProperty({
-        description: 'JWT Access Token.',
-        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        type: 'string',
         format: 'jwt',
         maxLength: TOKEN_MAX_LENGTH,
+        description: 'JWT Access Token.',
+        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     })
     readonly accessToken!: string;
 

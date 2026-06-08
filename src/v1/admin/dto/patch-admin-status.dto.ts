@@ -20,6 +20,7 @@ export class PatchAdminStatusDto {
     @IsBoolean()
     @IsNotEmpty()
     @ApiProperty({
+        type: 'boolean',
         description: 'True to activate/unban the account, false to suspend/ban the account.',
         example: true,
     })

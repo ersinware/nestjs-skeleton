@@ -3,6 +3,7 @@
  * @description Repository interface defining contract for User entity database persistence operations.
  */
 
+import type { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import type { NewUser, User } from '../type/user.type';
 
 export interface IUsersRepository {
@@ -15,11 +16,12 @@ export interface IUsersRepository {
     create(data: NewUser): Promise<User | null>;
 
     /**
-     * Retrieves all non-deleted user records from the database.
+     * Retrieves all non-deleted user records from the database with pagination.
      *
-     * @returns A promise resolving to an array of all active users.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to an object containing active users array and total count.
      */
-    findAll(): Promise<User[]>;
+    findAll(query: QueryPaginationDto): Promise<{ data: User[]; total: number }>;
 
     /**
      * Finds a single user record by their ID where they are not deleted.

@@ -15,6 +15,6 @@ export class ParamIdDto {
     /**
      * The unique UUID v7 identifier of the resource.
      */
-    @IsEntityId('ID')
+    @IsEntityId('Unique identifier')
     readonly id!: string;
 }

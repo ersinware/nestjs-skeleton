@@ -13,7 +13,7 @@ import { IsUserName } from 'src/common/decorator/validator/name.decorator';
  * DTO representing user response data.
  * Sanitizes and whitelist-exposes fields, excluding passwords and internal identifiers.
  */
-@ApiSchema({ name: 'GetUser', description: 'Standard user response schema excluding sensitive data' })
+@ApiSchema({ name: 'GetUser', description: 'Standard user response schema.' })
 @Exclude()
 export class GetUserDto {
     /**

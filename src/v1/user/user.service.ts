@@ -12,17 +12,18 @@ import {
     NotFoundException,
     forwardRef,
 } from '@nestjs/common';
-import { HashingService } from 'src/common/hashing/service/hashing.service';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
+import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { TOKEN_USERS_REPOSITORY } from './constant/user.constant';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserDto } from './dto/patch-user.dto';
 import { PostUserDto } from './dto/post-user.dto';
 import type { IUsersRepository } from './interface/users.repository.interface';
-import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
-import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
-import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 
 /**
  * Service orchestrating user domain logic and interacting with the persistence repository.
@@ -69,12 +70,13 @@ export class UserService {
     }
 
     /**
-     * Retrieves all registered user records.
+     * Retrieves all registered user records with pagination.
      *
-     * @returns A promise resolving to an array of all users.
+     * @param query The query pagination parameters.
+     * @returns A promise resolving to an object containing active users array and total count.
      */
-    async findAll() {
-        return this.usersRepository.findAll();
+    async findAll(query: QueryPaginationDto) {
+        return this.usersRepository.findAll(query);
     }
 
     /**

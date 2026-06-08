@@ -1,11 +1,13 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
 import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
-import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { SessionService } from 'src/v1/auth/session.service';
 import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';
@@ -151,20 +153,31 @@ describe('UserController', () => {
                     name: 'User One',
                     password: await hashingService.hash('Password123!'),
                     isActive: true,
+                },
+                query: QueryPaginationDto = {
+                    page: 1,
+                    limit: 20,
                 };
 
             await usersRepository.create(newUser);
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user')
+                    .query(query)
                     .set('Authorization', `Bearer ${admin.accessToken}`)
                     .expect(200),
-                data = expectDataArrayDto(res.body, GetUserDto);
+                data = expectDataDto(res.body, ResponsePaginationDto),
+                items = expectDataArrayDto({ data: data.items }, GetUserDto);
 
-            expect(data.length).toBeGreaterThanOrEqual(1);
-            expect(data[0]!.email).toBe(newUser.email);
-            expect(data[0]!.name).toBe(newUser.name);
-            expect(data[0]!.id).toBeDefined();
+            expect(data.total).toEqual(1);
+            expect(data.page).toBe(query.page);
+            expect(data.limit).toBe(query.limit);
+            expect(data.totalPages).toEqual(Math.ceil(data.total / data.limit));
+
+            expect(items.length).toBeGreaterThanOrEqual(1);
+            expect(items[0]!.email).toBe(newUser.email);
+            expect(items[0]!.name).toBe(newUser.name);
+            expect(items[0]!.id).toBeDefined();
         });
 
         it('should return 403 ForbiddenType.DEFAULT for non-admin callers', async () => {

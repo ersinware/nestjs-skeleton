@@ -15,7 +15,7 @@ import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
  * DTO representing admin response data.
  * Sanitizes and whitelist-exposes fields, excluding passwords and internal identifiers.
  */
-@ApiSchema({ name: 'GetAdmin', description: 'Standard admin response schema excluding sensitive data' })
+@ApiSchema({ name: 'GetAdmin', description: 'Standard admin response schema.' })
 @Exclude()
 export class GetAdminDto {
     /**
@@ -45,8 +45,9 @@ export class GetAdminDto {
     @Expose()
     @IsEnum(AuthUserRole)
     @ApiProperty({
-        description: 'The role assigned to the admin.',
+        type: 'string',
         enum: [AuthUserRole.ADMIN, AuthUserRole.SUPER_ADMIN],
+        description: 'The role assigned to the admin.',
         example: AuthUserRole.ADMIN,
     })
     readonly role!: AuthUserRole.ADMIN | AuthUserRole.SUPER_ADMIN;

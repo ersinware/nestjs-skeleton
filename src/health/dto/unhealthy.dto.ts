@@ -24,9 +24,9 @@ export class UnhealthyDto {
     @Equals('error', { message: 'Status must be exactly "error".' })
     @ApiProperty({
         type: 'string',
+        enum: ['error'],
         description: 'The overall health status indicating failure.',
         example: 'error',
-        enum: ['error'],
     })
     readonly status!: string;
 
@@ -62,7 +62,6 @@ export class UnhealthyDto {
 function createUnhealthyInfoSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        description,
         properties: {
             memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
@@ -72,6 +71,7 @@ function createUnhealthyInfoSchema(description: string): Record<string, unknown>
         minProperties: 0,
         maxProperties: 4,
         additionalProperties: false,
+        description,
         example: {
             memory_heap: {
                 status: 'up',
@@ -93,7 +93,6 @@ function createUnhealthyInfoSchema(description: string): Record<string, unknown>
 function createUnhealthyErrorSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        description,
         properties: {
             memory_heap: createErrorIndicator(
                 'Heap memory usage indicator status.',
@@ -107,6 +106,7 @@ function createUnhealthyErrorSchema(description: string): Record<string, unknown
             cache: createErrorIndicator('Cache connection indicator status.', 'Cache connection failed.'),
         },
         additionalProperties: false,
+        description,
         example: {
             database: {
                 status: 'down',
@@ -129,26 +129,26 @@ function createUnhealthyErrorSchema(description: string): Record<string, unknown
  */
 function createErrorIndicator(description: string, exampleMessage: string): Record<string, unknown> {
     return {
-        description,
         type: 'object',
         required: ['status', 'message'],
         properties: {
             status: {
                 type: 'string',
-                description: 'Indicator status',
-                example: 'down',
                 enum: ['down'],
                 minLength: 4,
                 maxLength: 4,
+                description: 'Indicator status',
+                example: 'down',
             },
             message: {
                 type: 'string',
+                minLength: 1,
                 description: 'Failure message.',
                 example: exampleMessage,
-                minLength: 1,
             },
         },
         additionalProperties: false,
+        description,
         example: { status: 'down', message: exampleMessage },
     };
 }
@@ -162,7 +162,6 @@ function createErrorIndicator(description: string, exampleMessage: string): Reco
  */
 function createUnhealthyDetailsSchema(description: string): Record<string, unknown> {
     return {
-        description,
         type: 'object',
         required: ['memory_heap', 'memory_rss', 'database', 'cache'],
         properties: {
@@ -186,6 +185,7 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
         additionalProperties: false,
         minProperties: 4,
         maxProperties: 4,
+        description,
         example: {
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },
@@ -215,26 +215,26 @@ function createDetailIndicator(
     exampleMessage: string,
 ): Record<string, unknown> {
     return {
-        description,
         type: 'object',
         required: ['status'],
         properties: {
             status: {
                 type: 'string',
-                description: 'Indicator status',
-                example: exampleStatus,
                 enum: ['up', 'down'],
                 minLength: 2,
                 maxLength: 4,
+                description: 'Indicator status',
+                example: exampleStatus,
             },
             message: {
                 type: 'string',
+                minLength: 1,
                 description: 'Failure message.',
                 example: exampleMessage,
-                minLength: 1,
             },
         },
         additionalProperties: false,
+        description,
         example: { status: exampleStatus, message: exampleMessage },
     };
 }

@@ -34,9 +34,9 @@ export function IsStrongPassword(descriptionPrefix: string = 'The password') {
         ApiProperty({
             type: 'string',
             pattern: PASSWORD_REGEX.source,
-            description: `${descriptionPrefix}. Must be at least ${PASSWORD_MIN_LENGTH} characters long and contain at least one uppercase letter, one lowercase letter, and one number.`,
             minLength: PASSWORD_MIN_LENGTH,
             maxLength: PASSWORD_MAX_LENGTH,
+            description: `${descriptionPrefix}. Must be at least ${PASSWORD_MIN_LENGTH} characters long and contain at least one uppercase letter, one lowercase letter, and one number.`,
             example: 'Password123!',
         }),
     );

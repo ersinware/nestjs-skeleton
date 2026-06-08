@@ -24,8 +24,8 @@ export function IsRefreshToken(description: string = 'The active refresh token.'
         ApiProperty({
             type: 'string',
             format: 'jwt',
-            description,
             maxLength: TOKEN_MAX_LENGTH,
+            description,
             example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         }),
     );

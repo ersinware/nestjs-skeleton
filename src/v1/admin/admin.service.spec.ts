@@ -1,15 +1,15 @@
 import { ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { HashingService } from 'src/common/hashing/service/hashing.service';
+import { AuthService } from 'src/v1/auth/auth.service';
 import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
-import { AuthService } from 'src/v1/auth/auth.service';
 import { AdminService } from './admin.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
-import type { IAdminsRepository } from './interface/admins.repository.interface';
 import { PostAdminDto } from './dto/post-admin.dto';
-
-import { HashingService } from 'src/common/hashing/service/hashing.service';
+import type { IAdminsRepository } from './interface/admins.repository.interface';
+import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 
 describe('AdminService', () => {
     const mockRepository: Record<keyof IAdminsRepository, Mock> = {
@@ -107,17 +107,21 @@ describe('AdminService', () => {
     });
 
     describe('findAll', () => {
-        it('should return all admins', async () => {
-            const admins = [
-                {
-                    id: '018f43c3-6bb3-7d72-911e-848821a837c3',
-                },
-            ];
+        it('should return all admins with pagination', async () => {
+            const query: QueryPaginationDto = { page: 1, limit: 10 },
+                result = {
+                    data: [
+                        {
+                            id: '018f43c3-6bb3-7d72-911e-848821a837c3',
+                        },
+                    ],
+                    total: 1,
+                };
 
-            mockRepository.findAll.mockResolvedValueOnce(admins);
+            mockRepository.findAll.mockResolvedValueOnce(result);
 
-            await expect(service.findAll()).resolves.toEqual(admins);
-            expect(mockRepository.findAll).toHaveBeenCalledTimes(1);
+            await expect(service.findAll(query)).resolves.toEqual(result);
+            expect(mockRepository.findAll).toHaveBeenCalledWith(query);
         });
     });
 
@@ -157,6 +161,7 @@ describe('AdminService', () => {
 
         it('should successfully delete admin and clear sessions if found', async () => {
             const admin = { id, role: AuthUserRole.ADMIN };
+
             mockRepository.findById.mockResolvedValueOnce(admin);
             mockRepository.delete.mockResolvedValueOnce(true);
 
