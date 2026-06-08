@@ -7,7 +7,7 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupCache } from '../../shared/cache.cleaner';
-import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from './fail-safe-throttler.fixture';
+import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from './fail-safe-throttler.guard.fixture';
 
 describe('FailSafeThrottlerGuard', () => {
     let app: NestFastifyApplication;

@@ -14,7 +14,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { expectErrorDto } from '../../shared/dto-assertion.util';
 import { createTestApp } from '../../shared/test-app.factory';
-import { ExceptionTriggerController, HealthExceptionTriggerController } from './global-exception.fixture';
+import { ExceptionTriggerController, HealthExceptionTriggerController } from './global-exception.filter.fixture';
 
 describe('GlobalExceptionFilter', () => {
     let app: NestFastifyApplication;
