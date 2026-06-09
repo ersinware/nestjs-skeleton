@@ -16,7 +16,7 @@ import { UserService } from './user.service';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { QueryUserSearchDto } from './dto/query-user-search.dto';
 
 describe('UserService', () => {
     const mockRepository: Record<keyof IUsersRepository, Mock> = {
@@ -113,8 +113,8 @@ describe('UserService', () => {
     });
 
     describe('findAll', () => {
-        it('should return all users with pagination', async () => {
-            const query: QueryPaginationDto = { page: 1, limit: 20 },
+        it('should return all users with pagination and optional search filter', async () => {
+            const query: QueryUserSearchDto = { page: 1, limit: 20, search: 'John' },
                 result = { data: [{ id: '018f43c3-6bb3-7d72-911e-848821a837c3' }], total: 1 };
 
             mockRepository.findAll.mockResolvedValueOnce(result);

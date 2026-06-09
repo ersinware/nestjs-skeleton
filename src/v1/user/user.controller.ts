@@ -12,7 +12,6 @@ import {
     ApiOperation,
     ApiTags,
 } from '@nestjs/swagger';
-import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { plainToInstance } from 'class-transformer';
 import { ApiDefaultBadRequestResponse } from 'src/common/decorator/doc/api-default-bad-request-response.decorator';
@@ -31,6 +30,7 @@ import { ParamIdDto } from 'src/common/dto/param-id.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { NotEmptyBodyPipe } from 'src/common/pipe/not-empty-body.pipe';
+import { QueryUserSearchDto } from './dto/query-user-search.dto';
 import { GetUserDto } from './dto/get-user.dto';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserStatusDto } from './dto/patch-user-status.dto';
@@ -75,9 +75,9 @@ export class UserController {
     }
 
     /**
-     * Endpoint to retrieve all users with pagination. Requires administrator-level authorization.
+     * Endpoint to retrieve all users with pagination and optional search query. Requires administrator-level authorization.
      *
-     * @param query The query pagination parameters.
+     * @param query The query pagination and search parameters.
      * @returns A promise resolving to a paginated response of GetUserDto.
      */
     @Get()
@@ -85,13 +85,14 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get all users',
-        description: 'Retrieves registered users with pagination. Requires administrator-level authorization.',
+        description:
+            'Retrieves registered users with pagination and optional search query. Requires administrator-level authorization.',
     })
     @ApiDefaultOkResponsePaginated({ description: 'Users successfully retrieved.', type: GetUserDto })
     @ApiDefaultBadRequestResponse(BadRequestType.PARAM)
     @ApiDefaultUnauthorizedResponse(UnauthorizedType.TOKEN)
     @ApiDefaultForbiddenResponse()
-    async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<GetUserDto>> {
+    async findAll(@Query() query: QueryUserSearchDto): Promise<ResponsePaginationDto<GetUserDto>> {
         const { data, total } = await this.userService.findAll(query);
 
         return new ResponsePaginationDto<GetUserDto>(plainToInstance(GetUserDto, data), total, query.page, query.limit);

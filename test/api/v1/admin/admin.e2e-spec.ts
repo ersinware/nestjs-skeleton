@@ -18,6 +18,7 @@ import { IAdminsRepository } from 'src/v1/admin/interface/admins.repository.inte
 import request from 'supertest';
 import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/constant/pagination.constant';
 import { createAuthTestApp } from '../../../shared/auth-test-app.factory';
 import { cleanupCache } from '../../../shared/cache.cleaner';
 import { cleanupDatabase } from '../../../shared/database.cleaner';
@@ -257,6 +258,18 @@ describe('AdminController', () => {
             const emails = items.map((admin) => admin.email);
             expect(emails).toContain(superAdminEmail);
             expect(emails).toContain(newAdminEmail);
+        });
+
+        it('should successfully return a list of all admins even when no query parameters are sent', async () => {
+            const superAdmin = await registerAndLoginAdmin(app),
+                res = await request(app.getHttpServer())
+                    .get('/api/v1/admin')
+                    .set('Authorization', `Bearer ${superAdmin.accessToken}`)
+                    .expect(200),
+                data = expectDataDto(res.body, ResponsePaginationDto);
+
+            expect(data.page).toBe(PAGINATION_DEFAULT_PAGE);
+            expect(data.limit).toBe(PAGINATION_DEFAULT_LIMIT);
         });
 
         it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {

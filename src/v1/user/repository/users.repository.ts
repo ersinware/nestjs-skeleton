@@ -4,11 +4,11 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull, count, desc } from 'drizzle-orm';
+import { and, eq, isNull, count, desc, or, ilike } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/database/constant/database.constant';
 import * as schema from 'src/database/schema';
-import type { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import type { QueryUserSearchDto } from '../dto/query-user-search.dto';
 import type { IUsersRepository } from '../interface/users.repository.interface';
 import type { NewUser, User } from '../type/user.type';
 
@@ -35,13 +35,22 @@ export class UsersRepository implements IUsersRepository {
     }
 
     /**
-     * Retrieves all non-deleted user records from the database with pagination.
+     * Retrieves all non-deleted user records from the database with pagination and optional search filter.
      *
-     * @param query The query pagination parameters.
+     * @param query The query pagination and search parameters.
      * @returns A promise resolving to an object containing active users array and total count.
      */
-    async findAll(query: QueryPaginationDto): Promise<{ data: User[]; total: number }> {
-        const conditions = isNull(schema.users.deletedAt);
+    async findAll(query: QueryUserSearchDto): Promise<{ data: User[]; total: number }> {
+        let conditions = isNull(schema.users.deletedAt);
+
+        if (query.search) {
+            const searchPattern = `%${query.search}%`,
+                searchFilter = or(ilike(schema.users.name, searchPattern), ilike(schema.users.email, searchPattern));
+
+            if (searchFilter) {
+                conditions = and(conditions, searchFilter)!;
+            }
+        }
 
         const [data, countResult] = await Promise.all([
             this.db

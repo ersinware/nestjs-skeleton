@@ -12,7 +12,6 @@ import {
     NotFoundException,
     forwardRef,
 } from '@nestjs/common';
-import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
@@ -23,7 +22,9 @@ import { TOKEN_USERS_REPOSITORY } from './constant/user.constant';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserDto } from './dto/patch-user.dto';
 import { PostUserDto } from './dto/post-user.dto';
+import { QueryUserSearchDto } from './dto/query-user-search.dto';
 import type { IUsersRepository } from './interface/users.repository.interface';
+import type { User } from './type/user.type';
 
 /**
  * Service orchestrating user domain logic and interacting with the persistence repository.
@@ -70,12 +71,12 @@ export class UserService {
     }
 
     /**
-     * Retrieves all registered user records with pagination.
+     * Retrieves all registered user records with pagination and optional search filter.
      *
-     * @param query The query pagination parameters.
+     * @param query The query pagination and search parameters.
      * @returns A promise resolving to an object containing active users array and total count.
      */
-    async findAll(query: QueryPaginationDto) {
+    async findAll(query: QueryUserSearchDto): Promise<{ data: User[]; total: number }> {
         return this.usersRepository.findAll(query);
     }
 
