@@ -1,6 +1,6 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/constant/pagination.constant';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
@@ -16,6 +16,7 @@ import { PatchUserPasswordDto } from 'src/v1/user/dto/patch-user-password.dto';
 import { PatchUserStatusDto } from 'src/v1/user/dto/patch-user-status.dto';
 import { PatchUserDto } from 'src/v1/user/dto/patch-user.dto';
 import { PostUserDto } from 'src/v1/user/dto/post-user.dto';
+import { QueryUserSearchDto } from 'src/v1/user/dto/query-user-search.dto';
 import { IUsersRepository } from 'src/v1/user/interface/users.repository.interface';
 import request from 'supertest';
 import { uuidv7 } from 'uuidv7';
@@ -154,7 +155,7 @@ describe('UserController', () => {
                     password: await hashingService.hash('Password123!'),
                     isActive: true,
                 },
-                query: QueryPaginationDto = {
+                query: QueryUserSearchDto = {
                     page: 1,
                     limit: 20,
                 };
@@ -180,6 +181,19 @@ describe('UserController', () => {
             expect(items[0]!.id).toBeDefined();
         });
 
+        it('should successfully return a list of all users even when no query parameters are sent', async () => {
+            const admin = await registerAndLoginAdmin(app),
+                res = await request(app.getHttpServer())
+                    .get('/api/v1/user')
+                    .set('Authorization', `Bearer ${admin.accessToken}`);
+
+            expect(res.status).toBe(200);
+
+            const data = expectDataDto(res.body, ResponsePaginationDto);
+            expect(data.page).toBe(PAGINATION_DEFAULT_PAGE);
+            expect(data.limit).toBe(PAGINATION_DEFAULT_LIMIT);
+        });
+
         it('should return 403 ForbiddenType.DEFAULT for non-admin callers', async () => {
             const user = await registerAndLoginUser(app),
                 res = await request(app.getHttpServer())
@@ -190,6 +204,80 @@ describe('UserController', () => {
 
             expect(errorDto.statusCode).toBe(403);
             expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+        });
+
+        it('should successfully search users by name and return matching GetUserDto list for an admin', async () => {
+            const admin = await registerAndLoginAdmin(app),
+                searchUser = {
+                    email: 'searchname@example.com',
+                    name: 'Target Name',
+                    password: await hashingService.hash('Password123!'),
+                    isActive: true,
+                };
+
+            await usersRepository.create(searchUser);
+
+            const query: Partial<QueryUserSearchDto> = { search: 'Target' },
+                res = await request(app.getHttpServer())
+                    .get('/api/v1/user')
+                    .query(query)
+                    .set('Authorization', `Bearer ${admin.accessToken}`)
+                    .expect(200),
+                data = expectDataDto(res.body, ResponsePaginationDto),
+                items = expectDataArrayDto({ data: data.items }, GetUserDto);
+
+            expect(data.total).toBeGreaterThanOrEqual(1);
+            expect(items.some((item) => item.name === searchUser.name)).toBe(true);
+        });
+
+        it('should successfully search users by email and return matching list for an admin', async () => {
+            const admin = await registerAndLoginAdmin(app),
+                searchUser = {
+                    email: 'searchemail@example.com',
+                    name: 'Unique Name',
+                    password: await hashingService.hash('Password123!'),
+                    isActive: true,
+                };
+
+            await usersRepository.create(searchUser);
+
+            const query: Partial<QueryUserSearchDto> = { search: 'searchemail' },
+                res = await request(app.getHttpServer())
+                    .get('/api/v1/user')
+                    .query(query)
+                    .set('Authorization', `Bearer ${admin.accessToken}`)
+                    .expect(200),
+                data = expectDataDto(res.body, ResponsePaginationDto),
+                items = expectDataArrayDto({ data: data.items }, GetUserDto);
+
+            expect(data.total).toBeGreaterThanOrEqual(1);
+            expect(items.some((item) => item.email === searchUser.email)).toBe(true);
+        });
+
+        it('should respect pagination parameters (page and limit) during search', async () => {
+            const admin = await registerAndLoginAdmin(app);
+
+            // Create 3 search target users
+            for (let i = 1; i <= 3; i++) {
+                await usersRepository.create({
+                    email: `paginated${i}@example.com`,
+                    name: `Paginated User ${i}`,
+                    password: await hashingService.hash('Password123!'),
+                    isActive: true,
+                });
+            }
+
+            const query = { search: 'Paginated', page: 1, limit: 2 },
+                res = await request(app.getHttpServer())
+                    .get('/api/v1/user')
+                    .query(query)
+                    .set('Authorization', `Bearer ${admin.accessToken}`)
+                    .expect(200),
+                data = expectDataDto(res.body, ResponsePaginationDto);
+
+            expect(data.page).toBe(query.page);
+            expect(data.limit).toBe(query.limit);
+            expect(data.items.length).toBe(query.limit);
         });
 
         it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {

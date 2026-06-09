@@ -13,7 +13,7 @@ import { PostUserDto } from './dto/post-user.dto';
 import { User } from './type/user.type';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
-import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { QueryUserSearchDto } from './dto/query-user-search.dto';
 
 describe('UserController', () => {
     let controller: UserController;
@@ -89,7 +89,7 @@ describe('UserController', () => {
                     { id: '00000000-0000-0000-0000-000000000001', email: 'test1@example.com', name: 'User One' },
                     { id: '00000000-0000-0000-0000-000000000002', email: 'test2@example.com', name: 'User Two' },
                 ],
-                query: QueryPaginationDto = { page: 1, limit: 20 },
+                query: QueryUserSearchDto = { page: 1, limit: 20, search: 'User' },
                 total = 2;
 
             mockUserService.findAll.mockResolvedValueOnce({ data: users, total });
@@ -113,7 +113,7 @@ describe('UserController', () => {
         });
 
         it('should propagate service error', async () => {
-            const query: QueryPaginationDto = { page: 1, limit: 10 };
+            const query: QueryUserSearchDto = { page: 1, limit: 10, search: 'Err' };
             mockUserService.findAll.mockRejectedValueOnce(new Error());
 
             await expect(controller.findAll(query)).rejects.toThrow(Error);

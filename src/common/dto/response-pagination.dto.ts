@@ -6,6 +6,7 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsArray, IsInt, Min } from 'class-validator';
+import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/constant/pagination.constant';
 
 /**
  * Standardized response envelope structure for paginated lists.
@@ -52,7 +53,7 @@ export class ResponsePaginationDto<T> {
         type: 'integer',
         minimum: 1,
         description: 'Current page number.',
-        example: 1,
+        example: PAGINATION_DEFAULT_PAGE,
     })
     readonly page!: number;
 
@@ -66,7 +67,7 @@ export class ResponsePaginationDto<T> {
         type: 'integer',
         minimum: 1,
         description: 'Number of items per page.',
-        example: 20,
+        example: PAGINATION_DEFAULT_LIMIT,
     })
     readonly limit!: number;
 
