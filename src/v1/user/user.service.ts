@@ -12,13 +12,16 @@ import {
     NotFoundException,
     forwardRef,
 } from '@nestjs/common';
+import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
+import type { ICacheService } from 'src/cache/interface/cache-service.interface';
+import { CacheKeys } from 'src/cache/util/cache-key.util';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { AuthService } from 'src/v1/auth/auth.service';
-import { TOKEN_USERS_REPOSITORY } from './constant/user.constant';
+import { TOKEN_USERS_REPOSITORY, USER_CACHE_TTL_SECONDS } from './constant/user.constant';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserDto } from './dto/patch-user.dto';
 import { PostUserDto } from './dto/post-user.dto';
@@ -37,11 +40,13 @@ export class UserService {
      * @param usersRepository User persistence repository abstraction.
      * @param authService Authentication service.
      * @param hashingService Hashing operations utility service.
+     * @param cacheService Cache operations utility service.
      */
     constructor(
         @Inject(TOKEN_USERS_REPOSITORY) private readonly usersRepository: IUsersRepository,
         @Inject(forwardRef(() => AuthService)) private readonly authService: AuthService,
         private readonly hashingService: HashingService,
+        @Inject(TOKEN_CACHE_SERVICE) private readonly cacheService: ICacheService,
     ) {}
 
     /**
@@ -76,8 +81,19 @@ export class UserService {
      * @param query The query pagination and search parameters.
      * @returns A promise resolving to an object containing active users array and total count.
      */
-    async findAll(query: QueryUserSearchDto): Promise<{ data: User[]; total: number }> {
-        return this.usersRepository.findAll(query);
+    async findAll(query: QueryUserSearchDto) {
+        const cacheKey = CacheKeys.userList(query),
+            cached = await this.cacheService.get<{ data: User[]; total: number }>(cacheKey);
+
+        if (cached) {
+            return cached;
+        }
+
+        const result = await this.usersRepository.findAll(query);
+
+        await this.cacheService.set(cacheKey, result, USER_CACHE_TTL_SECONDS);
+
+        return result;
     }
 
     /**
@@ -88,11 +104,20 @@ export class UserService {
      * @throws {NotFoundException} if the user does not exist.
      */
     async findById(id: string) {
+        const cacheKey = CacheKeys.userById(id),
+            cachedUser = await this.cacheService.get<User>(cacheKey);
+
+        if (cachedUser) {
+            return cachedUser;
+        }
+
         const user = await this.usersRepository.findById(id);
 
         if (!user) {
             throw new NotFoundException(NotFoundType.DEFAULT);
         }
+
+        await this.cacheService.set(cacheKey, user, USER_CACHE_TTL_SECONDS);
 
         return user;
     }
@@ -111,6 +136,11 @@ export class UserService {
         if (!updatedUser) {
             throw new NotFoundException(NotFoundType.DEFAULT);
         }
+
+        await Promise.all([
+            this.cacheService.delete(CacheKeys.userById(id)),
+            this.cacheService.deletePattern(CacheKeys.userListPattern()),
+        ]);
 
         return updatedUser;
     }
@@ -146,6 +176,8 @@ export class UserService {
         ) {
             throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
         }
+
+        await this.cacheService.delete(CacheKeys.userById(id));
     }
 
     /**
@@ -167,6 +199,11 @@ export class UserService {
         if (!(await this.usersRepository.delete(id))) {
             throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
         }
+
+        await Promise.all([
+            this.cacheService.delete(CacheKeys.userById(id)),
+            this.cacheService.deletePattern(CacheKeys.userListPattern()),
+        ]);
     }
 
     /**
@@ -193,5 +230,10 @@ export class UserService {
         if (!(await this.usersRepository.update(id, { isActive: active }))) {
             throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
         }
+
+        await Promise.all([
+            this.cacheService.delete(CacheKeys.userById(id)),
+            this.cacheService.deletePattern(CacheKeys.userListPattern()),
+        ]);
     }
 }

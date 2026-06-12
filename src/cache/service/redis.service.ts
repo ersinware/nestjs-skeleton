@@ -23,37 +23,68 @@ export class RedisService implements ICacheService {
     constructor(@Inject(TOKEN_CACHE_CLIENT) protected readonly redis: Redis) {}
 
     /**
-     * Gets a key's value from Redis.
+     * Gets a key's value from Redis, automatically parsing JSON values if applicable.
      *
      * @param key Cache key.
-     * @returns A promise resolving to the value if found, otherwise null.
+     * @returns A promise resolving to the typed value if found, otherwise null.
      * @throws {Error} if key is empty.
      */
-    async get(key: string): Promise<string | null> {
+    async get<T = string>(key: string): Promise<T | null> {
         if (!key) {
             throw new Error(ERROR_MESSAGE_EMPTY_KEY);
         }
 
-        return this.redis.get(key);
+        try {
+            const value = await this.redis.get(key);
+            if (value === null) {
+                return null;
+            }
+
+            return this.safeParse<T>(value) as T;
+        } catch (error) {
+            console.error(`Cache get failed for key "${key}": ${(error as Error).message}`);
+
+            return null;
+        }
     }
 
     /**
-     * Sets a key's value in Redis with optional expiration time.
+     * Sets a key's value in Redis, serializing objects and stripping sensitive properties automatically.
+     * If a JSON-serialized string is provided, it is first parsed and sanitized to prevent nested sensitive
+     * properties (e.g., password hashes, secrets) from leaking into the cache.
      *
      * @param key Cache key.
      * @param value Cache value.
      * @param ttlSeconds Optional time-to-live in seconds.
      * @throws {Error} if key is empty.
      */
-    async set(key: string, value: string, ttlSeconds?: number) {
+    async set(key: string, value: unknown, ttlSeconds?: number) {
         if (!key) {
             throw new Error(ERROR_MESSAGE_EMPTY_KEY);
         }
 
-        if (ttlSeconds !== undefined) {
-            await this.redis.set(key, value, 'EX', ttlSeconds);
-        } else {
-            await this.redis.set(key, value);
+        try {
+            let stringValue: string;
+
+            if (typeof value === 'string') {
+                const parsed = this.safeParse(value);
+
+                if (typeof parsed === 'string') {
+                    stringValue = value;
+                } else {
+                    stringValue = JSON.stringify(this.sanitize(parsed));
+                }
+            } else {
+                stringValue = JSON.stringify(this.sanitize(value));
+            }
+
+            if (ttlSeconds !== undefined) {
+                await this.redis.set(key, stringValue, 'EX', ttlSeconds);
+            } else {
+                await this.redis.set(key, stringValue);
+            }
+        } catch (error) {
+            console.error(`Cache set failed for key "${key}": ${(error as Error).message}`);
         }
     }
 
@@ -68,7 +99,11 @@ export class RedisService implements ICacheService {
             throw new Error(ERROR_MESSAGE_EMPTY_KEY);
         }
 
-        await this.redis.del(key);
+        try {
+            await this.redis.del(key);
+        } catch (error) {
+            console.error(`Cache delete failed for key "${key}": ${(error as Error).message}`);
+        }
     }
 
     /**
@@ -82,16 +117,20 @@ export class RedisService implements ICacheService {
             throw new Error('Cache pattern must be a non-empty string.');
         }
 
-        let cursor = '0';
+        try {
+            let cursor = '0';
 
-        do {
-            const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-            cursor = nextCursor;
+            do {
+                const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+                cursor = nextCursor;
 
-            if (keys.length > 0) {
-                await this.redis.del(...keys);
-            }
-        } while (cursor !== '0');
+                if (keys.length > 0) {
+                    await this.redis.del(...keys);
+                }
+            } while (cursor !== '0');
+        } catch (error) {
+            console.error(`Cache deletePattern failed for pattern "${pattern}": ${(error as Error).message}`);
+        }
     }
 
     /**
@@ -106,6 +145,65 @@ export class RedisService implements ICacheService {
             throw new Error(ERROR_MESSAGE_EMPTY_KEY);
         }
 
-        return (await this.redis.exists(key)) > 0;
+        try {
+            return (await this.redis.exists(key)) > 0;
+        } catch (error) {
+            console.error(`Cache exists failed for key "${key}": ${(error as Error).message}`);
+
+            return false;
+        }
+    }
+
+    /**
+     * Recursively removes sensitive properties from an object or array.
+     *
+     * @param val The value to sanitize.
+     * @returns The sanitized value.
+     */
+    private sanitize(val: unknown): unknown {
+        if (val === null || val === undefined) {
+            return val;
+        }
+
+        if (Array.isArray(val)) {
+            return val.map((item) => this.sanitize(item));
+        }
+
+        if (typeof val === 'object') {
+            const cleaned: Record<string, unknown> = {};
+
+            for (const key of Object.keys(val)) {
+                const lowerKey = key.toLowerCase();
+
+                if (
+                    lowerKey === 'password' ||
+                    lowerKey === 'passwordhash' ||
+                    lowerKey === 'salt' ||
+                    lowerKey === 'secret'
+                ) {
+                    continue;
+                }
+
+                cleaned[key] = this.sanitize((val as Record<string, unknown>)[key]);
+            }
+
+            return cleaned;
+        }
+
+        return val;
+    }
+
+    /**
+     * Safely parses a JSON string, falling back to the raw string if parsing fails.
+     *
+     * @param value The string value to parse.
+     * @returns The parsed object/primitive or the original string.
+     */
+    private safeParse<T>(value: string): T | string {
+        try {
+            return JSON.parse(value) as T;
+        } catch {
+            return value;
+        }
     }
 }

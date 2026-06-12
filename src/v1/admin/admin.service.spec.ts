@@ -3,7 +3,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { AuthService } from 'src/v1/auth/auth.service';
-import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminService } from './admin.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
@@ -13,7 +12,7 @@ import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 import { TOKEN_EMAIL_SERVICE } from 'src/email/constant/email.constant';
 
 describe('AdminService', () => {
-    const mockRepository: Record<keyof IAdminsRepository, Mock> = {
+    const mockRepository = {
             create: vi.fn(),
             findAll: vi.fn(),
             findById: vi.fn(),
@@ -21,7 +20,7 @@ describe('AdminService', () => {
             update: vi.fn(),
             delete: vi.fn(),
             hardDelete: vi.fn(),
-        },
+        } satisfies IAdminsRepository,
         mockEmailService = {
             sendAdminWelcomeEmail: vi.fn(),
         },

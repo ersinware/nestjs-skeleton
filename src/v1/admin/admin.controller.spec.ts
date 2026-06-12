@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
@@ -15,12 +15,12 @@ import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
 describe('AdminController', () => {
     let controller: AdminController;
 
-    const mockAdminService: Record<keyof AdminService, Mock> = {
+    const mockAdminService = {
         create: vi.fn(),
         findAll: vi.fn(),
         updateStatus: vi.fn(),
         delete: vi.fn(),
-    };
+    } satisfies Record<keyof AdminService, unknown>;
 
     beforeEach(async () => {
         const app: TestingModule = await Test.createTestingModule({
