@@ -50,6 +50,7 @@ export class AdminController {
 
     /**
      * Create a new admin account. Requires super administrator-level authorization.
+     * Automatically generates a temporary secure password and sends it to the administrator via email.
      *
      * @param dto New admin account details payload.
      * @returns The created admin profile details.
@@ -57,9 +58,13 @@ export class AdminController {
     @Post()
     @ApiOperation({
         summary: 'Register admin',
-        description: 'Creates a new admin account Requires super administrator-level authorization.',
+        description:
+            "Creates a new admin account. A temporary secure password is automatically generated and sent to the registered admin's email address. Requires super administrator-level authorization.",
     })
-    @ApiCreatedResponse({ description: 'Admin account successfully created.', type: GetCreatedAdminDto })
+    @ApiCreatedResponse({
+        description: 'Admin account successfully created. Welcome email with generated credentials has been sent.',
+        type: GetCreatedAdminDto,
+    })
     @ApiDefaultBadRequestResponse(BadRequestType.PAYLOAD)
     @ApiDefaultConflictResponse()
     async createAdmin(@Body(NotEmptyBodyPipe) dto: PostAdminDto): Promise<GetCreatedAdminDto> {

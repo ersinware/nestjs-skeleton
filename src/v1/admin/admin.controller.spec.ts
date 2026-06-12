@@ -44,7 +44,6 @@ describe('AdminController', () => {
         const postAdminDto: PostAdminDto = {
             email: 'admin@example.com',
             name: 'Admin Name',
-            password: 'AdminPassword123!',
         };
 
         it('should create an admin and return the mapped GetCreatedAdminDto', async () => {

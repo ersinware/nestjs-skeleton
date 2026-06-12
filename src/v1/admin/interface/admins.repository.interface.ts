@@ -55,4 +55,12 @@ export interface IAdminsRepository {
      * @returns A promise resolving to true if the record was soft-deleted, false otherwise.
      */
     delete(id: string): Promise<boolean>;
+
+    /**
+     * Permanently deletes an admin record from the database (hard delete).
+     *
+     * @param id The admin ID.
+     * @returns A promise resolving to true if the record was permanently deleted, false otherwise.
+     */
+    hardDelete(id: string): Promise<boolean>;
 }

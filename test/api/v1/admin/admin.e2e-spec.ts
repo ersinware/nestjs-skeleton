@@ -10,6 +10,8 @@ import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
+import { TOKEN_EMAIL_SERVICE } from 'src/email/constant/email.constant';
+import type { WelcomeAdminJobData } from 'src/email/type/email.type';
 import { GetAdminDto } from 'src/v1/admin/dto/get-admin.dto';
 import { GetCreatedAdminDto } from 'src/v1/admin/dto/get-created-admin.dto';
 import { PatchAdminStatusDto } from 'src/v1/admin/dto/patch-admin-status.dto';
@@ -26,10 +28,21 @@ import { expectDataArrayDto, expectDataDto, expectErrorDto } from '../../../shar
 import { registerAdmin, registerAndLoginAdmin, registerAndLoginUser } from '../../../shared/user-admin-seeder.factory';
 
 describe('AdminController', () => {
+    const mockEmailService = {
+        sendAdminWelcomeEmail: vi.fn<(data: WelcomeAdminJobData) => Promise<void>>(),
+    };
+
     let app: NestFastifyApplication, adminsRepository: IAdminsRepository, hashingService: HashingService;
 
     beforeEach(async () => {
-        app = await createAuthTestApp();
+        app = await createAuthTestApp({
+            overrides: [
+                {
+                    provide: TOKEN_EMAIL_SERVICE,
+                    useValue: mockEmailService,
+                },
+            ],
+        });
         adminsRepository = app.get<IAdminsRepository>(TOKEN_ADMINS_REPOSITORY);
         hashingService = app.get<HashingService>(HashingService);
 
@@ -47,9 +60,11 @@ describe('AdminController', () => {
                 dto: PostAdminDto = {
                     email: 'newadmin@example.com',
                     name: 'New Admin',
-                    password: 'Password123!',
-                },
-                res = await request(app.getHttpServer())
+                };
+
+            mockEmailService.sendAdminWelcomeEmail.mockResolvedValueOnce(undefined);
+
+            const res = await request(app.getHttpServer())
                     .post('/api/v1/admin')
                     .set('Authorization', `Bearer ${superAdmin.accessToken}`)
                     .send(dto)
@@ -60,9 +75,21 @@ describe('AdminController', () => {
             expect(data.name).toBe(dto.name);
             expect(data.role).toBe(AuthUserRole.ADMIN);
 
+            expect(mockEmailService.sendAdminWelcomeEmail).toHaveBeenCalledWith({
+                email: dto.email,
+                name: dto.name,
+                password: expect.any(String) as string,
+            });
+
+            const welcomeEmailPayload = mockEmailService.sendAdminWelcomeEmail.mock.calls[0]?.[0];
+            expect(welcomeEmailPayload).toBeDefined();
+
+            const tempPassword = welcomeEmailPayload!.password;
+            expect(tempPassword).toBeTypeOf('string');
+
             const adminDb = await adminsRepository.findById(data.id);
             expect(adminDb).toBeDefined();
-            expect(await hashingService.verify(adminDb!.password, dto.password)).toBe(true);
+            expect(await hashingService.verify(adminDb!.password, tempPassword)).toBe(true);
             expect(adminDb!.isActive).toBe(true);
         });
 
@@ -79,23 +106,6 @@ describe('AdminController', () => {
             expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
         });
 
-        it('should return 400 if validation rules fail due to weak password', async () => {
-            const superAdmin = await registerAndLoginAdmin(app),
-                res = await request(app.getHttpServer())
-                    .post('/api/v1/admin')
-                    .set('Authorization', `Bearer ${superAdmin.accessToken}`)
-                    .send({
-                        email: 'newadmin@example.com',
-                        name: 'New Admin',
-                        password: '123',
-                    } satisfies PostAdminDto)
-                    .expect(400),
-                errorDto = expectErrorDto(res.body, ErrorDefaultDto);
-
-            expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message.length).toBeGreaterThanOrEqual(1);
-        });
-
         it('should return 400 if validation rules fail due to invalid email format', async () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 res = await request(app.getHttpServer())
@@ -104,7 +114,6 @@ describe('AdminController', () => {
                     .send({
                         email: 'invalid-email',
                         name: 'New Admin',
-                        password: 'Password123!',
                     } satisfies PostAdminDto)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
@@ -121,7 +130,6 @@ describe('AdminController', () => {
                     .send({
                         email: 'newadmin@example.com',
                         name: 'John123',
-                        password: 'Password123!',
                     } satisfies PostAdminDto)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
@@ -148,7 +156,6 @@ describe('AdminController', () => {
                     .send({
                         email: existingEmail,
                         name: 'New Admin',
-                        password: 'Password123!',
                     } satisfies PostAdminDto)
                     .expect(409),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
@@ -166,7 +173,6 @@ describe('AdminController', () => {
                     .send({
                         email: 'error@example.com',
                         name: 'New Admin',
-                        password: 'Password123!',
                     } satisfies PostAdminDto)
                     .expect(500),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);

@@ -44,6 +44,8 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
      */
     protected override async handleRequest(request: ThrottlerRequest): Promise<boolean> {
         if (this.configService.get<string>('NODE_ENV') === 'test') {
+            // Bypass rate-limiting in test/CI environments, E2E tests, and automated fuzzing (Schemathesis)
+            // to avoid hitting rate-limiting thresholds and causing false failures during test executions.
             return true;
         }
 

@@ -134,4 +134,17 @@ export class AdminsRepository implements IAdminsRepository {
             ).length > 0
         );
     }
+
+    /**
+     * Permanently deletes an admin record from the database (Hard Delete).
+     *
+     * @param id The admin ID.
+     * @returns A promise resolving to true if the record was permanently deleted, false otherwise.
+     */
+    async hardDelete(id: string): Promise<boolean> {
+        return (
+            (await this.db.delete(schema.admins).where(eq(schema.admins.id, id)).returning({ id: schema.admins.id }))
+                .length > 0
+        );
+    }
 }

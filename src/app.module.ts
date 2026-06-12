@@ -26,6 +26,8 @@ import { AdminModule } from './v1/admin/admin.module';
 import { AuthModule } from './v1/auth/auth.module';
 import { UserModule } from './v1/user/user.module';
 import { NotEmptyBodyPipe } from './common/pipe/not-empty-body.pipe';
+import { BullModule } from '@nestjs/bullmq';
+import { EmailModule } from './email/email.module';
 
 /**
  * The root module of the NestJS application.
@@ -54,11 +56,26 @@ import { NotEmptyBodyPipe } from './common/pipe/not-empty-body.pipe';
             }),
         }),
         DatabaseModule,
+        BullModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => {
+                const password = config.getOrThrow<string>(ENV.REDIS_PASSWORD);
+
+                return {
+                    connection: {
+                        host: config.getOrThrow<string>(ENV.REDIS_HOST),
+                        port: config.getOrThrow<number>(ENV.REDIS_PORT),
+                        ...(password ? { password } : {}),
+                    },
+                };
+            },
+        }),
         HealthModule,
         HashingModule,
         AuthModule,
         UserModule,
         AdminModule,
+        EmailModule,
     ],
     providers: [
         {

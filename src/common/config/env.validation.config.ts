@@ -146,6 +146,30 @@ export class EnvironmentVariables {
         message: 'JWT_REFRESH_TTL must match the format: duration followed by s, m, h, or d (e.g., "7d", "30d")',
     })
     readonly JWT_REFRESH_TTL!: string;
+
+    /**
+     * Google OAuth2 client ID for Gmail API.
+     */
+    @IsString()
+    readonly GMAIL_CLIENT_ID!: string;
+
+    /**
+     * Google OAuth2 client secret for Gmail API.
+     */
+    @IsString()
+    readonly GMAIL_CLIENT_SECRET!: string;
+
+    /**
+     * Google OAuth2 refresh token for Gmail API.
+     */
+    @IsString()
+    readonly GMAIL_REFRESH_TOKEN!: string;
+
+    /**
+     * Sender email address for Gmail API.
+     */
+    @IsString()
+    readonly GMAIL_USER_EMAIL!: string;
 }
 
 /**

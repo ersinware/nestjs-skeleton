@@ -5,6 +5,7 @@
 
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { EmailModule } from 'src/email/email.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
@@ -14,7 +15,7 @@ import { AdminsRepository } from './repository/admins.repository';
  * Module responsible for orchestrating admin-related database operations and registering dependencies.
  */
 @Module({
-    imports: [forwardRef(() => AuthModule)],
+    imports: [forwardRef(() => AuthModule), EmailModule],
     controllers: [AdminController],
     providers: [
         AdminService,

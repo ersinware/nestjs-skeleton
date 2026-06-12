@@ -10,6 +10,7 @@ import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
 import { PostAdminDto } from './dto/post-admin.dto';
 import type { IAdminsRepository } from './interface/admins.repository.interface';
 import { QueryPaginationDto } from 'src/common/dto/query-pagination.dto';
+import { TOKEN_EMAIL_SERVICE } from 'src/email/constant/email.constant';
 
 describe('AdminService', () => {
     const mockRepository: Record<keyof IAdminsRepository, Mock> = {
@@ -19,6 +20,10 @@ describe('AdminService', () => {
             findByEmail: vi.fn(),
             update: vi.fn(),
             delete: vi.fn(),
+            hardDelete: vi.fn(),
+        },
+        mockEmailService = {
+            sendAdminWelcomeEmail: vi.fn(),
         },
         mockAuthService = {
             logoutAll: vi.fn(),
@@ -47,6 +52,10 @@ describe('AdminService', () => {
                     provide: HashingService,
                     useValue: mockHashingService,
                 },
+                {
+                    provide: TOKEN_EMAIL_SERVICE,
+                    useValue: mockEmailService,
+                },
             ],
         }).compile();
 
@@ -59,11 +68,9 @@ describe('AdminService', () => {
 
     describe('create', () => {
         const postAdminDto: PostAdminDto = {
-                email: 'admin@example.com',
-                name: 'Admin Name',
-                password: 'AdminPassword123',
-            },
-            hashedPassword = `hashed_${postAdminDto.password}`;
+            email: 'admin@example.com',
+            name: 'Admin Name',
+        };
 
         it('should throw ConflictException if email is already in use', async () => {
             mockRepository.findByEmail.mockResolvedValueOnce({ id: '018f43c3-6bb3-7d72-911e-848821a837c3' });
@@ -71,6 +78,7 @@ describe('AdminService', () => {
             await expect(service.create(postAdminDto)).rejects.toThrow(ConflictException);
             expect(mockRepository.findByEmail).toHaveBeenCalledWith(postAdminDto.email);
             expect(mockHashingService.hash).not.toHaveBeenCalled();
+            expect(mockEmailService.sendAdminWelcomeEmail).not.toHaveBeenCalled();
         });
 
         it('should throw InternalServerErrorException if admin creation fails', async () => {
@@ -79,30 +87,79 @@ describe('AdminService', () => {
 
             await expect(service.create(postAdminDto)).rejects.toThrow(InternalServerErrorException);
             expect(mockRepository.findByEmail).toHaveBeenCalledWith(postAdminDto.email);
-            expect(mockHashingService.hash).toHaveBeenCalledWith(postAdminDto.password);
+            expect(mockHashingService.hash).toHaveBeenCalledWith(expect.any(String));
             expect(mockRepository.create).toHaveBeenCalledWith({
                 ...postAdminDto,
-                password: hashedPassword,
+                password: expect.any(String) as string,
                 role: AuthUserRole.ADMIN,
             });
+            expect(mockEmailService.sendAdminWelcomeEmail).not.toHaveBeenCalled();
         });
 
-        it('should successfully hash password and create an admin', async () => {
+        it('should successfully generate password, hash it, create admin, and queue welcome email', async () => {
             const newAdmin = {
-                password: hashedPassword,
+                id: '018f43c3-6bb3-7d72-911e-848821a837c3',
+                email: postAdminDto.email,
+                name: postAdminDto.name,
+                role: AuthUserRole.ADMIN,
             };
 
             mockRepository.findByEmail.mockResolvedValueOnce(null);
             mockRepository.create.mockResolvedValueOnce(newAdmin);
+            mockEmailService.sendAdminWelcomeEmail.mockResolvedValueOnce(undefined);
 
             await expect(service.create(postAdminDto)).resolves.toEqual(newAdmin);
+
+            const generatedPassword = mockHashingService.hash.mock.calls[0]?.[0] as string;
+            expect(generatedPassword).toBeTypeOf('string');
+            expect(generatedPassword.length).toBeGreaterThanOrEqual(16);
+
             expect(mockRepository.findByEmail).toHaveBeenCalledWith(postAdminDto.email);
-            expect(mockHashingService.hash).toHaveBeenCalledWith(postAdminDto.password);
+            expect(mockHashingService.hash).toHaveBeenCalledWith(generatedPassword);
             expect(mockRepository.create).toHaveBeenCalledWith({
                 ...postAdminDto,
-                password: hashedPassword,
+                password: `hashed_${generatedPassword}`,
                 role: AuthUserRole.ADMIN,
             });
+            expect(mockEmailService.sendAdminWelcomeEmail).toHaveBeenCalledWith({
+                email: postAdminDto.email,
+                name: postAdminDto.name,
+                password: generatedPassword,
+            });
+            expect(mockRepository.hardDelete).not.toHaveBeenCalled();
+        });
+
+        it('should roll back by deleting created admin if email queueing fails', async () => {
+            const adminId = '018f43c3-6bb3-7d72-911e-848821a837c3',
+                newAdmin = {
+                    id: adminId,
+                    email: postAdminDto.email,
+                    name: postAdminDto.name,
+                    role: AuthUserRole.ADMIN,
+                };
+
+            mockRepository.findByEmail.mockResolvedValueOnce(null);
+            mockRepository.create.mockResolvedValueOnce(newAdmin);
+            mockEmailService.sendAdminWelcomeEmail.mockRejectedValueOnce(new Error());
+            mockRepository.hardDelete.mockResolvedValueOnce(true);
+
+            await expect(service.create(postAdminDto)).rejects.toThrow(InternalServerErrorException);
+
+            const generatedPassword = mockHashingService.hash.mock.calls[0]?.[0] as string;
+
+            expect(mockRepository.findByEmail).toHaveBeenCalledWith(postAdminDto.email);
+            expect(mockHashingService.hash).toHaveBeenCalledWith(generatedPassword);
+            expect(mockRepository.create).toHaveBeenCalledWith({
+                ...postAdminDto,
+                password: `hashed_${generatedPassword}`,
+                role: AuthUserRole.ADMIN,
+            });
+            expect(mockEmailService.sendAdminWelcomeEmail).toHaveBeenCalledWith({
+                email: postAdminDto.email,
+                name: postAdminDto.name,
+                password: generatedPassword,
+            });
+            expect(mockRepository.hardDelete).toHaveBeenCalledWith(adminId);
         });
     });
 

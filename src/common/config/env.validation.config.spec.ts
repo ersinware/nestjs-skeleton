@@ -24,6 +24,10 @@ describe('env.validation.config', () => {
         JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'refresh-secret',
         JWT_REFRESH_TTL: '7d',
+        GMAIL_CLIENT_ID: 'gmail-client-id',
+        GMAIL_CLIENT_SECRET: 'gmail-client-secret',
+        GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
+        GMAIL_USER_EMAIL: 'user@gmail.com',
     };
 
     it('should return a validated EnvironmentVariables instance when config is valid', () => {
