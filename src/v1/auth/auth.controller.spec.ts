@@ -3,7 +3,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
-import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -12,7 +11,7 @@ import { PostAuthLoginDto } from './dto/post-auth-login.dto';
 import { PostAuthRefreshDto } from './dto/post-auth-refresh.dto';
 
 describe('AuthController', () => {
-    const mockAuthService: Record<keyof AuthService, Mock> = {
+    const mockAuthService = {
         loginUser: vi.fn(),
         loginAdmin: vi.fn(),
         refresh: vi.fn(),
@@ -20,7 +19,7 @@ describe('AuthController', () => {
         logoutAll: vi.fn(),
         ban: vi.fn(),
         unban: vi.fn(),
-    };
+    } satisfies Record<keyof AuthService, unknown>;
 
     let controller: AuthController;
 

@@ -26,6 +26,8 @@ describe('RedisService', () => {
         }).compile();
 
         service = module.get<RedisService>(RedisService);
+
+        vi.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     it('should be defined', () => {
@@ -33,13 +35,23 @@ describe('RedisService', () => {
     });
 
     describe('get', () => {
-        it('should return value from Redis when key exists', async () => {
+        it('should return value from Redis when key exists and is a plain string', async () => {
             const cachedValue = 'cached_value',
                 key = 'test_key';
 
             mockRedis.get.mockResolvedValueOnce(cachedValue);
 
             expect(await service.get(key)).toBe(cachedValue);
+            expect(mockRedis.get).toHaveBeenCalledWith(key);
+        });
+
+        it('should return parsed object from Redis when key exists and is a JSON string', async () => {
+            const cachedObj = { id: 1, name: 'Test' },
+                key = 'test_key';
+
+            mockRedis.get.mockResolvedValueOnce(JSON.stringify(cachedObj));
+
+            expect(await service.get(key)).toEqual(cachedObj);
             expect(mockRedis.get).toHaveBeenCalledWith(key);
         });
 
@@ -50,6 +62,15 @@ describe('RedisService', () => {
 
             expect(await service.get(key)).toBeNull();
             expect(mockRedis.get).toHaveBeenCalledWith(key);
+        });
+
+        it('should log error and return null when Redis client throws an error (fail-open)', async () => {
+            const key = 'test_key';
+
+            mockRedis.get.mockRejectedValueOnce(new Error());
+
+            expect(await service.get(key)).toBeNull();
+            expect(console.error).toHaveBeenCalled();
         });
 
         it('should throw an error if key is empty', async () => {
@@ -65,8 +86,7 @@ describe('RedisService', () => {
 
             mockRedis.set.mockResolvedValueOnce('OK');
 
-            await service.set(key, value);
-
+            await expect(service.set(key, value)).resolves.toBeUndefined();
             expect(mockRedis.set).toHaveBeenCalledWith(key, value);
             expect(mockRedis.set).not.toHaveBeenCalledWith(key, value, 'EX', expect.any(Number));
         });
@@ -78,9 +98,63 @@ describe('RedisService', () => {
 
             mockRedis.set.mockResolvedValueOnce('OK');
 
-            await service.set(key, value, ttl);
-
+            await expect(service.set(key, value, ttl)).resolves.toBeUndefined();
             expect(mockRedis.set).toHaveBeenCalledWith(key, value, 'EX', ttl);
+        });
+
+        it('should serialize object to JSON and strip sensitive fields', async () => {
+            const key = 'test_key',
+                value = {
+                    id: '123',
+                    name: 'John Doe',
+                    password: 'secretPassword123',
+                    passwordHash: 'someHashedVal',
+                    salt: 'someSalt',
+                    secret: 'superSecret',
+                    nested: {
+                        field: 'value',
+                        password: 'nestedSecret',
+                    },
+                },
+                expectedSerialized = JSON.stringify({
+                    id: '123',
+                    name: 'John Doe',
+                    nested: {
+                        field: 'value',
+                    },
+                });
+
+            mockRedis.set.mockResolvedValueOnce('OK');
+
+            await expect(service.set(key, value)).resolves.toBeUndefined();
+            expect(mockRedis.set).toHaveBeenCalledWith(key, expectedSerialized);
+        });
+
+        it('should parse, sanitize, and serialize when input value is a JSON string containing sensitive fields', async () => {
+            const key = 'test_key',
+                sensitiveObj = {
+                    id: '123',
+                    password: 'secretPassword123',
+                },
+                value = JSON.stringify(sensitiveObj),
+                expectedSerialized = JSON.stringify({
+                    id: '123',
+                });
+
+            mockRedis.set.mockResolvedValueOnce('OK');
+
+            await expect(service.set(key, value)).resolves.toBeUndefined();
+            expect(mockRedis.set).toHaveBeenCalledWith(key, expectedSerialized);
+        });
+
+        it('should log error when Redis client throws an error (fail-open)', async () => {
+            const key = 'test_key',
+                value = 'test_value';
+
+            mockRedis.set.mockRejectedValueOnce(new Error());
+
+            await expect(service.set(key, value)).resolves.toBeUndefined();
+            expect(console.error).toHaveBeenCalled();
         });
 
         it('should throw an error if key is empty', async () => {
@@ -95,9 +169,17 @@ describe('RedisService', () => {
 
             mockRedis.del.mockResolvedValueOnce(1);
 
-            await service.delete(key);
-
+            await expect(service.delete(key)).resolves.toBeUndefined();
             expect(mockRedis.del).toHaveBeenCalledWith(key);
+        });
+
+        it('should log error when Redis client throws an error (fail-open)', async () => {
+            const key = 'test_key';
+
+            mockRedis.del.mockRejectedValueOnce(new Error());
+
+            await expect(service.delete(key)).resolves.toBeUndefined();
+            expect(console.error).toHaveBeenCalled();
         });
 
         it('should throw an error if key is empty', async () => {
@@ -116,8 +198,7 @@ describe('RedisService', () => {
             mockRedis.scan.mockResolvedValueOnce([cursorStart, keys]);
             mockRedis.del.mockResolvedValueOnce(2);
 
-            await service.deletePattern(pattern);
-
+            await expect(service.deletePattern(pattern)).resolves.toBeUndefined();
             expect(mockRedis.scan).toHaveBeenCalledWith(cursorStart, 'MATCH', pattern, 'COUNT', 100);
             expect(mockRedis.del).toHaveBeenCalledWith(...keys);
         });
@@ -131,8 +212,7 @@ describe('RedisService', () => {
             mockRedis.scan.mockResolvedValueOnce([nextCursor, [key1]]).mockResolvedValueOnce([cursorStart, [key2]]);
             mockRedis.del.mockResolvedValue(1);
 
-            await service.deletePattern(pattern);
-
+            await expect(service.deletePattern(pattern)).resolves.toBeUndefined();
             expect(mockRedis.scan).toHaveBeenNthCalledWith(1, cursorStart, 'MATCH', pattern, 'COUNT', 100);
             expect(mockRedis.scan).toHaveBeenNthCalledWith(2, nextCursor, 'MATCH', pattern, 'COUNT', 100);
             expect(mockRedis.del).toHaveBeenNthCalledWith(1, key1);
@@ -144,10 +224,18 @@ describe('RedisService', () => {
 
             mockRedis.scan.mockResolvedValueOnce([cursorStart, []]);
 
-            await service.deletePattern(pattern);
-
+            await expect(service.deletePattern(pattern)).resolves.toBeUndefined();
             expect(mockRedis.scan).toHaveBeenCalledWith(cursorStart, 'MATCH', pattern, 'COUNT', 100);
             expect(mockRedis.del).not.toHaveBeenCalled();
+        });
+
+        it('should log error when Redis client throws an error (fail-open)', async () => {
+            const pattern = 'prefix:*';
+
+            mockRedis.scan.mockRejectedValueOnce(new Error('Redis scan failed'));
+
+            await expect(service.deletePattern(pattern)).resolves.toBeUndefined();
+            expect(console.error).toHaveBeenCalled();
         });
 
         it('should throw an error if pattern is empty', async () => {
@@ -173,6 +261,15 @@ describe('RedisService', () => {
 
             expect(await service.exists(key)).toBe(false);
             expect(mockRedis.exists).toHaveBeenCalledWith(key);
+        });
+
+        it('should log error and return false when Redis client throws an error (fail-open)', async () => {
+            const key = 'test_key';
+
+            mockRedis.exists.mockRejectedValueOnce(new Error('Redis exists failed'));
+
+            expect(await service.exists(key)).toBe(false);
+            expect(console.error).toHaveBeenCalled();
         });
 
         it('should throw an error if key is empty', async () => {

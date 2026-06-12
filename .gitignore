@@ -6,7 +6,6 @@
 *.sublime-workspace
 *.tsbuildinfo
 .act-artifacts
-.agents
 .c9/
 .cache
 .classpath

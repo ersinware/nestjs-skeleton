@@ -3,7 +3,7 @@ import { ParamIdDto } from 'src/common/dto/param-id.dto';
 import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
-import { beforeEach, describe, expect, it, Mock, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
 import { GetUserDto } from './dto/get-user.dto';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
@@ -18,7 +18,7 @@ import { QueryUserSearchDto } from './dto/query-user-search.dto';
 describe('UserController', () => {
     let controller: UserController;
 
-    const mockUserService: Record<keyof UserService, Mock> = {
+    const mockUserService = {
             create: vi.fn(),
             findAll: vi.fn(),
             findById: vi.fn(),
@@ -26,7 +26,7 @@ describe('UserController', () => {
             changePassword: vi.fn(),
             delete: vi.fn(),
             updateStatus: vi.fn(),
-        },
+        } satisfies Record<keyof UserService, unknown>,
         mockPayload: AccessTokenPayload = {
             sub: '00000000-0000-0000-0000-000000000001',
             role: AuthUserRole.USER,

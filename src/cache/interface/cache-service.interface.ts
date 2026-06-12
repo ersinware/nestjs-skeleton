@@ -5,22 +5,23 @@
 
 export interface ICacheService {
     /**
-     * Gets a key's value from the cache.
+     * Gets a key's value from the cache, automatically parsing JSON values if applicable.
      *
      * @param key Cache key.
-     * @returns A promise resolving to the value if found, otherwise null.
+     * @returns A promise resolving to the typed value if found, otherwise null.
      */
-    get(key: string): Promise<string | null>;
+    get<T = string>(key: string): Promise<T | null>;
 
     /**
-     * Sets a key's value in the cache with an optional expiration time.
+     * Sets a key's value in the cache with an optional expiration time,
+     * automatically serializing objects and stripping sensitive properties.
      *
      * @param key Cache key.
-     * @param value Cache value.
+     * @param value Cache value, either a string or an object to serialize.
      * @param ttlSeconds Optional time-to-live in seconds.
      * @returns A promise resolving on execution success.
      */
-    set(key: string, value: string, ttlSeconds?: number): Promise<void>;
+    set(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
 
     /**
      * Deletes a key from the cache.

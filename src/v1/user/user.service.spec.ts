@@ -5,21 +5,23 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import type { Mock } from 'vitest';
+import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
+import type { ICacheService } from 'src/cache/interface/cache-service.interface';
+import { CacheKeys } from 'src/cache/util/cache-key.util';
+import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
+import { HashingService } from 'src/common/hashing/service/hashing.service';
+import { AuthService } from 'src/v1/auth/auth.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TOKEN_USERS_REPOSITORY } from './constant/user.constant';
+import { TOKEN_USERS_REPOSITORY, USER_CACHE_TTL_SECONDS } from './constant/user.constant';
 import { PatchUserPasswordDto } from './dto/patch-user-password.dto';
 import { PatchUserDto } from './dto/patch-user.dto';
 import { PostUserDto } from './dto/post-user.dto';
+import { QueryUserSearchDto } from './dto/query-user-search.dto';
 import type { IUsersRepository } from './interface/users.repository.interface';
 import { UserService } from './user.service';
-import { AuthService } from 'src/v1/auth/auth.service';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
-import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { QueryUserSearchDto } from './dto/query-user-search.dto';
 
 describe('UserService', () => {
-    const mockRepository: Record<keyof IUsersRepository, Mock> = {
+    const mockRepository = {
             create: vi.fn(),
             findAll: vi.fn(),
             findById: vi.fn(),
@@ -27,7 +29,7 @@ describe('UserService', () => {
             findPasswordById: vi.fn(),
             update: vi.fn(),
             delete: vi.fn(),
-        },
+        } satisfies IUsersRepository,
         mockAuthService = {
             logoutAll: vi.fn(),
             ban: vi.fn(),
@@ -36,7 +38,15 @@ describe('UserService', () => {
         mockHashingService = {
             hash: vi.fn((password: string) => Promise.resolve(`hashed_${password}`)),
             verify: vi.fn((hash: string, password: string) => Promise.resolve(hash === `hashed_${password}`)),
-        };
+        },
+        mockCacheService = {
+            get: vi.fn(),
+            set: vi.fn(),
+            delete: vi.fn(),
+            deletePattern: vi.fn(),
+            exists: vi.fn(),
+        } satisfies ICacheService,
+        userId = '018f43c3-6bb3-7d72-911e-848821a837c3';
 
     let service: UserService;
 
@@ -55,6 +65,10 @@ describe('UserService', () => {
                 {
                     provide: HashingService,
                     useValue: mockHashingService,
+                },
+                {
+                    provide: TOKEN_CACHE_SERVICE,
+                    useValue: mockCacheService,
                 },
             ],
         }).compile();
@@ -113,61 +127,95 @@ describe('UserService', () => {
     });
 
     describe('findAll', () => {
-        it('should return all users with pagination and optional search filter', async () => {
+        it('should return cached value if present in cache', async () => {
             const query: QueryUserSearchDto = { page: 1, limit: 20, search: 'John' },
-                result = { data: [{ id: '018f43c3-6bb3-7d72-911e-848821a837c3' }], total: 1 };
+                cachedResult = { data: [{ id: userId }], total: 1 },
+                cacheKey = CacheKeys.userList(query);
 
+            mockCacheService.get.mockResolvedValueOnce(cachedResult);
+
+            await expect(service.findAll(query)).resolves.toEqual(cachedResult);
+            expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
+            expect(mockRepository.findAll).not.toHaveBeenCalled();
+        });
+
+        it('should query repository and populate cache on cache miss', async () => {
+            const query: QueryUserSearchDto = { page: 1, limit: 20, search: 'John' },
+                result = { data: [{ id: userId }], total: 1 },
+                cacheKey = CacheKeys.userList(query);
+
+            mockCacheService.get.mockResolvedValueOnce(null);
             mockRepository.findAll.mockResolvedValueOnce(result);
 
             await expect(service.findAll(query)).resolves.toEqual(result);
+            expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
             expect(mockRepository.findAll).toHaveBeenCalledWith(query);
+            expect(mockCacheService.set).toHaveBeenCalledWith(cacheKey, result, USER_CACHE_TTL_SECONDS);
         });
     });
 
     describe('findById', () => {
-        const id = '018f43c3-6bb3-7d72-911e-848821a837c3';
+        it('should return cached user if found', async () => {
+            const cachedUser = { id: userId },
+                cacheKey = CacheKeys.userById(userId);
 
-        it('should throw NotFoundException if user is not found', async () => {
-            mockRepository.findById.mockResolvedValueOnce(null);
+            mockCacheService.get.mockResolvedValueOnce(cachedUser);
 
-            await expect(service.findById(id)).rejects.toThrow(NotFoundException);
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
+            await expect(service.findById(userId)).resolves.toEqual(cachedUser);
+            expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
+            expect(mockRepository.findById).not.toHaveBeenCalled();
         });
 
-        it('should return user if found', async () => {
-            const user = { id };
+        it('should throw NotFoundException if user is not found in repository on cache miss', async () => {
+            const cacheKey = CacheKeys.userById(userId);
 
+            mockCacheService.get.mockResolvedValueOnce(null);
+            mockRepository.findById.mockResolvedValueOnce(null);
+
+            await expect(service.findById(userId)).rejects.toThrow(NotFoundException);
+            expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
+        });
+
+        it('should query repository and cache user if found on cache miss', async () => {
+            const user = { id: userId },
+                cacheKey = CacheKeys.userById(userId);
+
+            mockCacheService.get.mockResolvedValueOnce(null);
             mockRepository.findById.mockResolvedValueOnce(user);
 
-            await expect(service.findById(id)).resolves.toEqual(user);
-            expect(mockRepository.findById).toHaveBeenCalledWith(user.id);
+            await expect(service.findById(userId)).resolves.toEqual(user);
+            expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
+            expect(mockCacheService.set).toHaveBeenCalledWith(cacheKey, user, USER_CACHE_TTL_SECONDS);
         });
     });
 
     describe('update', () => {
-        const id = '018f43c3-6bb3-7d72-911e-848821a837c3',
-            patchUserDto: PatchUserDto = { name: 'Updated Name' };
+        const patchUserDto: PatchUserDto = { name: 'Updated Name' };
 
         it('should throw NotFoundException if user to update is not found', async () => {
             mockRepository.update.mockResolvedValueOnce(null);
 
-            await expect(service.update(id, patchUserDto)).rejects.toThrow(NotFoundException);
-            expect(mockRepository.update).toHaveBeenCalledWith(id, patchUserDto);
+            await expect(service.update(userId, patchUserDto)).rejects.toThrow(NotFoundException);
+            expect(mockRepository.update).toHaveBeenCalledWith(userId, patchUserDto);
+            expect(mockCacheService.delete).not.toHaveBeenCalled();
         });
 
-        it('should successfully update and return user if found', async () => {
-            const updatedUser = { id };
+        it('should successfully update and invalidate cache if found', async () => {
+            const updatedUser = { id: userId };
 
             mockRepository.update.mockResolvedValueOnce(updatedUser);
 
-            await expect(service.update(id, patchUserDto)).resolves.toEqual(updatedUser);
-            expect(mockRepository.update).toHaveBeenCalledWith(id, patchUserDto);
+            await expect(service.update(userId, patchUserDto)).resolves.toEqual(updatedUser);
+            expect(mockRepository.update).toHaveBeenCalledWith(userId, patchUserDto);
+            expect(mockCacheService.delete).toHaveBeenCalledWith(CacheKeys.userById(userId));
+            expect(mockCacheService.deletePattern).toHaveBeenCalledWith(CacheKeys.userListPattern());
         });
     });
 
     describe('changePassword', () => {
-        const id = '018f43c3-6bb3-7d72-911e-848821a837c3',
-            patchUserPasswordDto: PatchUserPasswordDto = {
+        const patchUserPasswordDto: PatchUserPasswordDto = {
                 currentPassword: 'password123',
                 newPassword: 'newPassword123',
             },
@@ -177,8 +225,8 @@ describe('UserService', () => {
         it('should throw NotFoundException if user password record is not found', async () => {
             mockRepository.findPasswordById.mockResolvedValueOnce(null);
 
-            await expect(service.changePassword(id, patchUserPasswordDto)).rejects.toThrow(NotFoundException);
-            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(id);
+            await expect(service.changePassword(userId, patchUserPasswordDto)).rejects.toThrow(NotFoundException);
+            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(userId);
             expect(mockHashingService.verify).not.toHaveBeenCalled();
         });
 
@@ -186,12 +234,12 @@ describe('UserService', () => {
             mockRepository.findPasswordById.mockResolvedValueOnce(hashedCurrentPassword);
 
             await expect(
-                service.changePassword(id, {
+                service.changePassword(userId, {
                     currentPassword: 'wrongPassword',
                     newPassword: patchUserPasswordDto.newPassword,
                 } satisfies PatchUserPasswordDto),
             ).rejects.toThrow(BadRequestException);
-            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(id);
+            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(userId);
             expect(mockHashingService.verify).toHaveBeenCalledWith(hashedCurrentPassword, 'wrongPassword');
             expect(mockHashingService.verify).toHaveBeenCalledTimes(1);
         });
@@ -200,12 +248,12 @@ describe('UserService', () => {
             mockRepository.findPasswordById.mockResolvedValueOnce(hashedCurrentPassword);
 
             await expect(
-                service.changePassword(id, {
+                service.changePassword(userId, {
                     currentPassword: patchUserPasswordDto.currentPassword,
                     newPassword: patchUserPasswordDto.currentPassword,
                 } satisfies PatchUserPasswordDto),
             ).rejects.toThrow(BadRequestException);
-            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(id);
+            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(userId);
             expect(mockHashingService.verify).toHaveBeenNthCalledWith(
                 1,
                 hashedCurrentPassword,
@@ -223,10 +271,10 @@ describe('UserService', () => {
             mockRepository.findPasswordById.mockResolvedValueOnce(hashedCurrentPassword);
             mockRepository.update.mockResolvedValueOnce(null);
 
-            await expect(service.changePassword(id, patchUserPasswordDto)).rejects.toThrow(
+            await expect(service.changePassword(userId, patchUserPasswordDto)).rejects.toThrow(
                 InternalServerErrorException,
             );
-            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(id);
+            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(userId);
             expect(mockHashingService.verify).toHaveBeenNthCalledWith(
                 1,
                 hashedCurrentPassword,
@@ -238,17 +286,17 @@ describe('UserService', () => {
                 patchUserPasswordDto.newPassword,
             );
             expect(mockHashingService.hash).toHaveBeenCalledWith(patchUserPasswordDto.newPassword);
-            expect(mockRepository.update).toHaveBeenCalledWith(id, {
+            expect(mockRepository.update).toHaveBeenCalledWith(userId, {
                 password: hashedNewPassword,
             });
         });
 
-        it('should successfully change password when current password is valid', async () => {
+        it('should successfully change password when current password is valid and delete cache', async () => {
             mockRepository.findPasswordById.mockResolvedValueOnce(hashedCurrentPassword);
-            mockRepository.update.mockResolvedValueOnce({ id });
+            mockRepository.update.mockResolvedValueOnce({ id: userId });
 
-            await expect(service.changePassword(id, patchUserPasswordDto)).resolves.toBeUndefined();
-            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(id);
+            await expect(service.changePassword(userId, patchUserPasswordDto)).resolves.toBeUndefined();
+            expect(mockRepository.findPasswordById).toHaveBeenCalledWith(userId);
             expect(mockHashingService.verify).toHaveBeenNthCalledWith(
                 1,
                 hashedCurrentPassword,
@@ -260,85 +308,89 @@ describe('UserService', () => {
                 patchUserPasswordDto.newPassword,
             );
             expect(mockHashingService.hash).toHaveBeenCalledWith(patchUserPasswordDto.newPassword);
-            expect(mockRepository.update).toHaveBeenCalledWith(id, {
+            expect(mockRepository.update).toHaveBeenCalledWith(userId, {
                 password: hashedNewPassword,
             });
+            expect(mockCacheService.delete).toHaveBeenCalledWith(CacheKeys.userById(userId));
         });
     });
 
     describe('delete', () => {
-        const id = '018f43c3-6bb3-7d72-911e-848821a837c3';
-
         it('should throw NotFoundException if user to delete is not found', async () => {
             mockRepository.findById.mockResolvedValueOnce(null);
 
-            await expect(service.delete(id)).rejects.toThrow(NotFoundException);
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
+            await expect(service.delete(userId)).rejects.toThrow(NotFoundException);
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
             expect(mockAuthService.logoutAll).not.toHaveBeenCalled();
         });
 
         it('should throw InternalServerErrorException if delete operation fails', async () => {
-            mockRepository.findById.mockResolvedValueOnce({ id });
+            mockRepository.findById.mockResolvedValueOnce({ id: userId });
             mockRepository.delete.mockResolvedValueOnce(false);
 
-            await expect(service.delete(id)).rejects.toThrow(InternalServerErrorException);
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
-            expect(mockAuthService.logoutAll).toHaveBeenCalledWith(AuthUserRole.USER, id);
-            expect(mockAuthService.ban).toHaveBeenCalledWith(AuthUserRole.USER, id);
-            expect(mockRepository.delete).toHaveBeenCalledWith(id);
+            await expect(service.delete(userId)).rejects.toThrow(InternalServerErrorException);
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
+            expect(mockAuthService.logoutAll).toHaveBeenCalledWith(AuthUserRole.USER, userId);
+            expect(mockAuthService.ban).toHaveBeenCalledWith(AuthUserRole.USER, userId);
+            expect(mockRepository.delete).toHaveBeenCalledWith(userId);
+            expect(mockCacheService.delete).not.toHaveBeenCalled();
         });
 
-        it('should successfully delete user and clear sessions if found', async () => {
-            mockRepository.findById.mockResolvedValueOnce({ id });
+        it('should successfully delete user, clear sessions and invalidate cache if found', async () => {
+            mockRepository.findById.mockResolvedValueOnce({ id: userId });
             mockRepository.delete.mockResolvedValueOnce(true);
 
-            await expect(service.delete(id)).resolves.toBeUndefined();
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
-            expect(mockAuthService.logoutAll).toHaveBeenCalledWith(AuthUserRole.USER, id);
-            expect(mockAuthService.ban).toHaveBeenCalledWith(AuthUserRole.USER, id);
-            expect(mockRepository.delete).toHaveBeenCalledWith(id);
+            await expect(service.delete(userId)).resolves.toBeUndefined();
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
+            expect(mockAuthService.logoutAll).toHaveBeenCalledWith(AuthUserRole.USER, userId);
+            expect(mockAuthService.ban).toHaveBeenCalledWith(AuthUserRole.USER, userId);
+            expect(mockRepository.delete).toHaveBeenCalledWith(userId);
+            expect(mockCacheService.delete).toHaveBeenCalledWith(CacheKeys.userById(userId));
+            expect(mockCacheService.deletePattern).toHaveBeenCalledWith(CacheKeys.userListPattern());
         });
     });
 
     describe('updateStatus', () => {
-        const id = '018f43c3-6bb3-7d72-911e-848821a837c3';
-
         it('should throw NotFoundException if user to update is not found', async () => {
             mockRepository.findById.mockResolvedValueOnce(null);
 
-            await expect(service.updateStatus(id, false)).rejects.toThrow(NotFoundException);
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
+            await expect(service.updateStatus(userId, false)).rejects.toThrow(NotFoundException);
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
             expect(mockAuthService.logoutAll).not.toHaveBeenCalled();
         });
 
-        it('should successfully deactivate user and clear sessions if active is false', async () => {
-            const user = { id, isActive: true },
+        it('should successfully deactivate user, clear sessions and invalidate cache if active is false', async () => {
+            const user = { id: userId, isActive: true },
                 active = false;
 
             mockRepository.findById.mockResolvedValueOnce(user);
             mockRepository.update.mockResolvedValueOnce({ ...user, isActive: active });
 
-            await expect(service.updateStatus(id, active)).resolves.toBeUndefined();
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
-            expect(mockAuthService.logoutAll).toHaveBeenCalledWith(AuthUserRole.USER, id);
-            expect(mockAuthService.ban).toHaveBeenCalledWith(AuthUserRole.USER, id);
+            await expect(service.updateStatus(userId, active)).resolves.toBeUndefined();
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
+            expect(mockAuthService.logoutAll).toHaveBeenCalledWith(AuthUserRole.USER, userId);
+            expect(mockAuthService.ban).toHaveBeenCalledWith(AuthUserRole.USER, userId);
             expect(mockAuthService.unban).not.toHaveBeenCalled();
-            expect(mockRepository.update).toHaveBeenCalledWith(id, { isActive: active });
+            expect(mockRepository.update).toHaveBeenCalledWith(userId, { isActive: active });
+            expect(mockCacheService.delete).toHaveBeenCalledWith(CacheKeys.userById(userId));
+            expect(mockCacheService.deletePattern).toHaveBeenCalledWith(CacheKeys.userListPattern());
         });
 
-        it('should successfully activate user and NOT clear sessions but unban user if active is true', async () => {
-            const user = { id, isActive: false },
+        it('should successfully activate user, unban user, update status and invalidate cache if active is true', async () => {
+            const user = { id: userId, isActive: false },
                 active = true;
 
             mockRepository.findById.mockResolvedValueOnce(user);
             mockRepository.update.mockResolvedValueOnce({ ...user, isActive: active });
 
-            await expect(service.updateStatus(id, active)).resolves.toBeUndefined();
-            expect(mockRepository.findById).toHaveBeenCalledWith(id);
+            await expect(service.updateStatus(userId, active)).resolves.toBeUndefined();
+            expect(mockRepository.findById).toHaveBeenCalledWith(userId);
             expect(mockAuthService.logoutAll).not.toHaveBeenCalled();
             expect(mockAuthService.ban).not.toHaveBeenCalled();
-            expect(mockAuthService.unban).toHaveBeenCalledWith(AuthUserRole.USER, id);
-            expect(mockRepository.update).toHaveBeenCalledWith(id, { isActive: true });
+            expect(mockAuthService.unban).toHaveBeenCalledWith(AuthUserRole.USER, userId);
+            expect(mockRepository.update).toHaveBeenCalledWith(userId, { isActive: true });
+            expect(mockCacheService.delete).toHaveBeenCalledWith(CacheKeys.userById(userId));
+            expect(mockCacheService.deletePattern).toHaveBeenCalledWith(CacheKeys.userListPattern());
         });
     });
 });
