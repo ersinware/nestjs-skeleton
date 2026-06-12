@@ -6,7 +6,6 @@
 import { ApiSchema } from '@nestjs/swagger';
 import { IsUserEmail } from 'src/common/decorator/validator/email.decorator';
 import { IsUserName } from 'src/common/decorator/validator/name.decorator';
-import { IsStrongPassword } from 'src/common/decorator/validator/password.decorator';
 
 /**
  * DTO for validating new admin account credentials and roles.
@@ -27,10 +26,4 @@ export class PostAdminDto {
      */
     @IsUserName('The full name')
     readonly name!: string;
-
-    /**
-     * Cleartext password to secure the admin account.
-     */
-    @IsStrongPassword('The password')
-    readonly password!: string;
 }

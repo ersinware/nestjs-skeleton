@@ -8,16 +8,24 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Roles } from 'src/common/decorator/auth/roles.decorator';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { createTestApp } from './test-app.factory';
+import type { OptionsTestApp } from './interface/e2e-spec.interface';
 
 /**
  * Compiles and initializes a NestJS Fastify testing application with AuthTriggerController registered.
  *
+ * @param options Configurations for custom controller registration and module override providers.
  * @returns A promise resolving to the fully initialized Fastify app instance.
  */
-export async function createAuthTestApp(): Promise<NestFastifyApplication> {
-    return createTestApp({
-        extraControllers: [AuthTriggerController],
-    });
+export async function createAuthTestApp(options?: OptionsTestApp): Promise<NestFastifyApplication> {
+    const config: OptionsTestApp = {
+        extraControllers: [AuthTriggerController, ...(options?.extraControllers ?? [])],
+    };
+
+    if (options?.overrides) {
+        config.overrides = options.overrides;
+    }
+
+    return createTestApp(config);
 }
 
 /**

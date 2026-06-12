@@ -4,10 +4,18 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class HashingService {
+    /**
+     * Creates an instance of HashingService.
+     *
+     * @param configService Configuration reader client.
+     */
+    constructor(private readonly configService: ConfigService) {}
+
     /**
      * Hashes a plain text string using Argon2id.
      *
@@ -15,6 +23,16 @@ export class HashingService {
      * @returns A promise resolving to the Argon2 hash string.
      */
     async hash(plainText: string): Promise<string> {
+        if (this.configService.get<string>('NODE_ENV') === 'test') {
+            // Use low-cost Argon2 parameters in test/CI environments, E2E tests, and during automated fuzzing
+            // (Schemathesis) to prevent CPU starvation and maximize request throughput.
+            return argon2.hash(plainText, {
+                timeCost: 1,
+                memoryCost: 2048,
+                parallelism: 1,
+            });
+        }
+
         return argon2.hash(plainText);
     }
 

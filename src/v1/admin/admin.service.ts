@@ -19,10 +19,14 @@ import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
+import { generateSecurePassword } from 'src/common/util/password-generator.util';
+import { TOKEN_EMAIL_SERVICE } from 'src/email/constant/email.constant';
+import type { IEmailService } from 'src/email/interface/email.service.interface';
 import { AuthService } from 'src/v1/auth/auth.service';
 import { TOKEN_ADMINS_REPOSITORY } from './constant/admin.constant';
 import { PostAdminDto } from './dto/post-admin.dto';
 import type { IAdminsRepository } from './interface/admins.repository.interface';
+import type { Admin } from './type/admin.type';
 
 /**
  * Service orchestrating admin account management, permissions enforcement, and session termination.
@@ -40,6 +44,7 @@ export class AdminService {
         @Inject(TOKEN_ADMINS_REPOSITORY) private readonly adminsRepository: IAdminsRepository,
         @Inject(forwardRef(() => AuthService)) private readonly authService: AuthService,
         private readonly hashingService: HashingService,
+        @Inject(TOKEN_EMAIL_SERVICE) private readonly emailService: IEmailService,
     ) {}
 
     /**
@@ -48,21 +53,34 @@ export class AdminService {
      * @param dto New admin parameters.
      * @returns A promise resolving to the created admin entity.
      * @throws {ConflictException} if email is already in use by an active admin.
-     * @throws {InternalServerErrorException} if admin creation fails.
+     * @throws {InternalServerErrorException} if admin creation fails or email queue fails.
      */
-    async create(dto: PostAdminDto) {
+    async create(dto: PostAdminDto): Promise<Admin> {
         if (await this.adminsRepository.findByEmail(dto.email)) {
             throw new ConflictException(ConflictType.EMAIL_IN_USE);
         }
 
-        const admin = await this.adminsRepository.create({
-            email: dto.email,
-            name: dto.name,
-            password: await this.hashingService.hash(dto.password),
-            role: AuthUserRole.ADMIN,
-        });
+        const generatedPassword = generateSecurePassword(),
+            admin = await this.adminsRepository.create({
+                email: dto.email,
+                name: dto.name,
+                password: await this.hashingService.hash(generatedPassword),
+                role: AuthUserRole.ADMIN,
+            });
 
         if (!admin) {
+            throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
+        }
+
+        try {
+            await this.emailService.sendAdminWelcomeEmail({
+                email: dto.email,
+                name: dto.name,
+                password: generatedPassword,
+            });
+        } catch {
+            await this.adminsRepository.hardDelete(admin.id);
+
             throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
         }
 

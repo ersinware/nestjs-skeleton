@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as argon2 from 'argon2';
@@ -9,17 +10,27 @@ vi.mock('argon2', () => ({
 }));
 
 describe('HashingService', () => {
-    let service: HashingService;
-
     const mockedHash = vi.mocked(argon2.hash),
-        mockedVerify = vi.mocked(argon2.verify);
+        mockedVerify = vi.mocked(argon2.verify),
+        mockConfigService = {
+            get: vi.fn(),
+        };
+
+    let service: HashingService, configService: ConfigService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [HashingService],
+            providers: [
+                HashingService,
+                {
+                    provide: ConfigService,
+                    useValue: mockConfigService,
+                },
+            ],
         }).compile();
 
         service = module.get<HashingService>(HashingService);
+        configService = module.get<ConfigService>(ConfigService);
     });
 
     it('should be defined', () => {
@@ -30,14 +41,28 @@ describe('HashingService', () => {
         const plainText = 'my-secure-password',
             expectedHash = '$argon2id$v=19$m=65536,t=3,p=4$somehashedstring';
 
-        it('should successfully hash plain text using argon2', async () => {
+        it('should successfully hash plain text using default argon2 config in non-test env', async () => {
+            vi.spyOn(configService, 'get').mockReturnValueOnce('production');
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(service.hash(plainText)).resolves.toBe(expectedHash);
             expect(mockedHash).toHaveBeenCalledWith(plainText);
         });
 
+        it('should use weak argon2 settings in test env to optimize performance', async () => {
+            vi.spyOn(configService, 'get').mockReturnValueOnce('test');
+            mockedHash.mockResolvedValueOnce(expectedHash);
+
+            await expect(service.hash(plainText)).resolves.toBe(expectedHash);
+            expect(mockedHash).toHaveBeenCalledWith(plainText, {
+                timeCost: 1,
+                memoryCost: 2048,
+                parallelism: 1,
+            });
+        });
+
         it('should propagate argon2 error during hashing', async () => {
+            vi.spyOn(configService, 'get').mockReturnValueOnce('production');
             mockedHash.mockRejectedValueOnce(new Error());
 
             await expect(service.hash(plainText)).rejects.toThrow(Error);

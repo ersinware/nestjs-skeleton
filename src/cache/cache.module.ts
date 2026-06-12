@@ -28,13 +28,14 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
             inject: [ConfigService],
             provide: TOKEN_CACHE_CLIENT,
             useFactory: (config: ConfigService) => {
-                const redis = new Redis({
-                    host: config.getOrThrow<string>(ENV.REDIS_HOST),
-                    port: config.getOrThrow<number>(ENV.REDIS_PORT),
-                    password: config.getOrThrow<string>(ENV.REDIS_PASSWORD),
-                    maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
-                    commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
-                });
+                const password = config.getOrThrow<string>(ENV.REDIS_PASSWORD),
+                    redis = new Redis({
+                        host: config.getOrThrow<string>(ENV.REDIS_HOST),
+                        port: config.getOrThrow<number>(ENV.REDIS_PORT),
+                        ...(password ? { password } : {}),
+                        maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
+                        commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
+                    });
 
                 redis.on('error', (error: Error) => {
                     console.error(`Redis connection failed: ${error.message}`);
