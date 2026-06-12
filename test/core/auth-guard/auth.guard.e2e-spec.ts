@@ -4,8 +4,8 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
-import type { ICacheService } from 'src/cache/interface/cache-service.interface';
+import { TOKEN_CACHE_STATE_SERVICE } from 'src/cache/constant/cache.constant';
+import type { ICacheStateService } from 'src/cache/interface/cache-state-service.interface';
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
 import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
@@ -20,12 +20,12 @@ import { expectErrorDto } from '../../shared/dto-assertion.util';
 import { createAuthGuardTestApp } from './auth.guard.fixture';
 
 describe('AuthGuard', () => {
-    let app: NestFastifyApplication, tokenService: TokenService, cacheService: ICacheService;
+    let app: NestFastifyApplication, tokenService: TokenService, cacheStateService: ICacheStateService;
 
     beforeEach(async () => {
         app = await createAuthGuardTestApp();
         tokenService = app.get<TokenService>(TokenService);
-        cacheService = app.get<ICacheService>(TOKEN_CACHE_SERVICE);
+        cacheStateService = app.get<ICacheStateService>(TOKEN_CACHE_STATE_SERVICE);
 
         await cleanupCache(app);
     });
@@ -101,8 +101,8 @@ describe('AuthGuard', () => {
                 role = AuthUserRole.USER,
                 token = await tokenService.generateAccessToken(role, userId);
 
-            // Set the ban key in cache
-            await cacheService.set(`banned:${role}:${userId}`, 'true', 3600);
+            // Set the ban key in cache state
+            await cacheStateService.saveBan(role, userId, 3600);
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/auth-guard-trigger/protected')
@@ -115,7 +115,7 @@ describe('AuthGuard', () => {
         });
 
         it('should throw 500 when the cache service throws an unexpected error', async () => {
-            vi.spyOn(cacheService, 'exists').mockRejectedValueOnce(new Error());
+            vi.spyOn(cacheStateService, 'isBanned').mockRejectedValueOnce(new Error());
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/auth-guard-trigger/protected')

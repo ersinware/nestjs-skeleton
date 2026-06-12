@@ -12,31 +12,30 @@ import {
     InternalServerErrorException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
-import type { ICacheService } from 'src/cache/interface/cache-service.interface';
-import { KEY_DECORATOR_PUBLIC } from '../decorator/auth/public.decorator';
+import { TOKEN_CACHE_STATE_SERVICE } from 'src/cache/constant/cache.constant';
+import type { ICacheStateService } from 'src/cache/interface/cache-state-service.interface';
+import { KEY_DECORATOR_PUBLIC } from 'src/common/decorator/auth/public.decorator';
 import type { AccessTokenPayload, AuthenticatedRequest } from './interface/auth.interface';
 import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { TokenService } from 'src/v1/auth/token.service';
 
 /**
- * Global or route-level guard verifying JWT access tokens.
- * Fails fast if the user or admin is blocklisted in cache.
+ * Authentication guard enforcing global JWT check with automatic instant eviction using cache lookup.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
     /**
      * Creates an instance of AuthGuard.
      *
-     * @param reflector NestJS Reflector to read route metadata.
-     * @param tokenService JWT token management service.
-     * @param cacheService Generic cache service contract.
+     * @param tokenService Access and Refresh Token security operations helper service.
+     * @param cacheStateService Session state operations helper service.
+     * @param reflector NestJS metadata utility helper class.
      */
     constructor(
-        private readonly reflector: Reflector,
         private readonly tokenService: TokenService,
-        @Inject(TOKEN_CACHE_SERVICE) private readonly cacheService: ICacheService,
+        @Inject(TOKEN_CACHE_STATE_SERVICE) private readonly cacheStateService: ICacheStateService,
+        private readonly reflector: Reflector,
     ) {}
 
     /**
@@ -76,7 +75,7 @@ export class AuthGuard implements CanActivate {
         }
 
         try {
-            if (await this.cacheService.exists(`banned:${payload.role}:${payload.sub}`)) {
+            if (await this.cacheStateService.isBanned(payload.role, payload.sub)) {
                 throw new UnauthorizedException(UnauthorizedType.TOKEN);
             }
         } catch (error) {

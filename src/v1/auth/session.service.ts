@@ -5,8 +5,8 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
-import type { ICacheService } from 'src/cache/interface/cache-service.interface';
+import { TOKEN_CACHE_STATE_SERVICE } from 'src/cache/constant/cache.constant';
+import type { ICacheStateService } from 'src/cache/interface/cache-state-service.interface';
 import { ENV } from 'src/common/config/constant/env.constant';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 
@@ -15,11 +15,11 @@ export class SessionService {
     /**
      * Creates an instance of SessionService.
      *
-     * @param cacheService Generic cache service contract.
+     * @param cacheStateService Domain-specific session state service contract.
      * @param configService Configuration reader service.
      */
     constructor(
-        @Inject(TOKEN_CACHE_SERVICE) private readonly cacheService: ICacheService,
+        @Inject(TOKEN_CACHE_STATE_SERVICE) private readonly cacheStateService: ICacheStateService,
         private readonly configService: ConfigService,
     ) {}
 
@@ -31,9 +31,10 @@ export class SessionService {
      * @param jti The unique JWT ID of the refresh token.
      */
     async openSession(role: AuthUserRole, id: string, jti: string) {
-        await this.cacheService.set(
-            `session:${role}:${id}:${jti}`,
-            '1',
+        await this.cacheStateService.saveSession(
+            role,
+            id,
+            jti,
             this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL)),
         );
     }
@@ -47,7 +48,7 @@ export class SessionService {
      * @returns The cached session value, or null if not found.
      */
     async getSession(role: AuthUserRole, id: string, jti: string) {
-        return this.cacheService.get(`session:${role}:${id}:${jti}`);
+        return this.cacheStateService.getSession(role, id, jti);
     }
 
     /**
@@ -58,7 +59,7 @@ export class SessionService {
      * @param jti The unique JWT ID of the refresh token.
      */
     async closeSession(role: AuthUserRole, id: string, jti: string) {
-        await this.cacheService.delete(`session:${role}:${id}:${jti}`);
+        await this.cacheStateService.deleteSession(role, id, jti);
     }
 
     /**
@@ -68,7 +69,7 @@ export class SessionService {
      * @param id The principal identifier.
      */
     async closeAllSessions(role: AuthUserRole, id: string) {
-        await this.cacheService.deletePattern(`session:${role}:${id}:*`);
+        await this.cacheStateService.deleteAllSessions(role, id);
     }
 
     /**
@@ -78,11 +79,8 @@ export class SessionService {
      * @param id The principal identifier.
      */
     async ban(role: AuthUserRole, id: string) {
-        await this.cacheService.set(
-            `banned:${role}:${id}`,
-            '1',
-            this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL)),
-        );
+        const ttlSeconds = this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL));
+        await this.cacheStateService.saveBan(role, id, ttlSeconds);
     }
 
     /**
@@ -92,7 +90,7 @@ export class SessionService {
      * @param id The principal identifier.
      */
     async unban(role: AuthUserRole, id: string) {
-        await this.cacheService.delete(`banned:${role}:${id}`);
+        await this.cacheStateService.deleteBan(role, id);
     }
 
     /**

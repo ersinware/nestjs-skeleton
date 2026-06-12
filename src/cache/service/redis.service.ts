@@ -1,5 +1,5 @@
 /**
- * @file redis-cache.service.ts
+ * @file redis.service.ts
  * @description Redis implementation of the ICacheService interface using ioredis client.
  */
 
@@ -14,13 +14,13 @@ const ERROR_MESSAGE_EMPTY_KEY = 'Cache key must be a non-empty string.';
  * Service managing cache operations backed by Redis client.
  */
 @Injectable()
-export class RedisCacheService implements ICacheService {
+export class RedisService implements ICacheService {
     /**
-     * Creates an instance of RedisCacheService.
+     * Creates an instance of RedisService.
      *
      * @param redis The injected Redis client.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly redis: Redis) {}
+    constructor(@Inject(TOKEN_CACHE_CLIENT) protected readonly redis: Redis) {}
 
     /**
      * Gets a key's value from Redis.

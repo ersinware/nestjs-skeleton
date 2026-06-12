@@ -25,7 +25,7 @@ export class HealthService {
      * @param healthIndicatorService Service to create custom health indicators.
      * @param configService Configuration provider for reading memory limit thresholds.
      * @param databaseHealthIndicator Database health indicator to test connection.
-     * @param cacheHealthIndicator Cache health indicator to test connection.
+     * @param cacheHealthIndicator Cache and State health indicator to test connection.
      */
     constructor(
         private readonly health: HealthCheckService,
@@ -37,7 +37,7 @@ export class HealthService {
     ) {}
 
     /**
-     * Executes heap memory, RSS memory, PostgreSQL, and Cache connectivity checks.
+     * Executes heap memory, RSS memory, PostgreSQL, and Cache/State connectivity checks.
      *
      * @returns The health check results from Terminus.
      * @throws {ServiceUnavailableException} If any health check indicator fails.
@@ -77,7 +77,7 @@ export class HealthService {
     }
 
     /**
-     * Validates connection to Cache by sending a ping command.
+     * Validates connection to Cache and State by sending a ping command.
      *
      * @returns A health indicator status.
      */

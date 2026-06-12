@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TOKEN_CACHE_CLIENT } from '../constant/cache.constant';
-import { RedisCacheService } from './redis-cache.service';
+import { RedisService } from './redis.service';
 
-describe('RedisCacheService', () => {
+describe('RedisService', () => {
     const mockRedis = {
         get: vi.fn(),
         set: vi.fn(),
@@ -12,12 +12,12 @@ describe('RedisCacheService', () => {
         exists: vi.fn(),
     };
 
-    let service: RedisCacheService;
+    let service: RedisService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                RedisCacheService,
+                RedisService,
                 {
                     provide: TOKEN_CACHE_CLIENT,
                     useValue: mockRedis,
@@ -25,7 +25,7 @@ describe('RedisCacheService', () => {
             ],
         }).compile();
 
-        service = module.get<RedisCacheService>(RedisCacheService);
+        service = module.get<RedisService>(RedisService);
     });
 
     it('should be defined', () => {

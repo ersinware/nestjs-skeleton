@@ -6,7 +6,7 @@
 import { ExecutionContext, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
+import { TOKEN_CACHE_STATE_SERVICE } from 'src/cache/constant/cache.constant';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KEY_DECORATOR_PUBLIC } from '../decorator/auth/public.decorator';
 import { AuthGuard } from './auth.guard';
@@ -16,7 +16,7 @@ import { TokenService } from 'src/v1/auth/token.service';
 describe('AuthGuard', () => {
     const mockReflector = { getAllAndOverride: vi.fn() },
         mockTokenService = { verifyAccessToken: vi.fn() },
-        mockCacheService = { exists: vi.fn() };
+        mockCacheStateService = { isBanned: vi.fn() };
 
     let guard: AuthGuard;
 
@@ -26,7 +26,7 @@ describe('AuthGuard', () => {
                 AuthGuard,
                 { provide: Reflector, useValue: mockReflector },
                 { provide: TokenService, useValue: mockTokenService },
-                { provide: TOKEN_CACHE_SERVICE, useValue: mockCacheService },
+                { provide: TOKEN_CACHE_STATE_SERVICE, useValue: mockCacheStateService },
             ],
         }).compile();
 
@@ -112,7 +112,7 @@ describe('AuthGuard', () => {
                 guard.canActivate(createMockContext({ authorization: 'Bearer invalid.token' })),
             ).rejects.toThrow(UnauthorizedException);
             expect(mockTokenService.verifyAccessToken).toHaveBeenCalledWith('invalid.token');
-            expect(mockCacheService.exists).not.toHaveBeenCalled();
+            expect(mockCacheStateService.isBanned).not.toHaveBeenCalled();
         });
 
         it('should throw UnauthorizedException if user is found in the blocklist cache', async () => {
@@ -122,13 +122,13 @@ describe('AuthGuard', () => {
             };
 
             mockTokenService.verifyAccessToken.mockResolvedValue(payload);
-            mockCacheService.exists.mockResolvedValue(true);
+            mockCacheStateService.isBanned.mockResolvedValue(true);
 
             await expect(guard.canActivate(createMockContext({ authorization: 'Bearer valid.token' }))).rejects.toThrow(
                 UnauthorizedException,
             );
             expect(mockTokenService.verifyAccessToken).toHaveBeenCalledWith('valid.token');
-            expect(mockCacheService.exists).toHaveBeenCalledWith(`banned:${payload.role}:${payload.sub}`);
+            expect(mockCacheStateService.isBanned).toHaveBeenCalledWith(payload.role, payload.sub);
         });
 
         it('should re-throw UnauthorizedException thrown directly by cache service', async () => {
@@ -138,13 +138,13 @@ describe('AuthGuard', () => {
             };
 
             mockTokenService.verifyAccessToken.mockResolvedValue(payload);
-            mockCacheService.exists.mockRejectedValueOnce(new UnauthorizedException());
+            mockCacheStateService.isBanned.mockRejectedValueOnce(new UnauthorizedException());
 
             await expect(guard.canActivate(createMockContext({ authorization: 'Bearer valid.token' }))).rejects.toThrow(
                 UnauthorizedException,
             );
             expect(mockTokenService.verifyAccessToken).toHaveBeenCalledWith('valid.token');
-            expect(mockCacheService.exists).toHaveBeenCalledWith(`banned:${payload.role}:${payload.sub}`);
+            expect(mockCacheStateService.isBanned).toHaveBeenCalledWith(payload.role, payload.sub);
         });
 
         it('should throw InternalServerErrorException if cache service throws a non-unauthorized error', async () => {
@@ -154,26 +154,26 @@ describe('AuthGuard', () => {
             };
 
             mockTokenService.verifyAccessToken.mockResolvedValue(payload);
-            mockCacheService.exists.mockRejectedValueOnce(new Error());
+            mockCacheStateService.isBanned.mockRejectedValueOnce(new Error());
 
             await expect(guard.canActivate(createMockContext({ authorization: 'Bearer valid.token' }))).rejects.toThrow(
                 InternalServerErrorException,
             );
             expect(mockTokenService.verifyAccessToken).toHaveBeenCalledWith('valid.token');
-            expect(mockCacheService.exists).toHaveBeenCalledWith(`banned:${payload.role}:${payload.sub}`);
+            expect(mockCacheStateService.isBanned).toHaveBeenCalledWith(payload.role, payload.sub);
         });
 
         it('should return true and attach payload to request when token is valid and user is not blocklisted', async () => {
             const payload = { sub: '018f43c3-6bb3-7d72-911e-848821a837c3', role: AuthUserRole.USER };
 
             mockTokenService.verifyAccessToken.mockResolvedValue(payload);
-            mockCacheService.exists.mockResolvedValue(false);
+            mockCacheStateService.isBanned.mockResolvedValue(false);
 
             const context = createMockContext({ authorization: 'Bearer valid.token' });
 
             await expect(guard.canActivate(context)).resolves.toBe(true);
             expect(mockTokenService.verifyAccessToken).toHaveBeenCalledWith('valid.token');
-            expect(mockCacheService.exists).toHaveBeenCalledWith(`banned:${payload.role}:${payload.sub}`);
+            expect(mockCacheStateService.isBanned).toHaveBeenCalledWith(payload.role, payload.sub);
             expect(context.switchToHttp().getRequest<Record<string, unknown>>()['accessTokenPayload']).toEqual(payload);
         });
     });
