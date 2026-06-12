@@ -9,13 +9,16 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { ENV } from 'src/common/config/constant/env.constant';
 import {
-    TOKEN_CACHE_CLEANER,
+    TOKEN_CACHE_CLEANER_SERVICE,
     TOKEN_CACHE_CLIENT,
     TOKEN_CACHE_HEALTH_INDICATOR,
     TOKEN_CACHE_SERVICE,
+    TOKEN_CACHE_STATE_CLIENT,
+    TOKEN_CACHE_STATE_SERVICE,
 } from './constant/cache.constant';
-import { RedisCacheService } from './service/redis-cache.service';
-import { RedisCleaner } from './service/redis-cleaner.service';
+import { RedisService } from './service/redis.service';
+import { RedisStateService } from './service/redis-state.service';
+import { RedisCleanerService } from './service/redis-cleaner.service';
 import { RedisHealthIndicator } from './service/redis-health.indicator';
 
 /**
@@ -28,17 +31,37 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
             inject: [ConfigService],
             provide: TOKEN_CACHE_CLIENT,
             useFactory: (config: ConfigService) => {
-                const password = config.getOrThrow<string>(ENV.REDIS_PASSWORD),
+                const password = config.getOrThrow<string>(ENV.REDIS_CACHE_PASSWORD),
                     redis = new Redis({
-                        host: config.getOrThrow<string>(ENV.REDIS_HOST),
-                        port: config.getOrThrow<number>(ENV.REDIS_PORT),
+                        host: config.getOrThrow<string>(ENV.REDIS_CACHE_HOST),
+                        port: config.getOrThrow<number>(ENV.REDIS_CACHE_PORT),
                         ...(password ? { password } : {}),
                         maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
                         commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
                     });
 
                 redis.on('error', (error: Error) => {
-                    console.error(`Redis connection failed: ${error.message}`);
+                    console.error(`Cache connection failed: ${error.message}`);
+                });
+
+                return redis;
+            },
+        },
+        {
+            inject: [ConfigService],
+            provide: TOKEN_CACHE_STATE_CLIENT,
+            useFactory: (config: ConfigService) => {
+                const password = config.getOrThrow<string>(ENV.REDIS_STATE_PASSWORD),
+                    redis = new Redis({
+                        host: config.getOrThrow<string>(ENV.REDIS_STATE_HOST),
+                        port: config.getOrThrow<number>(ENV.REDIS_STATE_PORT),
+                        ...(password ? { password } : {}),
+                        maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
+                        commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
+                    });
+
+                redis.on('error', (error: Error) => {
+                    console.error(`Cache (state) connection failed: ${error.message}`);
                 });
 
                 return redis;
@@ -46,32 +69,47 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
         },
         {
             provide: TOKEN_CACHE_SERVICE,
-            useClass: RedisCacheService,
+            useClass: RedisService,
         },
         {
-            provide: TOKEN_CACHE_CLEANER,
-            useClass: RedisCleaner,
+            provide: TOKEN_CACHE_STATE_SERVICE,
+            useClass: RedisStateService,
+        },
+        {
+            provide: TOKEN_CACHE_CLEANER_SERVICE,
+            useClass: RedisCleanerService,
         },
         {
             provide: TOKEN_CACHE_HEALTH_INDICATOR,
             useClass: RedisHealthIndicator,
         },
     ],
-    exports: [TOKEN_CACHE_CLIENT, TOKEN_CACHE_SERVICE, TOKEN_CACHE_CLEANER, TOKEN_CACHE_HEALTH_INDICATOR],
+    exports: [
+        TOKEN_CACHE_CLIENT,
+        TOKEN_CACHE_STATE_CLIENT,
+        TOKEN_CACHE_SERVICE,
+        TOKEN_CACHE_STATE_SERVICE,
+        TOKEN_CACHE_CLEANER_SERVICE,
+        TOKEN_CACHE_HEALTH_INDICATOR,
+    ],
 })
 export class CacheModule implements OnApplicationShutdown {
     /**
      * Creates an instance of CacheModule.
      *
-     * @param redis The injected Redis client instance.
+     * @param cacheRedis The injected Cache Redis client instance.
+     * @param stateRedis The injected State Redis client instance.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly redis: Redis) {}
+    constructor(
+        @Inject(TOKEN_CACHE_CLIENT) private readonly cacheRedis: Redis,
+        @Inject(TOKEN_CACHE_STATE_CLIENT) private readonly stateRedis: Redis,
+    ) {}
 
     /**
      * NestJS lifecycle hook called when the application is shutting down.
      * Closes the active Redis client connection pool gracefully.
      */
     async onApplicationShutdown() {
-        await this.redis.quit();
+        await Promise.all([this.cacheRedis.quit(), this.stateRedis.quit()]);
     }
 }

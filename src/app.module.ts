@@ -11,7 +11,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import Redis from 'ioredis';
 import { CacheModule } from './cache/cache.module';
-import { TOKEN_CACHE_CLIENT } from './cache/constant/cache.constant';
+import { TOKEN_CACHE_STATE_CLIENT } from './cache/constant/cache.constant';
 import { ENV } from './common/config/constant/env.constant';
 import { validateConfig } from './common/config/env.validation.config';
 import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
@@ -43,7 +43,7 @@ import { EmailModule } from './email/email.module';
         CacheModule,
         ThrottlerModule.forRootAsync({
             imports: [ConfigModule],
-            inject: [ConfigService, TOKEN_CACHE_CLIENT],
+            inject: [ConfigService, TOKEN_CACHE_STATE_CLIENT],
             useFactory: (config: ConfigService, redis: Redis) => ({
                 errorMessage: 'Too many requests.',
                 throttlers: [
@@ -55,27 +55,27 @@ import { EmailModule } from './email/email.module';
                 storage: new ThrottlerStorageRedisService(redis),
             }),
         }),
-        DatabaseModule,
         BullModule.forRootAsync({
             inject: [ConfigService],
             useFactory: (config: ConfigService) => {
-                const password = config.getOrThrow<string>(ENV.REDIS_PASSWORD);
+                const password = config.getOrThrow<string>(ENV.REDIS_STATE_PASSWORD);
 
                 return {
                     connection: {
-                        host: config.getOrThrow<string>(ENV.REDIS_HOST),
-                        port: config.getOrThrow<number>(ENV.REDIS_PORT),
+                        host: config.getOrThrow<string>(ENV.REDIS_STATE_HOST),
+                        port: config.getOrThrow<number>(ENV.REDIS_STATE_PORT),
                         ...(password ? { password } : {}),
                     },
                 };
             },
         }),
+        DatabaseModule,
         HealthModule,
         HashingModule,
+        EmailModule,
         AuthModule,
         UserModule,
         AdminModule,
-        EmailModule,
     ],
     providers: [
         {

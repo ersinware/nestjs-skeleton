@@ -64,46 +64,40 @@ export class EnvironmentVariables {
     readonly DATABASE_MAX_LIFETIME!: number;
 
     /**
-     * Heap memory limit (in MB) for system health checks.
-     */
-    @IsNumber()
-    readonly HEALTH_HEAP_LIMIT_MB!: number;
-
-    /**
-     * Resident Set Size (RSS) limit (in MB) for system health checks.
-     */
-    @IsNumber()
-    readonly HEALTH_RSS_LIMIT_MB!: number;
-
-    /**
-     * Time-to-live (TTL) window in seconds for the rate limiter.
-     */
-    @IsNumber()
-    readonly THROTTLE_TTL!: number;
-
-    /**
-     * Maximum number of requests allowed within the defined THROTTLE_TTL window.
-     */
-    @IsNumber()
-    readonly THROTTLE_LIMIT!: number;
-
-    /**
-     * Hostname or IP address of the Redis server.
+     * Hostname or IP address of the Redis Cache server.
      */
     @IsString()
-    readonly REDIS_HOST!: string;
+    readonly REDIS_CACHE_HOST!: string;
 
     /**
-     * Port number on which the Redis server is listening.
+     * Port number on which the Redis Cache server is listening.
      */
     @IsNumber()
-    readonly REDIS_PORT!: number;
+    readonly REDIS_CACHE_PORT!: number;
 
     /**
-     * Password for Redis authentication.
+     * Password for Redis Cache authentication.
      */
     @IsString()
-    readonly REDIS_PASSWORD!: string;
+    readonly REDIS_CACHE_PASSWORD!: string;
+
+    /**
+     * Hostname or IP address of the Redis State server.
+     */
+    @IsString()
+    readonly REDIS_STATE_HOST!: string;
+
+    /**
+     * Port number on which the Redis State server is listening.
+     */
+    @IsNumber()
+    readonly REDIS_STATE_PORT!: number;
+
+    /**
+     * Password for Redis State authentication.
+     */
+    @IsString()
+    readonly REDIS_STATE_PASSWORD!: string;
 
     /**
      * Maximum number of Redis reconnection retries per request.
@@ -146,6 +140,30 @@ export class EnvironmentVariables {
         message: 'JWT_REFRESH_TTL must match the format: duration followed by s, m, h, or d (e.g., "7d", "30d")',
     })
     readonly JWT_REFRESH_TTL!: string;
+
+    /**
+     * Time-to-live (TTL) window in seconds for the rate limiter.
+     */
+    @IsNumber()
+    readonly THROTTLE_TTL!: number;
+
+    /**
+     * Maximum number of requests allowed within the defined THROTTLE_TTL window.
+     */
+    @IsNumber()
+    readonly THROTTLE_LIMIT!: number;
+
+    /**
+     * Heap memory limit (in MB) for system health checks.
+     */
+    @IsNumber()
+    readonly HEALTH_HEAP_LIMIT_MB!: number;
+
+    /**
+     * Resident Set Size (RSS) limit (in MB) for system health checks.
+     */
+    @IsNumber()
+    readonly HEALTH_RSS_LIMIT_MB!: number;
 
     /**
      * Google OAuth2 client ID for Gmail API.

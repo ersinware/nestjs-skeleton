@@ -5,26 +5,30 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_CLIENT } from '../constant/cache.constant';
-import { ICacheCleaner } from '../interface/cache-cleaner.interface';
+import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from '../constant/cache.constant';
+import { ICacheCleanerService } from '../interface/cache-cleaner-service.interface';
 
 /**
  * Redis cleaner utility flushing keys to reset cache states during test suites.
  */
 @Injectable()
-export class RedisCleaner implements ICacheCleaner {
+export class RedisCleanerService implements ICacheCleanerService {
     /**
-     * Creates an instance of RedisCleaner.
+     * Creates an instance of RedisCleanerService.
      *
-     * @param redis Configured Redis client instance.
+     * @param cacheRedis Configured Cache Redis client instance.
+     * @param stateRedis Configured State Redis client instance.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly redis: Redis) {}
+    constructor(
+        @Inject(TOKEN_CACHE_CLIENT) private readonly cacheRedis: Redis,
+        @Inject(TOKEN_CACHE_STATE_CLIENT) private readonly stateRedis: Redis,
+    ) {}
 
     /**
-     * Flushes all keys from Redis cache.
+     * Flushes all keys from Redis cache and state instances.
      *
      */
     async cleanup() {
-        await this.redis.flushall();
+        await Promise.all([this.cacheRedis.flushall(), this.stateRedis.flushall()]);
     }
 }

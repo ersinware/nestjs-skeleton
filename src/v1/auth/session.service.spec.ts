@@ -2,22 +2,24 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionService } from './session.service';
-import { TOKEN_CACHE_SERVICE } from 'src/cache/constant/cache.constant';
+import { TOKEN_CACHE_STATE_SERVICE } from 'src/cache/constant/cache.constant';
+import type { ICacheStateService } from 'src/cache/interface/cache-state-service.interface';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { ENV } from 'src/common/config/constant/env.constant';
 
 describe('SessionService', () => {
-    const mockCacheService = {
-            set: vi.fn(),
-            get: vi.fn(),
-            delete: vi.fn(),
-            deletePattern: vi.fn(),
-        },
+    const mockCacheStateService = {
+            saveSession: vi.fn(),
+            getSession: vi.fn(),
+            deleteSession: vi.fn(),
+            deleteAllSessions: vi.fn(),
+            saveBan: vi.fn(),
+            deleteBan: vi.fn(),
+            isBanned: vi.fn(),
+        } satisfies ICacheStateService,
         mockConfigService = {
             getOrThrow: vi.fn(),
-        },
-        JWT_ACCESS_TTL = '15m',
-        JWT_REFRESH_TTL = '7d';
+        };
 
     let service: SessionService;
 
@@ -25,7 +27,7 @@ describe('SessionService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 SessionService,
-                { provide: TOKEN_CACHE_SERVICE, useValue: mockCacheService },
+                { provide: TOKEN_CACHE_STATE_SERVICE, useValue: mockCacheStateService },
                 { provide: ConfigService, useValue: mockConfigService },
             ],
         }).compile();
@@ -35,9 +37,9 @@ describe('SessionService', () => {
         mockConfigService.getOrThrow.mockImplementation((key: string) => {
             switch (key) {
                 case ENV.JWT_ACCESS_TTL:
-                    return JWT_ACCESS_TTL;
+                    return '15m';
                 case ENV.JWT_REFRESH_TTL:
-                    return JWT_REFRESH_TTL;
+                    return '7d';
                 default:
                     throw new Error(`Unexpected config key: ${key}`);
             }
@@ -57,7 +59,7 @@ describe('SessionService', () => {
 
             await expect(service.openSession(role, id, jti)).resolves.toBeUndefined();
 
-            expect(mockCacheService.set).toHaveBeenCalledWith(`session:${role}:${id}:${jti}`, '1', ttlSeconds);
+            expect(mockCacheStateService.saveSession).toHaveBeenCalledWith(role, id, jti, ttlSeconds);
         });
     });
 
@@ -67,10 +69,10 @@ describe('SessionService', () => {
                 id = 'user-id',
                 jti = 'some-jti';
 
-            mockCacheService.get.mockResolvedValueOnce('1');
+            vi.mocked(mockCacheStateService.getSession).mockResolvedValueOnce('1');
 
             await expect(service.getSession(role, id, jti)).resolves.toBe('1');
-            expect(mockCacheService.get).toHaveBeenCalledWith(`session:${role}:${id}:${jti}`);
+            expect(mockCacheStateService.getSession).toHaveBeenCalledWith(role, id, jti);
         });
     });
 
@@ -81,7 +83,7 @@ describe('SessionService', () => {
                 jti = 'some-jti';
 
             await expect(service.closeSession(role, id, jti)).resolves.toBeUndefined();
-            expect(mockCacheService.delete).toHaveBeenCalledWith(`session:${role}:${id}:${jti}`);
+            expect(mockCacheStateService.deleteSession).toHaveBeenCalledWith(role, id, jti);
         });
     });
 
@@ -91,7 +93,7 @@ describe('SessionService', () => {
                 id = 'user-id';
 
             await expect(service.closeAllSessions(role, id)).resolves.toBeUndefined();
-            expect(mockCacheService.deletePattern).toHaveBeenCalledWith(`session:${role}:${id}:*`);
+            expect(mockCacheStateService.deleteAllSessions).toHaveBeenCalledWith(role, id);
         });
     });
 
@@ -103,7 +105,7 @@ describe('SessionService', () => {
 
             await expect(service.ban(role, id)).resolves.toBeUndefined();
 
-            expect(mockCacheService.set).toHaveBeenCalledWith(`banned:${role}:${id}`, '1', ttlSeconds);
+            expect(mockCacheStateService.saveBan).toHaveBeenCalledWith(role, id, ttlSeconds);
         });
     });
 
@@ -114,7 +116,7 @@ describe('SessionService', () => {
 
             await expect(service.unban(role, id)).resolves.toBeUndefined();
 
-            expect(mockCacheService.delete).toHaveBeenCalledWith(`banned:${role}:${id}`);
+            expect(mockCacheStateService.deleteBan).toHaveBeenCalledWith(role, id);
         });
     });
 

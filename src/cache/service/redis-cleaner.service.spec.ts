@@ -1,27 +1,34 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TOKEN_CACHE_CLIENT } from '../constant/cache.constant';
-import { RedisCleaner } from './redis-cleaner.service';
+import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from '../constant/cache.constant';
+import { RedisCleanerService } from './redis-cleaner.service';
 
-describe('RedisCleaner', () => {
-    const mockRedis = {
-        flushall: vi.fn(),
-    };
+describe('RedisCleanerService', () => {
+    const mockCacheRedis = {
+            flushall: vi.fn(),
+        },
+        mockStateRedis = {
+            flushall: vi.fn(),
+        };
 
-    let service: RedisCleaner;
+    let service: RedisCleanerService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                RedisCleaner,
+                RedisCleanerService,
                 {
                     provide: TOKEN_CACHE_CLIENT,
-                    useValue: mockRedis,
+                    useValue: mockCacheRedis,
+                },
+                {
+                    provide: TOKEN_CACHE_STATE_CLIENT,
+                    useValue: mockStateRedis,
                 },
             ],
         }).compile();
 
-        service = module.get<RedisCleaner>(RedisCleaner);
+        service = module.get<RedisCleanerService>(RedisCleanerService);
     });
 
     it('should be defined', () => {
@@ -29,18 +36,29 @@ describe('RedisCleaner', () => {
     });
 
     describe('cleanup', () => {
-        it('should call flushall on Redis client successfully', async () => {
-            mockRedis.flushall.mockResolvedValueOnce('OK');
+        it('should call flushall on both Redis clients successfully', async () => {
+            mockCacheRedis.flushall.mockResolvedValueOnce('OK');
+            mockStateRedis.flushall.mockResolvedValueOnce('OK');
 
             await expect(service.cleanup()).resolves.toBeUndefined();
-            expect(mockRedis.flushall).toHaveBeenCalledTimes(1);
+            expect(mockCacheRedis.flushall).toHaveBeenCalledTimes(1);
+            expect(mockStateRedis.flushall).toHaveBeenCalledTimes(1);
         });
 
-        it('should throw an error if Redis flushall rejects', async () => {
-            mockRedis.flushall.mockRejectedValueOnce(new Error());
+        it('should throw an error if Redis Cache flushall rejects', async () => {
+            mockCacheRedis.flushall.mockRejectedValueOnce(new Error());
+            mockStateRedis.flushall.mockResolvedValueOnce('OK');
 
             await expect(service.cleanup()).rejects.toThrow(Error);
-            expect(mockRedis.flushall).toHaveBeenCalledTimes(1);
+            expect(mockCacheRedis.flushall).toHaveBeenCalledTimes(1);
+        });
+
+        it('should throw an error if Redis State flushall rejects', async () => {
+            mockCacheRedis.flushall.mockResolvedValueOnce('OK');
+            mockStateRedis.flushall.mockRejectedValueOnce(new Error());
+
+            await expect(service.cleanup()).rejects.toThrow(Error);
+            expect(mockStateRedis.flushall).toHaveBeenCalledTimes(1);
         });
     });
 });
