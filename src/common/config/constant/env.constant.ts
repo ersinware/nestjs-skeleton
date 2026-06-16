@@ -44,4 +44,6 @@ export const ENV = {
     GMAIL_CLIENT_SECRET: 'GMAIL_CLIENT_SECRET',
     GMAIL_REFRESH_TOKEN: 'GMAIL_REFRESH_TOKEN',
     GMAIL_USER_EMAIL: 'GMAIL_USER_EMAIL',
+    SENTRY_DSN: 'SENTRY_DSN',
+    SENTRY_ENVIRONMENT: 'SENTRY_ENVIRONMENT',
 } as const satisfies Record<keyof EnvironmentVariables, string>;

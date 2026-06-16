@@ -20,6 +20,7 @@ A high-performance, production-ready NestJS skeleton designed for horizontal sca
 - **API Documentation**: Swagger and Scalar (`@scalar/nestjs-api-reference`)
 - **Password Hashing**: Argon2
 - **Validation / Transformation**: `class-validator` and `class-transformer`
+- **Error Tracking & Logging**: Sentry (`@sentry/nestjs`) and Pino (`nestjs-pino`)
 - **Testing**: Vitest, Supertest, Spectral (OpenAPI linting), Schemathesis (API contract testing)
 
 ## 📁 Codebase Directory Structure
@@ -33,12 +34,15 @@ nestjs-skeleton/
 ├── drizzle/                            # Database migrations and Drizzle schemas
 ├── src/
 │   ├── app.module.ts                   # App root module (config, throttler, pipes, filters)
+│   ├── instrument.ts                   # Sentry SDK early initialization and performance tracking
 │   ├── main.ts                         # Application bootstrap entry point
 │   ├── common/                         # Shared utilities, filters, decorators, and configurations
 │   │   ├── config/                     # Config validation schemas
 │   │   │   ├── constant/
 │   │   │   │   └── env.constant.ts    # Type-safe ENV key map (satisfies EnvironmentVariables)
 │   │   │   ├── env.validation.config.ts  # Env validation logic
+│   │   │   ├── env.validation.config.spec.ts  # Env validation unit tests
+│   │   │   ├── logger.config.ts        # Pino logger configuration
 │   │   │   ├── documentation.config.ts   # Swagger/Scalar OpenAPI configs
 │   │   │   └── type/
 │   │   │       └── config.type.ts      # Shared configuration types
@@ -80,6 +84,9 @@ nestjs-skeleton/
 │   │   │   ├── auth/                   # Authentication and authorization enums
 │   │   │   │   ├── auth-token-type.enum.ts
 │   │   │   │   └── auth-user-role.enum.ts
+│   │   │   ├── config/                 # Environment configuration enums
+│   │   │   │   ├── environment.enum.ts
+│   │   │   │   └── sentry-environment.enum.ts
 │   │   │   └── error/                  # Error messaging and validation target enums
 │   │   │       ├── bad-request-type.enum.ts
 │   │   │       ├── conflict-type.enum.ts
@@ -126,8 +133,7 @@ nestjs-skeleton/
 │   │       ├── index.ts                # Consolidated schema exporter
 │   │       ├── base.schema.ts          # Base fields (timestamps helper)
 │   │       ├── users/
-│   │       │   ├── users.schema.ts     # Users table structure
-│   │       │   └── users.relations.ts  # Users relationships definitions
+│   │       │   └── users.schema.ts     # Users table structure
 │   │       └── admins/
 │   │           └── admins.schema.ts    # Admins table structure
 │   ├── cache/                          # CacheModule & Redis Client initialization (Split Cache/State)
@@ -160,7 +166,8 @@ nestjs-skeleton/
 │   │   ├── service/
 │   │   │   ├── email.service.ts        # BullMQ job scheduler implementation
 │   │   │   ├── email.service.spec.ts   # Unit tests
-│   │   │   └── gmail.service.ts        # Google Gmail API implementation
+│   │   │   ├── gmail.service.ts        # Google Gmail API implementation
+│   │   │   └── gmail.service.spec.ts   # Google Gmail API unit tests
 │   │   ├── processor/
 │   │   │   ├── email.processor.ts      # BullMQ background job worker
 │   │   │   └── email.processor.spec.ts # Unit tests
@@ -168,9 +175,9 @@ nestjs-skeleton/
 │   ├── health/                         # Health check probes (Liveness / Readiness)
 │   │   ├── dto/
 │   │   │   ├── healthy.dto.ts
-│   │   │   └── unhealthy.dto.ts
-│   │   ├── util/
-│   │   │   └── dto.util.ts
+│   │   │   ├── unhealthy.dto.ts
+│   │   │   └── util/
+│   │   │       └── dto.util.ts
 │   │   ├── health.controller.ts
 │   │   ├── health.controller.spec.ts
 │   │   ├── health.service.ts
@@ -290,6 +297,11 @@ The application registers several global guards, interceptors, pipes, and filter
     - **`ValidationPipe`** enforces strict white-listing settings (strips unvalidated fields, forbids unknown values, and automatically maps request bodies to DTO classes).
 - **Exception Filtering (`GlobalExceptionFilter`)**:
     - Intercepts all validation, client, and internal server errors, formatting them into standard error contracts (e.g. `ErrorDefaultDto`).
+    - Integrated with Sentry to automatically report unexpected server-side/database exceptions (HTTP status code >= 500) within the filter implementation.
+- **Structured JSON Logging & Trace Correlation (`nestjs-pino`)**:
+    - Replaces the default NestJS logger globally, formatting all application and framework logs into JSON standard output.
+    - Correlates logs with active request traces by extracting Sentry's current `traceId` and `spanId` context automatically inside a custom mixin.
+    - Conditionally formats output for local development using `pino-pretty` to maximize legibility.
 
 ## 📌 Active Modules & Endpoints
 
@@ -300,28 +312,36 @@ The application registers several global guards, interceptors, pipes, and filter
 
 ### 2. User Module (`/api/v1/user`)
 
-- Public endpoint to register a new user account (`POST /api/v1/user`, `@Public()`).
-- Standard CRUD actions, soft-deletion, and status updates of user accounts managed by `UserService`. Soft-deletion and deactivation trigger instant session eviction via `AuthService`.
-- Search endpoint (`GET /api/v1/user/search`) enabling both users and admins to search user records by name or email with pagination support.
-- Uses Argon2 for secure password handling.
+- `POST /api/v1/user` (`@Public()`): Registers a new user account. Uses Argon2 for secure password hashing.
+- `GET /api/v1/user` (Admin/SuperAdmin): Retrieves all users with pagination and optional name/email search. Results are cached in Redis via `RedisService`.
+- `GET /api/v1/user/me`: Retrieves the currently authenticated user's profile (cached in Redis).
+- `GET /api/v1/user/:id` (Admin/SuperAdmin): Retrieves a specific user by ID (cached in Redis).
+- `PATCH /api/v1/user/me`: Updates the currently authenticated user's profile details. Invalidates relevant cache entries on success.
+- `PATCH /api/v1/user/me/password`: Changes the currently authenticated user's password after verifying the current password. Invalidates cache.
+- `DELETE /api/v1/user/me`: Soft-deletes the currently authenticated user's own account, evicting all sessions and banning the principal instantly.
+- `PATCH /api/v1/user/:id/status` (Admin/SuperAdmin): Updates a user's active status. Deactivation triggers session eviction and ban; reactivation removes the ban.
 
 ### 3. Authentication & Authorization (`/api/v1/auth`)
 
-- **Secure-by-Default**: JWT-based authentication enabled globally (`JwtAuthGuard` and `RolesGuard`). Bypassed using the `@Public()` decorator.
-- **Login Routes**: Separate credential validation portals:
-    - User Login: `POST /api/v1/auth/user/login` (queries `users` table)
-    - Admin Login: `POST /api/v1/auth/admin/login` (queries `admins` table)
-- **Unified Refresh Route**: A single endpoint `POST /api/v1/auth/refresh` that verifies and rotates both user and admin sessions.
+- **Secure-by-Default**: JWT-based authentication enabled globally (`AuthGuard` and `AuthRolesGuard`). Bypassed using the `@Public()` decorator.
+- **Login Routes** (`@Public()`):
+    - `POST /api/v1/auth/user/login`: Validates user credentials and issues JWT access + refresh token pair (queries `users` table).
+    - `POST /api/v1/auth/admin/login`: Validates admin credentials and issues JWT access + refresh token pair (queries `admins` table).
+- `POST /api/v1/auth/refresh` (`@Public()`): Rotates both user and admin sessions — verifies refresh token, detects replay attacks (revokes all sessions + bans on replay), then issues a new token pair.
+- `POST /api/v1/auth/logout`: Invalidates the specific session JTI from the refresh token in Redis State.
+- `POST /api/v1/auth/logout-all`: Revokes all active sessions for the authenticated principal and adds a ban blocklist key.
 - **Refresh Token Rotation (RTR)**: Implements single-session rotation with replay attack detection. If a used token is replayed, all active sessions for the user are immediately revoked.
-- **Instant Session Eviction**: Integrates Redis blocklist keys (`banned:${role}:${id}`) check inside `JwtAuthGuard` to block banned or deleted principals instantly.
+- **Instant Session Eviction**: Integrates Redis blocklist keys (`banned:${role}:${id}`) check inside `AuthGuard` to block banned or deleted principals instantly.
 - **Role-Based Access Control (RBAC)**: Supports roles `'user'`, `'admin'`, and `'super_admin'` via separate `users` and `admins` database tables.
-- **Explicit Ownership Separation**: Removed custom ownership guards in favor of direct token-payload-based `/user/me` routes for mutating self operations, restricting parameterized `/user/:id` read operations to Admin/SuperAdmin roles.
+- **Explicit Ownership Separation**: Direct token-payload-based `/user/me` routes for self-mutation operations; parameterized `/user/:id` read/admin operations restricted to Admin/SuperAdmin roles.
 
 ### 4. Admin Module (`/api/v1/admin`)
 
-- Administrative actions restricted to authorized roles.
-- The `AdminService` manages registration/creation of new admins (restricted to `'super_admin'`), status updates of admin accounts, and soft-deleting admin accounts (restricted to `'super_admin'`). Deactivation or deletion triggers session invalidation.
-- Admin creation automatically generates a strong temporary password, hashes it to store in database, and schedules a welcome email to the admin. If scheduling the email fails, the transaction is manually rolled back (admin record is hard deleted).
+- All endpoints are restricted to `'super_admin'` role via controller-level `@Roles(AuthUserRole.SUPER_ADMIN)`.
+- `POST /api/v1/admin`: Creates a new admin account. Generates a strong temporary password, hashes it, stores it in the database, and schedules a welcome email via BullMQ. If the email scheduling fails, the admin record is hard-deleted (manual transaction rollback). Returns `GetCreatedAdminDto`.
+- `GET /api/v1/admin`: Retrieves all registered admin accounts with pagination. Returns paginated `GetAdminDto`.
+- `DELETE /api/v1/admin/:id`: Soft-deletes an admin account. Super admins cannot be deleted. Evicts all sessions and bans the principal.
+- `PATCH /api/v1/admin/:id/status`: Updates an admin's active status. Super admins cannot be deactivated. Deactivation triggers session eviction and ban; reactivation removes the ban.
 
 ### 5. Email Module
 

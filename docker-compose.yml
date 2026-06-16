@@ -7,6 +7,47 @@ services:
         networks:
             - api-network
 
+    postgres:
+        image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+        container_name: postgres
+        restart: always
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: postgres
+        ports:
+            - '5432:5432'
+        volumes:
+            - pg_data_vol:/var/lib/postgresql
+        networks:
+            - api-network
+
+    redis-cache:
+        image: redis:8.6.3-alpine3.23@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+        container_name: redis-cache
+        restart: always
+        command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --loglevel warning --requirepass "password"
+        ports:
+            - '6379:6379'
+        networks:
+            - api-network
+
+    redis-state:
+        image: redis:8.6.3-alpine3.23@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+        container_name: redis-state
+        restart: always
+        command: redis-server --save 60 1 --loglevel warning --requirepass "password"
+        ports:
+            - '6380:6379'
+        volumes:
+            - redis_state_data:/data
+        networks:
+            - api-network
+
 networks:
     api-network:
         driver: bridge
+
+volumes:
+    pg_data_vol:
+    redis_state_data:

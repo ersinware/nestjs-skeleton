@@ -4,10 +4,12 @@
  */
 
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Logger } from 'nestjs-pino';
 import { Job } from 'bullmq';
 import { JOB_NAME_WELCOME_ADMIN, QUEUE_NAME_EMAIL } from '../constant/email.constant';
 import { GmailService } from '../service/gmail.service';
 import type { WelcomeAdminJobData } from '../type/email.type';
+import * as Sentry from '@sentry/nestjs';
 
 @Processor(QUEUE_NAME_EMAIL)
 export class EmailProcessor extends WorkerHost {
@@ -15,8 +17,12 @@ export class EmailProcessor extends WorkerHost {
      * Creates an instance of EmailProcessor.
      *
      * @param gmailService Service responsible for Gmail API integration.
+     * @param logger The injected Logger service.
      */
-    constructor(private readonly gmailService: GmailService) {
+    constructor(
+        private readonly gmailService: GmailService,
+        private readonly logger: Logger,
+    ) {
         super();
     }
 
@@ -52,6 +58,10 @@ export class EmailProcessor extends WorkerHost {
      */
     @OnWorkerEvent('failed')
     onFailed(job: Job<WelcomeAdminJobData, unknown, string>, error: Error) {
-        console.error(`Job ${job.id} (name: ${job.name}) failed: ${error.message}`, error.stack);
+        this.logger.error(
+            { error, class: 'EmailProcessor', method: 'onFailed', jobId: job.id, jobName: job.name },
+            'Job failed',
+        );
+        Sentry.captureException(error);
     }
 }

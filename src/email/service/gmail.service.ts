@@ -7,6 +7,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google } from 'googleapis';
 import { ENV } from 'src/common/config/constant/env.constant';
+import { Environment } from 'src/common/enum/config/environment.enum';
 
 @Injectable()
 export class GmailService {
@@ -38,7 +39,7 @@ export class GmailService {
      * @param body HTML body content.
      */
     async sendEmail(to: string, subject: string, body: string) {
-        if (this.configService.get<string>('NODE_ENV') === 'test') {
+        if (this.configService.get<Environment>(ENV.NODE_ENV) === Environment.TEST) {
             // Bypass sending real emails in test/CI environments, E2E tests, and automated fuzzing (Schemathesis)
             // to prevent Google Gmail API quota exhaustion and account rate-limiting/suspension.
             return;

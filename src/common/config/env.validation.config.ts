@@ -6,15 +6,8 @@
 
 import { plainToInstance } from 'class-transformer';
 import { IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
-
-/**
- * Enum representing valid execution environments (NODE_ENV) in which the application can run.
- */
-enum Environment {
-    DEVELOPMENT = 'development',
-    PRODUCTION = 'production',
-    TEST = 'test',
-}
+import { Environment } from 'src/common/enum/config/environment.enum';
+import { SentryEnvironment } from 'src/common/enum/config/sentry-environment.enum';
 
 /**
  * Environment variables DTO class used for validating environment variables.
@@ -188,6 +181,18 @@ export class EnvironmentVariables {
      */
     @IsString()
     readonly GMAIL_USER_EMAIL!: string;
+
+    /**
+     * Sentry DSN (Data Source Name) for error tracking.
+     */
+    @IsString()
+    readonly SENTRY_DSN!: string;
+
+    /**
+     * Sentry environment (e.g. production, staging, development).
+     */
+    @IsEnum(SentryEnvironment)
+    readonly SENTRY_ENVIRONMENT!: SentryEnvironment;
 }
 
 /**

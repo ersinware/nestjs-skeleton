@@ -4,17 +4,26 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from 'nestjs-pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailProcessor } from './email.processor';
 import { GmailService } from '../service/gmail.service';
 import type { Job } from 'bullmq';
 import { JOB_NAME_WELCOME_ADMIN } from '../constant/email.constant';
 import type { WelcomeAdminJobData } from '../type/email.type';
+import * as Sentry from '@sentry/nestjs';
+
+vi.mock('@sentry/nestjs', () => ({
+    captureException: vi.fn(),
+}));
 
 describe('EmailProcessor', () => {
     const mockGmailService = {
-        sendEmail: vi.fn(),
-    };
+            sendEmail: vi.fn(),
+        },
+        mockLogger = {
+            error: vi.fn(),
+        };
 
     let processor: EmailProcessor;
 
@@ -25,6 +34,10 @@ describe('EmailProcessor', () => {
                 {
                     provide: GmailService,
                     useValue: mockGmailService,
+                },
+                {
+                    provide: Logger,
+                    useValue: mockLogger,
                 },
             ],
         }).compile();
@@ -61,7 +74,7 @@ describe('EmailProcessor', () => {
         it('should throw an error and not call GmailService when job name is unknown', async () => {
             const job = {
                 name: 'unknown-job',
-                data: { email: '', name: '', password: '' },
+                data: {},
             } as Job<WelcomeAdminJobData, unknown, string>;
 
             await expect(processor.process(job)).rejects.toThrow(Error);
@@ -70,9 +83,8 @@ describe('EmailProcessor', () => {
     });
 
     describe('onFailed', () => {
-        it('should log the failure when a job fails', () => {
-            const error = new Error('SMTP connection timed out'),
-                consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        it('should log the failure and capture in Sentry when a job fails', () => {
+            const error = new Error();
 
             processor.onFailed(
                 {
@@ -82,7 +94,9 @@ describe('EmailProcessor', () => {
                 error,
             );
 
-            expect(consoleErrorSpy).toHaveBeenCalled();
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(Sentry.captureException).toHaveBeenCalledWith(error);
         });
     });
 });

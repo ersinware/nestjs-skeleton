@@ -4,6 +4,7 @@
  */
 
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { HashingService } from 'src/common/hashing/service/hashing.service';
 import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
@@ -17,6 +18,7 @@ import { PostAuthLoginDto } from './dto/post-auth-login.dto';
 import { PostAuthRefreshDto } from './dto/post-auth-refresh.dto';
 import { SessionService } from './session.service';
 import { TokenService } from './token.service';
+import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +30,7 @@ export class AuthService {
      * @param tokenService JWT token operations service.
      * @param sessionService Cache-based session operations service.
      * @param hashingService Hashing operations utility service.
+     * @param logger The injected Logger service.
      */
     constructor(
         @Inject(TOKEN_USERS_REPOSITORY) private readonly usersRepository: IUsersRepository,
@@ -35,6 +38,7 @@ export class AuthService {
         private readonly tokenService: TokenService,
         private readonly sessionService: SessionService,
         private readonly hashingService: HashingService,
+        private readonly logger: Logger,
     ) {}
 
     /**
@@ -111,8 +115,8 @@ export class AuthService {
 
         try {
             payload = await this.tokenService.verifyRefreshToken(dto.refreshToken);
-        } catch {
-            throw new UnauthorizedException(UnauthorizedType.TOKEN);
+        } catch (error) {
+            throw new UnauthorizedException(UnauthorizedType.TOKEN, { cause: error });
         }
 
         if (payload.type !== AuthTokenType.REFRESH) {
@@ -164,9 +168,11 @@ export class AuthService {
 
         try {
             await this.sessionService.closeSession(payload.role, payload.sub, payload.jti);
-        } catch {
-            // Session may not exist or cache may be unavailable — swallowed intentionally.
-            // The refresh token will expire naturally via TTL.
+        } catch (error) {
+            const _error = error instanceof Error ? error : new Error(String(error));
+
+            this.logger.error({ error: _error, class: 'AuthService', method: 'logout' }, 'Session close failed');
+            Sentry.captureException(_error);
         }
     }
 

@@ -5,7 +5,16 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
     {
-        ignores: ['eslint.config.mjs', 'dist/**', '.lintstagedrc.js'],
+        ignores: [
+            'eslint.config.mjs',
+            'dist/**',
+            '.lintstagedrc.js',
+            '.act-artifacts/**',
+            '.vitest-cache/**',
+            '.vitest-cache-e2e/**',
+            'node_modules/**',
+            'coverage/**',
+        ],
     },
     eslint.configs.recommended,
     ...tseslint.configs.recommendedTypeChecked,
@@ -17,7 +26,7 @@ export default tseslint.config(
                 ...globals.node,
             },
             parserOptions: {
-                projectService: true,
+                project: './tsconfig.json',
                 tsconfigRootDir: import.meta.dirname,
             },
         },

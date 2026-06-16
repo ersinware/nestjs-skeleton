@@ -6,10 +6,14 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { ENV } from 'src/common/config/constant/env.constant';
+import { Environment } from 'src/common/enum/config/environment.enum';
 import { ThrottlerGuard, ThrottlerRequest, ThrottlerException } from '@nestjs/throttler';
 import type { ThrottlerModuleOptions, ThrottlerStorage } from '@nestjs/throttler';
+import * as Sentry from '@sentry/nestjs';
 
 /**
  * Custom rate limiting guard that bypasses limits during testing and handles storage failures gracefully.
@@ -23,12 +27,14 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
      * @param storageService Rate-limiting storage provider.
      * @param reflector NestJS Reflector to read route metadata.
      * @param configService Configuration reader service.
+     * @param logger Injected logger service.
      */
     constructor(
         options: ThrottlerModuleOptions,
         storageService: ThrottlerStorage,
         reflector: Reflector,
         private readonly configService: ConfigService,
+        private readonly logger: Logger,
     ) {
         super(options, storageService, reflector);
     }
@@ -43,7 +49,7 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
      * @throws {ThrottlerException} if the rate limit is exceeded.
      */
     protected override async handleRequest(request: ThrottlerRequest): Promise<boolean> {
-        if (this.configService.get<string>('NODE_ENV') === 'test') {
+        if (this.configService.get<Environment>(ENV.NODE_ENV) === Environment.TEST) {
             // Bypass rate-limiting in test/CI environments, E2E tests, and automated fuzzing (Schemathesis)
             // to avoid hitting rate-limiting thresholds and causing false failures during test executions.
             return true;
@@ -56,7 +62,12 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
                 throw error;
             }
 
-            console.error(error instanceof Error ? error.message : String(error));
+            const _error = error instanceof Error ? error : new Error(String(error));
+            this.logger.error(
+                { error: _error, class: 'FailSafeThrottlerGuard', method: 'handleRequest' },
+                'Throttler check failed',
+            );
+            Sentry.captureException(_error);
 
             return true;
         }
