@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ENV } from 'src/common/config/constant/env.constant';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Environment } from 'src/common/enum/config/environment.enum';
 import { GmailService } from './gmail.service';
 
 const mocks = vi.hoisted(() => {
@@ -80,7 +81,7 @@ describe('GmailService', () => {
 
     describe('sendEmail', () => {
         it('should format raw email string and dispatch via Google API messages send method when NODE_ENV is not test', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce('production');
+            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.PRODUCTION);
             mocks.send.mockResolvedValueOnce({});
 
             await expect(
@@ -96,7 +97,7 @@ describe('GmailService', () => {
         });
 
         it('should bypass sending email when NODE_ENV is test', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce('test');
+            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.TEST);
 
             await expect(
                 service.sendEmail('recipient@example.com', 'Test Subject', '<p>Hello</p>'),

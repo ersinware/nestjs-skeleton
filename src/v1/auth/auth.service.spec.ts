@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
@@ -10,6 +11,11 @@ import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { PostAuthLoginDto } from './dto/post-auth-login.dto';
+import * as Sentry from '@sentry/nestjs';
+
+vi.mock('@sentry/nestjs', () => ({
+    captureException: vi.fn(),
+}));
 
 describe('AuthService', () => {
     const mockUsersRepository = {
@@ -35,6 +41,9 @@ describe('AuthService', () => {
         mockHashingService = {
             verify: vi.fn(),
         },
+        mockLogger = {
+            error: vi.fn(),
+        },
         loginDto: PostAuthLoginDto = { email: 'test@example.com', password: 'Password123!' };
 
     let service: AuthService;
@@ -48,6 +57,10 @@ describe('AuthService', () => {
                 { provide: TokenService, useValue: mockTokenService },
                 { provide: SessionService, useValue: mockSessionService },
                 { provide: HashingService, useValue: mockHashingService },
+                {
+                    provide: Logger,
+                    useValue: mockLogger,
+                },
             ],
         }).compile();
 
@@ -343,20 +356,25 @@ describe('AuthService', () => {
             expect(mockSessionService.closeSession).toHaveBeenCalledWith(payload.role, payload.sub, payload.jti);
         });
 
-        it('should swallow any errors thrown during session closure', async () => {
+        it('should swallow and log any errors thrown during session closure', async () => {
             const payload = {
-                sub: 'user-id',
-                role: AuthUserRole.USER,
-                jti: 'active-jti',
-                type: AuthTokenType.REFRESH,
-            };
+                    sub: 'user-id',
+                    role: AuthUserRole.USER,
+                    jti: 'active-jti',
+                    type: AuthTokenType.REFRESH,
+                },
+                error = new Error();
 
             mockTokenService.verifyRefreshToken.mockResolvedValueOnce(payload);
-            mockSessionService.closeSession.mockRejectedValueOnce(new Error());
+            mockSessionService.closeSession.mockRejectedValueOnce(error);
 
             await expect(service.logout(refreshDto)).resolves.toBeUndefined();
             expect(mockTokenService.verifyRefreshToken).toHaveBeenCalledWith(refreshDto.refreshToken);
             expect(mockSessionService.closeSession).toHaveBeenCalledWith(payload.role, payload.sub, payload.jti);
+
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(Sentry.captureException).toHaveBeenCalledWith(error);
         });
     });
 

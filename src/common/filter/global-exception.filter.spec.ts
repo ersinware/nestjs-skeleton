@@ -3,6 +3,7 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GlobalExceptionFilter } from './global-exception.filter';
+import { Logger } from 'nestjs-pino';
 import { ErrorDefaultDto } from '../dto/error-default.dto';
 import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
@@ -11,10 +12,13 @@ import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailabl
 
 describe('GlobalExceptionFilter', () => {
     const mockHttpAdapterHost = {
-        httpAdapter: {
-            reply: vi.fn(),
+            httpAdapter: {
+                reply: vi.fn(),
+            },
         },
-    };
+        mockLogger = {
+            error: vi.fn(),
+        };
 
     let filter: GlobalExceptionFilter;
 
@@ -41,11 +45,14 @@ describe('GlobalExceptionFilter', () => {
                     provide: HttpAdapterHost,
                     useValue: mockHttpAdapterHost,
                 },
+                {
+                    provide: Logger,
+                    useValue: mockLogger,
+                },
             ],
         }).compile();
 
         filter = module.get<GlobalExceptionFilter>(GlobalExceptionFilter);
-        vi.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     it('should be defined', () => {
@@ -425,7 +432,8 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            expect(console.error).toHaveBeenCalledWith(response);
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -448,7 +456,8 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            expect(console.error).toHaveBeenCalledWith(response);
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -473,7 +482,8 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            expect(console.error).toHaveBeenCalledWith(response);
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -496,7 +506,8 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            expect(console.error).toHaveBeenCalledWith(response);
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -517,7 +528,8 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            expect(console.error).toHaveBeenCalledWith(response);
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },

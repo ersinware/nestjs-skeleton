@@ -78,10 +78,10 @@ export class AdminService {
                 name: dto.name,
                 password: generatedPassword,
             });
-        } catch {
+        } catch (error) {
             await this.adminsRepository.hardDelete(admin.id);
 
-            throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
+            throw new InternalServerErrorException(InternalServerErrorType.DEFAULT, { cause: error });
         }
 
         return admin;

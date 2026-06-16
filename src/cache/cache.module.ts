@@ -6,6 +6,7 @@
 
 import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from 'nestjs-pino';
 import Redis from 'ioredis';
 import { ENV } from 'src/common/config/constant/env.constant';
 import {
@@ -28,9 +29,9 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
 @Module({
     providers: [
         {
-            inject: [ConfigService],
+            inject: [ConfigService, Logger],
             provide: TOKEN_CACHE_CLIENT,
-            useFactory: (config: ConfigService) => {
+            useFactory: (config: ConfigService, logger: Logger) => {
                 const password = config.getOrThrow<string>(ENV.REDIS_CACHE_PASSWORD),
                     redis = new Redis({
                         host: config.getOrThrow<string>(ENV.REDIS_CACHE_HOST),
@@ -41,16 +42,19 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
                     });
 
                 redis.on('error', (error: Error) => {
-                    console.error(`Cache connection failed: ${error.message}`);
+                    logger.error(
+                        { error, class: 'CacheModule', method: 'TOKEN_CACHE_CLIENT.on(error)' },
+                        'Cache connection failed',
+                    );
                 });
 
                 return redis;
             },
         },
         {
-            inject: [ConfigService],
+            inject: [ConfigService, Logger],
             provide: TOKEN_CACHE_STATE_CLIENT,
-            useFactory: (config: ConfigService) => {
+            useFactory: (config: ConfigService, logger: Logger) => {
                 const password = config.getOrThrow<string>(ENV.REDIS_STATE_PASSWORD),
                     redis = new Redis({
                         host: config.getOrThrow<string>(ENV.REDIS_STATE_HOST),
@@ -61,7 +65,10 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
                     });
 
                 redis.on('error', (error: Error) => {
-                    console.error(`Cache (state) connection failed: ${error.message}`);
+                    logger.error(
+                        { error, class: 'CacheModule', method: 'TOKEN_CACHE_STATE_CLIENT.on(error)' },
+                        'Cache (state) connection failed',
+                    );
                 });
 
                 return redis;

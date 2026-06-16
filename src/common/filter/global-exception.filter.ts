@@ -3,12 +3,15 @@
  * @description Global exception filter catching and standardizing HTTP and database errors.
  */
 
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { Catch, ExceptionFilter, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import type { ArgumentsHost } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
+import { Logger } from 'nestjs-pino';
+import * as Sentry from '@sentry/nestjs';
 
 /**
  * Database error payload shape.
@@ -45,8 +48,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * Creates an instance of GlobalExceptionFilter.
      *
      * @param httpAdapterHost Host of the HTTP adapter.
+     * @param logger Injection of pino logger service.
      */
-    constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
+    constructor(
+        private readonly httpAdapterHost: HttpAdapterHost,
+        private readonly logger: Logger,
+    ) {}
 
     /**
      * Intercepts and formats exceptions before sending a standardized JSON response.
@@ -142,18 +149,37 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                         statusText = 'Conflict';
 
                         break;
-                    default: // Unhandled database-specific errors
-                        console.error(exception);
+                    default: {
+                        // Unhandled database-specific errors
+                        this.logger.error(
+                            {
+                                error: exception instanceof Error ? exception : new Error(String(exception)),
+                                class: 'GlobalExceptionFilter',
+                                method: 'catch',
+                            },
+                            'Unhandled database-specific error occurred',
+                        );
 
                         break;
+                    }
                 }
             } else {
-                // Unexpected generic exception (log raw stack trace)
-                console.error(exception);
+                // Unexpected generic exception
+                this.logger.error(
+                    {
+                        error: exception instanceof Error ? exception : new Error(String(exception)),
+                        class: 'GlobalExceptionFilter',
+                        method: 'catch',
+                    },
+                    'Unexpected generic exception occurred',
+                );
             }
         }
 
         const finalStatusCode = statusCode ?? HttpStatus.INTERNAL_SERVER_ERROR;
+        if (finalStatusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+            Sentry.captureException(exception);
+        }
 
         // Send the standardized JSON error payload to the client
         this.httpAdapterHost.httpAdapter.reply(

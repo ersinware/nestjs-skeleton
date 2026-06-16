@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
+import { Environment } from 'src/common/enum/config/environment.enum';
+import { SentryEnvironment } from 'src/common/enum/config/sentry-environment.enum';
 import { validateConfig, EnvironmentVariables } from './env.validation.config';
 
 describe('env.validation.config', () => {
     const validConfig: Record<string, unknown> = {
         PORT: 3000,
-        NODE_ENV: 'development',
+        NODE_ENV: Environment.DEVELOPMENT,
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_POOL_SIZE: 10,
         DATABASE_CONNECT_TIMEOUT: 5000,
@@ -36,6 +38,9 @@ describe('env.validation.config', () => {
         GMAIL_CLIENT_SECRET: 'gmail-client-secret',
         GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
         GMAIL_USER_EMAIL: 'user@gmail.com',
+
+        SENTRY_DSN: 'https://sentry-dsn.com',
+        SENTRY_ENVIRONMENT: SentryEnvironment.TEST,
     };
 
     it('should return a validated EnvironmentVariables instance when config is valid', () => {
@@ -43,10 +48,11 @@ describe('env.validation.config', () => {
 
         expect(result).toBeInstanceOf(EnvironmentVariables);
         expect(result.PORT).toBe(3000);
-        expect(result.NODE_ENV).toBe('development');
+        expect(result.NODE_ENV).toBe(Environment.DEVELOPMENT);
         expect(result.DATABASE_URL).toBe('postgres://localhost:5432/db');
         expect(result.JWT_ACCESS_TTL).toBe('15m');
         expect(result.JWT_REFRESH_TTL).toBe('7d');
+        expect(result.SENTRY_ENVIRONMENT).toBe(SentryEnvironment.TEST);
     });
 
     it('should perform implicit type conversions (e.g. string numbers to numbers)', () => {
@@ -82,6 +88,15 @@ describe('env.validation.config', () => {
         const invalidConfig = {
             ...validConfig,
             NODE_ENV: 'staging',
+        };
+
+        expect(() => validateConfig(invalidConfig)).toThrow(Error);
+    });
+
+    it('should throw an error if SENTRY_ENVIRONMENT is not a valid enum value', () => {
+        const invalidConfig = {
+            ...validConfig,
+            SENTRY_ENVIRONMENT: 'staging',
         };
 
         expect(() => validateConfig(invalidConfig)).toThrow(Error);

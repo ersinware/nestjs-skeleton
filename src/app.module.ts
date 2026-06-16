@@ -14,6 +14,7 @@ import { CacheModule } from './cache/cache.module';
 import { TOKEN_CACHE_STATE_CLIENT } from './cache/constant/cache.constant';
 import { ENV } from './common/config/constant/env.constant';
 import { validateConfig } from './common/config/env.validation.config';
+import { Environment } from 'src/common/enum/config/environment.enum';
 import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
 import { FailSafeThrottlerGuard } from './common/guard/fail-safe-throttler.guard';
 import { AuthGuard } from './common/guard/auth.guard';
@@ -27,6 +28,8 @@ import { AuthModule } from './v1/auth/auth.module';
 import { UserModule } from './v1/user/user.module';
 import { NotEmptyBodyPipe } from './common/pipe/not-empty-body.pipe';
 import { BullModule } from '@nestjs/bullmq';
+import { LoggerModule } from 'nestjs-pino';
+import { getLoggerConfig } from './common/config/logger.config';
 import { EmailModule } from './email/email.module';
 
 /**
@@ -37,8 +40,12 @@ import { EmailModule } from './email/email.module';
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
-            envFilePath: process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env',
+            envFilePath: process.env[ENV.NODE_ENV] === Environment.TEST ? '.env.test' : '.env',
             validate: validateConfig,
+        }),
+        LoggerModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: getLoggerConfig,
         }),
         CacheModule,
         ThrottlerModule.forRootAsync({

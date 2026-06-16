@@ -70,8 +70,8 @@ export class AuthGuard implements CanActivate {
         let payload: AccessTokenPayload;
         try {
             payload = await this.tokenService.verifyAccessToken(token);
-        } catch {
-            throw new UnauthorizedException(UnauthorizedType.TOKEN);
+        } catch (error) {
+            throw new UnauthorizedException(UnauthorizedType.TOKEN, { cause: error });
         }
 
         try {
@@ -83,7 +83,7 @@ export class AuthGuard implements CanActivate {
                 throw error;
             }
 
-            throw new InternalServerErrorException(InternalServerErrorType.DEFAULT);
+            throw new InternalServerErrorException(InternalServerErrorType.DEFAULT, { cause: error });
         }
 
         request.accessTokenPayload = payload;

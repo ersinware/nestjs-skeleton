@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as argon2 from 'argon2';
+import { Environment } from 'src/common/enum/config/environment.enum';
 import { HashingService } from './hashing.service';
 
 vi.mock('argon2', () => ({
@@ -42,7 +43,7 @@ describe('HashingService', () => {
             expectedHash = '$argon2id$v=19$m=65536,t=3,p=4$somehashedstring';
 
         it('should successfully hash plain text using default argon2 config in non-test env', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce('production');
+            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.PRODUCTION);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(service.hash(plainText)).resolves.toBe(expectedHash);
@@ -50,7 +51,7 @@ describe('HashingService', () => {
         });
 
         it('should use weak argon2 settings in test env to optimize performance', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce('test');
+            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.TEST);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(service.hash(plainText)).resolves.toBe(expectedHash);
@@ -62,7 +63,7 @@ describe('HashingService', () => {
         });
 
         it('should propagate argon2 error during hashing', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce('production');
+            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.PRODUCTION);
             mockedHash.mockRejectedValueOnce(new Error());
 
             await expect(service.hash(plainText)).rejects.toThrow(Error);

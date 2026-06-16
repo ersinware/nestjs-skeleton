@@ -3,12 +3,15 @@
  * @description Application entry point. Configures Fastify, API versioning, routes, and Scalar API documentation.
  */
 
+import './instrument'; // Must be the first import to initialize Sentry
+
 import { IncomingMessage, ServerResponse } from 'http';
 import { VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { apiReference } from '@scalar/nestjs-api-reference';
+import { Logger } from 'nestjs-pino';
 import { ACTIVE_VERSIONS } from 'src/common/config/documentation.config';
 import { ENV } from 'src/common/config/constant/env.constant';
 import { SwaggerManager } from 'src/common/util/swagger.util';
@@ -19,16 +22,17 @@ import { AppModule } from './app.module';
  * Sets up global configurations such as URI-based versioning, API prefix, shutdown hooks, and runs the listener.
  */
 async function bootstrap() {
-    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true })),
+    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true }), {
+            bufferLogs: true,
+        }),
         configService = app.get(ConfigService);
 
     app.enableShutdownHooks()
         .enableVersioning({ type: VersioningType.URI, defaultVersion: '1' })
-        .setGlobalPrefix('api');
+        .setGlobalPrefix('api')
+        .useLogger(app.get(Logger));
 
-    // if (configService.getOrThrow<string>(ENV.NODE_ENV) !== 'production') {
     setupDocumentation(app);
-    // }
 
     await app.listen(configService.getOrThrow<number>(ENV.PORT), '0.0.0.0');
 }

@@ -5,15 +5,23 @@
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, MockInstance } from 'vitest';
+import { Environment } from 'src/common/enum/config/environment.enum';
 import { cleanupCache } from '../../shared/cache.cleaner';
 import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from './fail-safe-throttler.guard.fixture';
 
+vi.mock('@sentry/nestjs', () => ({
+    captureException: vi.fn(),
+}));
+import * as Sentry from '@sentry/nestjs';
+
 describe('FailSafeThrottlerGuard', () => {
-    let app: NestFastifyApplication;
+    let app: NestFastifyApplication, mockLogger: { error: MockInstance };
 
     beforeEach(() => {
-        vi.spyOn(console, 'error').mockImplementation(() => {});
+        mockLogger = {
+            error: vi.fn(),
+        };
     });
 
     afterEach(async () => {
@@ -23,9 +31,10 @@ describe('FailSafeThrottlerGuard', () => {
     describe('when NODE_ENV is set to "test"', () => {
         beforeEach(async () => {
             app = await createFailSafeThrottlerGuardTestApp({
-                nodeEnv: 'test',
+                nodeEnv: Environment.TEST,
                 limit: 2,
                 faultyStorage: false,
+                mockLogger,
             });
             await cleanupCache(app);
         });
@@ -40,9 +49,10 @@ describe('FailSafeThrottlerGuard', () => {
     describe('when NODE_ENV is set to "production"', () => {
         beforeEach(async () => {
             app = await createFailSafeThrottlerGuardTestApp({
-                nodeEnv: 'production',
+                nodeEnv: Environment.PRODUCTION,
                 limit: 2,
                 faultyStorage: false,
+                mockLogger,
             });
             await cleanupCache(app);
         });
@@ -59,9 +69,10 @@ describe('FailSafeThrottlerGuard', () => {
     describe('when the storage provider fails in a production environment', () => {
         beforeEach(async () => {
             app = await createFailSafeThrottlerGuardTestApp({
-                nodeEnv: 'production',
+                nodeEnv: Environment.PRODUCTION,
                 limit: 2,
                 faultyStorage: true,
+                mockLogger,
             });
             await cleanupCache(app);
         });
@@ -71,7 +82,9 @@ describe('FailSafeThrottlerGuard', () => {
             await request(app.getHttpServer()).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
             await request(app.getHttpServer()).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
 
-            expect(console.error).toHaveBeenCalled();
+            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(Sentry.captureException).toHaveBeenCalled();
         });
     });
 });

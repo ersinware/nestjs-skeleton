@@ -11,7 +11,7 @@ import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailabl
 import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
 import { UnhealthyDto } from 'src/health/dto/unhealthy.dto';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { expectErrorDto } from '../../shared/dto-assertion.util';
 import { createTestApp } from '../../shared/test-app.factory';
 import { ExceptionTriggerController, HealthExceptionTriggerController } from './global-exception.filter.fixture';
@@ -23,7 +23,6 @@ describe('GlobalExceptionFilter', () => {
         app = await createTestApp({
             extraControllers: [HealthExceptionTriggerController, ExceptionTriggerController],
         });
-        vi.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     afterEach(async () => {

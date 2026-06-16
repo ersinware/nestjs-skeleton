@@ -4,6 +4,8 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
+import * as Sentry from '@sentry/nestjs';
 import Redis from 'ioredis';
 import { TOKEN_CACHE_CLIENT } from '../constant/cache.constant';
 import type { ICacheService } from '../interface/cache-service.interface';
@@ -19,8 +21,12 @@ export class RedisService implements ICacheService {
      * Creates an instance of RedisService.
      *
      * @param redis The injected Redis client.
+     * @param logger The injected Logger service.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) protected readonly redis: Redis) {}
+    constructor(
+        @Inject(TOKEN_CACHE_CLIENT) protected readonly redis: Redis,
+        private readonly logger: Logger,
+    ) {}
 
     /**
      * Gets a key's value from Redis, automatically parsing JSON values if applicable.
@@ -42,7 +48,10 @@ export class RedisService implements ICacheService {
 
             return this.safeParse<T>(value) as T;
         } catch (error) {
-            console.error(`Cache get failed for key "${key}": ${(error as Error).message}`);
+            const _error = error instanceof Error ? error : new Error(String(error));
+
+            this.logger.error({ error: _error, class: 'RedisService', method: 'get' }, 'Cache get failed');
+            Sentry.captureException(_error);
 
             return null;
         }
@@ -84,7 +93,10 @@ export class RedisService implements ICacheService {
                 await this.redis.set(key, stringValue);
             }
         } catch (error) {
-            console.error(`Cache set failed for key "${key}": ${(error as Error).message}`);
+            const _error = error instanceof Error ? error : new Error(String(error));
+
+            this.logger.error({ error: _error, class: 'RedisService', method: 'set' }, 'Cache set failed');
+            Sentry.captureException(_error);
         }
     }
 
@@ -102,7 +114,10 @@ export class RedisService implements ICacheService {
         try {
             await this.redis.del(key);
         } catch (error) {
-            console.error(`Cache delete failed for key "${key}": ${(error as Error).message}`);
+            const _error = error instanceof Error ? error : new Error(String(error));
+
+            this.logger.error({ error: _error, class: 'RedisService', method: 'delete' }, 'Cache delete failed');
+            Sentry.captureException(_error);
         }
     }
 
@@ -129,7 +144,13 @@ export class RedisService implements ICacheService {
                 }
             } while (cursor !== '0');
         } catch (error) {
-            console.error(`Cache deletePattern failed for pattern "${pattern}": ${(error as Error).message}`);
+            const _error = error instanceof Error ? error : new Error(String(error));
+
+            this.logger.error(
+                { error: _error, class: 'RedisService', method: 'deletePattern' },
+                'Cache deletePattern failed',
+            );
+            Sentry.captureException(_error);
         }
     }
 
@@ -148,7 +169,10 @@ export class RedisService implements ICacheService {
         try {
             return (await this.redis.exists(key)) > 0;
         } catch (error) {
-            console.error(`Cache exists failed for key "${key}": ${(error as Error).message}`);
+            const _error = error instanceof Error ? error : new Error(String(error));
+
+            this.logger.error({ error: _error, class: 'RedisService', method: 'exists' }, 'Cache exists failed');
+            Sentry.captureException(_error);
 
             return false;
         }
