@@ -10,6 +10,7 @@ import { JOB_NAME_WELCOME_ADMIN, QUEUE_NAME_EMAIL } from '../constant/email.cons
 import { GmailService } from '../service/gmail.service';
 import type { WelcomeAdminJobData } from '../type/email.type';
 import * as Sentry from '@sentry/nestjs';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 @Processor(QUEUE_NAME_EMAIL)
 export class EmailProcessor extends WorkerHost {
@@ -38,7 +39,7 @@ export class EmailProcessor extends WorkerHost {
 
                 await this.gmailService.sendEmail(
                     email,
-                    'Welcome to NestJS Skeleton',
+                    'Welcome',
                     `<p>Hello ${name},</p><p>Your administrator account has been created.</p><p>Temporary Password: <strong>${password}</strong></p>`,
                 );
 
@@ -59,8 +60,13 @@ export class EmailProcessor extends WorkerHost {
     @OnWorkerEvent('failed')
     onFailed(job: Job<WelcomeAdminJobData, unknown, string>, error: Error) {
         this.logger.error(
-            { error, class: 'EmailProcessor', method: 'onFailed', jobId: job.id, jobName: job.name },
-            'Job failed',
+            new LogPayload({
+                class: this.constructor.name,
+                method: this.onFailed.name,
+                error,
+                jobId: job.id,
+                jobName: job.name,
+            }),
         );
         Sentry.captureException(error);
     }

@@ -14,6 +14,7 @@ import { Environment } from 'src/common/enum/config/environment.enum';
 import { ThrottlerGuard, ThrottlerRequest, ThrottlerException } from '@nestjs/throttler';
 import type { ThrottlerModuleOptions, ThrottlerStorage } from '@nestjs/throttler';
 import * as Sentry from '@sentry/nestjs';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 /**
  * Custom rate limiting guard that bypasses limits during testing and handles storage failures gracefully.
@@ -63,9 +64,13 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
             }
 
             const _error = error instanceof Error ? error : new Error(String(error));
+
             this.logger.error(
-                { error: _error, class: 'FailSafeThrottlerGuard', method: 'handleRequest' },
-                'Throttler check failed',
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.handleRequest.name,
+                    error: _error,
+                }),
             );
             Sentry.captureException(_error);
 

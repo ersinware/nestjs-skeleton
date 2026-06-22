@@ -1,0 +1,28 @@
+# Promtail server settings
+server:
+    http_listen_port: 9080
+
+# File to store the read positions of scraped log files
+positions:
+    filename: /tmp/positions.yaml
+
+# Loki endpoint where collected logs are pushed
+clients:
+    - url: http://loki:3100/loki/api/v1/push
+
+# Log scraping configurations
+scrape_configs:
+    # Job definition to collect logs from Docker containers
+    - job_name: docker-containers
+      # Connects to the Docker daemon socket to dynamically discover running containers
+      docker_sd_configs:
+          - host: unix:///var/run/docker.sock
+      # Label restructuring and mapping rules for incoming container logs
+      relabel_configs:
+          # Strips the leading slash from the container name and assigns it to the "container" label
+          - source_labels: [__meta_docker_container_name]
+            regex: '/(.*)'
+            target_label: container
+          # Maps the log stream type (stdout or stderr) to the "stream" label
+          - source_labels: [__meta_docker_container_log_stream]
+            target_label: stream

@@ -3,7 +3,8 @@
  * @description Application entry point. Configures Fastify, API versioning, routes, and Scalar API documentation.
  */
 
-import './instrument'; // Must be the first import to initialize Sentry
+import './tracing'; // Must be the absolute first import to initialize OpenTelemetry Auto-Instrumentation
+import './instrument'; // Must be the second import to initialize Sentry
 
 import { IncomingMessage, ServerResponse } from 'http';
 import { VersioningType } from '@nestjs/common';

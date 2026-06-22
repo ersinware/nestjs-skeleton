@@ -41,6 +41,10 @@ describe('env.validation.config', () => {
 
         SENTRY_DSN: 'https://sentry-dsn.com',
         SENTRY_ENVIRONMENT: SentryEnvironment.TEST,
+
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://localhost:4318/v1/traces',
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://localhost:4318/v1/metrics',
+        OTEL_SERVICE_NAME: 'nestjs-skeleton',
     };
 
     it('should return a validated EnvironmentVariables instance when config is valid', () => {

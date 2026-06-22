@@ -11,7 +11,7 @@ A high-performance, production-ready NestJS skeleton designed for horizontal sca
 
 ## 🛠️ Architecture & Tech Stack
 
-- **Framework**: NestJS (v11+)
+- **Framework**: NestJS (v11+) with **SWC** builder (enabled for fast development builds and reduced memory footprint)
 - **HTTP Platform**: Fastify (`@nestjs/platform-fastify`)
 - **Database / ORM**: Drizzle ORM with PostgreSQL driver (`postgres` client)
 - **Caching & Rate Limiting**: Redis (`ioredis`, `@nest-lab/throttler-storage-redis`)
@@ -21,6 +21,8 @@ A high-performance, production-ready NestJS skeleton designed for horizontal sca
 - **Password Hashing**: Argon2
 - **Validation / Transformation**: `class-validator` and `class-transformer`
 - **Error Tracking & Logging**: Sentry (`@sentry/nestjs`) and Pino (`nestjs-pino`)
+- **Observability (Metrics & Tracing)**: OpenTelemetry (`@opentelemetry/sdk-node`), Prometheus (with OTLP HTTP receiver), Jaeger, Grafana, Loki & Promtail
+- **Telemetry Exporters**: PostgreSQL Exporter (`prometheuscommunity/postgres-exporter`), Redis Exporter (`oliver006/redis_exporter`)
 - **Testing**: Vitest, Supertest, Spectral (OpenAPI linting), Schemathesis (API contract testing)
 
 ## 📁 Codebase Directory Structure
@@ -31,18 +33,27 @@ nestjs-skeleton/
 │   ├── rules/
 │   │   └── nestjs-skeleton.md          # Core rules and behaviors for AI agents
 │   └── project-summary.md              # This file (Project Summary & Context)
+├── docker/                             # Observability provisioning configuration
+│   ├── grafana/
+│   │   └── provisioning/
+│   │       └── datasources/
+│   │           └── datasources.yml     # Grafana datasources configuration (Loki, Prometheus, Jaeger)
+│   ├── prometheus/
+│   │   └── prometheus.yml              # Prometheus scrape jobs and receiver configuration
+│   └── promtail/
+│       └── promtail-config.yml         # Promtail scraping target configuration
 ├── drizzle/                            # Database migrations and Drizzle schemas
 ├── src/
 │   ├── app.module.ts                   # App root module (config, throttler, pipes, filters)
 │   ├── instrument.ts                   # Sentry SDK early initialization and performance tracking
 │   ├── main.ts                         # Application bootstrap entry point
+│   ├── tracing.ts                      # OpenTelemetry SDK initialization (imported first in main.ts)
 │   ├── common/                         # Shared utilities, filters, decorators, and configurations
 │   │   ├── config/                     # Config validation schemas
 │   │   │   ├── constant/
 │   │   │   │   └── env.constant.ts    # Type-safe ENV key map (satisfies EnvironmentVariables)
 │   │   │   ├── env.validation.config.ts  # Env validation logic
 │   │   │   ├── env.validation.config.spec.ts  # Env validation unit tests
-│   │   │   ├── logger.config.ts        # Pino logger configuration
 │   │   │   ├── documentation.config.ts   # Swagger/Scalar OpenAPI configs
 │   │   │   └── type/
 │   │   │       └── config.type.ts      # Shared configuration types
@@ -113,6 +124,13 @@ nestjs-skeleton/
 │   │   ├── pipe/                       # Validation pipes
 │   │   │   ├── not-empty-body.pipe.ts
 │   │   │   └── not-empty-body.pipe.spec.ts
+│   │   ├── logger/                     # Unified logging concerns
+│   │   │   ├── logger.config.ts        # Pino logger configuration
+│   │   │   ├── log-payload.ts          # Base structured log payload class
+│   │   │   ├── audit-log-payload.ts    # Audit-specific log payload class
+│   │   │   └── enum/
+│   │   │       ├── audit-log-action.enum.ts # Standard audit log actions
+│   │   │       └── audit-log-auth-reason.enum.ts # Failed authentication reasons
 │   │   └── util/                       # Helper utilities
 │   │       ├── password-generator.util.spec.ts
 │   │       ├── password-generator.util.ts
@@ -277,6 +295,11 @@ nestjs-skeleton/
         ├── database.cleaner.ts         # Database cleaner helper
         ├── cache.cleaner.ts            # Redis cache cleaner helper
         └── dto-assertion.util.ts       # expectDataDto, expectDataArrayDto, and expectErrorDto assertion wrappers
+├── docker-compose.dev.yml              # Docker compose override for local development
+├── docker-compose.prod.yml             # Docker compose override for production builds
+├── docker-compose.yml                  # Root Docker compose service definitions
+├── package.json                        # Node project manifest (scripts and dependencies)
+└── vitest.config.mts                   # Testing runner configuration
 ```
 
 ## 🛡️ Global Request Pipeline & Cross-Cutting Concerns
@@ -298,10 +321,11 @@ The application registers several global guards, interceptors, pipes, and filter
 - **Exception Filtering (`GlobalExceptionFilter`)**:
     - Intercepts all validation, client, and internal server errors, formatting them into standard error contracts (e.g. `ErrorDefaultDto`).
     - Integrated with Sentry to automatically report unexpected server-side/database exceptions (HTTP status code >= 500) within the filter implementation.
-- **Structured JSON Logging & Trace Correlation (`nestjs-pino`)**:
-    - Replaces the default NestJS logger globally, formatting all application and framework logs into JSON standard output.
-    - Correlates logs with active request traces by extracting Sentry's current `traceId` and `spanId` context automatically inside a custom mixin.
-    - Conditionally formats output for local development using `pino-pretty` to maximize legibility.
+- **Structured JSON Logging & Trace Correlation (`nestjs-pino` & `OpenTelemetry`)**:
+    - Replaces the default NestJS logger globally, formatting all application and framework logs into structured JSON standard output.
+    - Uses custom `LogPayload` and `AuditLogPayload` to enforce structured contextual details (class, method, error, audit actions) on all logger calls.
+    - Correlates logs with active request traces using OpenTelemetry Pino instrumentation to automatically inject the active `traceId` and `spanId` context.
+    - Emits structured `AUDIT` logs for critical business events (login failures, replay attacks, security exceptions).
 
 ## 📌 Active Modules & Endpoints
 
@@ -310,7 +334,14 @@ The application registers several global guards, interceptors, pipes, and filter
 - Health check endpoints that expose liveness/readiness indicators for orchestration platforms. Monitors heap memory, RSS memory, PostgreSQL database, and Redis connections.
 - The `HealthService` is completely decoupled from direct Drizzle ORM/Postgres and Redis/ioredis dependencies using the `IDatabaseHealthIndicator` and `ICacheHealthIndicator` interfaces and token injection.
 
-### 2. User Module (`/api/v1/user`)
+### 2. Observability & Telemetry Infrastructure
+
+- **Application Performance Metrics**: Automatically collected and pushed via OpenTelemetry OTLP to the Prometheus receiver (`http://prometheus:4318/v1/metrics`) every 15 seconds. No pull endpoints are exposed on the NestJS app.
+- **Database Telemetry**: Scraped from PostgreSQL using `postgres-exporter:9187` to track active database connections, query throughput, and transaction metrics.
+- **Cache & State Telemetry**: Scraped from Redis Cache (`redis-cache-exporter:9121`) and Redis State (`redis-state-exporter:9121`) using separate exporter instances to monitor memory load, key distributions, and eviction rates.
+- **Structured Logs & Traces**: Container standard outputs are parsed by Promtail and aggregated in Grafana Loki with structured Pino levels. Tracing spans are captured and forwarded to Jaeger.
+
+### 3. User Module (`/api/v1/user`)
 
 - `POST /api/v1/user` (`@Public()`): Registers a new user account. Uses Argon2 for secure password hashing.
 - `GET /api/v1/user` (Admin/SuperAdmin): Retrieves all users with pagination and optional name/email search. Results are cached in Redis via `RedisService`.
@@ -321,7 +352,7 @@ The application registers several global guards, interceptors, pipes, and filter
 - `DELETE /api/v1/user/me`: Soft-deletes the currently authenticated user's own account, evicting all sessions and banning the principal instantly.
 - `PATCH /api/v1/user/:id/status` (Admin/SuperAdmin): Updates a user's active status. Deactivation triggers session eviction and ban; reactivation removes the ban.
 
-### 3. Authentication & Authorization (`/api/v1/auth`)
+### 4. Authentication & Authorization (`/api/v1/auth`)
 
 - **Secure-by-Default**: JWT-based authentication enabled globally (`AuthGuard` and `AuthRolesGuard`). Bypassed using the `@Public()` decorator.
 - **Login Routes** (`@Public()`):
@@ -335,7 +366,7 @@ The application registers several global guards, interceptors, pipes, and filter
 - **Role-Based Access Control (RBAC)**: Supports roles `'user'`, `'admin'`, and `'super_admin'` via separate `users` and `admins` database tables.
 - **Explicit Ownership Separation**: Direct token-payload-based `/user/me` routes for self-mutation operations; parameterized `/user/:id` read/admin operations restricted to Admin/SuperAdmin roles.
 
-### 4. Admin Module (`/api/v1/admin`)
+### 5. Admin Module (`/api/v1/admin`)
 
 - All endpoints are restricted to `'super_admin'` role via controller-level `@Roles(AuthUserRole.SUPER_ADMIN)`.
 - `POST /api/v1/admin`: Creates a new admin account. Generates a strong temporary password, hashes it, stores it in the database, and schedules a welcome email via BullMQ. If the email scheduling fails, the admin record is hard-deleted (manual transaction rollback). Returns `GetCreatedAdminDto`.
@@ -343,12 +374,12 @@ The application registers several global guards, interceptors, pipes, and filter
 - `DELETE /api/v1/admin/:id`: Soft-deletes an admin account. Super admins cannot be deleted. Evicts all sessions and bans the principal.
 - `PATCH /api/v1/admin/:id/status`: Updates an admin's active status. Super admins cannot be deactivated. Deactivation triggers session eviction and ban; reactivation removes the ban.
 
-### 5. Email Module
+### 6. Email Module
 
 - Asynchronously sends emails using BullMQ background worker queues backed by Redis to prevent blocking request cycles.
 - Sends emails via Google Gmail API OAuth2 using OAuth Client ID, Secret, and Refresh Token configurations.
 
-### 6. Cache & Session State Module (Split Client Architecture)
+### 7. Cache & Session State Module (Split Client Architecture)
 
 - **Split Connection Design**: The application maintains two separate Redis client instances and connection ports:
     - **Cache Client (`RedisService`)**: Responsible for transient application data caching (like caching user details or user lists). Implements automatic JSON serialization, recursive sanitization to strip sensitive fields (such as passwords), and fail-open resilience (reverts to db queries on connection failure).

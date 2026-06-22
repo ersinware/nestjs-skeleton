@@ -11,11 +11,19 @@ import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
 import { PostAuthLoginDto } from './dto/post-auth-login.dto';
+import { AuditLogAction } from 'src/common/logger/enum/audit-log-action.enum';
+import { AuditLogAuthReason } from 'src/common/logger/enum/audit-log-auth-reason.enum';
 import * as Sentry from '@sentry/nestjs';
+import { AuditLogPayload } from 'src/common/logger/audit-log-payload';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 vi.mock('@sentry/nestjs', () => ({
     captureException: vi.fn(),
 }));
+
+interface CauseHolder {
+    cause?: unknown;
+}
 
 describe('AuthService', () => {
     const mockUsersRepository = {
@@ -43,6 +51,8 @@ describe('AuthService', () => {
         },
         mockLogger = {
             error: vi.fn(),
+            warn: vi.fn(),
+            log: vi.fn(),
         },
         loginDto: PostAuthLoginDto = { email: 'test@example.com', password: 'Password123!' };
 
@@ -75,19 +85,65 @@ describe('AuthService', () => {
         it('should throw UnauthorizedException if user does not exist', async () => {
             mockUsersRepository.findByEmail.mockResolvedValueOnce(null);
 
-            await expect(service.loginUser(loginDto)).rejects.toThrow(UnauthorizedException);
+            let exception: unknown;
+            try {
+                await service.loginUser(loginDto);
+            } catch (err) {
+                exception = err;
+            }
+
+            expect(exception).toBeInstanceOf(UnauthorizedException);
+            const cause = (exception as CauseHolder).cause;
+            expect(cause).toBeInstanceOf(AuditLogPayload);
+            expect(cause).toEqual(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginUser.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.ACCOUNT_NOT_FOUND,
+                    sub: undefined,
+                    role: AuthUserRole.USER,
+                }),
+            );
+
             expect(mockUsersRepository.findByEmail).toHaveBeenCalledWith(loginDto.email);
+            expect(mockHashingService.verify).not.toHaveBeenCalled();
+            expect(mockLogger.warn).not.toHaveBeenCalled();
         });
 
         it('should throw UnauthorizedException if user exists but is not active', async () => {
-            mockUsersRepository.findByEmail.mockResolvedValueOnce({
+            const principal = {
                 id: 'user-id',
                 email: loginDto.email,
+                password: 'hashed-password',
                 isActive: false,
-            });
+            };
+            mockUsersRepository.findByEmail.mockResolvedValueOnce(principal);
 
-            await expect(service.loginUser(loginDto)).rejects.toThrow(UnauthorizedException);
+            let exception: unknown;
+            try {
+                await service.loginUser(loginDto);
+            } catch (err) {
+                exception = err;
+            }
+
+            expect(exception).toBeInstanceOf(UnauthorizedException);
+            const cause = (exception as CauseHolder).cause;
+            expect(cause).toBeInstanceOf(AuditLogPayload);
+            expect(cause).toEqual(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginUser.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.INACTIVE_ACCOUNT,
+                    sub: principal.id,
+                    role: AuthUserRole.USER,
+                }),
+            );
+
             expect(mockUsersRepository.findByEmail).toHaveBeenCalledWith(loginDto.email);
+            expect(mockHashingService.verify).not.toHaveBeenCalled();
+            expect(mockLogger.warn).not.toHaveBeenCalled();
         });
 
         it('should throw UnauthorizedException if password verification fails', async () => {
@@ -101,9 +157,31 @@ describe('AuthService', () => {
             mockUsersRepository.findByEmail.mockResolvedValueOnce(principal);
             mockHashingService.verify.mockResolvedValueOnce(false);
 
-            await expect(service.loginUser(loginDto)).rejects.toThrow(UnauthorizedException);
+            let exception: unknown;
+            try {
+                await service.loginUser(loginDto);
+            } catch (err) {
+                exception = err;
+            }
+
+            expect(exception).toBeInstanceOf(UnauthorizedException);
+            const cause = (exception as CauseHolder).cause;
+            expect(cause).toBeInstanceOf(AuditLogPayload);
+            expect(cause).toEqual(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginUser.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.INVALID_PASSWORD,
+                    sub: principal.id,
+                    role: AuthUserRole.USER,
+                }),
+            );
+
             expect(mockUsersRepository.findByEmail).toHaveBeenCalledWith(loginDto.email);
             expect(mockHashingService.verify).toHaveBeenCalledWith(principal.password, loginDto.password);
+            expect(mockLogger.warn).not.toHaveBeenCalled();
+            expect(mockTokenService.generateTokens).not.toHaveBeenCalled();
         });
 
         it('should successfully log in, open a session, and return tokens', async () => {
@@ -131,6 +209,15 @@ describe('AuthService', () => {
             expect(mockHashingService.verify).toHaveBeenCalledWith(principal.password, loginDto.password);
             expect(mockTokenService.generateTokens).toHaveBeenCalledWith(AuthUserRole.USER, principal.id);
             expect(mockSessionService.openSession).toHaveBeenCalledWith(AuthUserRole.USER, principal.id, tokens.jti);
+            expect(mockLogger.log).toHaveBeenCalledWith(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginUser.name,
+                    action: AuditLogAction.LOGIN_SUCCESS,
+                    sub: principal.id,
+                    role: AuthUserRole.USER,
+                }),
+            );
         });
     });
 
@@ -138,19 +225,65 @@ describe('AuthService', () => {
         it('should throw UnauthorizedException if admin does not exist', async () => {
             mockAdminsRepository.findByEmail.mockResolvedValueOnce(null);
 
-            await expect(service.loginAdmin(loginDto)).rejects.toThrow(UnauthorizedException);
+            let exception: unknown;
+            try {
+                await service.loginAdmin(loginDto);
+            } catch (err) {
+                exception = err;
+            }
+
+            expect(exception).toBeInstanceOf(UnauthorizedException);
+            const cause = (exception as CauseHolder).cause;
+            expect(cause).toBeInstanceOf(AuditLogPayload);
+            expect(cause).toEqual(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginAdmin.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.ACCOUNT_NOT_FOUND,
+                    sub: undefined,
+                    role: AuthUserRole.ADMIN,
+                }),
+            );
+
             expect(mockAdminsRepository.findByEmail).toHaveBeenCalledWith(loginDto.email);
+            expect(mockHashingService.verify).not.toHaveBeenCalled();
+            expect(mockLogger.warn).not.toHaveBeenCalled();
         });
 
         it('should throw UnauthorizedException if admin exists but is not active', async () => {
-            mockAdminsRepository.findByEmail.mockResolvedValueOnce({
+            const principal = {
                 id: 'admin-id',
                 email: loginDto.email,
+                password: 'hashed-password',
                 isActive: false,
-            });
+            };
+            mockAdminsRepository.findByEmail.mockResolvedValueOnce(principal);
 
-            await expect(service.loginAdmin(loginDto)).rejects.toThrow(UnauthorizedException);
+            let exception: unknown;
+            try {
+                await service.loginAdmin(loginDto);
+            } catch (err) {
+                exception = err;
+            }
+
+            expect(exception).toBeInstanceOf(UnauthorizedException);
+            const cause = (exception as CauseHolder).cause;
+            expect(cause).toBeInstanceOf(AuditLogPayload);
+            expect(cause).toEqual(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginAdmin.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.INACTIVE_ACCOUNT,
+                    sub: principal.id,
+                    role: AuthUserRole.ADMIN,
+                }),
+            );
+
             expect(mockAdminsRepository.findByEmail).toHaveBeenCalledWith(loginDto.email);
+            expect(mockHashingService.verify).not.toHaveBeenCalled();
+            expect(mockLogger.warn).not.toHaveBeenCalled();
         });
 
         it('should throw UnauthorizedException if password verification fails', async () => {
@@ -164,9 +297,31 @@ describe('AuthService', () => {
             mockAdminsRepository.findByEmail.mockResolvedValueOnce(principal);
             mockHashingService.verify.mockResolvedValueOnce(false);
 
-            await expect(service.loginAdmin(loginDto)).rejects.toThrow(UnauthorizedException);
+            let exception: unknown;
+            try {
+                await service.loginAdmin(loginDto);
+            } catch (err) {
+                exception = err;
+            }
+
+            expect(exception).toBeInstanceOf(UnauthorizedException);
+            const cause = (exception as CauseHolder).cause;
+            expect(cause).toBeInstanceOf(AuditLogPayload);
+            expect(cause).toEqual(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginAdmin.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.INVALID_PASSWORD,
+                    sub: principal.id,
+                    role: AuthUserRole.ADMIN,
+                }),
+            );
+
             expect(mockAdminsRepository.findByEmail).toHaveBeenCalledWith(loginDto.email);
             expect(mockHashingService.verify).toHaveBeenCalledWith(principal.password, loginDto.password);
+            expect(mockLogger.warn).not.toHaveBeenCalled();
+            expect(mockTokenService.generateTokens).not.toHaveBeenCalled();
         });
 
         it('should successfully log in, open a session, and return tokens', async () => {
@@ -195,6 +350,15 @@ describe('AuthService', () => {
             expect(mockHashingService.verify).toHaveBeenCalledWith(principal.password, loginDto.password);
             expect(mockTokenService.generateTokens).toHaveBeenCalledWith(AuthUserRole.ADMIN, principal.id);
             expect(mockSessionService.openSession).toHaveBeenCalledWith(AuthUserRole.ADMIN, principal.id, tokens.jti);
+            expect(mockLogger.log).toHaveBeenCalledWith(
+                new AuditLogPayload({
+                    class: AuthService.name,
+                    method: service.loginAdmin.name,
+                    action: AuditLogAction.LOGIN_SUCCESS,
+                    sub: principal.id,
+                    role: AuthUserRole.ADMIN,
+                }),
+            );
         });
     });
 
@@ -231,12 +395,32 @@ describe('AuthService', () => {
                 mockTokenService.verifyRefreshToken.mockResolvedValueOnce(payload);
                 mockSessionService.getSession.mockResolvedValueOnce(null);
 
-                await expect(service.refresh(refreshDto)).rejects.toThrow(UnauthorizedException);
+                let exception: unknown;
+                try {
+                    await service.refresh(refreshDto);
+                } catch (err) {
+                    exception = err;
+                }
+
+                expect(exception).toBeInstanceOf(UnauthorizedException);
+                const cause = (exception as CauseHolder).cause;
+                expect(cause).toBeInstanceOf(AuditLogPayload);
+                expect(cause).toEqual(
+                    new AuditLogPayload({
+                        class: AuthService.name,
+                        method: service.refresh.name,
+                        action: AuditLogAction.REPLAY_ATTACK,
+                        sub: payload.sub,
+                        role: payload.role,
+                        jti: payload.jti,
+                    }),
+                );
 
                 expect(mockTokenService.verifyRefreshToken).toHaveBeenCalledWith(refreshDto.refreshToken);
                 expect(mockSessionService.getSession).toHaveBeenCalledWith(payload.role, payload.sub, payload.jti);
                 expect(mockSessionService.closeAllSessions).toHaveBeenCalledWith(payload.role, payload.sub);
                 expect(mockSessionService.ban).toHaveBeenCalledWith(payload.role, payload.sub);
+                expect(mockLogger.warn).not.toHaveBeenCalled();
             });
         });
 
@@ -296,7 +480,26 @@ describe('AuthService', () => {
                 mockSessionService.getSession.mockResolvedValueOnce('1');
                 repository.findById.mockResolvedValueOnce(null);
 
-                await expect(service.refresh(refreshDto)).rejects.toThrow(UnauthorizedException);
+                let exception: unknown;
+                try {
+                    await service.refresh(refreshDto);
+                } catch (err) {
+                    exception = err;
+                }
+
+                expect(exception).toBeInstanceOf(UnauthorizedException);
+                const cause = (exception as CauseHolder).cause;
+                expect(cause).toBeInstanceOf(AuditLogPayload);
+                expect(cause).toEqual(
+                    new AuditLogPayload({
+                        class: AuthService.name,
+                        method: service.refresh.name,
+                        action: AuditLogAction.LOGIN_FAILED,
+                        reason: AuditLogAuthReason.ACCOUNT_NOT_FOUND,
+                        sub: principalId,
+                        role,
+                    }),
+                );
 
                 expect(mockTokenService.verifyRefreshToken).toHaveBeenCalledWith(refreshDto.refreshToken);
                 expect(mockSessionService.getSession).toHaveBeenCalledWith(role, principalId, payload.jti);
@@ -320,7 +523,26 @@ describe('AuthService', () => {
                 mockSessionService.getSession.mockResolvedValueOnce('1');
                 repository.findById.mockResolvedValueOnce(principal);
 
-                await expect(service.refresh(refreshDto)).rejects.toThrow(UnauthorizedException);
+                let exception: unknown;
+                try {
+                    await service.refresh(refreshDto);
+                } catch (err) {
+                    exception = err;
+                }
+
+                expect(exception).toBeInstanceOf(UnauthorizedException);
+                const cause = (exception as CauseHolder).cause;
+                expect(cause).toBeInstanceOf(AuditLogPayload);
+                expect(cause).toEqual(
+                    new AuditLogPayload({
+                        class: AuthService.name,
+                        method: service.refresh.name,
+                        action: AuditLogAction.LOGIN_FAILED,
+                        reason: AuditLogAuthReason.INACTIVE_ACCOUNT,
+                        sub: principalId,
+                        role,
+                    }),
+                );
 
                 expect(mockTokenService.verifyRefreshToken).toHaveBeenCalledWith(refreshDto.refreshToken);
                 expect(mockSessionService.getSession).toHaveBeenCalledWith(role, principalId, payload.jti);
@@ -372,8 +594,13 @@ describe('AuthService', () => {
             expect(mockTokenService.verifyRefreshToken).toHaveBeenCalledWith(refreshDto.refreshToken);
             expect(mockSessionService.closeSession).toHaveBeenCalledWith(payload.role, payload.sub, payload.jti);
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: AuthService.name,
+                    method: service.logout.name,
+                    error,
+                }),
+            );
             expect(Sentry.captureException).toHaveBeenCalledWith(error);
         });
     });

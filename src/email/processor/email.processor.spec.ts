@@ -7,6 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailProcessor } from './email.processor';
+import { LogPayload } from 'src/common/logger/log-payload';
 import { GmailService } from '../service/gmail.service';
 import type { Job } from 'bullmq';
 import { JOB_NAME_WELCOME_ADMIN } from '../constant/email.constant';
@@ -66,7 +67,7 @@ describe('EmailProcessor', () => {
             await expect(processor.process(job)).resolves.toBeUndefined();
             expect(mockGmailService.sendEmail).toHaveBeenCalledWith(
                 jobData.email,
-                'Welcome to NestJS Skeleton',
+                'Welcome',
                 expect.stringContaining(jobData.password),
             );
         });
@@ -94,8 +95,15 @@ describe('EmailProcessor', () => {
                 error,
             );
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: EmailProcessor.name,
+                    method: processor.onFailed.name,
+                    error,
+                    jobId: '123',
+                    jobName: JOB_NAME_WELCOME_ADMIN,
+                }),
+            );
             expect(Sentry.captureException).toHaveBeenCalledWith(error);
         });
     });
