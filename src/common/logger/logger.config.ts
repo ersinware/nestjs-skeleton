@@ -6,9 +6,8 @@
 import { RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Params } from 'nestjs-pino';
-import * as Sentry from '@sentry/nestjs';
-import { ENV } from './constant/env.constant';
 import { Environment } from 'src/common/enum/config/environment.enum';
+import { ENV } from '../config/constant/env.constant';
 
 /**
  * Returns configuration parameters for LoggerModule.
@@ -27,17 +26,6 @@ export function getLoggerConfig(config: ConfigService): Params {
                     : NODE_ENV === Environment.DEVELOPMENT
                       ? 'debug'
                       : 'silent',
-            mixin: () => {
-                const activeSpan = Sentry.getActiveSpan();
-
-                if (activeSpan) {
-                    const { traceId, spanId } = activeSpan.spanContext();
-
-                    return { traceId, spanId };
-                }
-
-                return {};
-            },
             serializers: {
                 error: function serialize(error: unknown): unknown {
                     if (error instanceof Error) {
@@ -52,21 +40,13 @@ export function getLoggerConfig(config: ConfigService): Params {
                     return error;
                 },
             },
-            ...(NODE_ENV === Environment.DEVELOPMENT
-                ? {
-                      transport: {
-                          target: 'pino-pretty',
-                          options: {
-                              singleLine: false,
-                              colorize: true,
-                              translateTime: "UTC:yyyy-mm-dd HH:MM:ss.l'Z'",
-                          },
-                      },
-                  }
-                : {}),
+            formatters: {
+                level: (label: string) => ({ level: label }),
+            },
         },
         exclude: [
             { method: RequestMethod.ALL, path: 'health' },
+            { method: RequestMethod.ALL, path: 'metrics' },
             { method: RequestMethod.ALL, path: 'v:version/docs' },
         ],
     };

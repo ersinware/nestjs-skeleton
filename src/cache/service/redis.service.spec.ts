@@ -3,6 +3,7 @@ import { Logger } from 'nestjs-pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TOKEN_CACHE_CLIENT } from '../constant/cache.constant';
 import { RedisService } from './redis.service';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 vi.mock('@sentry/nestjs', () => ({
     captureException: vi.fn(),
@@ -76,13 +77,19 @@ describe('RedisService', () => {
 
         it('should log error and return null when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key';
+            const error = new Error();
 
-            mockRedis.get.mockRejectedValueOnce(new Error());
+            mockRedis.get.mockRejectedValueOnce(error);
 
             expect(await service.get(key)).toBeNull();
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: RedisService.name,
+                    method: service.get.name,
+                    error,
+                }),
+            );
         });
 
         it('should throw an error if key is empty', async () => {
@@ -162,13 +169,19 @@ describe('RedisService', () => {
         it('should log error when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key',
                 value = 'test_value';
+            const error = new Error();
 
-            mockRedis.set.mockRejectedValueOnce(new Error());
+            mockRedis.set.mockRejectedValueOnce(error);
 
             await expect(service.set(key, value)).resolves.toBeUndefined();
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: RedisService.name,
+                    method: service.set.name,
+                    error,
+                }),
+            );
         });
 
         it('should throw an error if key is empty', async () => {
@@ -189,13 +202,19 @@ describe('RedisService', () => {
 
         it('should log error when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key';
+            const error = new Error();
 
-            mockRedis.del.mockRejectedValueOnce(new Error());
+            mockRedis.del.mockRejectedValueOnce(error);
 
             await expect(service.delete(key)).resolves.toBeUndefined();
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: RedisService.name,
+                    method: service.delete.name,
+                    error,
+                }),
+            );
         });
 
         it('should throw an error if key is empty', async () => {
@@ -247,13 +266,19 @@ describe('RedisService', () => {
 
         it('should log error when Redis client throws an error (fail-open)', async () => {
             const pattern = 'prefix:*';
+            const error = new Error('Redis scan failed');
 
-            mockRedis.scan.mockRejectedValueOnce(new Error('Redis scan failed'));
+            mockRedis.scan.mockRejectedValueOnce(error);
 
             await expect(service.deletePattern(pattern)).resolves.toBeUndefined();
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: RedisService.name,
+                    method: service.deletePattern.name,
+                    error,
+                }),
+            );
         });
 
         it('should throw an error if pattern is empty', async () => {
@@ -283,13 +308,19 @@ describe('RedisService', () => {
 
         it('should log error and return false when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key';
+            const error = new Error('Redis exists failed');
 
-            mockRedis.exists.mockRejectedValueOnce(new Error('Redis exists failed'));
+            mockRedis.exists.mockRejectedValueOnce(error);
 
             expect(await service.exists(key)).toBe(false);
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: RedisService.name,
+                    method: service.exists.name,
+                    error,
+                }),
+            );
         });
 
         it('should throw an error if key is empty', async () => {

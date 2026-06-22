@@ -16,11 +16,13 @@ vi.mock('@sentry/nestjs', () => ({
 import * as Sentry from '@sentry/nestjs';
 
 describe('FailSafeThrottlerGuard', () => {
-    let app: NestFastifyApplication, mockLogger: { error: MockInstance };
+    let app: NestFastifyApplication, mockLogger: { error: MockInstance; warn: MockInstance; log: MockInstance };
 
     beforeEach(() => {
         mockLogger = {
             error: vi.fn(),
+            warn: vi.fn(),
+            log: vi.fn(),
         };
     });
 

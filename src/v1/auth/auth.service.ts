@@ -15,10 +15,14 @@ import type { IAdminsRepository } from 'src/v1/admin/interface/admins.repository
 import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';
 import type { IUsersRepository } from 'src/v1/user/interface/users.repository.interface';
 import { PostAuthLoginDto } from './dto/post-auth-login.dto';
+import { AuditLogAction } from 'src/common/logger/enum/audit-log-action.enum';
+import { AuditLogAuthReason } from 'src/common/logger/enum/audit-log-auth-reason.enum';
 import { PostAuthRefreshDto } from './dto/post-auth-refresh.dto';
 import { SessionService } from './session.service';
 import { TokenService } from './token.service';
 import * as Sentry from '@sentry/nestjs';
+import { AuditLogPayload } from 'src/common/logger/audit-log-payload';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 @Injectable()
 export class AuthService {
@@ -51,22 +55,48 @@ export class AuthService {
     async loginUser(dto: PostAuthLoginDto) {
         const user = await this.usersRepository.findByEmail(dto.email);
 
-        if (!user) {
-            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS);
+        if (!user || !user.isActive) {
+            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS, {
+                cause: new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.loginUser.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: !user ? AuditLogAuthReason.ACCOUNT_NOT_FOUND : AuditLogAuthReason.INACTIVE_ACCOUNT,
+                    sub: user?.id,
+                    role: AuthUserRole.USER,
+                }),
+            });
         }
 
-        if (!user.isActive) {
-            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS);
-        }
+        const isPasswordValid = await this.hashingService.verify(user.password, dto.password);
 
-        if (!(await this.hashingService.verify(user.password, dto.password))) {
-            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS);
+        if (!isPasswordValid) {
+            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS, {
+                cause: new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.loginUser.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.INVALID_PASSWORD,
+                    sub: user.id,
+                    role: AuthUserRole.USER,
+                }),
+            });
         }
 
         const id = user.id,
             tokens = await this.tokenService.generateTokens(AuthUserRole.USER, id);
 
         await this.sessionService.openSession(AuthUserRole.USER, id, tokens.jti);
+
+        this.logger.log(
+            new AuditLogPayload({
+                class: this.constructor.name,
+                method: this.loginUser.name,
+                action: AuditLogAction.LOGIN_SUCCESS,
+                sub: id,
+                role: AuthUserRole.USER,
+            }),
+        );
 
         return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
     }
@@ -81,16 +111,32 @@ export class AuthService {
     async loginAdmin(dto: PostAuthLoginDto) {
         const admin = await this.adminsRepository.findByEmail(dto.email);
 
-        if (!admin) {
-            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS);
+        if (!admin || !admin.isActive) {
+            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS, {
+                cause: new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.loginAdmin.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: !admin ? AuditLogAuthReason.ACCOUNT_NOT_FOUND : AuditLogAuthReason.INACTIVE_ACCOUNT,
+                    sub: admin?.id,
+                    role: AuthUserRole.ADMIN,
+                }),
+            });
         }
 
-        if (!admin.isActive) {
-            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS);
-        }
+        const isPasswordValid = await this.hashingService.verify(admin.password, dto.password);
 
-        if (!(await this.hashingService.verify(admin.password, dto.password))) {
-            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS);
+        if (!isPasswordValid) {
+            throw new UnauthorizedException(UnauthorizedType.CREDENTIALS, {
+                cause: new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.loginAdmin.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: AuditLogAuthReason.INVALID_PASSWORD,
+                    sub: admin.id,
+                    role: AuthUserRole.ADMIN,
+                }),
+            });
         }
 
         const id = admin.id,
@@ -98,6 +144,16 @@ export class AuthService {
             tokens = await this.tokenService.generateTokens(role, id);
 
         await this.sessionService.openSession(role, id, tokens.jti);
+
+        this.logger.log(
+            new AuditLogPayload({
+                class: this.constructor.name,
+                method: this.loginAdmin.name,
+                action: AuditLogAction.LOGIN_SUCCESS,
+                sub: id,
+                role,
+            }),
+        );
 
         return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
     }
@@ -127,11 +183,21 @@ export class AuthService {
             sub = payload.sub;
 
         // Replay Attack detection (JTI is not active in the cache but token signature is valid)
-        if (!(await this.sessionService.getSession(role, sub, payload.jti))) {
+        const storedJti = await this.sessionService.getSession(role, sub, payload.jti);
+        if (!storedJti) {
             await this.logoutAll(role, sub);
             await this.ban(role, sub);
 
-            throw new UnauthorizedException(UnauthorizedType.TOKEN);
+            throw new UnauthorizedException(UnauthorizedType.TOKEN, {
+                cause: new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.refresh.name,
+                    action: AuditLogAction.REPLAY_ATTACK,
+                    sub,
+                    role,
+                    jti: payload.jti,
+                }),
+            });
         }
 
         await this.sessionService.closeSession(role, sub, payload.jti);
@@ -142,7 +208,16 @@ export class AuthService {
                 : await this.adminsRepository.findById(sub);
 
         if (!user || !user.isActive) {
-            throw new UnauthorizedException(UnauthorizedType.TOKEN);
+            throw new UnauthorizedException(UnauthorizedType.TOKEN, {
+                cause: new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.refresh.name,
+                    action: AuditLogAction.LOGIN_FAILED,
+                    reason: !user ? AuditLogAuthReason.ACCOUNT_NOT_FOUND : AuditLogAuthReason.INACTIVE_ACCOUNT,
+                    sub,
+                    role,
+                }),
+            });
         }
 
         const tokens = await this.tokenService.generateTokens(role, sub);
@@ -171,7 +246,13 @@ export class AuthService {
         } catch (error) {
             const _error = error instanceof Error ? error : new Error(String(error));
 
-            this.logger.error({ error: _error, class: 'AuthService', method: 'logout' }, 'Session close failed');
+            this.logger.error(
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.logout.name,
+                    error: _error,
+                }),
+            );
             Sentry.captureException(_error);
         }
     }

@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Environment } from 'src/common/enum/config/environment.enum';
 import { FailSafeThrottlerGuard } from './fail-safe-throttler.guard';
 import * as Sentry from '@sentry/nestjs';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 vi.mock('@sentry/nestjs', () => ({
     captureException: vi.fn(),
@@ -121,8 +122,13 @@ describe('FailSafeThrottlerGuard', () => {
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: FailSafeThrottlerGuard.name,
+                    method: guard['handleRequest'].name,
+                    error,
+                }),
+            );
             expect(Sentry.captureException).toHaveBeenCalledWith(error);
         });
 
@@ -134,9 +140,14 @@ describe('FailSafeThrottlerGuard', () => {
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
-            expect(Sentry.captureException).toHaveBeenCalledWith(loggedObject.error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: FailSafeThrottlerGuard.name,
+                    method: guard['handleRequest'].name,
+                    error: new Error(error),
+                }),
+            );
+            expect(Sentry.captureException).toHaveBeenCalledWith(new Error(error));
         });
 
         it('should log string representation and return true (fail-open) when super.handleRequest throws null', async () => {
@@ -147,9 +158,14 @@ describe('FailSafeThrottlerGuard', () => {
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
-            expect(Sentry.captureException).toHaveBeenCalledWith(loggedObject.error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: FailSafeThrottlerGuard.name,
+                    method: guard['handleRequest'].name,
+                    error: new Error(String(error)),
+                }),
+            );
+            expect(Sentry.captureException).toHaveBeenCalledWith(new Error(String(error)));
         });
     });
 });

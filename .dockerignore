@@ -33,6 +33,7 @@ docker-compose.*.yml
 docker-compose.yml
 Dockerfile
 docs
+docker/
 drizzle
 eslint.config.mjs
 LICENSE

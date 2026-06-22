@@ -29,7 +29,7 @@ import { UserModule } from './v1/user/user.module';
 import { NotEmptyBodyPipe } from './common/pipe/not-empty-body.pipe';
 import { BullModule } from '@nestjs/bullmq';
 import { LoggerModule } from 'nestjs-pino';
-import { getLoggerConfig } from './common/config/logger.config';
+import { getLoggerConfig } from './common/logger/logger.config';
 import { EmailModule } from './email/email.module';
 
 /**

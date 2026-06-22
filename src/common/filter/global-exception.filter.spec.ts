@@ -9,6 +9,10 @@ import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
 import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
+import { AuditLogAction } from 'src/common/logger/enum/audit-log-action.enum';
+import { AuditLogPayload } from 'src/common/logger/audit-log-payload';
+import { LogPayload } from 'src/common/logger/log-payload';
+import { AuthService } from 'src/v1/auth/auth.service';
 
 describe('GlobalExceptionFilter', () => {
     const mockHttpAdapterHost = {
@@ -18,6 +22,7 @@ describe('GlobalExceptionFilter', () => {
         },
         mockLogger = {
             error: vi.fn(),
+            warn: vi.fn(),
         };
 
     let filter: GlobalExceptionFilter;
@@ -257,6 +262,15 @@ describe('GlobalExceptionFilter', () => {
                 },
                 response.statusCode,
             );
+
+            expect(mockLogger.warn).toHaveBeenCalledWith(
+                new AuditLogPayload({
+                    class: GlobalExceptionFilter.name,
+                    method: filter.catch.name,
+                    action: AuditLogAction.SECURITY_EXCEPTION,
+                    error: response.message,
+                }),
+            );
         });
 
         it('should fallback to exception message when response is neither object nor string (e.g. null)', () => {
@@ -271,6 +285,35 @@ describe('GlobalExceptionFilter', () => {
                         statusCode: statusCode,
                         message: ['Http Exception'],
                         statusText: 'Bad Request',
+                    } satisfies ErrorDefaultDto,
+                },
+                statusCode,
+            );
+        });
+
+        it('should log audit log metadata and format HTTP response when cause is an instance of AuditLogPayload', () => {
+            const statusCode = 401;
+            const message = 'Unauthorized';
+            const auditPayload = new AuditLogPayload({
+                class: AuthService.name,
+                method: AuthService.prototype.loginUser.name,
+                action: AuditLogAction.LOGIN_FAILED,
+            });
+            const exception = new HttpException(message, statusCode, {
+                cause: auditPayload,
+            });
+
+            filter.catch(exception, createMockArgumentsHost());
+
+            expect(mockLogger.warn).toHaveBeenCalledWith(auditPayload);
+
+            expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
+                { isResponse: true },
+                {
+                    error: {
+                        statusCode,
+                        message: [message],
+                        statusText: 'Unauthorized',
                     } satisfies ErrorDefaultDto,
                 },
                 statusCode,
@@ -432,8 +475,13 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: GlobalExceptionFilter.name,
+                    method: filter.catch.name,
+                    error: response,
+                }),
+            );
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -456,8 +504,13 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: GlobalExceptionFilter.name,
+                    method: filter.catch.name,
+                    error: response,
+                }),
+            );
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -482,8 +535,13 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: GlobalExceptionFilter.name,
+                    method: filter.catch.name,
+                    error: response,
+                }),
+            );
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -506,8 +564,13 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: GlobalExceptionFilter.name,
+                    method: filter.catch.name,
+                    error: response,
+                }),
+            );
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },
@@ -528,8 +591,13 @@ describe('GlobalExceptionFilter', () => {
 
             filter.catch(response, createMockArgumentsHost());
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
-            expect(loggedObject.error).toBeInstanceOf(Error);
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                new LogPayload({
+                    class: GlobalExceptionFilter.name,
+                    method: filter.catch.name,
+                    error: new Error(response),
+                }),
+            );
 
             expect(mockHttpAdapterHost.httpAdapter.reply).toHaveBeenCalledWith(
                 { isResponse: true },

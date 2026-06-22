@@ -1,12 +1,4 @@
 services:
-    api:
-        # Build context is common for both envs
-        build:
-            context: .
-
-        networks:
-            - api-network
-
     postgres:
         image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
         container_name: postgres
@@ -41,6 +33,97 @@ services:
             - '6380:6379'
         volumes:
             - redis_state_data:/data
+        networks:
+            - api-network
+
+    api:
+        # Build context is common for both envs
+        build:
+            context: .
+        networks:
+            - api-network
+
+    prometheus:
+        image: prom/prometheus:latest@sha256:a75c5a35bc21d7afe69551eefa3cb1e1fb1775fe759408007a66b54ec3de1f29
+        container_name: prometheus
+        ports:
+            - '4319:4318' # OTLP HTTP receiver (mapped to 4319 to avoid conflict with Jaeger on host)
+        volumes:
+            - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.enable-otlp-receiver'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        networks:
+            - api-network
+
+    jaeger:
+        image: jaegertracing/all-in-one:latest@sha256:ab6f1a1f0fb49ea08bcd19f6b84f6081d0d44b364b6de148e1798eb5816bacac
+        container_name: jaeger
+        ports:
+            - '4318:4318' # OTLP HTTP receiver
+        networks:
+            - api-network
+
+    loki:
+        image: grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
+        container_name: loki
+        networks:
+            - api-network
+
+    promtail:
+        image: grafana/promtail:3.4.2@sha256:c6e9a987ca086cbfef945b8ebd708eb09f98b5e78bfb659e4e5a8b3bd604d11b
+        container_name: promtail
+        volumes:
+            - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            # NOTE: This path is native to Linux hosts. On macOS/Windows (Docker Desktop), the host does not
+            # have this directory, so it will mount as an empty folder. Promtail will start but Loki won't receive logs.
+            - /var/lib/docker/containers:/var/lib/docker/containers:ro
+        depends_on:
+            - loki
+        stop_grace_period: 3s
+        networks:
+            - api-network
+
+    grafana:
+        image: grafana/grafana:11.5.2@sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7
+        container_name: grafana
+        ports:
+            - '4000:3000' # Expose Grafana on host port 4000 to avoid conflicting with NestJS on 3000
+        volumes:
+            - ./docker/grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+        environment:
+            - GF_AUTH_ANONYMOUS_ENABLED=true
+            - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+        networks:
+            - api-network
+
+    postgres-exporter:
+        image: prometheuscommunity/postgres-exporter:v0.17.1@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+        container_name: postgres-exporter
+        environment:
+            - DATA_SOURCE_NAME=postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
+        networks:
+            - api-network
+
+    redis-cache-exporter:
+        image: oliver006/redis_exporter:v1.67.0@sha256:120f7ec77293459ccfdad66bb1db75ab72e8bfeab99f58b1cc2564cadcd7a9e7
+        container_name: redis-cache-exporter
+        environment:
+            - REDIS_ADDR=redis://redis-cache:6379
+            - REDIS_PASSWORD=password
+        networks:
+            - api-network
+
+    redis-state-exporter:
+        image: oliver006/redis_exporter:v1.67.0@sha256:120f7ec77293459ccfdad66bb1db75ab72e8bfeab99f58b1cc2564cadcd7a9e7
+        container_name: redis-state-exporter
+        environment:
+            - REDIS_ADDR=redis://redis-state:6379
+            - REDIS_PASSWORD=password
         networks:
             - api-network
 

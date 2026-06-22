@@ -193,6 +193,24 @@ export class EnvironmentVariables {
      */
     @IsEnum(SentryEnvironment)
     readonly SENTRY_ENVIRONMENT!: SentryEnvironment;
+
+    /**
+     * OpenTelemetry traces exporter endpoint.
+     */
+    @IsString()
+    readonly OTEL_EXPORTER_OTLP_TRACES_ENDPOINT!: string;
+
+    /**
+     * OpenTelemetry metrics exporter endpoint.
+     */
+    @IsString()
+    readonly OTEL_EXPORTER_OTLP_METRICS_ENDPOINT!: string;
+
+    /**
+     * OpenTelemetry service name.
+     */
+    @IsString()
+    readonly OTEL_SERVICE_NAME!: string;
 }
 
 /**

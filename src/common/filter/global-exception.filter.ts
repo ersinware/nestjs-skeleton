@@ -3,15 +3,19 @@
  * @description Global exception filter catching and standardizing HTTP and database errors.
  */
 
-import { Catch, ExceptionFilter, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
+import { Catch, ExceptionFilter, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
+import * as Sentry from '@sentry/nestjs';
+import { Logger } from 'nestjs-pino';
 import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
+import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
 import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
 import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
-import { Logger } from 'nestjs-pino';
-import * as Sentry from '@sentry/nestjs';
+import { AuditLogPayload } from 'src/common/logger/audit-log-payload';
+import { AuditLogAction } from 'src/common/logger/enum/audit-log-action.enum';
+import { LogPayload } from 'src/common/logger/log-payload';
+import { ErrorDefaultDto } from '../dto/error-default.dto';
 
 /**
  * Database error payload shape.
@@ -152,12 +156,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                     default: {
                         // Unhandled database-specific errors
                         this.logger.error(
-                            {
+                            new LogPayload({
+                                class: this.constructor.name,
+                                method: this.catch.name,
                                 error: exception instanceof Error ? exception : new Error(String(exception)),
-                                class: 'GlobalExceptionFilter',
-                                method: 'catch',
-                            },
-                            'Unhandled database-specific error occurred',
+                            }),
                         );
 
                         break;
@@ -166,17 +169,35 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             } else {
                 // Unexpected generic exception
                 this.logger.error(
-                    {
+                    new LogPayload({
+                        class: this.constructor.name,
+                        method: this.catch.name,
                         error: exception instanceof Error ? exception : new Error(String(exception)),
-                        class: 'GlobalExceptionFilter',
-                        method: 'catch',
-                    },
-                    'Unexpected generic exception occurred',
+                    }),
                 );
             }
         }
 
-        const finalStatusCode = statusCode ?? HttpStatus.INTERNAL_SERVER_ERROR;
+        const finalStatusCode = statusCode ?? HttpStatus.INTERNAL_SERVER_ERROR,
+            cause = exception instanceof HttpException ? exception.cause : undefined;
+
+        if (cause instanceof AuditLogPayload) {
+            this.logger.warn(cause);
+        } else if (
+            finalStatusCode === HttpStatus.UNAUTHORIZED ||
+            finalStatusCode === HttpStatus.FORBIDDEN ||
+            finalStatusCode === HttpStatus.TOO_MANY_REQUESTS
+        ) {
+            this.logger.warn(
+                new AuditLogPayload({
+                    class: this.constructor.name,
+                    method: this.catch.name,
+                    action: AuditLogAction.SECURITY_EXCEPTION,
+                    error: messages?.[0] || (exception instanceof Error ? exception.message : String(exception)),
+                }),
+            );
+        }
+
         if (finalStatusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
             Sentry.captureException(exception);
         }
@@ -189,7 +210,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                     statusCode: finalStatusCode,
                     message: messages ?? [InternalServerErrorType.DEFAULT],
                     statusText: statusText ?? 'Internal Server Error',
-                },
+                } satisfies ErrorDefaultDto,
             },
             finalStatusCode,
         );

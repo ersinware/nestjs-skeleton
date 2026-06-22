@@ -13,6 +13,7 @@ import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, VERSION_CONFIG } from 'src/common/config/documentation.config';
 import { SwaggerManager } from 'src/common/util/swagger.util';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 /**
  * Scaffolds a minimal application context to inspect NestJS metadata,
@@ -46,10 +47,7 @@ async function bootstrap() {
                 SwaggerManager.generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
             );
 
-            logger.log(
-                { class: 'BuildSwagger', method: 'bootstrap', jsonFilename, htmlFilename },
-                'Swagger documentation files generated',
-            );
+            logger.log(new LogPayload({ class: 'build-swagger.ts', method: 'bootstrap', jsonFilename, htmlFilename }));
         });
 
         await app.close();
@@ -62,14 +60,15 @@ async function bootstrap() {
                 throw new Error('App not initialized', { cause: _error });
             }
 
-            app.get(Logger).error(
-                { error: _error, class: 'BuildSwagger', method: 'bootstrap' },
-                'Error generating Swagger',
-            );
+            app.get(Logger).error(new LogPayload({ class: 'build-swagger.ts', method: 'bootstrap', error: _error }));
         } catch {
             new NestLogger('BuildSwagger').error(
-                { error: _error.message, stack: _error.stack, class: 'BuildSwagger', method: 'bootstrap' },
-                'Error generating Swagger',
+                new LogPayload({
+                    class: 'build-swagger.ts',
+                    method: 'bootstrap',
+                    error: _error.message,
+                    stack: _error.stack,
+                }),
             );
         }
 

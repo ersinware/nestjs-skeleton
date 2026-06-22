@@ -4,9 +4,10 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { Logger } from 'nestjs-pino';
 import * as Sentry from '@sentry/nestjs';
 import Redis from 'ioredis';
+import { Logger } from 'nestjs-pino';
+import { LogPayload } from 'src/common/logger/log-payload';
 import { TOKEN_CACHE_CLIENT } from '../constant/cache.constant';
 import type { ICacheService } from '../interface/cache-service.interface';
 
@@ -50,7 +51,13 @@ export class RedisService implements ICacheService {
         } catch (error) {
             const _error = error instanceof Error ? error : new Error(String(error));
 
-            this.logger.error({ error: _error, class: 'RedisService', method: 'get' }, 'Cache get failed');
+            this.logger.error(
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.get.name,
+                    error: _error,
+                }),
+            );
             Sentry.captureException(_error);
 
             return null;
@@ -95,7 +102,13 @@ export class RedisService implements ICacheService {
         } catch (error) {
             const _error = error instanceof Error ? error : new Error(String(error));
 
-            this.logger.error({ error: _error, class: 'RedisService', method: 'set' }, 'Cache set failed');
+            this.logger.error(
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.set.name,
+                    error: _error,
+                }),
+            );
             Sentry.captureException(_error);
         }
     }
@@ -116,7 +129,13 @@ export class RedisService implements ICacheService {
         } catch (error) {
             const _error = error instanceof Error ? error : new Error(String(error));
 
-            this.logger.error({ error: _error, class: 'RedisService', method: 'delete' }, 'Cache delete failed');
+            this.logger.error(
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.delete.name,
+                    error: _error,
+                }),
+            );
             Sentry.captureException(_error);
         }
     }
@@ -147,8 +166,11 @@ export class RedisService implements ICacheService {
             const _error = error instanceof Error ? error : new Error(String(error));
 
             this.logger.error(
-                { error: _error, class: 'RedisService', method: 'deletePattern' },
-                'Cache deletePattern failed',
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.deletePattern.name,
+                    error: _error,
+                }),
             );
             Sentry.captureException(_error);
         }
@@ -171,7 +193,13 @@ export class RedisService implements ICacheService {
         } catch (error) {
             const _error = error instanceof Error ? error : new Error(String(error));
 
-            this.logger.error({ error: _error, class: 'RedisService', method: 'exists' }, 'Cache exists failed');
+            this.logger.error(
+                new LogPayload({
+                    class: this.constructor.name,
+                    method: this.exists.name,
+                    error: _error,
+                }),
+            );
             Sentry.captureException(_error);
 
             return false;

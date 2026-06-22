@@ -21,6 +21,7 @@ import { RedisService } from './service/redis.service';
 import { RedisStateService } from './service/redis-state.service';
 import { RedisCleanerService } from './service/redis-cleaner.service';
 import { RedisHealthIndicator } from './service/redis-health.indicator';
+import { LogPayload } from 'src/common/logger/log-payload';
 
 /**
  * Global module providing the cache client singleton across the application.
@@ -43,8 +44,7 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
 
                 redis.on('error', (error: Error) => {
                     logger.error(
-                        { error, class: 'CacheModule', method: 'TOKEN_CACHE_CLIENT.on(error)' },
-                        'Cache connection failed',
+                        new LogPayload({ class: CacheModule.name, method: `TOKEN_CACHE_CLIENT.on(error)`, error }),
                     );
                 });
 
@@ -66,8 +66,11 @@ import { RedisHealthIndicator } from './service/redis-health.indicator';
 
                 redis.on('error', (error: Error) => {
                     logger.error(
-                        { error, class: 'CacheModule', method: 'TOKEN_CACHE_STATE_CLIENT.on(error)' },
-                        'Cache (state) connection failed',
+                        new LogPayload({
+                            class: CacheModule.name,
+                            method: 'TOKEN_CACHE_STATE_CLIENT.on(error)',
+                            error,
+                        }),
                     );
                 });
 

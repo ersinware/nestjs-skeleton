@@ -1,0 +1,23 @@
+services:
+    api:
+        build:
+            target: development
+
+        env_file:
+            - .env
+
+        environment:
+            NODE_OPTIONS: '--max-old-space-size=4096'
+
+        ports:
+            - '127.0.0.1:3000:3000'
+
+        volumes:
+            - .:/app
+
+        develop:
+            watch:
+                - path: package.json
+                  action: rebuild
+                - path: package-lock.json
+                  action: rebuild
