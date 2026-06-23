@@ -72,9 +72,15 @@ export class RedisService implements ICacheService {
      * @param key Cache key.
      * @param value Cache value.
      * @param ttlSeconds Optional time-to-live in seconds.
+     * @param options Optional configuration parameters.
      * @throws {Error} if key is empty.
      */
-    async set(key: string, value: unknown, ttlSeconds?: number) {
+    async set(
+        key: string,
+        value: unknown,
+        ttlSeconds?: number,
+        options?: { useJitter?: boolean; jitterMaxPercent?: number },
+    ) {
         if (!key) {
             throw new Error(ERROR_MESSAGE_EMPTY_KEY);
         }
@@ -95,7 +101,17 @@ export class RedisService implements ICacheService {
             }
 
             if (ttlSeconds !== undefined) {
-                await this.redis.set(key, stringValue, 'EX', ttlSeconds);
+                let finalTtl = ttlSeconds;
+
+                if (options?.useJitter) {
+                    const maxPercent = options.jitterMaxPercent ?? 10,
+                        maxJitter = Math.floor(ttlSeconds * (maxPercent / 100)),
+                        jitter = Math.floor(Math.random() * maxJitter);
+
+                    finalTtl = ttlSeconds + jitter;
+                }
+
+                await this.redis.set(key, stringValue, 'EX', finalTtl);
             } else {
                 await this.redis.set(key, stringValue);
             }

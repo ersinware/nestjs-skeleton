@@ -9,11 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi, MockInstance } from 'v
 import { Environment } from 'src/common/enum/config/environment.enum';
 import { cleanupCache } from '../../shared/cache.cleaner';
 import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from './fail-safe-throttler.guard.fixture';
+import * as Sentry from '@sentry/nestjs';
 
 vi.mock('@sentry/nestjs', () => ({
     captureException: vi.fn(),
 }));
-import * as Sentry from '@sentry/nestjs';
 
 describe('FailSafeThrottlerGuard', () => {
     let app: NestFastifyApplication, mockLogger: { error: MockInstance; warn: MockInstance; log: MockInstance };
@@ -34,7 +34,6 @@ describe('FailSafeThrottlerGuard', () => {
         beforeEach(async () => {
             app = await createFailSafeThrottlerGuardTestApp({
                 nodeEnv: Environment.TEST,
-                limit: 2,
                 faultyStorage: false,
                 mockLogger,
             });
@@ -44,6 +43,7 @@ describe('FailSafeThrottlerGuard', () => {
         it('should bypass throttler limits entirely and allow requests indefinitely', async () => {
             for (let i = 0; i < 10; i++) {
                 await request(app.getHttpServer()).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
+                await request(app.getHttpServer()).get('/api/v1/fail-safe-throttler-trigger/critical').expect(200);
             }
         });
     });
@@ -52,19 +52,25 @@ describe('FailSafeThrottlerGuard', () => {
         beforeEach(async () => {
             app = await createFailSafeThrottlerGuardTestApp({
                 nodeEnv: Environment.PRODUCTION,
-                limit: 2,
                 faultyStorage: false,
                 mockLogger,
             });
             await cleanupCache(app);
         });
 
-        it('should enforce throttler limits and block requests with 429 once the limit is exceeded', async () => {
+        it('should enforce default throttler limits and block requests with 429 once the limit is exceeded', async () => {
             const server = app.getHttpServer();
 
             await request(server).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
             await request(server).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
             await request(server).get('/api/v1/fail-safe-throttler-trigger/test').expect(429);
+        });
+
+        it('should enforce critical throttler limits on decorated routes', async () => {
+            const server = app.getHttpServer();
+
+            await request(server).get('/api/v1/fail-safe-throttler-trigger/critical').expect(200);
+            await request(server).get('/api/v1/fail-safe-throttler-trigger/critical').expect(429);
         });
     });
 
@@ -72,7 +78,6 @@ describe('FailSafeThrottlerGuard', () => {
         beforeEach(async () => {
             app = await createFailSafeThrottlerGuardTestApp({
                 nodeEnv: Environment.PRODUCTION,
-                limit: 2,
                 faultyStorage: true,
                 mockLogger,
             });

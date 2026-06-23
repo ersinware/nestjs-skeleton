@@ -19,9 +19,17 @@ export interface ICacheService {
      * @param key Cache key.
      * @param value Cache value, either a string or an object to serialize.
      * @param ttlSeconds Optional time-to-live in seconds.
+     * @param options Optional configuration parameters.
+     * @param options.useJitter Optional flag to add random variation (jitter) to the expiration time.
+     * @param options.jitterMaxPercent Maximum percentage of expiration time to vary.
      * @returns A promise resolving on execution success.
      */
-    set(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
+    set(
+        key: string,
+        value: unknown,
+        ttlSeconds?: number,
+        options?: { useJitter?: boolean; jitterMaxPercent?: number },
+    ): Promise<void>;
 
     /**
      * Deletes a key from the cache.

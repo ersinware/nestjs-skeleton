@@ -121,6 +121,25 @@ describe('RedisService', () => {
             expect(mockRedis.set).toHaveBeenCalledWith(key, value, 'EX', ttl);
         });
 
+        it('should set key value with jittered TTL when useJitter is enabled', async () => {
+            const key = 'test_key',
+                value = 'test_value',
+                ttl = 3600;
+
+            mockRedis.set.mockResolvedValueOnce('OK');
+
+            await expect(service.set(key, value, ttl, { useJitter: true })).resolves.toBeUndefined();
+
+            expect(mockRedis.set).toHaveBeenCalledWith(key, value, 'EX', expect.any(Number));
+
+            const lastCallArgs = mockRedis.set.mock.calls[mockRedis.set.mock.calls.length - 1];
+            expect(lastCallArgs).toBeDefined();
+
+            const actualTtl = lastCallArgs![3] as number;
+            expect(actualTtl).toBeGreaterThanOrEqual(ttl);
+            expect(actualTtl).toBeLessThan(ttl + 360);
+        });
+
         it('should serialize object to JSON and strip sensitive fields', async () => {
             const key = 'test_key',
                 value = {

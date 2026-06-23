@@ -39,7 +39,7 @@ export class GmailService {
      * @param body HTML body content.
      */
     async sendEmail(to: string, subject: string, body: string) {
-        if (this.configService.get<Environment>(ENV.NODE_ENV) === Environment.TEST) {
+        if (this.configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST) {
             // Bypass sending real emails in test/CI environments, E2E tests, and automated fuzzing (Schemathesis)
             // to prevent Google Gmail API quota exhaustion and account rate-limiting/suspension.
             return;

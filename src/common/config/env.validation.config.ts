@@ -4,10 +4,24 @@
  * It prevents the application from starting with invalid or missing environment variables.
  */
 
-import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
+import { plainToInstance, Transform, Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
 import { Environment } from 'src/common/enum/config/environment.enum';
 import { SentryEnvironment } from 'src/common/enum/config/sentry-environment.enum';
+
+/**
+ * Transforms string values representing booleans ('true', 'false') to actual booleans.
+ * Note: Must be paired with `@Type(() => Object)` on the class property to bypass
+ * class-transformer's eager casting that converts all non-empty strings (including 'false') to true.
+ *
+ * @param params The transform parameter object.
+ * @returns The converted boolean value, or the original value if not matching.
+ */
+function transformToBoolean({ value }: { value: unknown }) {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return value;
+}
 
 /**
  * Environment variables DTO class used for validating environment variables.
@@ -75,6 +89,15 @@ export class EnvironmentVariables {
     readonly REDIS_CACHE_PASSWORD!: string;
 
     /**
+     * Flag to enable TLS for Redis Cache connection.
+     */
+    // @Type(() => Object) is required to prevent class-transformer from eagerly casting 'false' to true.
+    @Type(() => Object)
+    @Transform(transformToBoolean)
+    @IsBoolean()
+    readonly REDIS_CACHE_TLS!: boolean;
+
+    /**
      * Hostname or IP address of the Redis State server.
      */
     @IsString()
@@ -91,6 +114,15 @@ export class EnvironmentVariables {
      */
     @IsString()
     readonly REDIS_STATE_PASSWORD!: string;
+
+    /**
+     * Flag to enable TLS for Redis State connection.
+     */
+    // @Type(() => Object) is required to prevent class-transformer from eagerly casting 'false' to true.
+    @Type(() => Object)
+    @Transform(transformToBoolean)
+    @IsBoolean()
+    readonly REDIS_STATE_TLS!: boolean;
 
     /**
      * Maximum number of Redis reconnection retries per request.
@@ -145,6 +177,18 @@ export class EnvironmentVariables {
      */
     @IsNumber()
     readonly THROTTLE_LIMIT!: number;
+
+    /**
+     * Time-to-live (TTL) window in milliseconds for the critical rate limiter.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_TTL!: number;
+
+    /**
+     * Maximum number of requests allowed within the defined THROTTLE_CRITICAL_TTL window.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_LIMIT!: number;
 
     /**
      * Heap memory limit (in MB) for system health checks.

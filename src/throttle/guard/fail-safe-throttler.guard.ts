@@ -15,6 +15,8 @@ import { ThrottlerGuard, ThrottlerRequest, ThrottlerException } from '@nestjs/th
 import type { ThrottlerModuleOptions, ThrottlerStorage } from '@nestjs/throttler';
 import * as Sentry from '@sentry/nestjs';
 import { LogPayload } from 'src/common/logger/log-payload';
+import { KEY_DECORATOR_CRITICAL_THROTTLE } from 'src/throttle/decorator/critical-throttle.decorator';
+import { THROTTLER_NAME } from 'src/throttle/constant/throttle.constant';
 
 /**
  * Custom rate limiting guard that bypasses limits during testing and handles storage failures gracefully.
@@ -50,9 +52,18 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
      * @throws {ThrottlerException} if the rate limit is exceeded.
      */
     protected override async handleRequest(request: ThrottlerRequest): Promise<boolean> {
-        if (this.configService.get<Environment>(ENV.NODE_ENV) === Environment.TEST) {
+        if (this.configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST) {
             // Bypass rate-limiting in test/CI environments, E2E tests, and automated fuzzing (Schemathesis)
             // to avoid hitting rate-limiting thresholds and causing false failures during test executions.
+            return true;
+        }
+
+        const isCritical = this.reflector.getAllAndOverride<boolean>(KEY_DECORATOR_CRITICAL_THROTTLE, [
+            request.context.getHandler(),
+            request.context.getClass(),
+        ]);
+
+        if (request.throttler.name !== (isCritical ? THROTTLER_NAME.CRITICAL : THROTTLER_NAME.DEFAULT)) {
             return true;
         }
 

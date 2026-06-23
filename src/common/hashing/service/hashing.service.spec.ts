@@ -14,7 +14,7 @@ describe('HashingService', () => {
     const mockedHash = vi.mocked(argon2.hash),
         mockedVerify = vi.mocked(argon2.verify),
         mockConfigService = {
-            get: vi.fn(),
+            getOrThrow: vi.fn(),
         };
 
     let service: HashingService, configService: ConfigService;
@@ -43,7 +43,7 @@ describe('HashingService', () => {
             expectedHash = '$argon2id$v=19$m=65536,t=3,p=4$somehashedstring';
 
         it('should successfully hash plain text using default argon2 config in non-test env', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.PRODUCTION);
+            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(service.hash(plainText)).resolves.toBe(expectedHash);
@@ -51,7 +51,7 @@ describe('HashingService', () => {
         });
 
         it('should use weak argon2 settings in test env to optimize performance', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.TEST);
+            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.TEST);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(service.hash(plainText)).resolves.toBe(expectedHash);
@@ -63,7 +63,7 @@ describe('HashingService', () => {
         });
 
         it('should propagate argon2 error during hashing', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.PRODUCTION);
+            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
             mockedHash.mockRejectedValueOnce(new Error());
 
             await expect(service.hash(plainText)).rejects.toThrow(Error);

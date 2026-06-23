@@ -25,7 +25,7 @@ export class HashingService {
      * @returns A promise resolving to the Argon2 hash string.
      */
     async hash(plainText: string): Promise<string> {
-        if (this.configService.get<Environment>(ENV.NODE_ENV) === Environment.TEST) {
+        if (this.configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST) {
             // Use low-cost Argon2 parameters in test/CI environments, E2E tests, and during automated fuzzing
             // (Schemathesis) to prevent CPU starvation and maximize request throughput.
             return argon2.hash(plainText, {

@@ -17,9 +17,11 @@ describe('env.validation.config', () => {
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,
         REDIS_CACHE_PASSWORD: 'redis-password',
+        REDIS_CACHE_TLS: false,
         REDIS_STATE_HOST: 'localhost',
         REDIS_STATE_PORT: 6380,
         REDIS_STATE_PASSWORD: 'redis-password',
+        REDIS_STATE_TLS: false,
         REDIS_MAX_RETRIES_PER_REQUEST: 3,
         REDIS_COMMAND_TIMEOUT: 2000,
 
@@ -30,6 +32,8 @@ describe('env.validation.config', () => {
 
         THROTTLE_TTL: 60,
         THROTTLE_LIMIT: 100,
+        THROTTLE_CRITICAL_TTL: 60000,
+        THROTTLE_CRITICAL_LIMIT: 5,
 
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
@@ -59,17 +63,25 @@ describe('env.validation.config', () => {
         expect(result.SENTRY_ENVIRONMENT).toBe(SentryEnvironment.TEST);
     });
 
-    it('should perform implicit type conversions (e.g. string numbers to numbers)', () => {
+    it('should perform implicit type conversions (e.g. string numbers to numbers, string booleans to booleans)', () => {
         const result = validateConfig({
             ...validConfig,
             PORT: '4000',
             DATABASE_POOL_SIZE: '15',
             THROTTLE_TTL: '120',
+            THROTTLE_CRITICAL_TTL: '1000',
+            THROTTLE_CRITICAL_LIMIT: '2',
+            REDIS_CACHE_TLS: 'true',
+            REDIS_STATE_TLS: 'false',
         });
 
         expect(result.PORT).toBe(4000);
         expect(result.DATABASE_POOL_SIZE).toBe(15);
         expect(result.THROTTLE_TTL).toBe(120);
+        expect(result.THROTTLE_CRITICAL_TTL).toBe(1000);
+        expect(result.THROTTLE_CRITICAL_LIMIT).toBe(2);
+        expect(result.REDIS_CACHE_TLS).toBe(true);
+        expect(result.REDIS_STATE_TLS).toBe(false);
     });
 
     it('should throw an error if a required field is missing', () => {
@@ -83,6 +95,15 @@ describe('env.validation.config', () => {
         const invalidConfig = {
             ...validConfig,
             PORT: 'not-a-number',
+        };
+
+        expect(() => validateConfig(invalidConfig)).toThrow(Error);
+    });
+
+    it('should throw an error if REDIS_CACHE_TLS is not a boolean', () => {
+        const invalidConfig = {
+            ...validConfig,
+            REDIS_CACHE_TLS: 'not-a-boolean',
         };
 
         expect(() => validateConfig(invalidConfig)).toThrow(Error);

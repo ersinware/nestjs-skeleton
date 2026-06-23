@@ -4,21 +4,17 @@
  * Sets up global guards, pipes, interceptors, and exception filters.
  */
 
-import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { ThrottlerModule } from '@nestjs/throttler';
-import Redis from 'ioredis';
 import { CacheModule } from './cache/cache.module';
-import { TOKEN_CACHE_STATE_CLIENT } from './cache/constant/cache.constant';
 import { ENV } from './common/config/constant/env.constant';
 import { validateConfig } from './common/config/env.validation.config';
 import { Environment } from 'src/common/enum/config/environment.enum';
 import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
-import { FailSafeThrottlerGuard } from './common/guard/fail-safe-throttler.guard';
 import { AuthGuard } from './common/guard/auth.guard';
 import { AuthRolesGuard } from './common/guard/auth-roles.guard';
+import { ThrottleModule } from './throttle/throttle.module';
 import { ResponseInterceptor } from './common/interceptor/response.interceptor';
 import { DatabaseModule } from './database/database.module';
 import { HashingModule } from './common/hashing/hashing.module';
@@ -48,20 +44,7 @@ import { EmailModule } from './email/email.module';
             useFactory: getLoggerConfig,
         }),
         CacheModule,
-        ThrottlerModule.forRootAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService, TOKEN_CACHE_STATE_CLIENT],
-            useFactory: (config: ConfigService, redis: Redis) => ({
-                errorMessage: 'Too many requests.',
-                throttlers: [
-                    {
-                        ttl: config.getOrThrow<number>(ENV.THROTTLE_TTL),
-                        limit: config.getOrThrow<number>(ENV.THROTTLE_LIMIT),
-                    },
-                ],
-                storage: new ThrottlerStorageRedisService(redis),
-            }),
-        }),
+        ThrottleModule,
         BullModule.forRootAsync({
             inject: [ConfigService],
             useFactory: (config: ConfigService) => {
@@ -85,10 +68,6 @@ import { EmailModule } from './email/email.module';
         AdminModule,
     ],
     providers: [
-        {
-            provide: APP_GUARD,
-            useClass: FailSafeThrottlerGuard,
-        },
         {
             provide: APP_GUARD,
             useClass: AuthGuard,

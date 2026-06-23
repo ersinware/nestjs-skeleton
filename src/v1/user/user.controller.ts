@@ -26,6 +26,7 @@ import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { AccessTokenPayloadDecorator } from 'src/common/decorator/auth/access-token-payload.decorator';
 import { Public } from 'src/common/decorator/auth/public.decorator';
 import { Roles } from 'src/common/decorator/auth/roles.decorator';
+import { CriticalThrottle } from 'src/throttle/decorator/critical-throttle.decorator';
 import { ParamIdDto } from 'src/common/dto/param-id.dto';
 import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
@@ -62,6 +63,7 @@ export class UserController {
      * @returns A promise resolving to the created and serialized GetUserDto.
      */
     @Public()
+    @CriticalThrottle()
     @Post()
     @ApiOperation({
         summary: 'Register user',

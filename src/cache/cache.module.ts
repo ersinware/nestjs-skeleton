@@ -34,10 +34,12 @@ import { LogPayload } from 'src/common/logger/log-payload';
             provide: TOKEN_CACHE_CLIENT,
             useFactory: (config: ConfigService, logger: Logger) => {
                 const password = config.getOrThrow<string>(ENV.REDIS_CACHE_PASSWORD),
+                    tlsEnabled = config.getOrThrow<boolean>(ENV.REDIS_CACHE_TLS),
                     redis = new Redis({
                         host: config.getOrThrow<string>(ENV.REDIS_CACHE_HOST),
                         port: config.getOrThrow<number>(ENV.REDIS_CACHE_PORT),
                         ...(password ? { password } : {}),
+                        ...(tlsEnabled ? { tls: {} } : {}),
                         maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
                         commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
                     });
@@ -56,10 +58,12 @@ import { LogPayload } from 'src/common/logger/log-payload';
             provide: TOKEN_CACHE_STATE_CLIENT,
             useFactory: (config: ConfigService, logger: Logger) => {
                 const password = config.getOrThrow<string>(ENV.REDIS_STATE_PASSWORD),
+                    tlsEnabled = config.getOrThrow<boolean>(ENV.REDIS_STATE_TLS),
                     redis = new Redis({
                         host: config.getOrThrow<string>(ENV.REDIS_STATE_HOST),
                         port: config.getOrThrow<number>(ENV.REDIS_STATE_PORT),
                         ...(password ? { password } : {}),
+                        ...(tlsEnabled ? { tls: {} } : {}),
                         maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
                         commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
                     });
