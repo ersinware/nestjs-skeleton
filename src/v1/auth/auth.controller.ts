@@ -13,6 +13,7 @@ import { ApiDefaultInternalServerErrorResponse } from 'src/common/decorator/doc/
 import { ApiDefaultUnauthorizedResponse } from 'src/common/decorator/doc/api-default-unauthorized-response.decorator';
 import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
 import { Public } from 'src/common/decorator/auth/public.decorator';
+import { CriticalThrottle } from 'src/throttle/decorator/critical-throttle.decorator';
 import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
 import { NotEmptyBodyPipe } from 'src/common/pipe/not-empty-body.pipe';
 import { AuthService } from './auth.service';
@@ -44,6 +45,7 @@ export class AuthController {
      * @returns Access and refresh token pair.
      */
     @Public()
+    @CriticalThrottle()
     @Post('user/login')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
@@ -64,6 +66,7 @@ export class AuthController {
      * @returns Access and refresh token pair.
      */
     @Public()
+    @CriticalThrottle()
     @Post('admin/login')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
@@ -85,6 +88,7 @@ export class AuthController {
      * @returns A fresh access and refresh token pair.
      */
     @Public()
+    @CriticalThrottle()
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({

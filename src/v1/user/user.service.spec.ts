@@ -150,7 +150,9 @@ describe('UserService', () => {
             await expect(service.findAll(query)).resolves.toEqual(result);
             expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
             expect(mockRepository.findAll).toHaveBeenCalledWith(query);
-            expect(mockCacheService.set).toHaveBeenCalledWith(cacheKey, result, USER_CACHE_TTL_SECONDS);
+            expect(mockCacheService.set).toHaveBeenCalledWith(cacheKey, result, USER_CACHE_TTL_SECONDS, {
+                useJitter: true,
+            });
         });
     });
 
@@ -187,7 +189,9 @@ describe('UserService', () => {
             await expect(service.findById(userId)).resolves.toEqual(user);
             expect(mockCacheService.get).toHaveBeenCalledWith(cacheKey);
             expect(mockRepository.findById).toHaveBeenCalledWith(userId);
-            expect(mockCacheService.set).toHaveBeenCalledWith(cacheKey, user, USER_CACHE_TTL_SECONDS);
+            expect(mockCacheService.set).toHaveBeenCalledWith(cacheKey, user, USER_CACHE_TTL_SECONDS, {
+                useJitter: true,
+            });
         });
     });
 

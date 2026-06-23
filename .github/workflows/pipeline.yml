@@ -8,16 +8,19 @@ on:
         paths:
             - 'src/**'
             - 'test/**'
+            - 'drizzle/**'
             - '.github/workflows/**'
             - 'package.json'
             - 'package-lock.json'
             - 'tsconfig*.json'
             - 'nest-cli.json'
+            - 'vitest.config*.mts'
+            - 'drizzle.config.ts'
             - '.spectral.yml'
             - 'eslint.config.mjs'
             - '.prettierrc'
             - 'Dockerfile'
-            - 'docker-compose.yml'
+            - 'docker-compose*.yml'
     pull_request:
         branches:
             - main
@@ -26,16 +29,19 @@ on:
         paths:
             - 'src/**'
             - 'test/**'
+            - 'drizzle/**'
             - '.github/workflows/**'
             - 'package.json'
             - 'package-lock.json'
             - 'tsconfig*.json'
             - 'nest-cli.json'
+            - 'vitest.config*.mts'
+            - 'drizzle.config.ts'
             - '.spectral.yml'
             - 'eslint.config.mjs'
             - '.prettierrc'
             - 'Dockerfile'
-            - 'docker-compose.yml'
+            - 'docker-compose*.yml'
     workflow_dispatch:
 
 concurrency:

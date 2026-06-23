@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { getStorageToken } from '@nestjs/throttler';
 import { Public } from 'src/common/decorator/auth/public.decorator';
+import { CriticalThrottle } from 'src/throttle/decorator/critical-throttle.decorator';
 import { ENV } from 'src/common/config/constant/env.constant';
 import { Environment } from 'src/common/enum/config/environment.enum';
 import { vi, MockInstance } from 'vitest';
@@ -27,7 +28,6 @@ import { createTestApp } from '../../shared/test-app.factory';
  */
 export async function createFailSafeThrottlerTestApp(options: {
     nodeEnv: Environment;
-    limit: number;
     faultyStorage: boolean;
     mockLogger?: { error: MockInstance };
 }): Promise<NestFastifyApplication> {
@@ -35,20 +35,29 @@ export async function createFailSafeThrottlerTestApp(options: {
         {
             provide: ConfigService,
             useValue: {
-                get: vi.fn((key: string) => {
+                getOrThrow: vi.fn((key: string) => {
                     if (key === ENV.NODE_ENV) {
                         return options.nodeEnv;
                     }
 
-                    return process.env[key];
-                }),
-                getOrThrow: vi.fn((key: string) => {
                     if (key === ENV.THROTTLE_LIMIT) {
-                        return options.limit;
+                        return 2;
                     }
 
                     if (key === ENV.THROTTLE_TTL) {
                         return 60000;
+                    }
+
+                    if (key === ENV.THROTTLE_CRITICAL_LIMIT) {
+                        return 1;
+                    }
+
+                    if (key === ENV.THROTTLE_CRITICAL_TTL) {
+                        return 60000;
+                    }
+
+                    if (key === ENV.REDIS_CACHE_TLS || key === ENV.REDIS_STATE_TLS) {
+                        return false;
                     }
 
                     return process.env[key];
@@ -84,6 +93,12 @@ export async function createFailSafeThrottlerTestApp(options: {
 export class FailSafeThrottlerTriggerController {
     @Get('test')
     test() {
+        return { success: true };
+    }
+
+    @Get('critical')
+    @CriticalThrottle()
+    critical() {
         return { success: true };
     }
 }

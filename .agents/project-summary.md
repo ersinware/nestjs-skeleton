@@ -110,8 +110,6 @@ nestjs-skeleton/
 │   │   │   ├── global-exception.filter.ts
 │   │   │   └── global-exception.filter.spec.ts
 │   │   ├── guard/                      # Custom guards
-│   │   │   ├── fail-safe-throttler.guard.ts # Fail-open throttler guard
-│   │   │   ├── fail-safe-throttler.guard.spec.ts
 │   │   │   ├── auth.guard.ts           # JWT authenticator
 │   │   │   ├── auth.guard.spec.ts
 │   │   │   ├── auth-roles.guard.ts     # RBAC evaluator
@@ -203,6 +201,15 @@ nestjs-skeleton/
 │   │   └── health.module.ts
 │   ├── script/                         # CLI utilities
 │   │   └── build-swagger.ts            # Statically exports OpenAPI spec & Scalar templates
+│   ├── throttle/                       # Rate limiting module
+│   │   ├── constant/
+│   │   │   └── throttle.constant.ts
+│   │   ├── decorator/
+│   │   │   └── critical-throttle.decorator.ts
+│   │   ├── guard/
+│   │   │   ├── fail-safe-throttler.guard.ts
+│   │   │   └── fail-safe-throttler.guard.spec.ts
+│   │   └── throttle.module.ts
 │   └── v1/                             # Version 1 API modules
 │       ├── admin/                      # Admin repository and module
 │       │   ├── constant/
@@ -308,6 +315,8 @@ The application registers several global guards, interceptors, pipes, and filter
 
 - **Rate Limiting (`FailSafeThrottlerGuard`)**:
     - Implements global throttling using the `ThrottlerModule` backed by the Redis State connection.
+    - Uses two named configurations: `default` (standard requests) and `critical` (stricter limit for sensitive paths like login and registration).
+    - Routes requests dynamically using the custom `@CriticalThrottle()` decorator and metadata keys.
     - Designed as **fail-open**: if the Redis state server is unreachable, connection errors are logged and traffic is allowed through to prevent application outages.
     - Automatically bypassed in the `test` environment to avoid test suite interference.
 - **Authentication & RBAC (`AuthGuard` & `AuthRolesGuard`)**:
@@ -326,6 +335,13 @@ The application registers several global guards, interceptors, pipes, and filter
     - Uses custom `LogPayload` and `AuditLogPayload` to enforce structured contextual details (class, method, error, audit actions) on all logger calls.
     - Correlates logs with active request traces using OpenTelemetry Pino instrumentation to automatically inject the active `traceId` and `spanId` context.
     - Emits structured `AUDIT` logs for critical business events (login failures, replay attacks, security exceptions).
+
+## ⚙️ Configuration & Environment Variables
+
+- **Validation & Safe Casts**: Environment variables are validated on startup using `class-validator` and `class-transformer` in [env.validation.config.ts](file:///home/ersinware/Repositories/my-projects/nestjs-skeleton/src/common/config/env.validation.config.ts).
+- **Boolean Transformation Gotcha**:
+    - By default, when `enableImplicitConversion: true` is set on `class-transformer`, typescript-compiled properties typed as `boolean` (emitting `Boolean` metadata) are eagerly cast using `Boolean(value)`. This causes any non-empty string in the environment variable (even `"false"` or invalid values) to convert to `true`.
+    - To prevent this, boolean environment variables (e.g. `REDIS_CACHE_TLS`, `REDIS_STATE_TLS`) are decorated with `@Type(() => Object)` to bypass the eager boolean casting, allowing our custom `transformToBoolean` handler to correctly process `"true"` -> `true`, `"false"` -> `false`, and fail validation on invalid boolean formats (e.g. `"not-a-boolean"`).
 
 ## 📌 Active Modules & Endpoints
 

@@ -55,7 +55,6 @@ describe('GmailService', () => {
                     return '';
             }
         }),
-        get: vi.fn(),
     };
 
     let service: GmailService, configService: ConfigService;
@@ -81,7 +80,7 @@ describe('GmailService', () => {
 
     describe('sendEmail', () => {
         it('should format raw email string and dispatch via Google API messages send method when NODE_ENV is not test', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.PRODUCTION);
+            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
             mocks.send.mockResolvedValueOnce({});
 
             await expect(
@@ -97,7 +96,7 @@ describe('GmailService', () => {
         });
 
         it('should bypass sending email when NODE_ENV is test', async () => {
-            vi.spyOn(configService, 'get').mockReturnValueOnce(Environment.TEST);
+            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.TEST);
 
             await expect(
                 service.sendEmail('recipient@example.com', 'Test Subject', '<p>Hello</p>'),

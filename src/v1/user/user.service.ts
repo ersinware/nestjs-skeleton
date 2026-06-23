@@ -91,7 +91,7 @@ export class UserService {
 
         const result = await this.usersRepository.findAll(query);
 
-        await this.cacheService.set(cacheKey, result, USER_CACHE_TTL_SECONDS);
+        await this.cacheService.set(cacheKey, result, USER_CACHE_TTL_SECONDS, { useJitter: true });
 
         return result;
     }
@@ -117,7 +117,7 @@ export class UserService {
             throw new NotFoundException(NotFoundType.DEFAULT);
         }
 
-        await this.cacheService.set(cacheKey, user, USER_CACHE_TTL_SECONDS);
+        await this.cacheService.set(cacheKey, user, USER_CACHE_TTL_SECONDS, { useJitter: true });
 
         return user;
     }
