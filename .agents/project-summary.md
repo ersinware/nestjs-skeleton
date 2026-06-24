@@ -332,6 +332,7 @@ The application registers several global guards, interceptors, pipes, and filter
     - Integrated with Sentry to automatically report unexpected server-side/database exceptions (HTTP status code >= 500) within the filter implementation.
 - **Structured JSON Logging & Trace Correlation (`nestjs-pino` & `OpenTelemetry`)**:
     - Replaces the default NestJS logger globally, formatting all application and framework logs into structured JSON standard output.
+    - Employs automatic redaction of sensitive HTTP request and response headers (e.g., `Authorization`, `Cookie`, `x-api-key`, `set-cookie`, session tokens) and request body keys (including nested ones, such as passwords, OTPs, API keys, CVV, SSN, and access/refresh tokens) at the transport level.
     - Uses custom `LogPayload` and `AuditLogPayload` to enforce structured contextual details (class, method, error, audit actions) on all logger calls.
     - Correlates logs with active request traces using OpenTelemetry Pino instrumentation to automatically inject the active `traceId` and `spanId` context.
     - Emits structured `AUDIT` logs for critical business events (login failures, replay attacks, security exceptions).
@@ -441,3 +442,17 @@ The E2E test suite handles lifecycle synchronization and database/cache purging:
 - **Strict DTO Validations**: E2E test responses are fully validated against standard schemas utilizing `expectDataDto`, `expectDataArrayDto`, and `expectErrorDto` assertion wrappers.
 - **Controller-Bound Test Scope**: E2E test suites must only target the HTTP endpoints of their respective controller (e.g., `auth.e2e-spec.ts` only invokes `/auth` endpoints). Any setup or verification of side-effects must be performed directly using repositories or injected services (e.g., `authService.ban(...)` or `usersRepository.update(...)`) instead of sending requests to external controllers.
 - **Standardized Describe Headers**: Describe block headers in all E2E spec files must exclude version prefixes (e.g., `POST /auth/user/login` instead of `POST /api/v1/auth/user/login`).
+
+---
+
+## 🔌 API Client SDK Generation & Distribution
+
+To facilitate type-safe communication with frontend clients (e.g. SvelteKit) without exposing the backend codebase, the repository includes an automated pipeline to build and publish TypeScript typings:
+
+- **`openapi-typescript` Integration**: Generates pure TypeScript typings from the compiled static `swagger-v1.json` spec.
+- **Generation Script (`npm run build:client`)**: Compiles Swagger specs statically via `build:swagger` (running `ts-node` with `--transpile-only` to bypass memory/OOM restrictions) and pipes the JSON schema to `dist/docs/api-client.ts`.
+- **CI/CD SDK Publishing Workflow**:
+    - Configured inside `.github/workflows/pipeline.yml` in the `publish-docs` job.
+    - Automatically runs on `push` to `main` and `development` branches (isolated environments).
+    - Clones the private SDK repository (`ersinware/nestjs-skeleton-client`) using a Personal Access Token (`secrets.SDK_REPO_PAT`), checks out the corresponding branch, commits the new `api-client.ts` definitions, and pushes it back.
+- **Frontend Consumption**: Frontend teams can securely download this client file via the GitHub Contents API by supplying a read-only GITHUB_TOKEN, keeping environments separated and secure.
