@@ -1,12 +1,15 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
-import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
-import { IAdminsRepository } from 'src/v1/admin/interface/admins.repository.interface';
-import { TokenService } from 'src/v1/auth/token.service';
-import { SessionService } from 'src/v1/auth/session.service';
-import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';
-import { IUsersRepository } from 'src/v1/user/interface/users.repository.interface';
+import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
+import { TOKEN_ADMINS_REPOSITORY } from 'src/api/v1/admin/constant/admin.constant';
+import { IAdminsRepository } from 'src/api/v1/admin/interface/admins.repository.interface';
+import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
+import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
+import { TOKEN_TOKEN_SERVICE } from 'src/common/port/security/token.constant';
+import type { ITokenService } from 'src/common/port/security/token.service.interface';
+import { TOKEN_SESSION_SERVICE } from 'src/common/port/security/session.constant';
+import type { ISessionService } from 'src/common/port/security/session.service.interface';
+import { TOKEN_USERS_REPOSITORY } from 'src/api/v1/user/constant/user.constant';
+import { IUsersRepository } from 'src/api/v1/user/interface/users.repository.interface';
 
 /**
  * Seeds a user in the database without creating a session.
@@ -29,7 +32,7 @@ export async function registerUser(
     const user = await app.get<IUsersRepository>(TOKEN_USERS_REPOSITORY).create({
         email,
         name: 'Test User',
-        password: await app.get<HashingService>(HashingService).hash(password),
+        password: await app.get<IHashingService>(TOKEN_HASHING_SERVICE).hash(password),
         isActive: true,
     });
 
@@ -48,8 +51,8 @@ export async function registerUser(
  * @returns A promise resolving to the generated tokens and session JTI.
  */
 export async function loginUser(app: NestFastifyApplication, userId: string) {
-    const tokens = await app.get<TokenService>(TokenService).generateTokens(AuthUserRole.USER, userId);
-    await app.get<SessionService>(SessionService).openSession(AuthUserRole.USER, userId, tokens.jti);
+    const tokens = await app.get<ITokenService>(TOKEN_TOKEN_SERVICE).generateTokens(AuthUserRole.USER, userId);
+    await app.get<ISessionService>(TOKEN_SESSION_SERVICE).openSession(AuthUserRole.USER, userId, tokens.jti);
 
     return {
         accessToken: tokens.accessToken,
@@ -100,7 +103,7 @@ export async function registerAdmin(
     const admin = await app.get<IAdminsRepository>(TOKEN_ADMINS_REPOSITORY).create({
         email,
         name: 'Test Admin',
-        password: await app.get<HashingService>(HashingService).hash(password),
+        password: await app.get<IHashingService>(TOKEN_HASHING_SERVICE).hash(password),
         role,
         isActive: true,
     });
@@ -125,8 +128,8 @@ export async function loginAdmin(
     adminId: string,
     role: AuthUserRole.ADMIN | AuthUserRole.SUPER_ADMIN = AuthUserRole.SUPER_ADMIN,
 ) {
-    const tokens = await app.get<TokenService>(TokenService).generateTokens(role, adminId);
-    await app.get<SessionService>(SessionService).openSession(role, adminId, tokens.jti);
+    const tokens = await app.get<ITokenService>(TOKEN_TOKEN_SERVICE).generateTokens(role, adminId);
+    await app.get<ISessionService>(TOKEN_SESSION_SERVICE).openSession(role, adminId, tokens.jti);
 
     return {
         accessToken: tokens.accessToken,

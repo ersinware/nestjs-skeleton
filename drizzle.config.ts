@@ -1,7 +1,7 @@
 import { defineConfig } from 'drizzle-kit';
 import fs from 'fs';
 import { ENV } from './src/common/config/constant/env.constant';
-import { Environment } from './src/common/enum/config/environment.enum';
+import { Environment } from './src/common/config/enum/environment.enum';
 
 const envFile = process.env[ENV.NODE_ENV] === Environment.TEST ? '.env.test' : '.env';
 if (fs.existsSync(envFile)) {
@@ -18,7 +18,7 @@ if (!fs.existsSync('/.dockerenv') && databaseUrl.includes('@postgres:')) {
 }
 
 export default defineConfig({
-    schema: './src/database/schema/index.ts',
+    schema: './src/infrastructure/database/schema/index.ts',
     out: './drizzle',
     dialect: 'postgresql',
     dbCredentials: {

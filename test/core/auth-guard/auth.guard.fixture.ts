@@ -5,9 +5,10 @@
 
 import { Controller, Get, Req } from '@nestjs/common';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Public } from 'src/common/decorator/auth/public.decorator';
+import { Public } from 'src/common/auth/decorator/public.decorator';
 import { createTestApp } from '../../shared/test-app.factory';
-import type { AccessTokenPayload, AuthenticatedRequest } from 'src/common/guard/interface/auth.interface';
+import type { AccessTokenPayload } from 'src/common/auth/interface/access-token-payload.interface';
+import type { AuthenticatedRequest } from 'src/common/auth/interface/authenticated-request.interface';
 
 /**
  * Compiles and initializes a NestJS Fastify testing application with AuthGuardTriggerController registered.

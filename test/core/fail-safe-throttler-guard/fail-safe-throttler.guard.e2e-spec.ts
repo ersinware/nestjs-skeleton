@@ -6,7 +6,7 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi, MockInstance } from 'vitest';
-import { Environment } from 'src/common/enum/config/environment.enum';
+import { Environment } from 'src/common/config/enum/environment.enum';
 import { cleanupCache } from '../../shared/cache.cleaner';
 import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from './fail-safe-throttler.guard.fixture';
 import * as Sentry from '@sentry/nestjs';

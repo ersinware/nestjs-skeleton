@@ -1,28 +1,26 @@
 /**
  * @file instrument.ts
- * @description Sentry SDK early initialization script.
- * Crucial: This must be imported at the very top of `main.ts` before any other module loads
- * to correctly intercept and capture application exceptions.
+ * @description Responsible for the early initialization of the Sentry SDK. It is critical that this is imported at the very top of `main.ts`, immediately before any other modules load, to accurately intercept and capture unexpected exceptions and crashes that may occur while the application is running.
  */
 
 import * as Sentry from '@sentry/nestjs';
 import { ENV } from './common/config/constant/env.constant';
-import { SentryEnvironment } from './common/enum/config/sentry-environment.enum';
+import { SentryEnvironment } from './common/config/enum/sentry-environment.enum';
 
 const SENTRY_DSN = process.env[ENV.SENTRY_DSN],
     SENTRY_ENVIRONMENT = process.env[ENV.SENTRY_ENVIRONMENT] as SentryEnvironment;
 
 if (!SENTRY_DSN) {
-    throw new Error('SENTRY_DSN environment variable is required.');
+    throw new Error(`${ENV.SENTRY_DSN} environment variable is required.`);
 }
 
 if (!SENTRY_ENVIRONMENT) {
-    throw new Error('SENTRY_ENVIRONMENT environment variable is required.');
+    throw new Error(`${ENV.SENTRY_ENVIRONMENT} environment variable is required.`);
 }
 
 if (!Object.values(SentryEnvironment).includes(SENTRY_ENVIRONMENT)) {
     throw new Error(
-        `Invalid SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT}". Must be one of: ${Object.values(SentryEnvironment).join(', ')}`,
+        `Invalid ${ENV.SENTRY_ENVIRONMENT}: "${SENTRY_ENVIRONMENT}". Must be one of: ${Object.values(SentryEnvironment).join(', ')}`,
     );
 }
 

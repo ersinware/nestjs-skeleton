@@ -7,7 +7,7 @@ This file serves as the living source of truth for the **NestJS Skeleton (The St
 A high-performance, production-ready NestJS skeleton designed for horizontal scalability, cloud-native observability, and clean architecture.
 
 - **Fastify-first**: Employs Fastify instead of Express for maximum request throughput.
-- **Strict Clean Architecture**: SOLID principles, strict separation of concerns, and Repository pattern abstractions are enforced.
+- **Strict Clean Architecture (Hexagonal Ports)**: SOLID principles, strict separation of concerns, and Repository/Service abstractions are enforced. All external infrastructure dependencies (Databases, Caching, Session, Token, Hashing, Mailers, Logging) are rigorously decoupled via contracts (`interface/`) and injected using custom Symbol tokens (`constant/`) located in the central `src/common/port/` layer. The domain and application layers never depend directly on the `infrastructure/` layer.
 
 ## 🛠️ Architecture & Tech Stack
 
@@ -48,6 +48,73 @@ nestjs-skeleton/
 │   ├── instrument.ts                   # Sentry SDK early initialization and performance tracking
 │   ├── main.ts                         # Application bootstrap entry point
 │   ├── tracing.ts                      # OpenTelemetry SDK initialization (imported first in main.ts)
+│   ├── api/                            # Presentation and entrypoint routing endpoints
+│   │   ├── health/                     # Health check probes (Liveness / Readiness)
+│   │   │   ├── dto/
+│   │   │   │   ├── response-healthy.dto.ts
+│   │   │   │   ├── response-unhealthy.dto.ts
+│   │   │   │   └── util/
+│   │   │   │       └── dto.util.ts
+│   │   │   ├── health.controller.ts
+│   │   │   ├── health.controller.spec.ts
+│   │   │   ├── health.service.ts
+│   │   │   ├── health.service.spec.ts
+│   │   │   └── health.module.ts
+│   │   └── v1/                         # Version 1 API modules
+│   │       ├── admin/                      # Admin repository and module
+│   │       │   ├── constant/
+│   │       │   │   └── admin.constant.ts   # Admin injection tokens
+│   │       │   ├── dto/
+│   │       │   │   ├── response-admin.dto.ts
+│   │       │   │   ├── response-created-admin.dto.ts
+│   │       │   │   ├── post-admin.dto.ts
+│   │       │   │   └── patch-admin-status.dto.ts
+│   │       │   ├── interface/              # Admins repository interface
+│   │       │   │   └── admins.repository.interface.ts
+│   │       │   ├── repository/             # Admins repository using Drizzle
+│   │       │   │   └── admins.repository.ts
+│   │       │   ├── type/
+│   │       │   │   └── admin.type.ts
+│   │       │   ├── admin.controller.ts
+│   │       │   ├── admin.controller.spec.ts # Admin controller unit tests
+│   │       │   ├── admin.service.ts
+│   │       │   ├── admin.service.spec.ts
+│   │       │   └── admin.module.ts
+│   │       ├── auth/                       # Authentication & Session module
+│   │       │   ├── constant/
+│   │       │   │   └── auth.constant.ts    # Token lengths and authentication constants
+│   │       │   ├── decorator/
+│   │       │   │   └── refresh-token.decorator.ts
+│   │       │   ├── dto/
+│   │       │   │   ├── post-auth-login.dto.ts
+│   │       │   │   ├── post-auth-refresh.dto.ts
+│   │       │   │   └── response-auth-tokens.dto.ts
+│   │       │   ├── auth.controller.ts
+│   │       │   ├── auth.controller.spec.ts
+│   │       │   ├── auth.service.ts
+│   │       │   ├── auth.service.spec.ts
+│   │       │   └── auth.module.ts
+│   │       └── user/                       # User resource module
+│   │           ├── constant/
+│   │           │   └── user.constant.ts    # User injection tokens
+│   │           ├── dto/
+│   │           │   ├── response-user.dto.ts
+│   │           │   ├── post-user.dto.ts
+│   │           │   ├── patch-user.dto.ts
+│   │           │   ├── patch-user-password.dto.ts
+│   │           │   ├── patch-user-status.dto.ts
+│   │           │   └── query-user-search.dto.ts
+│   │           ├── interface/              # Users repository interface
+│   │           │   └── users.repository.interface.ts
+│   │           ├── repository/             # Users repository using Drizzle
+│   │           │   └── users.repository.ts
+│   │           ├── type/
+│   │           │   └── user.type.ts
+│   │           ├── user.controller.ts
+│   │           ├── user.controller.spec.ts
+│   │           ├── user.service.ts
+│   │           ├── user.service.spec.ts
+│   │           └── user.module.ts
 │   ├── common/                         # Shared utilities, filters, decorators, and configurations
 │   │   ├── config/                     # Config validation schemas
 │   │   │   ├── constant/
@@ -64,16 +131,7 @@ nestjs-skeleton/
 │   │   │   ├── param-id.dto.ts         # Path parameter UUID validator DTO
 │   │   │   ├── query-pagination.dto.ts # Pagination search query validator DTO
 │   │   │   └── response-pagination.dto.ts # Paginated response envelope wrapper DTO
-│   │   ├── hashing/                    # Hashing & password verification services
-│   │   │   ├── service/
-│   │   │   │   ├── hashing.service.ts  # Argon2 password hashing wrapper
-│   │   │   │   └── hashing.service.spec.ts # Hashing service unit tests
-│   │   │   └── hashing.module.ts       # Global hashing utilities module
 │   │   ├── decorator/                  # Common decorators
-│   │   │   ├── auth/                   # Authentication & authorization decorators
-│   │   │   │   ├── access-token-payload.decorator.ts
-│   │   │   │   ├── public.decorator.ts
-│   │   │   │   └── roles.decorator.ts
 │   │   │   ├── doc/                    # OpenAPI / Scalar response decorators
 │   │   │   │   ├── api-default-bad-request-response.decorator.ts
 │   │   │   │   ├── api-default-conflict-response.decorator.ts
@@ -109,166 +167,132 @@ nestjs-skeleton/
 │   │   ├── filter/                     # Exception filters
 │   │   │   ├── global-exception.filter.ts
 │   │   │   └── global-exception.filter.spec.ts
-│   │   ├── guard/                      # Custom guards
-│   │   │   ├── auth.guard.ts           # JWT authenticator
-│   │   │   ├── auth.guard.spec.ts
-│   │   │   ├── auth-roles.guard.ts     # RBAC evaluator
-│   │   │   ├── auth-roles.guard.spec.ts
-│   │   │   └── interface/
-│   │   │       └── auth.interface.ts   # JWT request extension and token payload interfaces
 │   │   ├── interceptor/                # Global response formatters
 │   │   │   ├── response.interceptor.ts
 │   │   │   └── response.interceptor.spec.ts
 │   │   ├── pipe/                       # Validation pipes
 │   │   │   ├── not-empty-body.pipe.ts
 │   │   │   └── not-empty-body.pipe.spec.ts
-│   │   ├── logger/                     # Unified logging concerns
-│   │   │   ├── logger.config.ts        # Pino logger configuration
-│   │   │   ├── log-payload.ts          # Base structured log payload class
-│   │   │   ├── audit-log-payload.ts    # Audit-specific log payload class
-│   │   │   └── enum/
-│   │   │       ├── audit-log-action.enum.ts # Standard audit log actions
-│   │   │       └── audit-log-auth-reason.enum.ts # Failed authentication reasons
 │   │   └── util/                       # Helper utilities
 │   │       ├── password-generator.util.spec.ts
 │   │       ├── password-generator.util.ts
 │   │       └── swagger.util.ts         # Swagger document builder & envelope wrapper
-│   ├── database/                       # DatabaseModule & Drizzle client initialization
-│   │   ├── constant/
-│   │   │   └── database.constant.ts    # Database module injection tokens (TOKEN_DATABASE, etc.)
-│   │   ├── database.module.ts          # Postgres pool setup and Drizzle registration
-│   │   ├── interface/                  # Database interfaces
-│   │   │   ├── database-cleaner.interface.ts
-│   │   │   └── database-health-indicator.interface.ts
-│   │   ├── service/                    # Database services
-│   │   │   ├── postgres-cleaner.service.ts
-│   │   │   ├── postgres-cleaner.service.spec.ts
-│   │   │   ├── postgres-health.indicator.ts
-│   │   │   └── postgres-health.indicator.spec.ts
-│   │   └── schema/                     # Drizzle ORM database schema definitions
-│   │       ├── index.ts                # Consolidated schema exporter
-│   │       ├── base.schema.ts          # Base fields (timestamps helper)
-│   │       ├── users/
-│   │       │   └── users.schema.ts     # Users table structure
-│   │       └── admins/
-│   │           └── admins.schema.ts    # Admins table structure
-│   ├── cache/                          # CacheModule & Redis Client initialization (Split Cache/State)
-│   │   ├── constant/
-│   │   │   └── cache.constant.ts       # Cache module constants and split injection tokens
-│   │   ├── cache.module.ts             # Cache and State connections and graceful shutdowns
-│   │   ├── interface/                  # Cache interfaces
-│   │   │   ├── cache-service.interface.ts
-│   │   │   ├── cache-state-service.interface.ts
-│   │   │   ├── cache-cleaner-service.interface.ts
-│   │   │   └── cache-health-indicator.interface.ts
-│   │   ├── service/                    # Cache & State services
-│   │   │   ├── redis.service.ts        # Generic RedisService implementation (cache client)
-│   │   │   ├── redis.service.spec.ts   # Caching operations unit tests
-│   │   │   ├── redis-state.service.ts  # Specialized RedisStateService class using State client
-│   │   │   ├── redis-state.service.spec.ts # Session state unit tests
-│   │   │   ├── redis-cleaner.service.ts # Redis database flusher (flushes both cache and state)
-│   │   │   ├── redis-cleaner.service.spec.ts # Redis database flusher unit tests
-│   │   │   ├── redis-health.indicator.ts # Redis connectivity probe (pings both cache and state)
-│   │   │   └── redis-health.indicator.spec.ts # Redis connectivity probe unit tests
-│   │   └── util/                       # Cache helper utilities
-│   │       └── cache-key.util.ts       # Centralized cache key builder utility
-│   ├── email/                          # Email background processing module
-│   │   ├── constant/
-│   │   │   └── email.constant.ts       # Dependency injection tokens
-│   │   ├── interface/
-│   │   │   └── email.service.interface.ts # E-mail service contract interface
-│   │   ├── type/
-│   │   │   └── email.type.ts           # Email job payload definitions
-│   │   ├── service/
-│   │   │   ├── email.service.ts        # BullMQ job scheduler implementation
-│   │   │   ├── email.service.spec.ts   # Unit tests
-│   │   │   ├── gmail.service.ts        # Google Gmail API implementation
-│   │   │   └── gmail.service.spec.ts   # Google Gmail API unit tests
-│   │   ├── processor/
-│   │   │   ├── email.processor.ts      # BullMQ background job worker
-│   │   │   └── email.processor.spec.ts # Unit tests
-│   │   └── email.module.ts             # Module configuration
-│   ├── health/                         # Health check probes (Liveness / Readiness)
-│   │   ├── dto/
-│   │   │   ├── healthy.dto.ts
-│   │   │   ├── unhealthy.dto.ts
-│   │   │   └── util/
-│   │   │       └── dto.util.ts
-│   │   ├── health.controller.ts
-│   │   ├── health.controller.spec.ts
-│   │   ├── health.service.ts
-│   │   ├── health.service.spec.ts
-│   │   └── health.module.ts
-│   ├── script/                         # CLI utilities
-│   │   └── build-swagger.ts            # Statically exports OpenAPI spec & Scalar templates
-│   ├── throttle/                       # Rate limiting module
-│   │   ├── constant/
-│   │   │   └── throttle.constant.ts
-│   │   ├── decorator/
-│   │   │   └── critical-throttle.decorator.ts
-│   │   ├── guard/
-│   │   │   ├── fail-safe-throttler.guard.ts
-│   │   │   └── fail-safe-throttler.guard.spec.ts
-│   │   └── throttle.module.ts
-│   └── v1/                             # Version 1 API modules
-│       ├── admin/                      # Admin repository and module
-│       │   ├── constant/
-│       │   │   └── admin.constant.ts   # Admin injection tokens
-│       │   ├── dto/
-│       │   │   ├── get-admin.dto.ts
-│       │   │   ├── get-created-admin.dto.ts
-│       │   │   ├── post-admin.dto.ts
-│       │   │   └── patch-admin-status.dto.ts
-│       │   ├── interface/              # Admins repository interface
-│       │   │   └── admins.repository.interface.ts
-│       │   ├── repository/             # Admins repository using Drizzle
-│       │   │   └── admins.repository.ts
-│       │   ├── type/
-│       │   │   └── admin.type.ts
-│       │   ├── admin.controller.ts
-│       │   ├── admin.controller.spec.ts # Admin controller unit tests
-│       │   ├── admin.service.ts
-│       │   ├── admin.service.spec.ts
-│       │   └── admin.module.ts
-│       ├── auth/                       # Authentication & Session module
-│       │   ├── constant/
-│       │   │   └── auth.constant.ts    # Token lengths and authentication constants
-│       │   ├── decorator/
-│       │   │   └── refresh-token.decorator.ts
-│       │   ├── dto/
-│       │   │   ├── post-auth-login.dto.ts
-│       │   │   ├── post-auth-refresh.dto.ts
-│       │   │   └── get-auth-tokens.dto.ts
-│       │   ├── auth.controller.ts
-│       │   ├── auth.controller.spec.ts
-│       │   ├── auth.service.ts
-│       │   ├── auth.service.spec.ts
-│       │   ├── token.service.ts            # JWT token service
-│       │   ├── token.service.spec.ts
-│       │   ├── session.service.ts          # Redis session service
-│       │   ├── session.service.spec.ts
-│       │   └── auth.module.ts
-│       └── user/                       # User resource module
-│           ├── constant/
-│           │   └── user.constant.ts    # User injection tokens
-│           ├── dto/
-│           │   ├── get-user.dto.ts
-│           │   ├── post-user.dto.ts
-│           │   ├── patch-user.dto.ts
-│           │   ├── patch-user-password.dto.ts
-│           │   ├── patch-user-status.dto.ts
-│           │   └── query-user-search.dto.ts
-│           ├── interface/              # Users repository interface
-│           │   └── users.repository.interface.ts
-│           ├── repository/             # Users repository using Drizzle
-│           │   └── users.repository.ts
-│           ├── type/
-│           │   └── user.type.ts
-│           ├── user.controller.ts
-│           ├── user.controller.spec.ts
-│           ├── user.service.ts
-│           ├── user.service.spec.ts
-│           └── user.module.ts
+│   ├── infrastructure/                 # Technical capability modules
+│   │   ├── cache/                      # CacheModule & Redis Client initialization (Split Cache/State)
+│   │   │   ├── constant/
+│   │   │   │   └── cache.constant.ts       # Cache module constants and split injection tokens
+│   │   │   ├── cache.module.ts             # Cache and State connections and graceful shutdowns
+│   │   │   ├── interface/                  # Cache interfaces
+│   │   │   │   ├── cache-service.interface.ts
+│   │   │   │   ├── cache-state-service.interface.ts
+│   │   │   │   ├── cache-cleaner-service.interface.ts
+│   │   │   │   └── cache-health-indicator.interface.ts
+│   │   │   ├── service/                    # Cache & State services
+│   │   │   │   ├── redis.service.ts        # Generic RedisService implementation (cache client)
+│   │   │   │   ├── redis.service.spec.ts   # Caching operations unit tests
+│   │   │   │   ├── redis-state.service.ts  # Specialized RedisStateService class using State client
+│   │   │   │   ├── redis-state.service.spec.ts # Session state unit tests
+│   │   │   │   ├── redis-cleaner.service.ts # Redis database flusher (flushes both cache and state)
+│   │   │   │   ├── redis-cleaner.service.spec.ts # Redis database flusher unit tests
+│   │   │   │   ├── redis-health.indicator.ts # Redis connectivity probe (pings both cache and state)
+│   │   │   │   └── redis-health.indicator.spec.ts # Redis connectivity probe unit tests
+│   │   │   └── util/                       # Cache helper utilities
+│   │   │       └── cache-key.util.ts       # Centralized cache key builder utility
+│   │   ├── database/                   # DatabaseModule & Drizzle client initialization
+│   │   │   ├── constant/
+│   │   │   │   └── database.constant.ts    # Database module injection tokens (TOKEN_DATABASE, etc.)
+│   │   │   ├── database.module.ts          # Postgres pool setup and Drizzle registration
+│   │   │   ├── interface/                  # Database interfaces
+│   │   │   │   ├── database-cleaner.interface.ts
+│   │   │   │   └── database-health-indicator.interface.ts
+│   │   │   ├── service/                    # Database services
+│   │   │   │   ├── postgres-cleaner.service.ts
+│   │   │   │   ├── postgres-cleaner.service.spec.ts
+│   │   │   │   ├── postgres-health.indicator.ts
+│   │   │   │   └── postgres-health.indicator.spec.ts
+│   │   │   └── schema/                     # Drizzle ORM database schema definitions
+│   │   │       ├── index.ts                # Consolidated schema exporter
+│   │   │       ├── base.schema.ts          # Base fields (timestamps helper)
+│   │   │       ├── user/
+│   │   │       │   └── user.schema.ts     # Users table structure
+│   │   │       └── admin/
+│   │   │       │   └── admin.schema.ts    # Admins table structure
+│   │   ├── email/                      # Email background processing module
+│   │   │   ├── constant/
+│   │   │   │   ├── email.constant.ts       # Queue dispatcher tokens
+│   │   │   │   └── mailer.constant.ts      # Transport/Mailer tokens
+│   │   │   ├── interface/
+│   │   │   │   ├── email.service.interface.ts # Queue dispatcher contract
+│   │   │   │   └── mailer.service.interface.ts # Transport contract
+│   │   │   ├── type/
+│   │   │   │   └── email.type.ts           # Email job payload definitions
+│   │   │   ├── service/
+│   │   │   │   ├── email.service.ts        # BullMQ job scheduler implementation
+│   │   │   │   ├── email.service.spec.ts   # Unit tests
+│   │   │   │   ├── gmail.service.ts        # Google Gmail API transport implementation
+│   │   │   │   └── gmail.service.spec.ts   # Google Gmail API unit tests
+│   │   │   ├── processor/
+│   │   │   │   ├── email.processor.ts      # BullMQ background job worker
+│   │   │   │   └── email.processor.spec.ts # Unit tests
+│   │   │   └── email.module.ts             # Module configuration
+│   │   ├── logger/                     # Dedicated Logger module (encapsulates Pino structured logger)
+│   │   │   ├── enum/
+│   │   │   │   ├── audit-log-action.enum.ts # Standard audit log actions
+│   │   │   │   └── audit-log-auth-reason.enum.ts # Failed authentication reasons
+│   │   │   ├── payload/
+│   │   │   │   ├── audit-log-payload.ts    # Audit-specific log payload class
+│   │   │   │   └── log-payload.ts          # Base structured log payload class
+│   │   │   └── logger.module.ts            # NestJS module configuration (inlines Pino logger config)
+│   │   ├── script/                     # CLI utilities
+│   │   │   └── build-swagger.ts            # Statically exports OpenAPI spec & Scalar templates
+│   │   ├── throttle/                   # Rate limiting module
+│   │   │   ├── constant/
+│   │   │   │   └── throttle.constant.ts
+│   │   │   ├── decorator/
+│   │   │   │   └── critical-throttle.decorator.ts
+│   │   │   ├── guard/
+│   │   │   │   ├── fail-safe-throttler.guard.ts
+│   │   │   │   └── fail-safe-throttler.guard.spec.ts
+│   │   │   └── throttle.module.ts
+│   │   └── security/                   # Security Domain
+│   │       ├── decorator/                  # Security decorators
+│   │       │   ├── access-token-payload.decorator.ts
+│   │       │   ├── public.decorator.ts
+│   │       │   └── roles.decorator.ts
+│   │       ├── guard/
+│   │       │   ├── auth.guard.ts           # Global JWT Authenticator Guard
+│   │       │   ├── auth.guard.spec.ts
+│   │       │   ├── auth-roles.guard.ts     # Global RBAC Evaluator Guard
+│   │       │   └── auth-roles.guard.spec.ts
+│   │       ├── interface/
+│   │       │   └── auth.interface.ts       # JWT payload interfaces
+│   │       ├── hashing/                    # Password hashing micro-module
+│   │       │   ├── constant/
+│   │       │   │   └── hashing.constant.ts
+│   │       │   ├── interface/
+│   │       │   │   └── hashing.service.interface.ts
+│   │       │   ├── service/
+│   │       │   │   ├── hashing.service.ts
+│   │       │   │   └── hashing.service.spec.ts
+│   │       │   └── hashing.module.ts
+│   │       ├── token/                      # Token lifecycle micro-module
+│   │       │   ├── constant/
+│   │       │   │   └── token.constant.ts
+│   │       │   ├── interface/
+│   │       │   │   └── token.service.interface.ts
+│   │       │   ├── service/
+│   │       │   │   ├── token.service.ts
+│   │       │   │   └── token.service.spec.ts
+│   │       │   └── token.module.ts
+│   │       └── session/                    # Session management micro-module
+│   │           ├── constant/
+│   │           │   └── session.constant.ts
+│   │           ├── interface/
+│   │           │   └── session.service.interface.ts
+│   │           ├── service/
+│   │           │   ├── session.service.ts
+│   │           │   └── session.service.spec.ts
+│   │           └── session.module.ts
 └── test/                               # E2E test suites
     ├── api/                            # API / Business Controller E2E Tests
     │   └── v1/
@@ -393,8 +417,9 @@ The application registers several global guards, interceptors, pipes, and filter
 
 ### 6. Email Module
 
-- Asynchronously sends emails using BullMQ background worker queues backed by Redis to prevent blocking request cycles.
-- Sends emails via Google Gmail API OAuth2 using OAuth Client ID, Secret, and Refresh Token configurations.
+- **Split Dispatcher/Transport Design**:
+    - **`EmailService` (Dispatcher)**: Uses BullMQ backed by Redis to queue tasks asynchronously, preventing blocking request cycles. Injected via `TOKEN_EMAIL_SERVICE` / `IEmailService`.
+    - **`GmailService` (Transport)**: Handles actual delivery via Google Gmail API OAuth2 using Client ID, Secret, and Refresh Token configurations. Decoupled and injected into the BullMQ background worker via `TOKEN_MAILER_SERVICE` / `IMailerService`, allowing easy swapping to other transports (e.g., AWS SES, SendGrid) in the future.
 
 ### 7. Cache & Session State Module (Split Client Architecture)
 

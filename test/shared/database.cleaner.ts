@@ -4,8 +4,8 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_DATABASE_CLEANER } from 'src/database/constant/database.constant';
-import type { IDatabaseCleaner } from 'src/database/interface/database-cleaner.interface';
+import { TOKEN_DATABASE_CLEANER } from 'src/common/port/database/database.constant';
+import type { IDatabaseCleaner } from 'src/common/port/database/database-cleaner.interface';
 
 /**
  * Invokes the database cleaner provider to reset all data tables during test cycles.

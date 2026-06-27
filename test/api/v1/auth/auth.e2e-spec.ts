@@ -4,19 +4,20 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
-import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
-import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
-import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { TOKEN_ADMINS_REPOSITORY } from 'src/v1/admin/constant/admin.constant';
-import { IAdminsRepository } from 'src/v1/admin/interface/admins.repository.interface';
-import { GetAuthTokensDto } from 'src/v1/auth/dto/get-auth-tokens.dto';
-import { PostAuthLoginDto } from 'src/v1/auth/dto/post-auth-login.dto';
-import { PostAuthRefreshDto } from 'src/v1/auth/dto/post-auth-refresh.dto';
-import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';
-import { IUsersRepository } from 'src/v1/user/interface/users.repository.interface';
+import { BadRequestType } from 'src/common/exception/enum/bad-request-type.enum';
+import { ForbiddenType } from 'src/common/exception/enum/forbidden-type.enum';
+import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
+import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
+import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
+import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
+import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
+import { TOKEN_ADMINS_REPOSITORY } from 'src/api/v1/admin/constant/admin.constant';
+import { IAdminsRepository } from 'src/api/v1/admin/interface/admins.repository.interface';
+import { ResponseAuthTokensDto } from 'src/api/v1/auth/dto/response-auth-tokens.dto';
+import { PostAuthLoginDto } from 'src/api/v1/auth/dto/post-auth-login.dto';
+import { PostAuthRefreshDto } from 'src/api/v1/auth/dto/post-auth-refresh.dto';
+import { TOKEN_USERS_REPOSITORY } from 'src/api/v1/user/constant/user.constant';
+import { IUsersRepository } from 'src/api/v1/user/interface/users.repository.interface';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanupCache } from '../../../shared/cache.cleaner';
@@ -28,13 +29,13 @@ describe('AuthController', () => {
     let app: NestFastifyApplication,
         usersRepository: IUsersRepository,
         adminsRepository: IAdminsRepository,
-        hashingService: HashingService;
+        hashingService: IHashingService;
 
     beforeEach(async () => {
         app = await createAuthTestApp();
         usersRepository = app.get<IUsersRepository>(TOKEN_USERS_REPOSITORY);
         adminsRepository = app.get<IAdminsRepository>(TOKEN_ADMINS_REPOSITORY);
-        hashingService = app.get<HashingService>(HashingService);
+        hashingService = app.get<IHashingService>(TOKEN_HASHING_SERVICE);
 
         await cleanupDatabase(app);
         await cleanupCache(app);
@@ -156,7 +157,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/user/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokensDto = expectDataDto(res.body, GetAuthTokensDto);
+                tokensDto = expectDataDto(res.body, ResponseAuthTokensDto);
 
             expect(tokensDto.accessToken).toBeDefined();
             expect(tokensDto.refreshToken).toBeDefined();
@@ -301,7 +302,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/admin/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokensDto = expectDataDto(res.body, GetAuthTokensDto);
+                tokensDto = expectDataDto(res.body, ResponseAuthTokensDto);
 
             expect(tokensDto.accessToken).toBeDefined();
             expect(tokensDto.refreshToken).toBeDefined();
@@ -328,7 +329,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/admin/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokensDto = expectDataDto(res.body, GetAuthTokensDto);
+                tokensDto = expectDataDto(res.body, ResponseAuthTokensDto);
 
             expect(tokensDto.accessToken).toBeDefined();
             expect(tokensDto.refreshToken).toBeDefined();
@@ -373,7 +374,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should fail rotation when access token is sent instead of refresh token', async () => {
@@ -391,7 +392,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/user/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, GetAuthTokensDto),
+                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto),
                 resRefresh = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
@@ -401,7 +402,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(resRefresh.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should successfully rotate tokens for an active registered user', async () => {
@@ -419,7 +420,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/user/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, GetAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
 
             await request(app.getHttpServer())
                 .get('/api/v1/auth-trigger/protected')
@@ -432,7 +433,7 @@ describe('AuthController', () => {
                         refreshToken: tokens.refreshToken,
                     } satisfies PostAuthRefreshDto)
                     .expect(200),
-                rotatedTokens = expectDataDto(resRefresh.body, GetAuthTokensDto);
+                rotatedTokens = expectDataDto(resRefresh.body, ResponseAuthTokensDto);
 
             expect(rotatedTokens.accessToken).toBeDefined();
             expect(rotatedTokens.refreshToken).toBeDefined();
@@ -460,7 +461,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/admin/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, GetAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
 
             await request(app.getHttpServer())
                 .get('/api/v1/auth-trigger/admin-only')
@@ -473,7 +474,7 @@ describe('AuthController', () => {
                         refreshToken: tokens.refreshToken,
                     } satisfies PostAuthRefreshDto)
                     .expect(200),
-                rotatedTokens = expectDataDto(resRefresh.body, GetAuthTokensDto);
+                rotatedTokens = expectDataDto(resRefresh.body, ResponseAuthTokensDto);
 
             expect(rotatedTokens.accessToken).toBeDefined();
             expect(rotatedTokens.refreshToken).toBeDefined();
@@ -500,14 +501,14 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/user/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                initialTokens = expectDataDto(resLogin.body, GetAuthTokensDto),
+                initialTokens = expectDataDto(resLogin.body, ResponseAuthTokensDto),
                 resRefresh = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: initialTokens.refreshToken,
                     } satisfies PostAuthRefreshDto)
                     .expect(200),
-                rotatedTokens = expectDataDto(resRefresh.body, GetAuthTokensDto);
+                rotatedTokens = expectDataDto(resRefresh.body, ResponseAuthTokensDto);
 
             expect(rotatedTokens.refreshToken).not.toBe(initialTokens.refreshToken);
 
@@ -520,7 +521,7 @@ describe('AuthController', () => {
                 errorDtoReplay = expectErrorDto(resReplay.body, ErrorDefaultDto);
 
             expect(errorDtoReplay.statusCode).toBe(401);
-            expect(errorDtoReplay.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDtoReplay.message).toEqual([UnauthorizedType.DEFAULT]);
 
             const resEvicted = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
@@ -531,7 +532,7 @@ describe('AuthController', () => {
                 errorDtoEvicted = expectErrorDto(resEvicted.body, ErrorDefaultDto);
 
             expect(errorDtoEvicted.statusCode).toBe(401);
-            expect(errorDtoEvicted.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDtoEvicted.message).toEqual([UnauthorizedType.DEFAULT]);
 
             const resProtected = await request(app.getHttpServer())
                     .get('/api/v1/auth-trigger/protected')
@@ -540,7 +541,7 @@ describe('AuthController', () => {
                 errorDtoProtected = expectErrorDto(resProtected.body, ErrorDefaultDto);
 
             expect(errorDtoProtected.statusCode).toBe(401);
-            expect(errorDtoProtected.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDtoProtected.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should fail rotation when the user is deactivated/banned after the token was issued', async () => {
@@ -556,7 +557,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/user/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, GetAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
 
             await usersRepository.update(user!.id, { isActive: false });
 
@@ -569,7 +570,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(resRefresh.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should fail rotation when the admin is deactivated/banned after the token was issued', async () => {
@@ -586,7 +587,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/admin/login')
                     .send({ email, password } satisfies PostAuthLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, GetAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
 
             await adminsRepository.update(admin!.id, { isActive: false });
 
@@ -599,7 +600,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(resRefresh.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
     });
 
@@ -622,7 +623,7 @@ describe('AuthController', () => {
                 .send({ email, password } satisfies PostAuthLoginDto)
                 .expect(200);
 
-            const tokens = expectDataDto(res.body, GetAuthTokensDto);
+            const tokens = expectDataDto(res.body, ResponseAuthTokensDto);
             accessToken = tokens.accessToken;
             refreshToken = tokens.refreshToken;
         });
@@ -681,7 +682,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
     });
 
@@ -707,7 +708,7 @@ describe('AuthController', () => {
                 } satisfies PostAuthLoginDto)
                 .expect(200);
 
-            const tokens = expectDataDto(res.body, GetAuthTokensDto);
+            const tokens = expectDataDto(res.body, ResponseAuthTokensDto);
             accessToken = tokens.accessToken;
             refreshToken = tokens.refreshToken;
         });
@@ -728,7 +729,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should successfully logout from all devices, clear all active sessions, and ban the current access token instantly', async () => {
@@ -744,7 +745,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
 
             const resProtected = await request(app.getHttpServer())
                     .get('/api/v1/auth-trigger/protected')
@@ -753,7 +754,7 @@ describe('AuthController', () => {
                 errorDtoProtected = expectErrorDto(resProtected.body, ErrorDefaultDto);
 
             expect(errorDtoProtected.statusCode).toBe(401);
-            expect(errorDtoProtected.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDtoProtected.message).toEqual([UnauthorizedType.DEFAULT]);
         });
     });
 });
