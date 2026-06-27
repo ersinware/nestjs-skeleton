@@ -6,10 +6,10 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
-import { HealthyDto } from 'src/health/dto/healthy.dto';
-import { UnhealthyDto } from 'src/health/dto/unhealthy.dto';
-import { TOKEN_CACHE_HEALTH_INDICATOR } from 'src/cache/constant/cache.constant';
-import type { ICacheHealthIndicator } from 'src/cache/interface/cache-health-indicator.interface';
+import { ResponseHealthyDto } from 'src/api/health/dto/response-healthy.dto';
+import { ResponseUnhealthyDto } from 'src/api/health/dto/response-unhealthy.dto';
+import { TOKEN_CACHE_HEALTH_INDICATOR } from 'src/common/port/cache/cache.constant';
+import type { ICacheHealthIndicator } from 'src/common/port/cache/cache-health-indicator.interface';
 import { createTestApp } from '../../../shared/test-app.factory';
 import { expectDataDto, expectErrorDto } from '../../../shared/dto-assertion.util';
 
@@ -29,7 +29,7 @@ describe('HealthController', () => {
             .get('/api/health')
             .expect(200)
             .expect((res) => {
-                expectDataDto(res.body, HealthyDto);
+                expectDataDto(res.body, ResponseHealthyDto);
             });
     });
 
@@ -41,7 +41,7 @@ describe('HealthController', () => {
             .get('/api/health')
             .expect(503)
             .expect((res) => {
-                const dto = expectErrorDto(res.body, UnhealthyDto);
+                const dto = expectErrorDto(res.body, ResponseUnhealthyDto);
 
                 expect(dto.status).toBe('error');
                 expect(dto.error).toHaveProperty('cache');

@@ -1,36 +1,36 @@
 /**
  * @file app.module.ts
- * @description Main application module aggregating configuration, security, database, and business modules.
- * Sets up global guards, pipes, interceptors, and exception filters.
+ * @description The root module of the application. It constructs the application's dependency tree by aggregating all configuration, security, database, infrastructure, and business logic modules. It also registers global guards, pipes, interceptors, and exception filters that apply across the entire application.
  */
 
+import { BullModule } from '@nestjs/bullmq';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { CacheModule } from './cache/cache.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { Environment } from 'src/common/config/enum/environment.enum';
+import { HealthModule } from './api/health/health.module';
+import { AdminModule } from './api/v1/admin/admin.module';
+import { AuthModule } from './api/v1/auth/auth.module';
+import { UserModule } from './api/v1/user/user.module';
+import { AuthRolesGuard } from './common/auth/guard/auth-roles.guard';
+import { AuthGuard } from './common/auth/guard/auth.guard';
 import { ENV } from './common/config/constant/env.constant';
 import { validateConfig } from './common/config/env.validation.config';
-import { Environment } from 'src/common/enum/config/environment.enum';
-import { GlobalExceptionFilter } from './common/filter/global-exception.filter';
-import { AuthGuard } from './common/guard/auth.guard';
-import { AuthRolesGuard } from './common/guard/auth-roles.guard';
-import { ThrottleModule } from './throttle/throttle.module';
+import { GlobalExceptionFilter } from './common/exception/filter/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptor/response.interceptor';
-import { DatabaseModule } from './database/database.module';
-import { HashingModule } from './common/hashing/hashing.module';
-import { HealthModule } from './health/health.module';
-import { AdminModule } from './v1/admin/admin.module';
-import { AuthModule } from './v1/auth/auth.module';
-import { UserModule } from './v1/user/user.module';
-import { NotEmptyBodyPipe } from './common/pipe/not-empty-body.pipe';
-import { BullModule } from '@nestjs/bullmq';
-import { LoggerModule } from 'nestjs-pino';
-import { getLoggerConfig } from './common/logger/logger.config';
-import { EmailModule } from './email/email.module';
+import { NotEmptyBodyPipe } from './common/validation/pipe/not-empty-body.pipe';
+import { CacheModule } from './infrastructure/cache/cache.module';
+import { DatabaseModule } from './infrastructure/database/database.module';
+import { EmailModule } from './infrastructure/email/email.module';
+import { LoggerModule } from './infrastructure/logger/logger.module';
+import { SessionModule } from './infrastructure/security/session/session.module';
+import { TokenModule } from './infrastructure/security/token/token.module';
+import { ThrottleModule } from './infrastructure/throttle/throttle.module';
 
 /**
- * The root module of the NestJS application.
- * Imports essential modules and registers application-wide cross-cutting concerns.
+ * The root module class of the NestJS application.
+ * Ensures the initialization of all essential core modules (database, logging, caching, etc.) and registers cross-cutting concerns across the application.
  */
 @Module({
     imports: [
@@ -39,12 +39,7 @@ import { EmailModule } from './email/email.module';
             envFilePath: process.env[ENV.NODE_ENV] === Environment.TEST ? '.env.test' : '.env',
             validate: validateConfig,
         }),
-        LoggerModule.forRootAsync({
-            inject: [ConfigService],
-            useFactory: getLoggerConfig,
-        }),
-        CacheModule,
-        ThrottleModule,
+        EventEmitterModule.forRoot(),
         BullModule.forRootAsync({
             inject: [ConfigService],
             useFactory: (config: ConfigService) => {
@@ -59,10 +54,14 @@ import { EmailModule } from './email/email.module';
                 };
             },
         }),
+        LoggerModule,
+        CacheModule,
+        ThrottleModule,
         DatabaseModule,
-        HealthModule,
-        HashingModule,
         EmailModule,
+        TokenModule,
+        SessionModule,
+        HealthModule,
         AuthModule,
         UserModule,
         AdminModule,
@@ -75,10 +74,6 @@ import { EmailModule } from './email/email.module';
         {
             provide: APP_GUARD,
             useClass: AuthRolesGuard,
-        },
-        {
-            provide: APP_INTERCEPTOR,
-            useClass: ResponseInterceptor,
         },
         {
             provide: APP_PIPE,
@@ -96,6 +91,10 @@ import { EmailModule } from './email/email.module';
                 },
                 transform: true,
             }),
+        },
+        {
+            provide: APP_INTERCEPTOR,
+            useClass: ResponseInterceptor,
         },
         {
             provide: APP_FILTER,

@@ -6,8 +6,8 @@
 
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
-import { Environment } from 'src/common/enum/config/environment.enum';
-import { SentryEnvironment } from 'src/common/enum/config/sentry-environment.enum';
+import { Environment } from 'src/common/config/enum/environment.enum';
+import { SentryEnvironment } from 'src/common/config/enum/sentry-environment.enum';
 
 /**
  * Transforms string values representing booleans ('true', 'false') to actual booleans.
@@ -17,9 +17,15 @@ import { SentryEnvironment } from 'src/common/enum/config/sentry-environment.enu
  * @param params The transform parameter object.
  * @returns The converted boolean value, or the original value if not matching.
  */
-function transformToBoolean({ value }: { value: unknown }) {
-    if (value === 'true' || value === true) return true;
-    if (value === 'false' || value === false) return false;
+function transformToBoolean<T>({ value }: { value: T }): boolean | T {
+    if (value === 'true' || value === true) {
+        return true;
+    }
+
+    if (value === 'false' || value === false) {
+        return false;
+    }
+
     return value;
 }
 
@@ -265,7 +271,7 @@ export class EnvironmentVariables {
  * @returns Validated and typed environment variables instance.
  * @throws {Error} containing validation failure details if any environment variable is missing or invalid.
  */
-export function validateConfig(config: Record<string, unknown>) {
+export function validateConfig(config: Record<string, unknown>): EnvironmentVariables {
     const validatedConfig = plainToInstance(EnvironmentVariables, config, {
             enableImplicitConversion: true,
         }),

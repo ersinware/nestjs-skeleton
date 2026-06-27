@@ -1,23 +1,25 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/constant/pagination.constant';
-import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { ResponsePaginationDto } from 'src/common/dto/response-pagination.dto';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
-import { BadRequestType } from 'src/common/enum/error/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/enum/error/forbidden-type.enum';
-import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
-import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
-import { HashingService } from 'src/common/hashing/service/hashing.service';
-import { SessionService } from 'src/v1/auth/session.service';
-import { TOKEN_USERS_REPOSITORY } from 'src/v1/user/constant/user.constant';
-import { GetUserDto } from 'src/v1/user/dto/get-user.dto';
-import { PatchUserPasswordDto } from 'src/v1/user/dto/patch-user-password.dto';
-import { PatchUserStatusDto } from 'src/v1/user/dto/patch-user-status.dto';
-import { PatchUserDto } from 'src/v1/user/dto/patch-user.dto';
-import { PostUserDto } from 'src/v1/user/dto/post-user.dto';
-import { QueryUserSearchDto } from 'src/v1/user/dto/query-user-search.dto';
-import { IUsersRepository } from 'src/v1/user/interface/users.repository.interface';
+import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/pagination/constant/pagination.constant';
+import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
+import { ResponsePaginationDto } from 'src/common/pagination/dto/response-pagination.dto';
+import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
+import { BadRequestType } from 'src/common/exception/enum/bad-request-type.enum';
+import { ForbiddenType } from 'src/common/exception/enum/forbidden-type.enum';
+import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/exception/enum/not-found-type.enum';
+import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
+import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
+import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
+import { TOKEN_SESSION_SERVICE } from 'src/common/port/security/session.constant';
+import type { ISessionService } from 'src/common/port/security/session.service.interface';
+import { TOKEN_USERS_REPOSITORY } from 'src/api/v1/user/constant/user.constant';
+import { ResponseUserDto } from 'src/api/v1/user/dto/response-user.dto';
+import { PatchUserPasswordDto } from 'src/api/v1/user/dto/patch-user-password.dto';
+import { PatchUserStatusDto } from 'src/api/v1/user/dto/patch-user-status.dto';
+import { PatchUserDto } from 'src/api/v1/user/dto/patch-user.dto';
+import { PostUserDto } from 'src/api/v1/user/dto/post-user.dto';
+import { QuerySearchDto } from 'src/common/search/dto/query-search.dto';
+import { IUsersRepository } from 'src/api/v1/user/interface/users.repository.interface';
 import request from 'supertest';
 import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,14 +32,14 @@ import { registerAndLoginAdmin, registerAndLoginUser, registerUser } from '../..
 describe('UserController', () => {
     let app: NestFastifyApplication,
         usersRepository: IUsersRepository,
-        hashingService: HashingService,
-        sessionService: SessionService;
+        hashingService: IHashingService,
+        sessionService: ISessionService;
 
     beforeEach(async () => {
         app = await createAuthTestApp();
         usersRepository = app.get<IUsersRepository>(TOKEN_USERS_REPOSITORY);
-        hashingService = app.get<HashingService>(HashingService);
-        sessionService = app.get<SessionService>(SessionService);
+        hashingService = app.get<IHashingService>(TOKEN_HASHING_SERVICE);
+        sessionService = app.get<ISessionService>(TOKEN_SESSION_SERVICE);
 
         await cleanupCache(app);
         await cleanupDatabase(app);
@@ -55,7 +57,7 @@ describe('UserController', () => {
                     password: 'Password123!',
                 },
                 res = await request(app.getHttpServer()).post('/api/v1/user').send(dto).expect(201),
-                data = expectDataDto(res.body, GetUserDto);
+                data = expectDataDto(res.body, ResponseUserDto);
 
             expect(data.email).toBe(dto.email);
             expect(data.name).toBe(dto.name);
@@ -155,7 +157,7 @@ describe('UserController', () => {
                     password: await hashingService.hash('Password123!'),
                     isActive: true,
                 },
-                query: QueryUserSearchDto = {
+                query: QuerySearchDto = {
                     page: 1,
                     limit: 20,
                 };
@@ -168,7 +170,7 @@ describe('UserController', () => {
                     .set('Authorization', `Bearer ${admin.accessToken}`)
                     .expect(200),
                 data = expectDataDto(res.body, ResponsePaginationDto),
-                items = expectDataArrayDto({ data: data.items }, GetUserDto);
+                items = expectDataArrayDto({ data: data.items }, ResponseUserDto);
 
             expect(data.total).toEqual(1);
             expect(data.page).toBe(query.page);
@@ -217,14 +219,14 @@ describe('UserController', () => {
 
             await usersRepository.create(searchUser);
 
-            const query: Partial<QueryUserSearchDto> = { search: 'Target' },
+            const query: Partial<QuerySearchDto> = { search: 'Target' },
                 res = await request(app.getHttpServer())
                     .get('/api/v1/user')
                     .query(query)
                     .set('Authorization', `Bearer ${admin.accessToken}`)
                     .expect(200),
                 data = expectDataDto(res.body, ResponsePaginationDto),
-                items = expectDataArrayDto({ data: data.items }, GetUserDto);
+                items = expectDataArrayDto({ data: data.items }, ResponseUserDto);
 
             expect(data.total).toBeGreaterThanOrEqual(1);
             expect(items.some((item) => item.name === searchUser.name)).toBe(true);
@@ -241,14 +243,14 @@ describe('UserController', () => {
 
             await usersRepository.create(searchUser);
 
-            const query: Partial<QueryUserSearchDto> = { search: 'searchemail' },
+            const query: Partial<QuerySearchDto> = { search: 'searchemail' },
                 res = await request(app.getHttpServer())
                     .get('/api/v1/user')
                     .query(query)
                     .set('Authorization', `Bearer ${admin.accessToken}`)
                     .expect(200),
                 data = expectDataDto(res.body, ResponsePaginationDto),
-                items = expectDataArrayDto({ data: data.items }, GetUserDto);
+                items = expectDataArrayDto({ data: data.items }, ResponseUserDto);
 
             expect(data.total).toBeGreaterThanOrEqual(1);
             expect(items.some((item) => item.email === searchUser.email)).toBe(true);
@@ -288,7 +290,7 @@ describe('UserController', () => {
             expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.TOKEN if access token is invalid', async () => {
+        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user')
                     .set('Authorization', 'Bearer invalid-token')
@@ -296,7 +298,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
     });
 
@@ -308,7 +310,7 @@ describe('UserController', () => {
                     .get('/api/v1/user/me')
                     .set('Authorization', `Bearer ${user.accessToken}`)
                     .expect(200),
-                data = expectDataDto(res.body, GetUserDto);
+                data = expectDataDto(res.body, ResponseUserDto);
 
             expect(data.email).toBe(email);
             expect(data.id).toBe(user.id);
@@ -322,7 +324,7 @@ describe('UserController', () => {
             expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.TOKEN if access token is invalid', async () => {
+        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user/me')
                     .set('Authorization', 'Bearer invalid-token')
@@ -330,7 +332,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should return 404 NotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
@@ -358,7 +360,7 @@ describe('UserController', () => {
                     .get(`/api/v1/user/${user.id}`)
                     .set('Authorization', `Bearer ${admin.accessToken}`)
                     .expect(200),
-                data = expectDataDto(res.body, GetUserDto);
+                data = expectDataDto(res.body, ResponseUserDto);
 
             expect(data.email).toBe(email);
             expect(data.id).toBe(user.id);
@@ -422,7 +424,7 @@ describe('UserController', () => {
                     .set('Authorization', `Bearer ${user.accessToken}`)
                     .send(patchPayload)
                     .expect(200),
-                data = expectDataDto(res.body, GetUserDto);
+                data = expectDataDto(res.body, ResponseUserDto);
 
             expect(data.email).toBe(patchPayload.email);
             expect(data.name).toBe(patchPayload.name);
@@ -657,7 +659,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
 
             // Verify refresh token session is evicted from the cache
             const session = await sessionService.getSession(AuthUserRole.USER, user.id, user.jti);
@@ -701,7 +703,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should successfully reactivate user (setting isActive: true, and unbanning user)', async () => {

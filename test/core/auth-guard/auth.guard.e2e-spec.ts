@@ -4,15 +4,16 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_CACHE_STATE_SERVICE } from 'src/cache/constant/cache.constant';
-import type { ICacheStateService } from 'src/cache/interface/cache-state-service.interface';
-import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { AuthTokenType } from 'src/common/enum/auth/auth-token-type.enum';
-import { AuthUserRole } from 'src/common/enum/auth/auth-user-role.enum';
-import { UnauthorizedType } from 'src/common/enum/error/unauthorized-type.enum';
-import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
-import type { AccessTokenPayload } from 'src/common/guard/interface/auth.interface';
-import { TokenService } from 'src/v1/auth/token.service';
+import { TOKEN_CACHE_STATE_SERVICE } from 'src/common/port/cache/cache.constant';
+import type { ICacheStateService } from 'src/common/port/cache/cache-state-service.interface';
+import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
+import { AuthTokenType } from 'src/common/auth/enum/auth-token-type.enum';
+import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
+import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
+import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
+import type { AccessTokenPayload } from 'src/common/auth/interface/access-token-payload.interface';
+import { TOKEN_TOKEN_SERVICE } from 'src/common/port/security/token.constant';
+import type { ITokenService } from 'src/common/port/security/token.service.interface';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupCache } from '../../shared/cache.cleaner';
@@ -20,11 +21,11 @@ import { expectErrorDto } from '../../shared/dto-assertion.util';
 import { createAuthGuardTestApp } from './auth.guard.fixture';
 
 describe('AuthGuard', () => {
-    let app: NestFastifyApplication, tokenService: TokenService, cacheStateService: ICacheStateService;
+    let app: NestFastifyApplication, tokenService: ITokenService, cacheStateService: ICacheStateService;
 
     beforeEach(async () => {
         app = await createAuthGuardTestApp();
-        tokenService = app.get<TokenService>(TokenService);
+        tokenService = app.get<ITokenService>(TOKEN_TOKEN_SERVICE);
         cacheStateService = app.get<ICacheStateService>(TOKEN_CACHE_STATE_SERVICE);
 
         await cleanupCache(app);
@@ -57,7 +58,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should throw 401 when authorization token is missing in Bearer header', async () => {
@@ -68,7 +69,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should throw 401 when token is invalid', async () => {
@@ -79,7 +80,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should throw 401 when token is expired', async () => {
@@ -93,7 +94,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should throw 401 when the user is banned in cache', async () => {
@@ -111,7 +112,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.TOKEN]);
+            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
         });
 
         it('should throw 500 when the cache service throws an unexpected error', async () => {

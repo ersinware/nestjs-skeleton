@@ -15,8 +15,8 @@ import {
     ServiceUnavailableException,
 } from '@nestjs/common';
 import { IsNotEmpty, IsString } from 'class-validator';
-import { Public } from 'src/common/decorator/auth/public.decorator';
-import { UnhealthyDto } from 'src/health/dto/unhealthy.dto';
+import { Public } from 'src/common/auth/decorator/public.decorator';
+import { ResponseUnhealthyDto } from 'src/api/health/dto/response-unhealthy.dto';
 
 @Controller('health-exception-trigger')
 @Public()
@@ -39,7 +39,7 @@ export class HealthExceptionTriggerController {
                 database: { status: 'down', message: 'Database connection failed.' },
                 redis: { status: 'down', message: 'Redis connection failed.' },
             },
-        } satisfies UnhealthyDto);
+        } satisfies ResponseUnhealthyDto);
     }
 
     @Get('health-non-503')

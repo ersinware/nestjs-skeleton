@@ -4,12 +4,12 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { ConflictType } from 'src/common/enum/error/conflict-type.enum';
-import { InternalServerErrorType } from 'src/common/enum/error/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/enum/error/not-found-type.enum';
-import { ServiceUnavailableType } from 'src/common/enum/error/service-unavailable-type.enum';
-import { ErrorDefaultDto } from 'src/common/dto/error-default.dto';
-import { UnhealthyDto } from 'src/health/dto/unhealthy.dto';
+import { ConflictType } from 'src/common/exception/enum/conflict-type.enum';
+import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
+import { NotFoundType } from 'src/common/exception/enum/not-found-type.enum';
+import { ServiceUnavailableType } from 'src/common/exception/enum/service-unavailable-type.enum';
+import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
+import { ResponseUnhealthyDto } from 'src/api/health/dto/response-unhealthy.dto';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { expectErrorDto } from '../../shared/dto-assertion.util';
@@ -35,7 +35,7 @@ describe('GlobalExceptionFilter', () => {
                 .get('/api/v1/health-exception-trigger/health-fail')
                 .expect(503)
                 .expect((res) => {
-                    const unhealthyDto = expectErrorDto(res.body, UnhealthyDto);
+                    const unhealthyDto = expectErrorDto(res.body, ResponseUnhealthyDto);
 
                     expect(unhealthyDto.status).toBe('error');
                     expect((unhealthyDto.details['database'] as Record<string, unknown>)['status']).toBe('down');
@@ -215,7 +215,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.RESOURCE_ALREADY_EXISTS]);
+                    expect(errorDto.message).toEqual([ConflictType.DEFAULT]);
                 });
         });
 
@@ -228,7 +228,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.RESOURCE_ALREADY_EXISTS]);
+                    expect(errorDto.message).toEqual([ConflictType.DEFAULT]);
                 });
         });
 

@@ -1,7 +1,12 @@
+/**
+ * @file env.validation.config.spec.ts
+ * @description Unit tests for environment variable validation and type transformation.
+ */
+
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import { Environment } from 'src/common/enum/config/environment.enum';
-import { SentryEnvironment } from 'src/common/enum/config/sentry-environment.enum';
+import { Environment } from 'src/common/config/enum/environment.enum';
+import { SentryEnvironment } from 'src/common/config/enum/sentry-environment.enum';
 import { validateConfig, EnvironmentVariables } from './env.validation.config';
 
 describe('env.validation.config', () => {

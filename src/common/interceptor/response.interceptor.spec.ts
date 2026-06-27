@@ -1,3 +1,8 @@
+/**
+ * @file response.interceptor.spec.ts
+ * @description Unit tests for the global response interceptor.
+ */
+
 import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { firstValueFrom, of } from 'rxjs';
 import { describe, it, expect } from 'vitest';

@@ -1,6 +1,6 @@
 /**
  * @file main.ts
- * @description Application entry point. Configures Fastify, API versioning, routes, and Scalar API documentation.
+ * @description The main entry point of the application. It is responsible for bootstrapping the NestJS application with the Fastify adapter, establishing global configurations (versioning, global prefix, shutdown hooks, etc.), and setting up the Scalar API documentation. It creates the foundational context required for the application to handle HTTP requests.
  */
 
 import './tracing'; // Must be the absolute first import to initialize OpenTelemetry Auto-Instrumentation
@@ -13,14 +13,15 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { Logger } from 'nestjs-pino';
-import { ACTIVE_VERSIONS } from 'src/common/config/documentation.config';
+import { ACTIVE_VERSIONS } from 'src/common/doc/config/documentation.config';
 import { ENV } from 'src/common/config/constant/env.constant';
-import { SwaggerManager } from 'src/common/util/swagger.util';
+import { VERSION_1 } from 'src/common/routing/constant/version.constant';
+import { SwaggerManager } from 'src/common/doc/util/swagger.util';
 import { AppModule } from './app.module';
 
 /**
- * Initializes and starts the NestJS application with the Fastify adapter.
- * Sets up global configurations such as URI-based versioning, API prefix, shutdown hooks, and runs the listener.
+ * Bootstraps the NestJS application using the Fastify adapter.
+ * Configures URI-based versioning, the global API prefix, and the application logger so that the application can accept HTTP traffic. Additionally, it enables shutdown hooks to ensure graceful termination.
  */
 async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true }), {
@@ -29,7 +30,7 @@ async function bootstrap() {
         configService = app.get(ConfigService);
 
     app.enableShutdownHooks()
-        .enableVersioning({ type: VersioningType.URI, defaultVersion: '1' })
+        .enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1 })
         .setGlobalPrefix('api')
         .useLogger(app.get(Logger));
 
@@ -40,9 +41,9 @@ async function bootstrap() {
 
 /**
  * Registers Scalar documentation endpoints for all active API versions.
- * Integrates customized Swagger documents and ensures response streams are handled correctly under Fastify.
+ * Integrates customized Swagger documents so developers and clients can easily inspect and test the API. It also ensures that response streams are correctly handled under the Fastify environment.
  *
- * @param app The NestJS application instance using Fastify.
+ * @param app The Fastify-based NestJS application instance where the documentation will be configured
  */
 function setupDocumentation(app: NestFastifyApplication) {
     ACTIVE_VERSIONS.forEach((version) => {
