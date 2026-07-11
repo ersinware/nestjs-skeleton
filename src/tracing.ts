@@ -3,15 +3,14 @@
  * @description Responsible for initializing the OpenTelemetry (OTel) tracing system. It is loaded before all other modules as the Node.js process starts, enabling the collection of application performance metrics and distributed tracing data. It must be imported at the very top of `main.ts`.
  */
 
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Environment } from 'src/common/config/enum/environment.enum';
-import { ENV } from 'src/common/config/constant/env.constant';
-import { HostMetrics } from '@opentelemetry/host-metrics';
 import { metrics } from '@opentelemetry/api';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { HostMetrics } from '@opentelemetry/host-metrics';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { ENV, Environment } from 'src/core/config';
 
 let otelSDK: NodeSDK | undefined;
 

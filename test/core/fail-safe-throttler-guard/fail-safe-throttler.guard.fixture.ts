@@ -7,13 +7,11 @@ import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { getStorageToken } from '@nestjs/throttler';
-import { Public } from 'src/common/auth/decorator/public.decorator';
-import { CriticalThrottle } from 'src/common/throttle/decorator/critical-throttle.decorator';
-import { ENV } from 'src/common/config/constant/env.constant';
-import { Environment } from 'src/common/config/enum/environment.enum';
-import { vi, MockInstance } from 'vitest';
 import { Logger } from 'nestjs-pino';
-import { createTestApp } from '../../shared/test-app.factory';
+import { ENV, Environment } from 'src/core/config';
+import { CriticalThrottle, Public } from 'src/core/security';
+import { createTestApp } from 'test/shared/test-app.factory';
+import { MockInstance, vi } from 'vitest';
 
 /**
  * Helper to build a NestFastifyApplication configured with a spied ConfigService
@@ -29,7 +27,7 @@ import { createTestApp } from '../../shared/test-app.factory';
 export async function createFailSafeThrottlerTestApp(options: {
     nodeEnv: Environment;
     faultyStorage: boolean;
-    mockLogger?: { error: MockInstance };
+    mockLoggerPort?: { error: MockInstance };
 }): Promise<NestFastifyApplication> {
     const overrides: { provide: unknown; useValue: unknown }[] = [
         {
@@ -66,10 +64,10 @@ export async function createFailSafeThrottlerTestApp(options: {
         },
     ];
 
-    if (options.mockLogger) {
+    if (options.mockLoggerPort) {
         overrides.push({
             provide: Logger,
-            useValue: options.mockLogger,
+            useValue: options.mockLoggerPort,
         });
     }
 

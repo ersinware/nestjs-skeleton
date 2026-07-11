@@ -5,10 +5,10 @@
 
 import { Controller, Get } from '@nestjs/common';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Roles } from 'src/common/auth/decorator/roles.decorator';
-import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
-import { createTestApp } from './test-app.factory';
-import type { OptionsTestApp } from './interface/e2e-spec.interface';
+import { Roles } from 'src/core/security';
+import { AdminRole } from 'src/shared/domain/admin/enum/admin-role.enum';
+import type { OptionsTestApp } from 'test/shared/interface/e2e-spec.interface';
+import { createTestApp } from 'test/shared/test-app.factory';
 
 /**
  * Compiles and initializes a NestJS Fastify testing application with AuthTriggerController registered.
@@ -42,14 +42,14 @@ export class AuthTriggerController {
     /**
      * Admin-only protected endpoint.
      */
-    @Roles(AuthUserRole.ADMIN)
+    @Roles(AdminRole.ADMIN)
     @Get('admin-only')
     adminOnlyEndpoint(): void {}
 
     /**
      * Super Admin-only protected endpoint.
      */
-    @Roles(AuthUserRole.SUPER_ADMIN)
+    @Roles(AdminRole.SUPER_ADMIN)
     @Get('super-admin-only')
     superAdminOnlyEndpoint(): void {}
 }

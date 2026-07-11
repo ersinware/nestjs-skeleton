@@ -5,9 +5,9 @@
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import request from 'supertest';
+import { ResponseInterceptorTriggerController } from 'test/core/response-interceptor/response.interceptor.fixture';
+import { createTestApp } from 'test/shared/test-app.factory';
 import { afterEach, beforeEach, describe, it } from 'vitest';
-import { createTestApp } from '../../shared/test-app.factory';
-import { ResponseInterceptorTriggerController } from './response.interceptor.fixture';
 
 describe('ResponseInterceptor', () => {
     let app: NestFastifyApplication;

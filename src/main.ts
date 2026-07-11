@@ -3,21 +3,20 @@
  * @description The main entry point of the application. It is responsible for bootstrapping the NestJS application with the Fastify adapter, establishing global configurations (versioning, global prefix, shutdown hooks, etc.), and setting up the Scalar API documentation. It creates the foundational context required for the application to handle HTTP requests.
  */
 
-import './tracing'; // Must be the absolute first import to initialize OpenTelemetry Auto-Instrumentation
-import './instrument'; // Must be the second import to initialize Sentry
+import 'reflect-metadata'; // Must be imported before anything else to enable TypeScript decorators
+import 'src/instrument'; // Must be the second import to initialize Sentry
+import 'src/tracing'; // Must be the absolute first import to initialize OpenTelemetry Auto-Instrumentation
 
-import { IncomingMessage, ServerResponse } from 'http';
 import { VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { apiReference } from '@scalar/nestjs-api-reference';
+import { IncomingMessage, ServerResponse } from 'http';
 import { Logger } from 'nestjs-pino';
-import { ACTIVE_VERSIONS } from 'src/common/doc/config/documentation.config';
-import { ENV } from 'src/common/config/constant/env.constant';
-import { VERSION_1 } from 'src/common/routing/constant/version.constant';
-import { SwaggerManager } from 'src/common/doc/util/swagger.util';
-import { AppModule } from './app.module';
+import { AppModule } from 'src/app.module';
+import { ACTIVE_VERSIONS, ENV, VERSION_1 } from 'src/core/config';
+import { SwaggerManager } from 'src/core/doc';
 
 /**
  * Bootstraps the NestJS application using the Fastify adapter.

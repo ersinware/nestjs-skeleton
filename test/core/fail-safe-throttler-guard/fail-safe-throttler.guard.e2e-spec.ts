@@ -4,22 +4,22 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi, MockInstance } from 'vitest';
-import { Environment } from 'src/common/config/enum/environment.enum';
-import { cleanupCache } from '../../shared/cache.cleaner';
-import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from './fail-safe-throttler.guard.fixture';
 import * as Sentry from '@sentry/nestjs';
+import { Environment } from 'src/core/config';
+import request from 'supertest';
+import { createFailSafeThrottlerTestApp as createFailSafeThrottlerGuardTestApp } from 'test/core/fail-safe-throttler-guard/fail-safe-throttler.guard.fixture';
+import { cleanupCache } from 'test/shared/cache.cleaner';
+import { afterEach, beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 
 vi.mock('@sentry/nestjs', () => ({
     captureException: vi.fn(),
 }));
 
 describe('FailSafeThrottlerGuard', () => {
-    let app: NestFastifyApplication, mockLogger: { error: MockInstance; warn: MockInstance; log: MockInstance };
+    let app: NestFastifyApplication, mockLoggerPort: { error: MockInstance; warn: MockInstance; log: MockInstance };
 
     beforeEach(() => {
-        mockLogger = {
+        mockLoggerPort = {
             error: vi.fn(),
             warn: vi.fn(),
             log: vi.fn(),
@@ -35,7 +35,7 @@ describe('FailSafeThrottlerGuard', () => {
             app = await createFailSafeThrottlerGuardTestApp({
                 nodeEnv: Environment.TEST,
                 faultyStorage: false,
-                mockLogger,
+                mockLoggerPort,
             });
             await cleanupCache(app);
         });
@@ -53,7 +53,7 @@ describe('FailSafeThrottlerGuard', () => {
             app = await createFailSafeThrottlerGuardTestApp({
                 nodeEnv: Environment.PRODUCTION,
                 faultyStorage: false,
-                mockLogger,
+                mockLoggerPort,
             });
             await cleanupCache(app);
         });
@@ -79,7 +79,7 @@ describe('FailSafeThrottlerGuard', () => {
             app = await createFailSafeThrottlerGuardTestApp({
                 nodeEnv: Environment.PRODUCTION,
                 faultyStorage: true,
-                mockLogger,
+                mockLoggerPort,
             });
             await cleanupCache(app);
         });
@@ -89,7 +89,7 @@ describe('FailSafeThrottlerGuard', () => {
             await request(app.getHttpServer()).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
             await request(app.getHttpServer()).get('/api/v1/fail-safe-throttler-trigger/test').expect(200);
 
-            const [loggedObject] = mockLogger.error.mock.calls[0] as [{ error: Error }];
+            const [loggedObject] = mockLoggerPort.error.mock.calls[0] as [{ error: Error }];
             expect(loggedObject.error).toBeInstanceOf(Error);
             expect(Sentry.captureException).toHaveBeenCalled();
         });

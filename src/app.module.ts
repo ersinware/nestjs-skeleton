@@ -8,25 +8,21 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { Environment } from 'src/common/config/enum/environment.enum';
-import { HealthModule } from './api/health/health.module';
-import { AdminModule } from './api/v1/admin/admin.module';
-import { AuthModule } from './api/v1/auth/auth.module';
-import { UserModule } from './api/v1/user/user.module';
-import { AuthRolesGuard } from './common/auth/guard/auth-roles.guard';
-import { AuthGuard } from './common/auth/guard/auth.guard';
-import { ENV } from './common/config/constant/env.constant';
-import { validateConfig } from './common/config/env.validation.config';
-import { GlobalExceptionFilter } from './common/exception/filter/global-exception.filter';
-import { ResponseInterceptor } from './common/interceptor/response.interceptor';
-import { NotEmptyBodyPipe } from './common/validation/pipe/not-empty-body.pipe';
-import { CacheModule } from './infrastructure/cache/cache.module';
-import { DatabaseModule } from './infrastructure/database/database.module';
-import { EmailModule } from './infrastructure/email/email.module';
-import { LoggerModule } from './infrastructure/logger/logger.module';
-import { SessionModule } from './infrastructure/security/session/session.module';
-import { TokenModule } from './infrastructure/security/token/token.module';
-import { ThrottleModule } from './infrastructure/throttle/throttle.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { CacheModule } from 'src/core/cache';
+import { ENV, Environment, validateConfig } from 'src/core/config';
+import { DatabaseModule } from 'src/core/database';
+import { EmailModule } from 'src/core/email/module';
+import { EventBusModule } from 'src/core/event-bus';
+import { GlobalExceptionFilter } from 'src/core/exception';
+import { NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
+import { LoggerModule, TrackerModule } from 'src/core/observability';
+import { OutboxModule } from 'src/core/outbox';
+import { AuthGuard, AuthRolesGuard, SessionModule, ThrottleModule, TokenModule } from 'src/core/security';
+import { AdminModule } from 'src/module/admin';
+import { AuthModule } from 'src/module/auth';
+import { HealthModule } from 'src/module/health';
+import { UserModule } from 'src/module/user';
 
 /**
  * The root module class of the NestJS application.
@@ -39,6 +35,7 @@ import { ThrottleModule } from './infrastructure/throttle/throttle.module';
             envFilePath: process.env[ENV.NODE_ENV] === Environment.TEST ? '.env.test' : '.env',
             validate: validateConfig,
         }),
+        ScheduleModule.forRoot(),
         EventEmitterModule.forRoot(),
         BullModule.forRootAsync({
             inject: [ConfigService],
@@ -55,12 +52,15 @@ import { ThrottleModule } from './infrastructure/throttle/throttle.module';
             },
         }),
         LoggerModule,
+        TrackerModule,
+        EventBusModule,
         CacheModule,
         ThrottleModule,
         DatabaseModule,
         EmailModule,
         TokenModule,
         SessionModule,
+        OutboxModule,
         HealthModule,
         AuthModule,
         UserModule,

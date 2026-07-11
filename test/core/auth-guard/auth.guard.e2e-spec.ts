@@ -4,29 +4,24 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_CACHE_STATE_SERVICE } from 'src/common/port/cache/cache.constant';
-import type { ICacheStateService } from 'src/common/port/cache/cache-state-service.interface';
-import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
-import { AuthTokenType } from 'src/common/auth/enum/auth-token-type.enum';
-import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
-import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
-import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
-import type { AccessTokenPayload } from 'src/common/auth/interface/access-token-payload.interface';
-import { TOKEN_TOKEN_SERVICE } from 'src/common/port/security/token.constant';
-import type { ITokenService } from 'src/common/port/security/token.service.interface';
+import { ErrorDefaultDto, InternalServerErrorType, UnauthenticatedType } from 'src/core/exception';
+import type { AccessTokenPayload, ITokenPort } from 'src/core/security';
+import { AuthTokenType, TOKEN_TOKEN_PORT } from 'src/core/security';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session/port';
+import { UserRole } from 'src/shared/domain/user/enum/user-role.enum';
 import request from 'supertest';
+import { createAuthGuardTestApp } from 'test/core/auth-guard/auth.guard.fixture';
+import { cleanupCache } from 'test/shared/cache.cleaner';
+import { expectErrorDto } from 'test/shared/dto-assertion.util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanupCache } from '../../shared/cache.cleaner';
-import { expectErrorDto } from '../../shared/dto-assertion.util';
-import { createAuthGuardTestApp } from './auth.guard.fixture';
 
 describe('AuthGuard', () => {
-    let app: NestFastifyApplication, tokenService: ITokenService, cacheStateService: ICacheStateService;
+    let app: NestFastifyApplication, tokenPort: ITokenPort, sessionPort: ISessionPort;
 
     beforeEach(async () => {
         app = await createAuthGuardTestApp();
-        tokenService = app.get<ITokenService>(TOKEN_TOKEN_SERVICE);
-        cacheStateService = app.get<ICacheStateService>(TOKEN_CACHE_STATE_SERVICE);
+        tokenPort = app.get<ITokenPort>(TOKEN_TOKEN_PORT);
+        sessionPort = app.get<ISessionPort>(TOKEN_SESSION_PORT);
 
         await cleanupCache(app);
     });
@@ -47,7 +42,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
         it('should throw 401 when authorization type is not Bearer', async () => {
@@ -58,7 +53,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should throw 401 when authorization token is missing in Bearer header', async () => {
@@ -69,7 +64,7 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should throw 401 when token is invalid', async () => {
@@ -80,30 +75,29 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should throw 401 when token is expired', async () => {
+            vi.spyOn(tokenPort, 'verifyAccessToken').mockRejectedValueOnce(new Error('jwt expired'));
+
             const res = await request(app.getHttpServer())
                     .get('/api/v1/auth-guard-trigger/protected')
-                    .set(
-                        'Authorization',
-                        `Bearer ${await tokenService.generateAccessToken(AuthUserRole.USER, 'expired-user-id', '0s')}`,
-                    )
+                    .set('Authorization', 'Bearer expired-token')
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should throw 401 when the user is banned in cache', async () => {
             const userId = 'banned-user-id',
-                role = AuthUserRole.USER,
-                token = await tokenService.generateAccessToken(role, userId);
+                role = UserRole.USER,
+                token = await tokenPort.generateAccessToken(role, userId);
 
             // Set the ban key in cache state
-            await cacheStateService.saveBan(role, userId, 3600);
+            await sessionPort.ban(role, userId);
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/auth-guard-trigger/protected')
@@ -112,17 +106,17 @@ describe('AuthGuard', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should throw 500 when the cache service throws an unexpected error', async () => {
-            vi.spyOn(cacheStateService, 'isBanned').mockRejectedValueOnce(new Error());
+            vi.spyOn(sessionPort, 'isBanned').mockRejectedValueOnce(new Error());
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/auth-guard-trigger/protected')
                     .set(
                         'Authorization',
-                        `Bearer ${await tokenService.generateAccessToken(AuthUserRole.USER, 'active-user-id')}`,
+                        `Bearer ${await tokenPort.generateAccessToken(UserRole.USER, 'active-user-id')}`,
                     )
                     .expect(500),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
@@ -133,10 +127,10 @@ describe('AuthGuard', () => {
 
         it('should allow access and inject the token payload into request context when the token is valid and active', async () => {
             const userId = 'active-user-id',
-                role = AuthUserRole.USER,
+                role = UserRole.USER,
                 res = await request(app.getHttpServer())
                     .get('/api/v1/auth-guard-trigger/protected')
-                    .set('Authorization', `Bearer ${await tokenService.generateAccessToken(role, userId)}`)
+                    .set('Authorization', `Bearer ${await tokenPort.generateAccessToken(role, userId)}`)
                     .expect(200),
                 body = res.body as { data: AccessTokenPayload };
 

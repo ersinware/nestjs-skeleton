@@ -3,11 +3,11 @@
  * @description Compiles and bootstraps NestJS Fastify application instances for E2E integration tests.
  */
 
-import { Test } from '@nestjs/testing';
 import { VersioningType } from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
 import { AppModule } from 'src/app.module';
-import type { OptionsTestApp } from './interface/e2e-spec.interface';
+import type { OptionsTestApp } from 'test/shared/interface/e2e-spec.interface';
 
 /**
  * Compiles and initializes a NestJS Fastify application with testing overrides and routing conventions.

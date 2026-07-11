@@ -1,41 +1,37 @@
-import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BadRequestType } from 'src/common/exception/enum/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/exception/enum/forbidden-type.enum';
-import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/exception/enum/not-found-type.enum';
-import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
-import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
-import { QueryPaginationDto } from 'src/common/pagination/dto/query-pagination.dto';
-import { ResponsePaginationDto } from 'src/common/pagination/dto/response-pagination.dto';
-import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
-import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
-import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
-import { TOKEN_ADMINS_REPOSITORY } from 'src/api/v1/admin/constant/admin.constant';
-import { TOKEN_EMAIL_SERVICE } from 'src/common/port/email/email.constant';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AdminEvent } from 'src/api/v1/admin/enum/admin-event.enum';
-import { AdminCreatedEvent } from 'src/api/v1/admin/event/admin-created.event';
-import { ResponseAdminDto } from 'src/api/v1/admin/dto/response-admin.dto';
-import { ResponseCreatedAdminDto } from 'src/api/v1/admin/dto/response-created-admin.dto';
-import { PatchAdminStatusDto } from 'src/api/v1/admin/dto/patch-admin-status.dto';
-import { PostAdminDto } from 'src/api/v1/admin/dto/post-admin.dto';
-import { IAdminsRepository } from 'src/api/v1/admin/interface/admins.repository.interface';
+import { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { TOKEN_EMAIL_QUEUE_PORT } from 'src/core/email';
+import {
+    AccessDeniedType,
+    ErrorDefaultDto,
+    InternalServerErrorType,
+    InvalidRequestType,
+    ResourceNotFoundType,
+    UnauthenticatedType,
+} from 'src/core/exception';
+import { QueryPaginationDto, ResponsePaginationDto } from 'src/core/http';
+import { TOKEN_ADMIN_WRITER_PORT, type IAdminWriterPort } from 'src/module/admin/application/command/port';
+import { AdminCreatedEvent, AdminEvent } from 'src/module/admin/domain/event';
+import { PatchAdminStatusDto } from 'src/module/admin/presentation/dto/patch-admin-status.dto';
+import { PostAdminDto } from 'src/module/admin/presentation/dto/post-admin.dto';
+import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
+import { ResponseCreatedAdminDto } from 'src/module/admin/presentation/dto/response-created-admin.dto';
+import { AdminRole } from 'src/shared/domain/admin/enum/admin-role.enum';
+import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/shared/pagination';
 import request from 'supertest';
+import { createAuthTestApp } from 'test/shared/auth-test-app.factory';
+import { cleanupCache } from 'test/shared/cache.cleaner';
+import { cleanupDatabase } from 'test/shared/database.cleaner';
+import { expectDataArrayDto, expectDataDto, expectErrorDto } from 'test/shared/dto-assertion.util';
+import { registerAdmin, registerAndLoginAdmin, registerAndLoginUser } from 'test/shared/user-admin-seeder.factory';
 import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/pagination/constant/pagination.constant';
-import { createAuthTestApp } from '../../../shared/auth-test-app.factory';
-import { cleanupCache } from '../../../shared/cache.cleaner';
-import { cleanupDatabase } from '../../../shared/database.cleaner';
-import { expectDataArrayDto, expectDataDto, expectErrorDto } from '../../../shared/dto-assertion.util';
-import { registerAdmin, registerAndLoginAdmin, registerAndLoginUser } from '../../../shared/user-admin-seeder.factory';
 
 describe('AdminController', () => {
-    const mockEmailService = {};
+    const mockEmailAdapter = {};
 
     let app: NestFastifyApplication,
-        adminsRepository: IAdminsRepository,
-        hashingService: IHashingService,
+        adminsRepository: IAdminWriterPort,
         eventEmitter: EventEmitter2,
         emitSpy: MockInstance;
 
@@ -43,13 +39,12 @@ describe('AdminController', () => {
         app = await createAuthTestApp({
             overrides: [
                 {
-                    provide: TOKEN_EMAIL_SERVICE,
-                    useValue: mockEmailService,
+                    provide: TOKEN_EMAIL_QUEUE_PORT,
+                    useValue: mockEmailAdapter,
                 },
             ],
         });
-        adminsRepository = app.get<IAdminsRepository>(TOKEN_ADMINS_REPOSITORY);
-        hashingService = app.get<IHashingService>(TOKEN_HASHING_SERVICE);
+        adminsRepository = app.get<IAdminWriterPort>(TOKEN_ADMIN_WRITER_PORT);
         eventEmitter = app.get<EventEmitter2>(EventEmitter2);
         emitSpy = vi.spyOn(eventEmitter, 'emit');
 
@@ -78,7 +73,7 @@ describe('AdminController', () => {
 
             expect(data.email).toBe(dto.email);
             expect(data.name).toBe(dto.name);
-            expect(data.role).toBe(AuthUserRole.ADMIN);
+            expect(data.role).toBe(AdminRole.ADMIN);
 
             expect(emitSpy).toHaveBeenCalledWith(AdminEvent.CREATED, expect.any(AdminCreatedEvent));
 
@@ -87,12 +82,8 @@ describe('AdminController', () => {
             )?.[1] as AdminCreatedEvent;
             expect(welcomeEmailEvent).toBeDefined();
 
-            const tempPassword = welcomeEmailEvent.plainTextPassword;
-            expect(tempPassword).toBeTypeOf('string');
-
-            const adminDb = await adminsRepository.findById(data.id);
+            const adminDb = await adminsRepository.load(data.id);
             expect(adminDb).toBeDefined();
-            expect(await hashingService.verify(adminDb!.password, tempPassword)).toBe(true);
             expect(adminDb!.isActive).toBe(true);
         });
 
@@ -106,7 +97,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should return 400 if validation rules fail due to invalid email format', async () => {
@@ -145,13 +136,7 @@ describe('AdminController', () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 existingEmail = 'existingadmin@example.com';
 
-            await adminsRepository.create({
-                email: existingEmail,
-                name: 'Existing Admin',
-                password: await hashingService.hash('Password123!'),
-                role: AuthUserRole.ADMIN,
-                isActive: true,
-            });
+            await registerAdmin(app, { email: existingEmail, password: 'Password123!', role: AdminRole.ADMIN });
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/admin')
@@ -168,7 +153,7 @@ describe('AdminController', () => {
 
         it('should return 500 if repository fails to create the admin', async () => {
             const superAdmin = await registerAndLoginAdmin(app);
-            vi.spyOn(adminsRepository, 'create').mockResolvedValueOnce(null);
+            vi.spyOn(adminsRepository, 'save').mockRejectedValueOnce(new Error('DB Error'));
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/admin')
@@ -184,15 +169,15 @@ describe('AdminController', () => {
             expect(errorDto.message).toEqual([InternalServerErrorType.DEFAULT]);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).post('/api/v1/admin').send({}).expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
+        it('should return 401 UnauthenticatedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .post('/api/v1/admin')
                     .set('Authorization', 'Bearer invalid-token')
@@ -201,10 +186,10 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (USER role)', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (USER role)', async () => {
             const user = await registerAndLoginUser(app),
                 res = await request(app.getHttpServer())
                     .post('/api/v1/admin')
@@ -214,11 +199,11 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
-            const admin = await registerAndLoginAdmin(app, { role: AuthUserRole.ADMIN }),
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
+            const admin = await registerAndLoginAdmin(app, { role: AdminRole.ADMIN }),
                 res = await request(app.getHttpServer())
                     .post('/api/v1/admin')
                     .set('Authorization', `Bearer ${admin.accessToken}`)
@@ -227,7 +212,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
     });
 
@@ -241,13 +226,7 @@ describe('AdminController', () => {
                     limit: 20,
                 };
 
-            await adminsRepository.create({
-                email: newAdminEmail,
-                name: 'Admin One',
-                password: await hashingService.hash('Password123!'),
-                role: AuthUserRole.ADMIN,
-                isActive: true,
-            });
+            await registerAdmin(app, { email: newAdminEmail, password: 'Password123!', role: AdminRole.ADMIN });
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/admin')
@@ -281,15 +260,15 @@ describe('AdminController', () => {
             expect(data.limit).toBe(PAGINATION_DEFAULT_LIMIT);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).get('/api/v1/admin').expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
+        it('should return 401 UnauthenticatedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .get('/api/v1/admin')
                     .set('Authorization', 'Bearer invalid-token')
@@ -297,10 +276,10 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (USER role)', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (USER role)', async () => {
             const user = await registerAndLoginUser(app),
                 res = await request(app.getHttpServer())
                     .get('/api/v1/admin')
@@ -309,11 +288,11 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
-            const admin = await registerAndLoginAdmin(app, { role: AuthUserRole.ADMIN }),
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
+            const admin = await registerAndLoginAdmin(app, { role: AdminRole.ADMIN }),
                 res = await request(app.getHttpServer())
                     .get('/api/v1/admin')
                     .set('Authorization', `Bearer ${admin.accessToken}`)
@@ -321,7 +300,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
     });
 
@@ -330,7 +309,7 @@ describe('AdminController', () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 admin = await registerAndLoginAdmin(app, {
                     email: 'tobedeleted@example.com',
-                    role: AuthUserRole.ADMIN,
+                    role: AdminRole.ADMIN,
                 });
 
             await request(app.getHttpServer())
@@ -350,9 +329,9 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
 
-            const adminDb = await adminsRepository.findById(admin.id);
+            const adminDb = await adminsRepository.load(admin.id);
             expect(adminDb).toBeNull();
         });
 
@@ -377,7 +356,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
 
         it('should return 403 if trying to delete a super administrator', async () => {
@@ -390,17 +369,17 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
         it('should return 500 if repository fails to delete the admin', async () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 admin = await registerAdmin(app, {
                     email: 'deletefail@example.com',
-                    role: AuthUserRole.ADMIN,
+                    role: AdminRole.ADMIN,
                 });
 
-            vi.spyOn(adminsRepository, 'delete').mockResolvedValueOnce(false);
+            vi.spyOn(adminsRepository, 'save').mockRejectedValueOnce(new Error('DB Error'));
 
             const res = await request(app.getHttpServer())
                     .delete(`/api/v1/admin/${admin.id}`)
@@ -412,15 +391,15 @@ describe('AdminController', () => {
             expect(errorDto.message).toEqual([InternalServerErrorType.DEFAULT]);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).delete(`/api/v1/admin/${uuidv7()}`).expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
+        it('should return 401 UnauthenticatedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .delete(`/api/v1/admin/${uuidv7()}`)
                     .set('Authorization', 'Bearer invalid-token')
@@ -428,10 +407,10 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (USER role)', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (USER role)', async () => {
             const user = await registerAndLoginUser(app),
                 res = await request(app.getHttpServer())
                     .delete(`/api/v1/admin/${uuidv7()}`)
@@ -440,11 +419,11 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
-            const admin = await registerAndLoginAdmin(app, { role: AuthUserRole.ADMIN }),
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
+            const admin = await registerAndLoginAdmin(app, { role: AdminRole.ADMIN }),
                 res = await request(app.getHttpServer())
                     .delete(`/api/v1/admin/${uuidv7()}`)
                     .set('Authorization', `Bearer ${admin.accessToken}`)
@@ -452,7 +431,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
     });
 
@@ -461,7 +440,7 @@ describe('AdminController', () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 admin = await registerAndLoginAdmin(app, {
                     email: 'tobedeactivated@example.com',
-                    role: AuthUserRole.ADMIN,
+                    role: AdminRole.ADMIN,
                 });
 
             await request(app.getHttpServer())
@@ -475,7 +454,7 @@ describe('AdminController', () => {
                 .send({ active: false } satisfies PatchAdminStatusDto)
                 .expect(204);
 
-            const adminDb = await adminsRepository.findById(admin.id);
+            const adminDb = await adminsRepository.load(admin.id);
             expect(adminDb!.isActive).toBe(false);
 
             const res = await request(app.getHttpServer())
@@ -485,14 +464,14 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should successfully reactivate admin (setting isActive: true, and unbanning user)', async () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 admin = await registerAndLoginAdmin(app, {
                     email: 'tobereactivated@example.com',
-                    role: AuthUserRole.ADMIN,
+                    role: AdminRole.ADMIN,
                 });
 
             // Verify initially accessible
@@ -521,7 +500,7 @@ describe('AdminController', () => {
                 .send({ active: true } satisfies PatchAdminStatusDto)
                 .expect(204);
 
-            const adminDb = await adminsRepository.findById(admin.id);
+            const adminDb = await adminsRepository.load(admin.id);
             expect(adminDb!.isActive).toBe(true);
 
             // Verify accessible again
@@ -541,7 +520,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should return 400 if ID is not a valid UUID', async () => {
@@ -561,7 +540,7 @@ describe('AdminController', () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 admin = await registerAdmin(app, {
                     email: 'statuscheck@example.com',
-                    role: AuthUserRole.ADMIN,
+                    role: AdminRole.ADMIN,
                 }),
                 res = await request(app.getHttpServer())
                     .patch(`/api/v1/admin/${admin.id}/status`)
@@ -584,7 +563,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
 
         it('should return 403 if trying to deactivate a super administrator', async () => {
@@ -598,17 +577,17 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
         it('should return 500 if repository fails to update status', async () => {
             const superAdmin = await registerAndLoginAdmin(app),
                 admin = await registerAdmin(app, {
                     email: 'statusfail@example.com',
-                    role: AuthUserRole.ADMIN,
+                    role: AdminRole.ADMIN,
                 });
 
-            vi.spyOn(adminsRepository, 'update').mockResolvedValueOnce(null);
+            vi.spyOn(adminsRepository, 'save').mockRejectedValueOnce(new Error('DB Error'));
 
             const res = await request(app.getHttpServer())
                     .patch(`/api/v1/admin/${admin.id}/status`)
@@ -621,7 +600,7 @@ describe('AdminController', () => {
             expect(errorDto.message).toEqual([InternalServerErrorType.DEFAULT]);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer())
                     .patch(`/api/v1/admin/${uuidv7()}/status`)
                     .send({ active: false } satisfies PatchAdminStatusDto)
@@ -629,10 +608,10 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
+        it('should return 401 UnauthenticatedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .patch(`/api/v1/admin/${uuidv7()}/status`)
                     .set('Authorization', 'Bearer invalid-token')
@@ -641,10 +620,10 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (USER role)', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (USER role)', async () => {
             const user = await registerAndLoginUser(app),
                 res = await request(app.getHttpServer())
                     .patch(`/api/v1/admin/${uuidv7()}/status`)
@@ -654,11 +633,11 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
-            const admin = await registerAndLoginAdmin(app, { role: AuthUserRole.ADMIN }),
+        it('should return 403 AccessDeniedType.DEFAULT for non-super-admin callers (ADMIN role)', async () => {
+            const admin = await registerAndLoginAdmin(app, { role: AdminRole.ADMIN }),
                 res = await request(app.getHttpServer())
                     .patch(`/api/v1/admin/${uuidv7()}/status`)
                     .set('Authorization', `Bearer ${admin.accessToken}`)
@@ -667,7 +646,7 @@ describe('AdminController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
     });
 });

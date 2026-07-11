@@ -1,41 +1,41 @@
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security';
+import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+
+import { User } from 'src/module/user/domain/aggregate/user.aggregate';
+import { uuidv7 } from 'uuidv7';
 /**
  * @file auth.e2e-spec.ts
  * @description End-to-end (E2E) integration test suite validating AuthController routes and token lifecycles.
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BadRequestType } from 'src/common/exception/enum/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/exception/enum/forbidden-type.enum';
-import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
-import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
-import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
-import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
-import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
-import { TOKEN_ADMINS_REPOSITORY } from 'src/api/v1/admin/constant/admin.constant';
-import { IAdminsRepository } from 'src/api/v1/admin/interface/admins.repository.interface';
-import { ResponseAuthTokensDto } from 'src/api/v1/auth/dto/response-auth-tokens.dto';
-import { PostAuthLoginDto } from 'src/api/v1/auth/dto/post-auth-login.dto';
-import { PostAuthRefreshDto } from 'src/api/v1/auth/dto/post-auth-refresh.dto';
-import { TOKEN_USERS_REPOSITORY } from 'src/api/v1/user/constant/user.constant';
-import { IUsersRepository } from 'src/api/v1/user/interface/users.repository.interface';
+import { AccessDeniedType, ErrorDefaultDto, InvalidRequestType, UnauthenticatedType } from 'src/core/exception';
+import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
+import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
+import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
+import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
+import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
+import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
+import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
+import { AdminRole } from 'src/shared/domain/admin/enum/admin-role.enum';
 import request from 'supertest';
+import { createAuthTestApp } from 'test/shared/auth-test-app.factory';
+import { cleanupCache } from 'test/shared/cache.cleaner';
+import { cleanupDatabase } from 'test/shared/database.cleaner';
+import { expectDataDto, expectErrorDto } from 'test/shared/dto-assertion.util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanupCache } from '../../../shared/cache.cleaner';
-import { cleanupDatabase } from '../../../shared/database.cleaner';
-import { expectDataDto, expectErrorDto } from '../../../shared/dto-assertion.util';
-import { createAuthTestApp } from '../../../shared/auth-test-app.factory';
 
 describe('AuthController', () => {
     let app: NestFastifyApplication,
-        usersRepository: IUsersRepository,
-        adminsRepository: IAdminsRepository,
-        hashingService: IHashingService;
+        userWriterPort: IUserWriterPort,
+        adminsRepository: IAdminWriterPort,
+        hashingService: IHashingPort;
 
     beforeEach(async () => {
         app = await createAuthTestApp();
-        usersRepository = app.get<IUsersRepository>(TOKEN_USERS_REPOSITORY);
-        adminsRepository = app.get<IAdminsRepository>(TOKEN_ADMINS_REPOSITORY);
-        hashingService = app.get<IHashingService>(TOKEN_HASHING_SERVICE);
+        userWriterPort = app.get(TOKEN_USER_WRITER_PORT);
+        adminsRepository = app.get<IAdminWriterPort>(TOKEN_ADMIN_WRITER_PORT);
+        hashingService = app.get<IHashingPort>(TOKEN_HASHING_PORT);
 
         await cleanupDatabase(app);
         await cleanupCache(app);
@@ -51,7 +51,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should fail login with invalid email format', async () => {
@@ -60,7 +60,7 @@ describe('AuthController', () => {
                     .send({
                         email: 'invalid-email',
                         password: 'Password123',
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
@@ -73,7 +73,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/user/login')
                     .send({
                         email: 'user@example.com',
-                    } satisfies Partial<PostAuthLoginDto>)
+                    } satisfies Partial<PostLoginDto>)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
@@ -87,77 +87,77 @@ describe('AuthController', () => {
                     .send({
                         email: 'nonexistent@example.com',
                         password: 'Password123',
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.CREDENTIALS]);
         });
 
         it('should fail login when the user is inactive', async () => {
             const email = 'user.inactive@example.com',
                 password = 'Password123';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Inactive User',
                 password: await hashingService.hash(password),
-                isActive: false,
             });
+            await userWriterPort.save(__userObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
                     .send({
                         email,
                         password,
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.CREDENTIALS]);
         });
 
         it('should fail login with an incorrect password', async () => {
             const email = 'user.wrongpass@example.com';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Test User',
                 password: await hashingService.hash('Password123!'),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
                     .send({
                         email,
                         password: 'WrongPassword123!',
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.CREDENTIALS]);
         });
 
         it('should allow login for a registered user, permit access to protected routes, and block access to admin/super-admin routes', async () => {
             const email = 'user@example.com',
                 password = 'Password123!';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Test User',
                 password: await hashingService.hash(password),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokensDto = expectDataDto(res.body, ResponseAuthTokensDto);
+                tokensDto = expectDataDto(res.body, ResponseTokensDto);
 
             expect(tokensDto.accessToken).toBeDefined();
             expect(tokensDto.refreshToken).toBeDefined();
@@ -174,7 +174,7 @@ describe('AuthController', () => {
                 errorDtoAdminOnly = expectErrorDto(resAdminOnly.body, ErrorDefaultDto);
 
             expect(errorDtoAdminOnly.statusCode).toBe(403);
-            expect(errorDtoAdminOnly.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDtoAdminOnly.message).toEqual([AccessDeniedType.DEFAULT]);
 
             const resSuperAdminOnly = await request(app.getHttpServer())
                     .get('/api/v1/auth-trigger/super-admin-only')
@@ -183,7 +183,7 @@ describe('AuthController', () => {
                 errorDtoSuperAdminOnly = expectErrorDto(resSuperAdminOnly.body, ErrorDefaultDto);
 
             expect(errorDtoSuperAdminOnly.statusCode).toBe(403);
-            expect(errorDtoSuperAdminOnly.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDtoSuperAdminOnly.message).toEqual([AccessDeniedType.DEFAULT]);
         });
     });
 
@@ -193,7 +193,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should fail admin login with invalid email format', async () => {
@@ -202,7 +202,7 @@ describe('AuthController', () => {
                     .send({
                         email: 'invalid-email',
                         password: 'Password123',
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
@@ -215,7 +215,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/admin/login')
                     .send({
                         email: 'admin@example.com',
-                    } satisfies Partial<PostAuthLoginDto>)
+                    } satisfies Partial<PostLoginDto>)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
@@ -229,80 +229,80 @@ describe('AuthController', () => {
                     .send({
                         email: 'nonexistentadmin@example.com',
                         password: 'Password123',
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.CREDENTIALS]);
         });
 
         it('should fail admin login when the admin is inactive', async () => {
             const email = 'admin.inactive@example.com',
                 password = 'Password123';
 
-            await adminsRepository.create({
+            const __adminObj = Admin.create(uuidv7(), {
                 email,
                 name: 'Inactive Admin',
                 password: await hashingService.hash(password),
-                role: AuthUserRole.ADMIN,
-                isActive: false,
+                role: AdminRole.ADMIN,
             });
+            await adminsRepository.save(__adminObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/admin/login')
                     .send({
                         email,
                         password,
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.CREDENTIALS]);
         });
 
         it('should fail admin login with an incorrect password', async () => {
             const email = 'admin.wrongpass@example.com';
 
-            await adminsRepository.create({
+            const __adminObj = Admin.create(uuidv7(), {
                 email,
                 name: 'Admin User',
                 password: await hashingService.hash('Password123!'),
-                role: AuthUserRole.ADMIN,
-                isActive: true,
+                role: AdminRole.ADMIN,
             });
+            await adminsRepository.save(__adminObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/admin/login')
                     .send({
                         email,
                         password: 'WrongPassword123!',
-                    } satisfies PostAuthLoginDto)
+                    } satisfies PostLoginDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.CREDENTIALS]);
         });
 
         it('should allow login for a registered admin and access admin-only endpoint', async () => {
             const email = 'admin@example.com',
                 password = 'Password123!';
 
-            await adminsRepository.create({
+            const __adminObj = Admin.create(uuidv7(), {
                 email,
                 name: 'Test Admin',
                 password: await hashingService.hash(password),
-                role: AuthUserRole.ADMIN,
-                isActive: true,
+                role: AdminRole.ADMIN,
             });
+            await adminsRepository.save(__adminObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/admin/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokensDto = expectDataDto(res.body, ResponseAuthTokensDto);
+                tokensDto = expectDataDto(res.body, ResponseTokensDto);
 
             expect(tokensDto.accessToken).toBeDefined();
             expect(tokensDto.refreshToken).toBeDefined();
@@ -317,19 +317,19 @@ describe('AuthController', () => {
             const email = 'superadmin@example.com',
                 password = 'Password123!';
 
-            await adminsRepository.create({
+            const __adminObj = Admin.create(uuidv7(), {
                 email,
                 name: 'Test Super Admin',
                 password: await hashingService.hash(password),
-                role: AuthUserRole.SUPER_ADMIN,
-                isActive: true,
+                role: AdminRole.SUPER_ADMIN,
             });
+            await adminsRepository.save(__adminObj);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/admin/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokensDto = expectDataDto(res.body, ResponseAuthTokensDto);
+                tokensDto = expectDataDto(res.body, ResponseTokensDto);
 
             expect(tokensDto.accessToken).toBeDefined();
             expect(tokensDto.refreshToken).toBeDefined();
@@ -347,7 +347,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should fail rotation when refreshToken is not a valid JWT format', async () => {
@@ -355,7 +355,7 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: 'not-a-jwt-token',
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(400),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
@@ -369,58 +369,58 @@ describe('AuthController', () => {
                     .send({
                         refreshToken:
                             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should fail rotation when access token is sent instead of refresh token', async () => {
             const email = 'user.accref@example.com',
                 password = 'Password123!';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Test User',
                 password: await hashingService.hash(password),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const resLogin = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto),
+                tokens = expectDataDto(resLogin.body, ResponseTokensDto),
                 resRefresh = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: tokens.accessToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(resRefresh.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should successfully rotate tokens for an active registered user', async () => {
             const email = 'user.active@example.com',
                 password = 'Password123!';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Active User',
                 password: await hashingService.hash(password),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const resLogin = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseTokensDto);
 
             await request(app.getHttpServer())
                 .get('/api/v1/auth-trigger/protected')
@@ -431,9 +431,9 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: tokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(200),
-                rotatedTokens = expectDataDto(resRefresh.body, ResponseAuthTokensDto);
+                rotatedTokens = expectDataDto(resRefresh.body, ResponseTokensDto);
 
             expect(rotatedTokens.accessToken).toBeDefined();
             expect(rotatedTokens.refreshToken).toBeDefined();
@@ -449,19 +449,19 @@ describe('AuthController', () => {
             const email = 'admin.active@example.com',
                 password = 'Password123!';
 
-            await adminsRepository.create({
+            const __adminObj = Admin.create(uuidv7(), {
                 email,
                 name: 'Active Admin',
                 password: await hashingService.hash(password),
-                role: AuthUserRole.ADMIN,
-                isActive: true,
+                role: AdminRole.ADMIN,
             });
+            await adminsRepository.save(__adminObj);
 
             const resLogin = await request(app.getHttpServer())
                     .post('/api/v1/auth/admin/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseTokensDto);
 
             await request(app.getHttpServer())
                 .get('/api/v1/auth-trigger/admin-only')
@@ -472,9 +472,9 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: tokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(200),
-                rotatedTokens = expectDataDto(resRefresh.body, ResponseAuthTokensDto);
+                rotatedTokens = expectDataDto(resRefresh.body, ResponseTokensDto);
 
             expect(rotatedTokens.accessToken).toBeDefined();
             expect(rotatedTokens.refreshToken).toBeDefined();
@@ -490,25 +490,25 @@ describe('AuthController', () => {
             const email = 'user.replay@example.com',
                 password = 'Password123!';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Replay User',
                 password: await hashingService.hash(password),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const resLogin = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                initialTokens = expectDataDto(resLogin.body, ResponseAuthTokensDto),
+                initialTokens = expectDataDto(resLogin.body, ResponseTokensDto),
                 resRefresh = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: initialTokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(200),
-                rotatedTokens = expectDataDto(resRefresh.body, ResponseAuthTokensDto);
+                rotatedTokens = expectDataDto(resRefresh.body, ResponseTokensDto);
 
             expect(rotatedTokens.refreshToken).not.toBe(initialTokens.refreshToken);
 
@@ -516,23 +516,23 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: initialTokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDtoReplay = expectErrorDto(resReplay.body, ErrorDefaultDto);
 
             expect(errorDtoReplay.statusCode).toBe(401);
-            expect(errorDtoReplay.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDtoReplay.message).toEqual([UnauthenticatedType.DEFAULT]);
 
             const resEvicted = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: rotatedTokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDtoEvicted = expectErrorDto(resEvicted.body, ErrorDefaultDto);
 
             expect(errorDtoEvicted.statusCode).toBe(401);
-            expect(errorDtoEvicted.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDtoEvicted.message).toEqual([UnauthenticatedType.DEFAULT]);
 
             const resProtected = await request(app.getHttpServer())
                     .get('/api/v1/auth-trigger/protected')
@@ -541,66 +541,68 @@ describe('AuthController', () => {
                 errorDtoProtected = expectErrorDto(resProtected.body, ErrorDefaultDto);
 
             expect(errorDtoProtected.statusCode).toBe(401);
-            expect(errorDtoProtected.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDtoProtected.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should fail rotation when the user is deactivated/banned after the token was issued', async () => {
             const email = 'user.deac@example.com',
                 password = 'Password123!',
-                user = await usersRepository.create({
+                user = User.create(uuidv7(), {
                     email,
                     name: 'Deactivated User',
                     password: await hashingService.hash(password),
-                    isActive: true,
                 }),
                 resLogin = await request(app.getHttpServer())
                     .post('/api/v1/auth/user/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseTokensDto);
 
-            await usersRepository.update(user!.id, { isActive: false });
+            user.updateStatus(false);
+            await userWriterPort.save(user);
+            await userWriterPort.save(user);
 
             const resRefresh = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: tokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(resRefresh.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should fail rotation when the admin is deactivated/banned after the token was issued', async () => {
             const email = 'admin.deac@example.com',
                 password = 'Password123!',
-                admin = await adminsRepository.create({
+                admin = Admin.create(uuidv7(), {
                     email,
                     name: 'Deactivated Admin',
                     password: await hashingService.hash(password),
-                    role: AuthUserRole.ADMIN,
-                    isActive: true,
+                    role: AdminRole.ADMIN,
                 }),
                 resLogin = await request(app.getHttpServer())
                     .post('/api/v1/auth/admin/login')
-                    .send({ email, password } satisfies PostAuthLoginDto)
+                    .send({ email, password } satisfies PostLoginDto)
                     .expect(200),
-                tokens = expectDataDto(resLogin.body, ResponseAuthTokensDto);
+                tokens = expectDataDto(resLogin.body, ResponseTokensDto);
 
-            await adminsRepository.update(admin!.id, { isActive: false });
+            admin.updateStatus(false);
+            await adminsRepository.save(admin);
+            await adminsRepository.save(admin);
 
             const resRefresh = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken: tokens.refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(resRefresh.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
     });
 
@@ -611,19 +613,19 @@ describe('AuthController', () => {
             const email = 'logout.user@example.com',
                 password = 'Password123!';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Logout User',
                 password: await hashingService.hash(password),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const res = await request(app.getHttpServer())
                 .post('/api/v1/auth/user/login')
-                .send({ email, password } satisfies PostAuthLoginDto)
+                .send({ email, password } satisfies PostLoginDto)
                 .expect(200);
 
-            const tokens = expectDataDto(res.body, ResponseAuthTokensDto);
+            const tokens = expectDataDto(res.body, ResponseTokensDto);
             accessToken = tokens.accessToken;
             refreshToken = tokens.refreshToken;
         });
@@ -633,12 +635,12 @@ describe('AuthController', () => {
                     .post('/api/v1/auth/logout')
                     .send({
                         refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
         it('should return 400 if the logout request body is empty', async () => {
@@ -650,7 +652,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toContain(BadRequestType.EMPTY_BODY);
+            expect(errorDto.message).toContain(InvalidRequestType.EMPTY_BODY);
         });
 
         it('should return 204 (swallowing the error) if the refresh token in the body is invalid but the caller has a valid access token', async () => {
@@ -660,7 +662,7 @@ describe('AuthController', () => {
                 .send({
                     refreshToken:
                         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
-                } satisfies PostAuthRefreshDto)
+                } satisfies PostRefreshDto)
                 .expect(204);
         });
 
@@ -670,19 +672,19 @@ describe('AuthController', () => {
                 .set('Authorization', `Bearer ${accessToken}`)
                 .send({
                     refreshToken,
-                } satisfies PostAuthRefreshDto)
+                } satisfies PostRefreshDto)
                 .expect(204);
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
                     .send({
                         refreshToken,
-                    } satisfies PostAuthRefreshDto)
+                    } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
     });
 
@@ -693,22 +695,22 @@ describe('AuthController', () => {
             const email = 'logout.user@example.com',
                 password = 'Password123!';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Logout User',
                 password: await hashingService.hash(password),
-                isActive: true,
             });
+            await userWriterPort.save(__userObj);
 
             const res = await request(app.getHttpServer())
                 .post('/api/v1/auth/user/login')
                 .send({
                     email,
                     password,
-                } satisfies PostAuthLoginDto)
+                } satisfies PostLoginDto)
                 .expect(200);
 
-            const tokens = expectDataDto(res.body, ResponseAuthTokensDto);
+            const tokens = expectDataDto(res.body, ResponseTokensDto);
             accessToken = tokens.accessToken;
             refreshToken = tokens.refreshToken;
         });
@@ -718,7 +720,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
         it('should return 401 if access token is invalid when calling logout-all', async () => {
@@ -729,7 +731,7 @@ describe('AuthController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should successfully logout from all devices, clear all active sessions, and ban the current access token instantly', async () => {
@@ -740,12 +742,12 @@ describe('AuthController', () => {
 
             const res = await request(app.getHttpServer())
                     .post('/api/v1/auth/refresh')
-                    .send({ refreshToken } satisfies PostAuthRefreshDto)
+                    .send({ refreshToken } satisfies PostRefreshDto)
                     .expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
 
             const resProtected = await request(app.getHttpServer())
                     .get('/api/v1/auth-trigger/protected')
@@ -754,7 +756,7 @@ describe('AuthController', () => {
                 errorDtoProtected = expectErrorDto(resProtected.body, ErrorDefaultDto);
 
             expect(errorDtoProtected.statusCode).toBe(401);
-            expect(errorDtoProtected.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDtoProtected.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
     });
 });
