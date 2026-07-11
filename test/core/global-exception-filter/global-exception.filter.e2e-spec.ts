@@ -4,17 +4,22 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { ConflictType } from 'src/common/exception/enum/conflict-type.enum';
-import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/exception/enum/not-found-type.enum';
-import { ServiceUnavailableType } from 'src/common/exception/enum/service-unavailable-type.enum';
-import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
-import { ResponseUnhealthyDto } from 'src/api/health/dto/response-unhealthy.dto';
+import {
+    ErrorDefaultDto,
+    InternalServerErrorType,
+    ResourceConflictType,
+    ResourceNotFoundType,
+    ServiceUnavailableType,
+} from 'src/core/exception';
+import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
 import request from 'supertest';
+import {
+    ExceptionTriggerController,
+    HealthExceptionTriggerController,
+} from 'test/core/global-exception-filter/global-exception.filter.fixture';
+import { expectErrorDto } from 'test/shared/dto-assertion.util';
+import { createTestApp } from 'test/shared/test-app.factory';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { expectErrorDto } from '../../shared/dto-assertion.util';
-import { createTestApp } from '../../shared/test-app.factory';
-import { ExceptionTriggerController, HealthExceptionTriggerController } from './global-exception.filter.fixture';
 
 describe('GlobalExceptionFilter', () => {
     let app: NestFastifyApplication;
@@ -97,7 +102,7 @@ describe('GlobalExceptionFilter', () => {
                 });
         });
 
-        it('should catch 404 HttpException and sanitize the response message to the default NotFoundType.DEFAULT enum', async () => {
+        it('should catch 404 HttpException and sanitize the response message to the default ResourceNotFoundType.DEFAULT enum', async () => {
             await request(app.getHttpServer())
                 .get('/api/v1/exception-trigger/not-found')
                 .expect(404)
@@ -106,7 +111,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(404);
                     expect(errorDto.statusText).toBe('Not Found');
-                    expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+                    expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
                 });
         });
 
@@ -187,7 +192,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.EMAIL_IN_USE]);
+                    expect(errorDto.message).toEqual([ResourceConflictType.EMAIL_IN_USE]);
                 });
         });
 
@@ -215,7 +220,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.DEFAULT]);
+                    expect(errorDto.message).toEqual([ResourceConflictType.DEFAULT]);
                 });
         });
 
@@ -228,7 +233,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.DEFAULT]);
+                    expect(errorDto.message).toEqual([ResourceConflictType.DEFAULT]);
                 });
         });
 
@@ -241,7 +246,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.FOREIGN_KEY_VIOLATION]);
+                    expect(errorDto.message).toEqual([ResourceConflictType.FOREIGN_KEY_VIOLATION]);
                 });
         });
 
@@ -254,7 +259,7 @@ describe('GlobalExceptionFilter', () => {
 
                     expect(errorDto.statusCode).toBe(409);
                     expect(errorDto.statusText).toBe('Conflict');
-                    expect(errorDto.message).toEqual([ConflictType.FOREIGN_KEY_VIOLATION]);
+                    expect(errorDto.message).toEqual([ResourceConflictType.FOREIGN_KEY_VIOLATION]);
                 });
         });
 

@@ -4,14 +4,15 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { TOKEN_CACHE_HEALTH_PORT, type ICacheHealthPort } from 'src/core/cache';
+import type { IDatabaseHealthPort } from 'src/core/database';
+import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
+import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
+import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
 import request from 'supertest';
-import { ResponseHealthyDto } from 'src/api/health/dto/response-healthy.dto';
-import { ResponseUnhealthyDto } from 'src/api/health/dto/response-unhealthy.dto';
-import { TOKEN_CACHE_HEALTH_INDICATOR } from 'src/common/port/cache/cache.constant';
-import type { ICacheHealthIndicator } from 'src/common/port/cache/cache-health-indicator.interface';
-import { createTestApp } from '../../../shared/test-app.factory';
-import { expectDataDto, expectErrorDto } from '../../../shared/dto-assertion.util';
+import { expectDataDto, expectErrorDto } from 'test/shared/dto-assertion.util';
+import { createTestApp } from 'test/shared/test-app.factory';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('HealthController', () => {
     let app: NestFastifyApplication;
@@ -25,29 +26,89 @@ describe('HealthController', () => {
     });
 
     it('GET /health - should return service health status', async () => {
+        const cacheHealthIndicator = app.get<ICacheHealthPort>(TOKEN_CACHE_HEALTH_PORT);
+        const databaseHealthIndicator = app.get<IDatabaseHealthPort>(TOKEN_DATABASE_HEALTH_PORT);
+
+        const spyCache = vi.spyOn(cacheHealthIndicator, 'ping').mockResolvedValueOnce(undefined);
+        const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockResolvedValueOnce(undefined);
+
         await request(app.getHttpServer())
             .get('/api/health')
             .expect(200)
             .expect((res) => {
                 expectDataDto(res.body, ResponseHealthyDto);
+
+                expect(res.body).toStrictEqual({
+                    data: {
+                        status: 'ok',
+                        info: {
+                            memory_heap: { status: 'up' },
+                            memory_rss: { status: 'up' },
+                            database: { status: 'up' },
+                            cache: { status: 'up' },
+                        },
+                        error: {},
+                        details: {
+                            memory_heap: { status: 'up' },
+                            memory_rss: { status: 'up' },
+                            database: { status: 'up' },
+                            cache: { status: 'up' },
+                        },
+                    },
+                });
             });
+
+        expect(spyCache).toHaveBeenCalledTimes(1);
+        expect(spyDb).toHaveBeenCalledTimes(1);
     });
 
-    it('GET /health - should return 503 service unavailable when Cache is down', async () => {
-        const cacheHealthIndicator = app.get<ICacheHealthIndicator>(TOKEN_CACHE_HEALTH_INDICATOR),
-            spy = vi.spyOn(cacheHealthIndicator, 'ping').mockRejectedValueOnce(new Error());
+    it('GET /health - should return 503 service unavailable when both Database and Cache are down', async () => {
+        const cacheHealthIndicator = app.get<ICacheHealthPort>(TOKEN_CACHE_HEALTH_PORT);
+        const databaseHealthIndicator = app.get<IDatabaseHealthPort>(TOKEN_DATABASE_HEALTH_PORT);
+
+        const spyCache = vi.spyOn(cacheHealthIndicator, 'ping').mockRejectedValueOnce(new Error('Cache failed'));
+        const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockRejectedValueOnce(new Error('DB failed'));
 
         await request(app.getHttpServer())
             .get('/api/health')
             .expect(503)
             .expect((res) => {
-                const dto = expectErrorDto(res.body, ResponseUnhealthyDto);
+                expectErrorDto(res.body, ResponseUnhealthyDto);
 
-                expect(dto.status).toBe('error');
-                expect(dto.error).toHaveProperty('cache');
-                expect((dto.error['cache'] as Record<string, unknown>)['status']).toBe('down');
+                expect(res.body).toStrictEqual({
+                    error: {
+                        status: 'error',
+                        info: {
+                            memory_heap: { status: 'up' },
+                            memory_rss: { status: 'up' },
+                        },
+                        error: {
+                            database: {
+                                status: 'down',
+                                message: 'Database connection failed.',
+                            },
+                            cache: {
+                                status: 'down',
+                                message: 'Cache connection failed.',
+                            },
+                        },
+                        details: {
+                            memory_heap: { status: 'up' },
+                            memory_rss: { status: 'up' },
+                            database: {
+                                status: 'down',
+                                message: 'Database connection failed.',
+                            },
+                            cache: {
+                                status: 'down',
+                                message: 'Cache connection failed.',
+                            },
+                        },
+                    },
+                });
             });
 
-        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spyCache).toHaveBeenCalledTimes(1);
+        expect(spyDb).toHaveBeenCalledTimes(1);
     });
 });

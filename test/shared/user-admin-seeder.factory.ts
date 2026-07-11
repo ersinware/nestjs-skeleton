@@ -1,15 +1,15 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
-import { TOKEN_ADMINS_REPOSITORY } from 'src/api/v1/admin/constant/admin.constant';
-import { IAdminsRepository } from 'src/api/v1/admin/interface/admins.repository.interface';
-import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
-import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
-import { TOKEN_TOKEN_SERVICE } from 'src/common/port/security/token.constant';
-import type { ITokenService } from 'src/common/port/security/token.service.interface';
-import { TOKEN_SESSION_SERVICE } from 'src/common/port/security/session.constant';
-import type { ISessionService } from 'src/common/port/security/session.service.interface';
-import { TOKEN_USERS_REPOSITORY } from 'src/api/v1/user/constant/user.constant';
-import { IUsersRepository } from 'src/api/v1/user/interface/users.repository.interface';
+import type { ISessionPort, ITokenPort } from 'src/core/security';
+import { TOKEN_HASHING_PORT, TOKEN_SESSION_PORT, TOKEN_TOKEN_PORT, type IHashingPort } from 'src/core/security';
+import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
+import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
+import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
+import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
+import { User } from 'src/module/user/domain/aggregate/user.aggregate';
+import { AdminRole } from 'src/shared/domain/admin/enum/admin-role.enum';
+import { UserRole } from 'src/shared/domain/user/enum/user-role.enum';
+import { uuidv7 } from 'uuidv7';
 
 /**
  * Seeds a user in the database without creating a session.
@@ -29,16 +29,10 @@ export async function registerUser(
         password?: string;
     } = {},
 ) {
-    const user = await app.get<IUsersRepository>(TOKEN_USERS_REPOSITORY).create({
-        email,
-        name: 'Test User',
-        password: await app.get<IHashingService>(TOKEN_HASHING_SERVICE).hash(password),
-        isActive: true,
-    });
-
-    if (!user) {
-        throw new Error('User seeding failed');
-    }
+    const hashedPassword = await app.get<IHashingPort>(TOKEN_HASHING_PORT).hash(password);
+    const user = User.create(uuidv7(), { email, name: 'Test User', password: hashedPassword });
+    const userWriterPort = app.get<IUserWriterPort>(TOKEN_USER_WRITER_PORT);
+    await userWriterPort.save(user);
 
     return user;
 }
@@ -51,8 +45,8 @@ export async function registerUser(
  * @returns A promise resolving to the generated tokens and session JTI.
  */
 export async function loginUser(app: NestFastifyApplication, userId: string) {
-    const tokens = await app.get<ITokenService>(TOKEN_TOKEN_SERVICE).generateTokens(AuthUserRole.USER, userId);
-    await app.get<ISessionService>(TOKEN_SESSION_SERVICE).openSession(AuthUserRole.USER, userId, tokens.jti);
+    const tokens = await app.get<ITokenPort>(TOKEN_TOKEN_PORT).generateTokens(UserRole.USER, userId);
+    await app.get<ISessionPort>(TOKEN_SESSION_PORT).openSession(UserRole.USER, userId, tokens.jti);
 
     return {
         accessToken: tokens.accessToken,
@@ -93,24 +87,17 @@ export async function registerAdmin(
     {
         email = 'admin@example.com',
         password = 'Password123',
-        role = AuthUserRole.SUPER_ADMIN,
+        role = AdminRole.SUPER_ADMIN,
     }: {
         email?: string;
         password?: string;
-        role?: AuthUserRole.ADMIN | AuthUserRole.SUPER_ADMIN;
+        role?: AdminRole.ADMIN | AdminRole.SUPER_ADMIN;
     } = {},
 ) {
-    const admin = await app.get<IAdminsRepository>(TOKEN_ADMINS_REPOSITORY).create({
-        email,
-        name: 'Test Admin',
-        password: await app.get<IHashingService>(TOKEN_HASHING_SERVICE).hash(password),
-        role,
-        isActive: true,
-    });
-
-    if (!admin) {
-        throw new Error('Admin seeding failed');
-    }
+    const hashedPassword = await app.get<IHashingPort>(TOKEN_HASHING_PORT).hash(password);
+    const admin = Admin.create(uuidv7(), { email, name: 'Test Admin', password: hashedPassword, role });
+    const repo = app.get<IAdminWriterPort>(TOKEN_ADMIN_WRITER_PORT);
+    await repo.save(admin);
 
     return admin;
 }
@@ -126,10 +113,10 @@ export async function registerAdmin(
 export async function loginAdmin(
     app: NestFastifyApplication,
     adminId: string,
-    role: AuthUserRole.ADMIN | AuthUserRole.SUPER_ADMIN = AuthUserRole.SUPER_ADMIN,
+    role: AdminRole.ADMIN | AdminRole.SUPER_ADMIN = AdminRole.SUPER_ADMIN,
 ) {
-    const tokens = await app.get<ITokenService>(TOKEN_TOKEN_SERVICE).generateTokens(role, adminId);
-    await app.get<ISessionService>(TOKEN_SESSION_SERVICE).openSession(role, adminId, tokens.jti);
+    const tokens = await app.get<ITokenPort>(TOKEN_TOKEN_PORT).generateTokens(role, adminId);
+    await app.get<ISessionPort>(TOKEN_SESSION_PORT).openSession(role, adminId, tokens.jti);
 
     return {
         accessToken: tokens.accessToken,
@@ -150,11 +137,11 @@ export async function registerAndLoginAdmin(
     {
         email = 'admin@example.com',
         password = 'Password123',
-        role = AuthUserRole.SUPER_ADMIN,
+        role = AdminRole.SUPER_ADMIN,
     }: {
         email?: string;
         password?: string;
-        role?: AuthUserRole.ADMIN | AuthUserRole.SUPER_ADMIN;
+        role?: AdminRole.ADMIN | AdminRole.SUPER_ADMIN;
     } = {},
 ) {
     const admin = await registerAdmin(app, { email, password, role });

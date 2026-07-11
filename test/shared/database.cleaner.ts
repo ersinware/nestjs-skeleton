@@ -4,8 +4,8 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_DATABASE_CLEANER } from 'src/common/port/database/database.constant';
-import type { IDatabaseCleaner } from 'src/common/port/database/database-cleaner.interface';
+import type { IDatabaseCleanerPort } from 'src/core/database';
+import { TOKEN_DATABASE_CLEANER_PORT } from 'src/core/database';
 
 /**
  * Invokes the database cleaner provider to reset all data tables during test cycles.
@@ -13,5 +13,5 @@ import type { IDatabaseCleaner } from 'src/common/port/database/database-cleaner
  * @param app The running NestFastifyApplication instance.
  */
 export async function cleanupDatabase(app: NestFastifyApplication): Promise<void> {
-    await app.get<IDatabaseCleaner>(TOKEN_DATABASE_CLEANER).cleanup();
+    await app.get<IDatabaseCleanerPort>(TOKEN_DATABASE_CLEANER_PORT).cleanup();
 }

@@ -4,8 +4,7 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_CACHE_CLEANER_SERVICE } from 'src/common/port/cache/cache.constant';
-import type { ICacheCleanerService } from 'src/common/port/cache/cache-cleaner-service.interface';
+import { TOKEN_CACHE_CLEANER_PORT, type ICacheCleanerPort } from 'src/core/cache';
 
 /**
  * Invokes the cache cleaner provider to clear cache keys and database states during test cycles.
@@ -13,5 +12,5 @@ import type { ICacheCleanerService } from 'src/common/port/cache/cache-cleaner-s
  * @param app The running NestFastifyApplication instance.
  */
 export async function cleanupCache(app: NestFastifyApplication): Promise<void> {
-    await app.get<ICacheCleanerService>(TOKEN_CACHE_CLEANER_SERVICE).cleanup();
+    await app.get<ICacheCleanerPort>(TOKEN_CACHE_CLEANER_PORT).cleanup();
 }

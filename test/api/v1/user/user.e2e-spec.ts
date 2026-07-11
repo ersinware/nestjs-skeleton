@@ -1,45 +1,47 @@
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security';
+import { User } from 'src/module/user/domain/aggregate/user.aggregate';
+
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/common/pagination/constant/pagination.constant';
-import { ErrorDefaultDto } from 'src/common/exception/dto/error-default.dto';
-import { ResponsePaginationDto } from 'src/common/pagination/dto/response-pagination.dto';
-import { AuthUserRole } from 'src/common/auth/enum/auth-user-role.enum';
-import { BadRequestType } from 'src/common/exception/enum/bad-request-type.enum';
-import { ForbiddenType } from 'src/common/exception/enum/forbidden-type.enum';
-import { InternalServerErrorType } from 'src/common/exception/enum/internal-server-error-type.enum';
-import { NotFoundType } from 'src/common/exception/enum/not-found-type.enum';
-import { UnauthorizedType } from 'src/common/exception/enum/unauthorized-type.enum';
-import { TOKEN_HASHING_SERVICE } from 'src/common/port/security/hashing.constant';
-import type { IHashingService } from 'src/common/port/security/hashing.service.interface';
-import { TOKEN_SESSION_SERVICE } from 'src/common/port/security/session.constant';
-import type { ISessionService } from 'src/common/port/security/session.service.interface';
-import { TOKEN_USERS_REPOSITORY } from 'src/api/v1/user/constant/user.constant';
-import { ResponseUserDto } from 'src/api/v1/user/dto/response-user.dto';
-import { PatchUserPasswordDto } from 'src/api/v1/user/dto/patch-user-password.dto';
-import { PatchUserStatusDto } from 'src/api/v1/user/dto/patch-user-status.dto';
-import { PatchUserDto } from 'src/api/v1/user/dto/patch-user.dto';
-import { PostUserDto } from 'src/api/v1/user/dto/post-user.dto';
-import { QuerySearchDto } from 'src/common/search/dto/query-search.dto';
-import { IUsersRepository } from 'src/api/v1/user/interface/users.repository.interface';
+import {
+    AccessDeniedType,
+    ErrorDefaultDto,
+    InternalServerErrorType,
+    InvalidRequestType,
+    ResourceNotFoundType,
+    UnauthenticatedType,
+} from 'src/core/exception';
+import { QuerySearchDto, ResponsePaginationDto } from 'src/core/http';
+import type { ISessionPort } from 'src/core/security';
+import { TOKEN_SESSION_PORT } from 'src/core/security';
+import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
+import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
+import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
+import { PatchUserStatusDto } from 'src/module/user/presentation/dto/patch-user-status.dto';
+import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
+import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
+import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
+import { UserRole } from 'src/shared/domain/user/enum/user-role.enum';
+import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/shared/pagination';
 import request from 'supertest';
+import { createAuthTestApp } from 'test/shared/auth-test-app.factory';
+import { cleanupCache } from 'test/shared/cache.cleaner';
+import { cleanupDatabase } from 'test/shared/database.cleaner';
+import { expectDataArrayDto, expectDataDto, expectErrorDto } from 'test/shared/dto-assertion.util';
+import { registerAndLoginAdmin, registerAndLoginUser, registerUser } from 'test/shared/user-admin-seeder.factory';
 import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuthTestApp } from '../../../shared/auth-test-app.factory';
-import { cleanupCache } from '../../../shared/cache.cleaner';
-import { cleanupDatabase } from '../../../shared/database.cleaner';
-import { expectDataArrayDto, expectDataDto, expectErrorDto } from '../../../shared/dto-assertion.util';
-import { registerAndLoginAdmin, registerAndLoginUser, registerUser } from '../../../shared/user-admin-seeder.factory';
 
 describe('UserController', () => {
     let app: NestFastifyApplication,
-        usersRepository: IUsersRepository,
-        hashingService: IHashingService,
-        sessionService: ISessionService;
+        userWriterPort: IUserWriterPort,
+        hashingPort: IHashingPort,
+        sessionPort: ISessionPort;
 
     beforeEach(async () => {
         app = await createAuthTestApp();
-        usersRepository = app.get<IUsersRepository>(TOKEN_USERS_REPOSITORY);
-        hashingService = app.get<IHashingService>(TOKEN_HASHING_SERVICE);
-        sessionService = app.get<ISessionService>(TOKEN_SESSION_SERVICE);
+        userWriterPort = app.get(TOKEN_USER_WRITER_PORT);
+        hashingPort = app.get<IHashingPort>(TOKEN_HASHING_PORT);
+        sessionPort = app.get<ISessionPort>(TOKEN_SESSION_PORT);
 
         await cleanupCache(app);
         await cleanupDatabase(app);
@@ -69,7 +71,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should return 400 if validation rules fail due to weak password', async () => {
@@ -114,12 +116,12 @@ describe('UserController', () => {
         it('should return 409 Conflict if email is already registered', async () => {
             const email = 'conflict@example.com';
 
-            await usersRepository.create({
+            const __userObj = User.create(uuidv7(), {
                 email,
                 name: 'Existing User',
-                password: await hashingService.hash('Password123!'),
-                isActive: true,
+                password: await hashingPort.hash('Password123!'),
             });
+            await userWriterPort.save(__userObj);
 
             const dto: PostUserDto = {
                     email,
@@ -133,7 +135,7 @@ describe('UserController', () => {
         });
 
         it('should return 500 InternalServerErrorType.DEFAULT if repository fails to create the user', async () => {
-            vi.spyOn(usersRepository, 'create').mockResolvedValueOnce(null);
+            vi.spyOn(userWriterPort, 'save').mockRejectedValueOnce(new Error('DB Error'));
 
             const dto: PostUserDto = {
                     email: 'error@example.com',
@@ -154,15 +156,15 @@ describe('UserController', () => {
                 newUser = {
                     email: 'user1@example.com',
                     name: 'User One',
-                    password: await hashingService.hash('Password123!'),
-                    isActive: true,
+                    password: await hashingPort.hash('Password123!'),
                 },
                 query: QuerySearchDto = {
                     page: 1,
                     limit: 20,
                 };
 
-            await usersRepository.create(newUser);
+            const __u = User.create(uuidv7(), { email: newUser.email, name: newUser.name, password: newUser.password });
+            await userWriterPort.save(__u);
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user')
@@ -196,7 +198,7 @@ describe('UserController', () => {
             expect(data.limit).toBe(PAGINATION_DEFAULT_LIMIT);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-admin callers', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-admin callers', async () => {
             const user = await registerAndLoginUser(app),
                 res = await request(app.getHttpServer())
                     .get('/api/v1/user')
@@ -205,7 +207,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
         it('should successfully search users by name and return matching GetUserDto list for an admin', async () => {
@@ -213,11 +215,15 @@ describe('UserController', () => {
                 searchUser = {
                     email: 'searchname@example.com',
                     name: 'Target Name',
-                    password: await hashingService.hash('Password123!'),
-                    isActive: true,
+                    password: await hashingPort.hash('Password123!'),
                 };
 
-            await usersRepository.create(searchUser);
+            const __u = User.create(uuidv7(), {
+                email: searchUser.email,
+                name: searchUser.name,
+                password: searchUser.password,
+            });
+            await userWriterPort.save(__u);
 
             const query: Partial<QuerySearchDto> = { search: 'Target' },
                 res = await request(app.getHttpServer())
@@ -237,11 +243,15 @@ describe('UserController', () => {
                 searchUser = {
                     email: 'searchemail@example.com',
                     name: 'Unique Name',
-                    password: await hashingService.hash('Password123!'),
-                    isActive: true,
+                    password: await hashingPort.hash('Password123!'),
                 };
 
-            await usersRepository.create(searchUser);
+            const __u = User.create(uuidv7(), {
+                email: searchUser.email,
+                name: searchUser.name,
+                password: searchUser.password,
+            });
+            await userWriterPort.save(__u);
 
             const query: Partial<QuerySearchDto> = { search: 'searchemail' },
                 res = await request(app.getHttpServer())
@@ -261,12 +271,12 @@ describe('UserController', () => {
 
             // Create 3 search target users
             for (let i = 1; i <= 3; i++) {
-                await usersRepository.create({
+                const __userObj = User.create(uuidv7(), {
                     email: `paginated${i}@example.com`,
                     name: `Paginated User ${i}`,
-                    password: await hashingService.hash('Password123!'),
-                    isActive: true,
+                    password: await hashingPort.hash('Password123!'),
                 });
+                await userWriterPort.save(__userObj);
             }
 
             const query = { search: 'Paginated', page: 1, limit: 2 },
@@ -282,15 +292,15 @@ describe('UserController', () => {
             expect(data.items.length).toBe(query.limit);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).get('/api/v1/user').expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
+        it('should return 401 UnauthenticatedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user')
                     .set('Authorization', 'Bearer invalid-token')
@@ -298,7 +308,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
     });
 
@@ -316,15 +326,15 @@ describe('UserController', () => {
             expect(data.id).toBe(user.id);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).get('/api/v1/user/me').expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 401 UnauthorizedType.DEFAULT if access token is invalid', async () => {
+        it('should return 401 UnauthenticatedType.DEFAULT if access token is invalid', async () => {
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user/me')
                     .set('Authorization', 'Bearer invalid-token')
@@ -332,13 +342,15 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
-        it('should return 404 NotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
+        it('should return 404 ResourceNotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
             const user = await registerAndLoginUser(app);
 
-            await usersRepository.delete(user.id);
+            const __dbUser = await userWriterPort.load(user.id);
+            __dbUser!.markAsDeleted();
+            await userWriterPort.save(__dbUser!);
 
             const res = await request(app.getHttpServer())
                     .get('/api/v1/user/me')
@@ -347,7 +359,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
     });
 
@@ -366,7 +378,7 @@ describe('UserController', () => {
             expect(data.id).toBe(user.id);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-admin callers', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-admin callers', async () => {
             const user1 = await registerAndLoginUser(app),
                 user2 = await registerUser(app, { email: 'user2@example.com' }),
                 res = await request(app.getHttpServer())
@@ -376,10 +388,10 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
-        it('should return 404 NotFoundType.DEFAULT if user ID does not exist', async () => {
+        it('should return 404 ResourceNotFoundType.DEFAULT if user ID does not exist', async () => {
             const admin = await registerAndLoginAdmin(app),
                 res = await request(app.getHttpServer())
                     .get(`/api/v1/user/${uuidv7()}`)
@@ -388,7 +400,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
 
         it('should return 400 if user ID is not a valid UUID', async () => {
@@ -403,12 +415,12 @@ describe('UserController', () => {
             expect(errorDto.message.length).toBeGreaterThanOrEqual(1);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).get(`/api/v1/user/${uuidv7()}`).expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
     });
 
@@ -429,7 +441,7 @@ describe('UserController', () => {
             expect(data.email).toBe(patchPayload.email);
             expect(data.name).toBe(patchPayload.name);
 
-            const userDb = await usersRepository.findById(user.id);
+            const userDb = await userWriterPort.load(user.id);
             expect(userDb!.email).toBe(patchPayload.email);
             expect(userDb!.name).toBe(patchPayload.name);
         });
@@ -444,7 +456,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should return 400 if validation rules fail due to invalid email format', async () => {
@@ -476,7 +488,7 @@ describe('UserController', () => {
             expect(errorDto.statusCode).toBe(409);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer())
                     .patch('/api/v1/user/me')
                     .send({ name: 'Jane Doe' } satisfies PatchUserDto)
@@ -484,13 +496,15 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 404 NotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
+        it('should return 404 ResourceNotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
             const user = await registerAndLoginUser(app);
 
-            await usersRepository.delete(user.id);
+            const __dbUser = await userWriterPort.load(user.id);
+            __dbUser!.markAsDeleted();
+            await userWriterPort.save(__dbUser!);
 
             const res = await request(app.getHttpServer())
                     .patch('/api/v1/user/me')
@@ -502,7 +516,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
     });
 
@@ -521,8 +535,8 @@ describe('UserController', () => {
                 .send(patchPayload)
                 .expect(204);
 
-            const hashedPassword = await usersRepository.findPasswordById(user.id);
-            expect(await hashingService.verify(hashedPassword!, patchPayload.newPassword)).toBe(true);
+            const hashedPassword = (await userWriterPort.load(user.id))!.password;
+            expect(await hashingPort.verify(hashedPassword, patchPayload.newPassword)).toBe(true);
         });
 
         it('should return 400 if request body is empty', async () => {
@@ -535,7 +549,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should return 400 if current password is wrong', async () => {
@@ -589,7 +603,7 @@ describe('UserController', () => {
             const currentPassword = 'Password123!',
                 user = await registerAndLoginUser(app, { password: currentPassword });
 
-            vi.spyOn(usersRepository, 'update').mockResolvedValueOnce(null);
+            vi.spyOn(userWriterPort, 'save').mockRejectedValueOnce(new Error('DB Error'));
 
             const res = await request(app.getHttpServer())
                     .patch('/api/v1/user/me/password')
@@ -605,7 +619,7 @@ describe('UserController', () => {
             expect(errorDto.message).toEqual([InternalServerErrorType.DEFAULT]);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer())
                     .patch('/api/v1/user/me/password')
                     .send({ currentPassword: 'Old', newPassword: 'New' } satisfies PatchUserPasswordDto)
@@ -613,13 +627,15 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
-        it('should return 404 NotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
+        it('should return 404 ResourceNotFoundType.DEFAULT if the authenticated user does not exist in the database', async () => {
             const user = await registerAndLoginUser(app);
 
-            await usersRepository.delete(user.id);
+            const __dbUser = await userWriterPort.load(user.id);
+            __dbUser!.markAsDeleted();
+            await userWriterPort.save(__dbUser!);
 
             const res = await request(app.getHttpServer())
                     .patch('/api/v1/user/me/password')
@@ -632,7 +648,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
     });
 
@@ -659,19 +675,19 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
 
             // Verify refresh token session is evicted from the cache
-            const session = await sessionService.getSession(AuthUserRole.USER, user.id, user.jti);
+            const session = await sessionPort.getSession(UserRole.USER, user.id, user.jti);
             expect(session).toBeNull();
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const res = await request(app.getHttpServer()).delete('/api/v1/user/me').expect(401),
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
     });
 
@@ -692,7 +708,7 @@ describe('UserController', () => {
                 .send({ active: false } satisfies PatchUserStatusDto)
                 .expect(204);
 
-            const userDb = await usersRepository.findById(user.id);
+            const userDb = await userWriterPort.load(user.id);
             expect(userDb!.isActive).toBe(false);
 
             // Verify access token is instantly banned
@@ -703,7 +719,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.DEFAULT]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.DEFAULT]);
         });
 
         it('should successfully reactivate user (setting isActive: true, and unbanning user)', async () => {
@@ -736,7 +752,7 @@ describe('UserController', () => {
                 .send({ active: true } satisfies PatchUserStatusDto)
                 .expect(204);
 
-            const userDb = await usersRepository.findById(user.id);
+            const userDb = await userWriterPort.load(user.id);
             expect(userDb!.isActive).toBe(true);
 
             // Verify accessible again
@@ -746,7 +762,7 @@ describe('UserController', () => {
                 .expect(200);
         });
 
-        it('should return 404 NotFoundType.DEFAULT if user does not exist', async () => {
+        it('should return 404 ResourceNotFoundType.DEFAULT if user does not exist', async () => {
             const admin = await registerAndLoginAdmin(app),
                 res = await request(app.getHttpServer())
                     .patch(`/api/v1/user/${uuidv7()}/status`)
@@ -756,10 +772,10 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(404);
-            expect(errorDto.message).toEqual([NotFoundType.DEFAULT]);
+            expect(errorDto.message).toEqual([ResourceNotFoundType.DEFAULT]);
         });
 
-        it('should return 403 ForbiddenType.DEFAULT for non-admin callers', async () => {
+        it('should return 403 AccessDeniedType.DEFAULT for non-admin callers', async () => {
             const user1 = await registerAndLoginUser(app),
                 user2 = await registerUser(app, { email: 'user2@example.com' }),
                 res = await request(app.getHttpServer())
@@ -770,10 +786,10 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(403);
-            expect(errorDto.message).toEqual([ForbiddenType.DEFAULT]);
+            expect(errorDto.message).toEqual([AccessDeniedType.DEFAULT]);
         });
 
-        it('should return 401 UnauthorizedType.MISSING_CREDENTIALS if access token is missing', async () => {
+        it('should return 401 UnauthenticatedType.MISSING_CREDENTIALS if access token is missing', async () => {
             const user = await registerUser(app),
                 res = await request(app.getHttpServer())
                     .patch(`/api/v1/user/${user.id}/status`)
@@ -782,7 +798,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(401);
-            expect(errorDto.message).toEqual([UnauthorizedType.MISSING_CREDENTIALS]);
+            expect(errorDto.message).toEqual([UnauthenticatedType.MISSING_CREDENTIALS]);
         });
 
         it('should return 400 if request body is empty', async () => {
@@ -795,7 +811,7 @@ describe('UserController', () => {
                 errorDto = expectErrorDto(res.body, ErrorDefaultDto);
 
             expect(errorDto.statusCode).toBe(400);
-            expect(errorDto.message).toEqual([BadRequestType.EMPTY_BODY]);
+            expect(errorDto.message).toEqual([InvalidRequestType.EMPTY_BODY]);
         });
 
         it('should return 400 if ID is not a valid UUID', async () => {
