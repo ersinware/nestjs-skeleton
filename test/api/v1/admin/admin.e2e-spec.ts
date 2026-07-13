@@ -1,6 +1,6 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { TOKEN_EMAIL_QUEUE_PORT } from 'src/core/email';
+import { TOKEN_EMAIL_INTAKE_PORT } from 'src/core/email';
 import {
     AccessDeniedType,
     ErrorDefaultDto,
@@ -11,7 +11,8 @@ import {
 } from 'src/core/exception';
 import { QueryPaginationDto, ResponsePaginationDto } from 'src/core/http';
 import { TOKEN_ADMIN_WRITER_PORT, type IAdminWriterPort } from 'src/module/admin/application/command/port';
-import { AdminCreatedEvent, AdminEvent } from 'src/module/admin/domain/event';
+import { AdminEvent } from 'src/module/admin/domain/event';
+import { DomainEvent } from 'src/shared/domain/event';
 import { PatchAdminStatusDto } from 'src/module/admin/presentation/dto/patch-admin-status.dto';
 import { PostAdminDto } from 'src/module/admin/presentation/dto/post-admin.dto';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
@@ -39,7 +40,7 @@ describe('AdminController', () => {
         app = await createAuthTestApp({
             overrides: [
                 {
-                    provide: TOKEN_EMAIL_QUEUE_PORT,
+                    provide: TOKEN_EMAIL_INTAKE_PORT,
                     useValue: mockEmailAdapter,
                 },
             ],
@@ -75,11 +76,11 @@ describe('AdminController', () => {
             expect(data.name).toBe(dto.name);
             expect(data.role).toBe(AdminRole.ADMIN);
 
-            expect(emitSpy).toHaveBeenCalledWith(AdminEvent.CREATED, expect.any(AdminCreatedEvent));
+            expect(emitSpy).toHaveBeenCalledWith(AdminEvent.CREATED, expect.any(DomainEvent));
 
             const welcomeEmailEvent = emitSpy.mock.calls.find(
                 (call: unknown[]) => call[0] === AdminEvent.CREATED,
-            )?.[1] as AdminCreatedEvent;
+            )?.[1] as DomainEvent;
             expect(welcomeEmailEvent).toBeDefined();
 
             const adminDb = await adminsRepository.load(data.id);

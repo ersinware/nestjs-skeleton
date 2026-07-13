@@ -19,7 +19,11 @@ if (!fs.existsSync('/.dockerenv') && databaseUrl.includes('@postgres:')) {
 }
 
 export default defineConfig({
-    schema: ['./src/core/*/schema/*.schema.ts', './src/module/*/infrastructure/database/schema/*.schema.ts'],
+    schema: [
+        './src/core/*/schema/*.schema.ts',
+        './src/core/*/schema.ts',
+        './src/module/*/infrastructure/database/schema/*.schema.ts',
+    ],
     out: './drizzle',
     dialect: 'postgresql',
     dbCredentials: {

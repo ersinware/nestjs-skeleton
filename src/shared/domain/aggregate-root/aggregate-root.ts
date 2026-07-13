@@ -3,12 +3,12 @@
  * @description Base class for all Aggregate Roots in the domain. Handles domain event accumulation.
  */
 
-import { IDomainEvent } from 'src/shared/domain/event';
+import { DomainEvent } from 'src/shared/domain/event';
 
 export abstract class AggregateRoot {
     readonly id: string;
 
-    private readonly _domainEvents: IDomainEvent[] = [];
+    private readonly _domainEvents: DomainEvent[] = [];
 
     protected constructor(id: string) {
         this.id = id;
@@ -17,7 +17,7 @@ export abstract class AggregateRoot {
     /**
      * Gets the uncommitted domain events.
      */
-    get domainEvents(): IDomainEvent[] {
+    get domainEvents(): DomainEvent[] {
         return this._domainEvents;
     }
 
@@ -25,7 +25,7 @@ export abstract class AggregateRoot {
      * Adds a domain event to the aggregate.
      * @param event The event to add
      */
-    protected addDomainEvent(event: IDomainEvent) {
+    protected addDomainEvent(event: DomainEvent) {
         this._domainEvents.push(event);
     }
 

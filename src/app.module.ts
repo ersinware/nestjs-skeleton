@@ -16,6 +16,7 @@ import { EmailModule } from 'src/core/email/module';
 import { EventBusModule } from 'src/core/event-bus';
 import { GlobalExceptionFilter } from 'src/core/exception';
 import { NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
+import { InboxLedgerModule } from 'src/core/inbox-ledger';
 import { LoggerModule, TrackerModule } from 'src/core/observability';
 import { OutboxModule } from 'src/core/outbox';
 import { AuthGuard, AuthRolesGuard, SessionModule, ThrottleModule, TokenModule } from 'src/core/security';
@@ -61,6 +62,7 @@ import { UserModule } from 'src/module/user';
         TokenModule,
         SessionModule,
         OutboxModule,
+        InboxLedgerModule,
         HealthModule,
         AuthModule,
         UserModule,

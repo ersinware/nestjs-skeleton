@@ -7,7 +7,7 @@ Production-ready NestJS backend — strict DDD, Hexagonal Architecture, horizont
 ## AI Behavior
 
 - **Never run tests, lint, or format automatically** — user runs them manually.
-- **Always generate the spec file** when generating a service or controller.
+- **Do not auto-generate spec/test files** — the user owns and writes tests separately, on their own schedule. Generate a spec **only** when the user explicitly asks for it.
 - **Documentation first**: every controller endpoint needs `@ApiTags`, `@ApiOperation`, and `ApiDefault*` decorators.
 - **Complete implementations only** — no placeholder logic.
 - **Enforce architecture**: reject any request that contradicts Modular Monolith, DDD, Hexagonal Architecture, or Outbox Pattern; warn the user and enforce the correct approach first.
@@ -64,6 +64,7 @@ Dependencies flow strictly inward. Any other import is ILLEGAL.
     Controller methods dispatching a non-void command MUST annotate their return type using the imported Result type alias. Void-returning commands need no return type annotation on the controller method.
 
 - **Queries**: MUST NEVER mutate state. Read directly from the **query repository** into a read-model DTO. Controller methods dispatching a query MUST annotate their return type using the read-model type.
+- **Read transport — QueryBus vs. direct port**: dispatch a read through the **QueryBus** only when crossing *into* the read side from outside it — from **presentation (controllers)** or a **Facade** exposing a cross-module read. Code already inside the application layer (a **listener**, cron, or command handler) that needs a read MUST inject the **query port directly** (`@Inject(TOKEN)`); routing an intra-layer read through the QueryBus is pure indirection that hides the dependency graph. **Consequence for the folder shape**: a query **with a `handler.ts` is QueryBus-dispatched**; a query **without a `handler.ts` is port-invoked** from within the application layer. Either way the result/read-model type stays in `query.ts` and the outbound contract in `port.ts` — the presence or absence of `handler.ts` is the sole signal of the transport.
 - **Read-models** live in `application/query/read-model/` — plain interfaces, zero runtime cost.
 - **Query port** (`application/port/*.port.ts`) lives in `application/`.
 - Presentation controllers import read-models from `application/query/read-model/` — MUST NOT import from `domain/`.
@@ -91,9 +92,11 @@ Dependencies flow strictly inward. Any other import is ILLEGAL.
 
 - Critical Domain Events MUST be inserted into `outbox` in the **same SQL transaction** as the entity write. A Relay Worker emits them afterward.
 - **Never delete an outbox row on success** — update `status` instead.
-- **Consumers MUST be idempotent** — the same event can be delivered more than once.
+- **Consumers MUST be idempotent** — the same event can be delivered more than once (at-least-once).
+- **Inbox (`IInboxPort`) ONLY for effects that are harmful to repeat** — sending email, enqueuing a job, calling an external API, or a non-idempotent DB write. For DB-backed work `runOnce` commits the dedup marker and the effect in the **same transaction** (atomic "done" + "recorded-done"); for external effects use `isProcessed`/`markProcessed`.
+- **Do NOT add the inbox to an intrinsically idempotent handler** — one where re-running yields the same state (fixed key/value write, version-guarded or monotonic-max Redis write, or an effect derived purely from re-readable DB/Facade truth). It only adds a DB round-trip. Idempotency must hold under duplicate, out-of-order, **and** concurrent delivery, proven for the whole handler — not assumed from one primitive. The inbox does **not** order events; convergence stays the handler's own job.
 - **On failure**: run a compensating transaction, emit a failure event, write the reason into `status`.
-- **Never swallow errors** — `throw err` so the queue retries. Config: `attempts: 5`, `backoff: { type: 'exponential', delay: 2000 }`.
+- **Never swallow errors** — `throw err` so the queue retries. Each queue declares its own `defaultJobOptions` (retry/backoff/retention) inline at `BullModule.registerQueue`, tuned to that queue's failure profile — internal infra recovers in seconds (tight backoff), external providers in minutes (longer backoff).
 
 ### 9. Dependency Injection
 
@@ -116,6 +119,36 @@ Never inject Drizzle ORM directly into Application or Domain layers.
 
 Everything is always **singular**: folders (`dto/`, `repository/`) and files (`user.controller.ts`) — never plural.
 
+### File Grouping & Barrels
+
+These four principles govern how files are named, grouped, and exported. They favor **stable, self-describing, location-independent** structure over minimal file counts. Prefer them over any older pattern already in the tree — reject requests that reintroduce location-coupled names or internal barrels.
+
+1. **Filenames are always descriptive + role-suffixed — never bare `type.ts` / `enum.ts` / `constant.ts`.** A bare role name only reads because its parent folder supplies the meaning, which couples the name to its location and breaks on move/refactor. Use `dispatched-domain-event.type.ts`, `outbox-status.enum.ts`, `claimed-outbox-event.type.ts` — self-describing in editor tabs, global search, stack traces, and import autocomplete. Role suffixes: `.type.ts`, `.enum.ts`, `.constant.ts`, `.schema.ts`, `.port.ts`, `.adapter.ts`, `.controller.ts`, `.service.ts`, `.cron.ts`, `.listener.ts`, `.processor.ts`, `.aggregate.ts`, `.facade.ts`, `.module.ts`.
+
+2. **Structure by a role's nature, decided once up front — never by its current file count.** Counting files today (the "1 file → flat, 2 files → folder" rule) forces a later migration that churns import paths, so the choice must be nature-based and fixed from the first file:
+    - **Architectural collection-roles** — inherently accrue members and share a contract: `port`, `adapter`, `command`, `query`, `listener`, `cron`, `event`, `read-model`. Each gets its **own role-folder from the very first file** (`outbox/port/outbox-ledger.port.ts` even when it is the only port). Nothing is ever promoted, so no path ever churns.
+    - **Bounded/singular roles** — one per module by nature: `schema`, `module`, `facade`, and the language-kind files `enum` / `constant` / a lone `type`. These stay **flat** with a descriptive name (`outbox/outbox-status.enum.ts`, `outbox/claimed-outbox-event.type.ts`).
+    - **Never open a folder for a language-kind** (`type/`, `enum/`, `constant/`) as a dumping bucket. Folders are for architectural roles only. A concept genuinely growing a large family of types is the signal to **split the concept into sub-concepts** (each its own folder), not to add a `type/` bucket — this keeps any count threshold out of the decision entirely.
+
+3. **One barrel per module / bounded-context / shared-concept — as its public surface. No barrels on internal role-folders.** Barrels are the classic cause of circular dependencies in layered DDD and hide the real dependency graph. A barrel lives at exactly one level — the **concept** boundary that closes to the outside — and three sibling levels must not be conflated:
+    - **Layer** (`shared/application/`, a hexagonal-layer subdivision) → **no barrel** (loosely-coupled bag of concepts → a broad, cycle-prone surface).
+    - **Concept** (`modules/<ctx>/`, `core/<concern>/`, `shared/application/event/`) → **exactly one barrel** (`index.ts`) as its public API. Consumers import from this path.
+    - **Role-folder inside a concept** (`.../event/port/`, `outbox/adapter/`) → **no barrel**; import by explicit file path (`outbox/port/outbox-ledger.port.ts`), never `outbox/port/index.ts`.
+
+    So `shared/application/event/index.ts` is correct (barrel on the `event` concept) while `shared/application/index.ts` is forbidden (barrel on the `application` layer).
+
+4. **Group by feature/bounded-context first, then by hexagonal layer, and technical role LAST.** Macro structure screams the domain (`modules/<ctx>/domain|application|infrastructure|presentation`), not the framework. Splitting a single concept across many kind-folders (`type/`, `enum/`, `constant/`) too early is the package-by-kind anti-pattern — a change to one concept then touches many folders.
+
+**Canonical shape** (a cohesive concept with one barrel and descriptive flat files):
+
+```
+src/shared/application/event/
+  index.ts                            # the concept's only barrel — its public surface
+  dispatched-domain-event.type.ts     # descriptive, role-suffixed, location-independent
+```
+
+Consumers import from the concept path (`src/shared/application/event`); the barrel resolves it.
+
 ### DTOs
 
 | Type         | Prefix      | Example                                          |
@@ -133,6 +166,17 @@ Everything is always **singular**: folders (`dto/`, `repository/`) and files (`u
 - `ResponseInterceptor` wraps all responses — do not wrap manually.
 - Throw NestJS HTTP exceptions; global filter formats via `ErrorDefaultDto`.
 - Use `QueryPaginationDto` for pagination input, `ResponsePaginationDto` for output.
+
+### Observability (Logging & Exception Tracking)
+
+Decide per catch/branch by asking **"who acts on this, and does the system fix itself?"** — never log or capture reflexively.
+
+- **Sentry (`IExceptionTrackerPort.captureException`) → only when a human must intervene and the condition will NOT self-heal.** Examples: an event permanently dead-lettered (`DEAD` — data loss), a listener/connection that stays down until restart (config/auth failure). These pair with an `error`-level log.
+- **`logger.warn` → self-healing failure whose *cause* is worth a forensic breadcrumb** when another signal (a metric or an existing Sentry alert) will already bring someone to the logs. Its job is to answer _why_ during an incident, not to alert. Justified only when both hold: (1) something else detects the incident, (2) the warn carries a root cause not readily available elsewhere. Examples: a relay drain failure (backlog metric brings you in; warn names the cause), a failed `markDead` write (the terminal Sentry alert already fired; warn explains the loop).
+- **`logger.log` → operationally significant events that may be needed later** for audit/forensics even with no failure (e.g. a user login/auth-state change). Use for meaningful state transitions, not routine chatter.
+- **Silent `catch` → fully self-healing failure that nobody will ever investigate.** Swallow with an explanatory comment; add no log and no Sentry. Examples: shutdown-cleanup errors (the OS reclaims the socket), a missed daily prune (next run + table-size metrics cover it). The `catch` exists only to stop an unhandled rejection.
+- **A `catch` that self-heals must not throw** — the outer `finally`/loop bookkeeping (e.g. a single-flight `isDraining` flag) must still run, or the component deadlocks.
+- When a branch drops all logging/Sentry, also remove the now-unused `loggerPort` / `exceptionTrackerPort` injections and their imports.
 
 ### Guards & Auth
 

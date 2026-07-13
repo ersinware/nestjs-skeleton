@@ -1,22 +1,26 @@
 /**
- * @file email.port.ts
- * @description Contract for the EmailAdapter.
+ * @file email-queue.port.ts
+ * @description Outbound port that pushes claimed emails onto the BullMQ email queue for delivery.
+ * Implemented by a BullMQ adapter.
  */
-import type { EmailPayload } from 'src/core/email/type';
+
+import type { ClaimedEmail } from 'src/core/email/type';
 
 /**
- * Dependency injection token representing the email service contract interface.
+ * Dependency injection token representing the email queue port.
  */
 export const TOKEN_EMAIL_QUEUE_PORT = Symbol('TOKEN_EMAIL_QUEUE_PORT');
 
 /**
- * Interface representing the operations supported by the EmailAdapter.
+ * Queue contract for handing claimed emails to the async delivery mechanism.
  */
 export interface IEmailQueuePort {
     /**
-     * Queues an email to be dispatched asynchronously.
+     * Enqueues claimed emails for asynchronous delivery. Each job is keyed by the email id so
+     * re-dispatching the same claimed row is idempotent.
      *
-     * @param data The email job data containing recipient, subject, and body
+     * @param emails - The claimed emails to enqueue.
+     * @throws Throws if the enqueue operation fails.
      */
-    queueEmail(data: EmailPayload, jobId: string): Promise<void>;
+    queueEmails(emails: ClaimedEmail[]): Promise<void>;
 }
