@@ -10,7 +10,11 @@ import { OutboxLedgerAdapter, OutboxQueueAdapter, TransactionalOutboxAdapter } f
 import { OUTBOX_QUEUE_ATTEMPTS, OUTBOX_QUEUE_BACKOFF_MS, OUTBOX_QUEUE_NAME } from 'src/core/outbox/constant';
 import { OutboxPruneCron } from 'src/core/outbox/cron/outbox-prune.cron';
 import { OutboxRelayCron } from 'src/core/outbox/cron/outbox-relay.cron';
-import { TOKEN_OUTBOX_LEDGER_PORT, TOKEN_OUTBOX_QUEUE_PORT, TOKEN_TRANSACTIONAL_OUTBOX_PORT } from 'src/core/outbox/port';
+import {
+    TOKEN_OUTBOX_LEDGER_PORT,
+    TOKEN_OUTBOX_QUEUE_PORT,
+    TOKEN_TRANSACTIONAL_OUTBOX_PORT,
+} from 'src/core/outbox/port';
 import { OutboxProcessor } from 'src/core/outbox/processor';
 import { OutboxNotifyListener } from 'src/core/outbox/relay/outbox-notify.listener';
 import { OutboxRelayService } from 'src/core/outbox/relay/outbox-relay.service';
