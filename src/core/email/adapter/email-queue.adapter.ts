@@ -1,45 +1,49 @@
 /**
- * @file email.service.ts
- * @description Service implementation using BullMQ to queue e-mail dispatch tasks asynchronously.
+ * @file email-queue.adapter.ts
+ * @description BullMQ implementation of the IEmailQueuePort — enqueues claimed emails onto the email
+ * queue for asynchronous delivery.
  */
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { JOB_SEND_EMAIL, QUEUE_EMAIL } from 'src/core/email/constant';
+import { EMAIL_JOB_NAME, EMAIL_QUEUE_NAME } from 'src/core/email/constant';
 import type { IEmailQueuePort } from 'src/core/email/port';
-import type { EmailPayload } from 'src/core/email/type';
+import type { ClaimedEmail } from 'src/core/email/type';
 
 /**
- * Service implementation responsible for queuing asynchronous email jobs using BullMQ.
+ * BullMQ queue for the email relay. Only the email identity travels on the queue; the processor
+ * re-reads the durable row before sending.
  */
 @Injectable()
 export class EmailQueueAdapter implements IEmailQueuePort {
     /**
-     * Creates an instance of EmailAdapter.
+     * Creates an instance of EmailQueueAdapter.
      *
-     * @param emailQueue BullMQ queue injected using `@InjectQueue(QUEUE_EMAIL)`.
+     * @param emailQueue - BullMQ queue injected using `@InjectQueue(EMAIL_QUEUE_NAME)`.
      */
-    constructor(@InjectQueue(QUEUE_EMAIL) private readonly emailQueue: Queue) {}
+    constructor(@InjectQueue(EMAIL_QUEUE_NAME) private readonly emailQueue: Queue) {}
 
     /**
-     * Queues an email to be dispatched asynchronously.
+     * Enqueues claimed emails, keyed by email id so re-dispatch is idempotent. Retry, backoff and
+     * retention come from the queue's own `defaultJobOptions`.
      *
-     * @param data The email job data containing recipient, subject, and body
+     * @param emails - The claimed emails to enqueue.
+     * @throws Throws if the enqueue operation fails.
      */
-    async queueEmail(data: EmailPayload, jobId: string) {
-        await this.emailQueue.add(JOB_SEND_EMAIL, data, {
-            jobId,
-            attempts: 5,
-            backoff: {
-                type: 'exponential',
-                delay: 5000,
-            },
-            removeOnComplete: {
-                age: 24 * 60 * 60,
-                count: 1000,
-            },
-            removeOnFail: false,
-        });
+    async queueEmails(emails: ClaimedEmail[]) {
+        if (emails.length === 0) {
+            return;
+        }
+
+        await this.emailQueue.addBulk(
+            emails.map((email) => ({
+                name: EMAIL_JOB_NAME,
+                data: { id: email.id },
+                opts: {
+                    jobId: email.id,
+                },
+            })),
+        );
     }
 }

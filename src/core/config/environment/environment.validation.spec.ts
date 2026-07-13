@@ -43,6 +43,10 @@ describe('env.validation.config', () => {
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
 
+        RELAY_ENABLED: true,
+        OUTBOX_WORKER_CONCURRENCY: 2,
+        EMAIL_WORKER_CONCURRENCY: 2,
+
         GMAIL_CLIENT_ID: 'gmail-client-id',
         GMAIL_CLIENT_SECRET: 'gmail-client-secret',
         GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',

@@ -1,7 +1,13 @@
-import type { PendingOutboxEvent } from 'src/core/outbox/type';
+import type { ClaimedOutboxEvent } from 'src/core/outbox/type';
 
 export const TOKEN_OUTBOX_QUEUE_PORT = Symbol('TOKEN_OUTBOX_QUEUE_PORT');
 
 export interface IOutboxQueuePort {
-    queueEvents(events: PendingOutboxEvent[]): Promise<void>;
+    /**
+     * Enqueues claimed events for asynchronous dispatch.
+     *
+     * @param events - The claimed events to enqueue.
+     * @throws Throws if the enqueue operation fails.
+     */
+    queueEvents(events: ClaimedOutboxEvent[]): Promise<void>;
 }

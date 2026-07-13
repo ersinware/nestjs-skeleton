@@ -6,8 +6,8 @@
 
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
-import { Environment } from 'src/core/config/environment/enum/environment.enum';
-import { TrackerEnvironment } from 'src/core/observability/tracker/enum/tracker-environment.enum';
+import { Environment } from 'src/core/config/environment/enum';
+import { TrackerEnvironment } from 'src/core/observability/tracker';
 
 /**
  * Transforms string values representing booleans ('true', 'false') to actual booleans.
@@ -75,6 +75,30 @@ export class EnvironmentVariables {
      */
     @IsNumber()
     readonly DATABASE_MAX_LIFETIME!: number;
+
+    /**
+     * Whether this instance runs the outbox/email relay background workers (the fallback +
+     * prune crons and the LISTEN/NOTIFY subscriber). Set to `false` on pods that should only serve
+     * traffic, leaving a dedicated relay deployment to drain the ledgers.
+     */
+    @Type(() => Object)
+    @Transform(transformToBoolean)
+    @IsBoolean()
+    readonly RELAY_ENABLED!: boolean;
+
+    /**
+     * Number of outbox jobs this instance's worker processes concurrently. Bounded together with
+     * `DATABASE_POOL_SIZE` by the connection-pool capacity guard.
+     */
+    @IsNumber()
+    readonly OUTBOX_WORKER_CONCURRENCY!: number;
+
+    /**
+     * Number of email jobs this instance's worker processes concurrently. Bounded together with
+     * `DATABASE_POOL_SIZE` by the connection-pool capacity guard.
+     */
+    @IsNumber()
+    readonly EMAIL_WORKER_CONCURRENCY!: number;
 
     /**
      * Hostname or IP address of the Redis Cache server.
@@ -264,6 +288,46 @@ export class EnvironmentVariables {
 }
 
 /**
+ * Maximum number of event listeners that concurrently open a database transaction (via the inbox)
+ * while a single dispatched outbox event is handled. This is the connection-demand multiplier of the
+ * outbox consumer: one in-flight job can hold up to this many pooled connections at once. Keep in sync
+ * with the fan-out of DB-transactional listeners on the highest-fan-out event.
+ */
+const MAX_DB_TX_LISTENERS_PER_EVENT = 2;
+
+/**
+ * Pooled connections kept in reserve for synchronous HTTP request handling and the relay claim loop —
+ * connections the background workers must never be allowed to fully consume.
+ */
+const POOL_CONNECTION_RESERVE = 4;
+
+/**
+ * Refuses to start when the database pool is too small for the configured background-worker
+ * concurrency. The outbox consumer can hold up to
+ * `OUTBOX_WORKER_CONCURRENCY × MAX_DB_TX_LISTENERS_PER_EVENT` connections and the email consumer up to
+ * `EMAIL_WORKER_CONCURRENCY`, on top of a reserve for HTTP traffic and the relay; if the pool cannot
+ * cover all of them the workers starve request handling (or each other) under load.
+ *
+ * @param config Validated environment variables.
+ * @throws {Error} When `DATABASE_POOL_SIZE` is below the required minimum.
+ */
+function assertConnectionPoolCapacity(config: EnvironmentVariables): void {
+    const requiredMinimum =
+        config.OUTBOX_WORKER_CONCURRENCY * MAX_DB_TX_LISTENERS_PER_EVENT +
+        config.EMAIL_WORKER_CONCURRENCY +
+        POOL_CONNECTION_RESERVE;
+
+    if (config.DATABASE_POOL_SIZE < requiredMinimum) {
+        throw new Error(
+            `DATABASE_POOL_SIZE (${config.DATABASE_POOL_SIZE}) is too small for the configured worker concurrency. ` +
+                `It must be at least ${requiredMinimum} = OUTBOX_WORKER_CONCURRENCY ` +
+                `(${config.OUTBOX_WORKER_CONCURRENCY}) × ${MAX_DB_TX_LISTENERS_PER_EVENT} + EMAIL_WORKER_CONCURRENCY ` +
+                `(${config.EMAIL_WORKER_CONCURRENCY}) + reserve (${POOL_CONNECTION_RESERVE}).`,
+        );
+    }
+}
+
+/**
  * Transforms incoming raw environment variables into the `EnvironmentVariables` class and validates them.
  * Throws an error to prevent application startup if any validation constraints fail.
  *
@@ -280,6 +344,8 @@ export function validateConfig(config: Record<string, unknown>): EnvironmentVari
     if (errors.length > 0) {
         throw new Error(errors.toString());
     }
+
+    assertConnectionPoolCapacity(validatedConfig);
 
     return validatedConfig;
 }

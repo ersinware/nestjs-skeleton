@@ -2,6 +2,7 @@ export * from 'src/core/outbox/adapter';
 export * from 'src/core/outbox/constant';
 export * from 'src/core/outbox/cron';
 export * from 'src/core/outbox/enum';
+export * from 'src/core/outbox/exception';
 export * from 'src/core/outbox/module';
 export * from 'src/core/outbox/port';
 export * from 'src/core/outbox/processor';
