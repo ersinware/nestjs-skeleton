@@ -6,9 +6,9 @@
 import { Injectable } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
 import {
-    CheckUserIsActiveQuery,
-    type CheckUserIsActiveResult,
-} from 'src/module/user/application/query/check-user-is-active';
+    GetUserAuthStateQuery,
+    type GetUserAuthStateResult,
+} from 'src/module/user/application/query/get-user-auth-state';
 import {
     GetUserCredentialsByEmailQuery,
     type GetUserCredentialsByEmailResult,
@@ -42,13 +42,13 @@ export class UserFacade {
     }
 
     /**
-     * Checks if a user is active by their unique identifier.
+     * Resolves a user's authentication state (active status + session version) by their unique identifier.
      *
      * @param id The unique identifier of the target user
-     * @returns True if the user is active, false otherwise
+     * @returns The user's active status and current session version
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      */
-    async checkIsActive(id: string): Promise<CheckUserIsActiveResult> {
-        return this.queryBus.execute<CheckUserIsActiveQuery, CheckUserIsActiveResult>(new CheckUserIsActiveQuery(id));
+    async getAuthState(id: string): Promise<GetUserAuthStateResult> {
+        return this.queryBus.execute<GetUserAuthStateQuery, GetUserAuthStateResult>(new GetUserAuthStateQuery(id));
     }
 }

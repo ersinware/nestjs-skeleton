@@ -30,7 +30,7 @@ export type ListAdminsResult = {
         email: string;
         name: string;
         role: AdminRole;
-        isActive: boolean;
+        isBanned: boolean;
         createdAt: Date;
         updatedAt: Date;
     }[];

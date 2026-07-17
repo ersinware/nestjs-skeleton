@@ -34,6 +34,7 @@ describe('env.validation.config', () => {
         JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'refresh-secret',
         JWT_REFRESH_TTL: '7d',
+        SESSION_ROTATION_GRACE_TTL: '30s',
 
         THROTTLE_TTL: 60,
         THROTTLE_LIMIT: 100,

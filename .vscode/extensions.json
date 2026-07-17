@@ -1,9 +1,0 @@
-{
-    "recommendations": [
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "imgildev.vscode-nestjs-pack",
-        "firsttris.vscode-jest-runner",
-        "redhat.vscode-yaml"
-    ]
-}

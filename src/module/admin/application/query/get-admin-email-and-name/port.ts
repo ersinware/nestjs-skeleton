@@ -1,6 +1,6 @@
 /**
  * @file port.ts
- * @description Outbound port for GetAdminEmailAndNameQuery.
+ * @description Outbound query port that reads an admin's email and name.
  */
 
 import type { GetAdminEmailAndNameResult } from 'src/module/admin/application/query/get-admin-email-and-name/query';

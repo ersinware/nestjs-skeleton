@@ -8,9 +8,13 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
+import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
+import { LogPayload } from 'src/core/observability';
+import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port';
 import { Admin } from 'src/module/admin/domain/aggregate';
 import { admin as adminSchema } from 'src/module/admin/infrastructure/database/schema';
+import { uuidv7 } from 'uuidv7';
 
 /**
  * Drizzle ORM implementation of the IAdminWriterPort.
@@ -22,8 +26,14 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * Initializes the admin repository with the database connection.
      *
      * @param db The PostgresJs database instance
+     * @param eventBusPort The in-process bus the aggregate's domain events are dispatched on
+     * @param loggerPort The port used to record a dispatch that no listener chain completed
      */
-    constructor(@Inject(TOKEN_DATABASE) readonly db: PostgresJsDatabase) {}
+    constructor(
+        @Inject(TOKEN_DATABASE) readonly db: PostgresJsDatabase,
+        @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
+        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
+    ) {}
 
     /**
      * Maps a database row to the Admin aggregate root.
@@ -34,8 +44,9 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             name: row.name,
             password: row.password,
             role: row.role,
-            isActive: row.isActive,
+            isBanned: row.isBanned,
             deletedAt: row.deletedAt,
+            version: row.version,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });
@@ -60,8 +71,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Saves an Admin aggregate to the database.
-     * Upserts the entity using a transaction.
+     * Saves an Admin aggregate to the database, then dispatches the domain events it accumulated.
      *
      * @param admin The Admin aggregate root to save
      */
@@ -79,5 +89,39 @@ export class AdminWriterAdapter implements IAdminWriterPort {
                     createdAt: undefined,
                 },
             });
+
+        // TODO
+        this.publishDomainEvents(admin);
+    }
+
+    /**
+     * Dispatches the aggregate's accumulated domain events on the in-process bus and then clears them.
+     * Emitted after the row is written so a listener that re-reads the admin observes the new state.
+     *
+     * Dispatch is fire-and-forget: the write is the caller's contract, so a failing listener must not
+     * fail the command that already persisted the row. Until the outbox returns there is no delivery
+     * guarantee behind this — a rejected dispatch is a permanently dropped event, so it is logged
+     * rather than swallowed, since nothing else would reveal the gap.
+     *
+     * @param admin The aggregate whose domain events are dispatched
+     */
+    private publishDomainEvents(admin: Admin) {
+        for (const event of admin.domainEvents) {
+            this.eventBusPort
+                .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
+                .catch((error: unknown) =>
+                    this.loggerPort.error(
+                        new LogPayload({
+                            class: AdminWriterAdapter.name,
+                            method: this.publishDomainEvents.name,
+                            error,
+                            type: event.type,
+                            aggregateId: event.aggregateId,
+                        }),
+                    ),
+                );
+        }
+
+        admin.clearDomainEvents();
     }
 }

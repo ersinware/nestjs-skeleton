@@ -35,11 +35,12 @@ export class TokenAdapter implements ITokenPort {
      *
      * @param role The role designation.
      * @param id The principal identifier.
+     * @param version The session version to stamp into the token.
      * @returns A promise resolving to the generated access token.
      */
-    async generateAccessToken(role: AuthRole, id: string): Promise<string> {
+    async generateAccessToken(role: AuthRole, id: string, version: number): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, role, type: AuthTokenType.ACCESS },
+            { sub: id, role, version, type: AuthTokenType.ACCESS },
             {
                 secret: this.configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET),
                 expiresIn: this.configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL) as NonNullable<
@@ -55,11 +56,12 @@ export class TokenAdapter implements ITokenPort {
      * @param role The role designation.
      * @param id The principal identifier.
      * @param jti The unique refresh token identifier.
+     * @param version The session version to stamp into the token.
      * @returns A promise resolving to the generated refresh token.
      */
-    async generateRefreshToken(role: AuthRole, id: string, jti: string): Promise<string> {
+    async generateRefreshToken(role: AuthRole, id: string, jti: string, version: number): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, role, jti, type: AuthTokenType.REFRESH },
+            { sub: id, role, jti, version, type: AuthTokenType.REFRESH },
             {
                 secret: this.configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET),
                 expiresIn: this.configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL) as NonNullable<
@@ -74,17 +76,20 @@ export class TokenAdapter implements ITokenPort {
      *
      * @param role The role designation.
      * @param id The principal identifier.
+     * @param version The session version to stamp into both tokens.
      * @returns Object containing the generated access token, refresh token, and JTI.
      */
     async generateTokens(
         role: AuthRole,
         id: string,
+        version: number,
     ): Promise<{ accessToken: string; refreshToken: string; jti: string }> {
         const jti = crypto.randomUUID();
 
-        return Promise.all([this.generateAccessToken(role, id), this.generateRefreshToken(role, id, jti)]).then(
-            ([accessToken, refreshToken]) => ({ accessToken, refreshToken, jti }),
-        );
+        return Promise.all([
+            this.generateAccessToken(role, id, version),
+            this.generateRefreshToken(role, id, jti, version),
+        ]).then(([accessToken, refreshToken]) => ({ accessToken, refreshToken, jti }));
     }
 
     /**

@@ -19,4 +19,9 @@ export enum ResourceConflictType {
      * Targets foreign key constraint violations.
      */
     FOREIGN_KEY_VIOLATION = 'The related resource does not exist or is still in use.',
+    /**
+     * Targets a refresh that lost a concurrent rotation race: a newer session already exists, so the
+     * client should simply retry with its latest token pair. Benign — not refresh-token reuse.
+     */
+    CONCURRENT_REFRESH = 'A newer session already exists; retry with the latest token.',
 }

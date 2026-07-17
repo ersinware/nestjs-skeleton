@@ -15,9 +15,10 @@ export interface ITokenPort {
      *
      * @param role The role designation.
      * @param id The principal identifier.
+     * @param version The session version to stamp into the token.
      * @returns A promise resolving to the generated access token.
      */
-    generateAccessToken(role: AuthRole, id: string): Promise<string>;
+    generateAccessToken(role: AuthRole, id: string, version: number): Promise<string>;
 
     /**
      * Generates a signed JWT refresh token.
@@ -25,18 +26,24 @@ export interface ITokenPort {
      * @param role The role designation.
      * @param id The principal identifier.
      * @param jti The unique refresh token identifier.
+     * @param version The session version to stamp into the token.
      * @returns A promise resolving to the generated refresh token.
      */
-    generateRefreshToken(role: AuthRole, id: string, jti: string): Promise<string>;
+    generateRefreshToken(role: AuthRole, id: string, jti: string, version: number): Promise<string>;
 
     /**
      * Generates a pair of JWT access and refresh tokens.
      *
      * @param role The role designation.
      * @param id The principal identifier.
+     * @param version The session version to stamp into both tokens.
      * @returns Object containing the generated access token, refresh token, and JTI.
      */
-    generateTokens(role: AuthRole, id: string): Promise<{ accessToken: string; refreshToken: string; jti: string }>;
+    generateTokens(
+        role: AuthRole,
+        id: string,
+        version: number,
+    ): Promise<{ accessToken: string; refreshToken: string; jti: string }>;
 
     /**
      * Verifies an access token.

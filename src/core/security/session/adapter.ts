@@ -8,11 +8,50 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/constant/constant';
 import { ENV } from 'src/core/config';
-import type { AuthRole } from 'src/core/security/auth/type/auth-role.type';
 import type { ISessionPort } from 'src/core/security/session/port';
+import { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
 
 /**
- * Service responsible for managing user and administrator session lifetimes and ban status directly in Redis.
+ * Monotonic-max write of the session version: advances the stored value only when the incoming
+ * version is strictly greater, so it never regresses regardless of delivery order or write source
+ * (the command sync-write and the reconcile listener). Atomic across the read-compare-write.
+ * KEYS[1] = version key; ARGV[1] = version; ARGV[2] = ttl seconds.
+ */
+const VERSION_LUA = `
+local stored = redis.call('GET', KEYS[1])
+if stored and tonumber(stored) >= tonumber(ARGV[1]) then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+return 1
+`;
+
+/**
+ * Atomic three-state rotation of a refresh session. Deleting the old session and opening the new one is
+ * one indivisible step, so two concurrent refreshes carrying the same token cannot both rotate — only
+ * the first DEL observes the key. The same script also drops a short-lived tombstone on the old jti,
+ * which lets the loser of that race be told apart from a genuine attacker:
+ *   - old session deleted  → rotate, write tombstone, return 1 (ROTATED).
+ *   - old session gone but tombstone still present → benign concurrent/duplicate replay, return 0.
+ *   - old session gone and no tombstone → the token was rotated long ago and is being replayed after the
+ *     grace window, i.e. reuse, return -1.
+ * KEYS[1] = old session key; KEYS[2] = new session key; KEYS[3] = tombstone key (old jti).
+ * ARGV[1] = session ttl seconds; ARGV[2] = grace ttl seconds.
+ */
+const ROTATE_SESSION_LUA = `
+if redis.call('DEL', KEYS[1]) == 1 then
+  redis.call('SET', KEYS[2], '1', 'EX', ARGV[1])
+  redis.call('SET', KEYS[3], '1', 'EX', ARGV[2])
+  return 1
+end
+if redis.call('EXISTS', KEYS[3]) == 1 then
+  return 0
+end
+return -1
+`;
+
+/**
+ * Service responsible for managing user and administrator refresh sessions and session versions directly in Redis.
  */
 @Injectable()
 export class SessionAdapter implements ISessionPort {
@@ -30,13 +69,12 @@ export class SessionAdapter implements ISessionPort {
     /**
      * Registers a new refresh session for a principal in the cache.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
      * @param jti The unique JWT ID of the refresh token.
      */
-    async openSession(role: AuthRole, id: string, jti: string) {
+    async openSession(id: string, jti: string) {
         await this.redis.set(
-            `session:${role}:${id}:${jti}`,
+            `session:${id}:${jti}`,
             '1',
             'EX',
             this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL)),
@@ -44,39 +82,60 @@ export class SessionAdapter implements ISessionPort {
     }
 
     /**
-     * Retrieves a specific refresh session for a principal from the cache.
-     *
-     * @param role The role designation.
-     * @param id The principal identifier.
-     * @param jti The unique JWT ID of the refresh token.
-     * @returns The cached session value, or null if not found.
-     */
-    async getSession(role: AuthRole, id: string, jti: string): Promise<string | null> {
-        return this.redis.get(`session:${role}:${id}:${jti}`);
-    }
-
-    /**
      * Removes a specific refresh session for a principal from the cache.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
      * @param jti The unique JWT ID of the refresh token.
      */
-    async closeSession(role: AuthRole, id: string, jti: string) {
-        await this.redis.del(`session:${role}:${id}:${jti}`);
+    async closeSession(id: string, jti: string) {
+        await this.redis.del(`session:${id}:${jti}`);
     }
 
     /**
-     * Helper to delete all session keys for a principal.
+     * Atomically closes the old refresh session and opens the new one via the rotation Lua script, so
+     * the swap is a single indivisible step and the old session doubles as the single-use gate. A grace
+     * tombstone written alongside the swap lets a lost concurrent-refresh race (benign) be distinguished
+     * from a post-grace replay (reuse), collapsing the classification into one round trip.
      *
-     * @param role The role designation.
+     * @param id The principal identifier.
+     * @param oldJti The JWT ID of the refresh token being rotated away.
+     * @param newJti The JWT ID of the newly issued refresh token.
+     * @returns The rotation outcome: rotated, benign concurrent replay, or reuse detected.
+     */
+    async rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome> {
+        const result = await this.redis.eval(
+            ROTATE_SESSION_LUA,
+            3,
+            `session:${id}:${oldJti}`,
+            `session:${id}:${newJti}`,
+            `rotated:${id}:${oldJti}`,
+            this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL)),
+            this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.SESSION_ROTATION_GRACE_TTL)),
+        );
+
+        if (result === 1) {
+            return RotateOutcome.ROTATED;
+        }
+
+        if (result === 0) {
+            return RotateOutcome.CONCURRENT_REPLAY;
+        }
+
+        return RotateOutcome.REUSE_DETECTED;
+    }
+
+    /**
+     * Removes every refresh session for a principal by scanning and deleting all of their session
+     * keys, logging them out of all devices in a single operation.
+     *
      * @param id The principal identifier.
      */
-    async closeAllSessions(role: AuthRole, id: string) {
+    async closeAllSessions(id: string) {
+        const pattern = `session:${id}:*`;
         let cursor = '0';
 
         do {
-            const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', `session:${role}:${id}:*`, 'COUNT', 100);
+            const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
             cursor = nextCursor;
 
             if (keys.length > 0) {
@@ -86,39 +145,33 @@ export class SessionAdapter implements ISessionPort {
     }
 
     /**
-     * Helper to blacklist access tokens in cache.
+     * Advances the session version via the monotonic-max Lua script, so it never regresses even under
+     * out-of-order or concurrent writes from the command sync-write and the reconcile listener.
+     * TTL-bounded to the refresh-token lifetime, the longest a token carrying a stale version can live.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
+     * @param version The candidate session version.
      */
-    async ban(role: AuthRole, id: string) {
-        await this.redis.set(
-            `banned:${role}:${id}`,
-            '1',
-            'EX',
-            this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL)),
+    async setVersion(id: string, version: number) {
+        await this.redis.eval(
+            VERSION_LUA,
+            1,
+            `version:${id}`,
+            version,
+            this.parseTtlToSeconds(this.configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL)),
         );
     }
 
     /**
-     * Helper to remove access token blacklist in cache.
+     * Reads the cached session version: the minimum version a token must carry to be accepted.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
+     * @returns The version, or 0 when none is set.
      */
-    async unban(role: AuthRole, id: string) {
-        await this.redis.del(`banned:${role}:${id}`);
-    }
+    async getVersion(id: string): Promise<number> {
+        const value = await this.redis.get(`version:${id}`);
 
-    /**
-     * Checks if a principal is banned.
-     *
-     * @param role The role designation.
-     * @param id The principal identifier.
-     * @returns A promise resolving to true if banned, otherwise false.
-     */
-    async isBanned(role: AuthRole, id: string): Promise<boolean> {
-        return (await this.redis.exists(`banned:${role}:${id}`)) > 0;
+        return value ? Number(value) : 0;
     }
 
     /**

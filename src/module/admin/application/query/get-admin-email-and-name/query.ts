@@ -1,26 +1,12 @@
 /**
- * @file get-admin-email-and-name.query.ts
- * @description Query to retrieve only the email and name of an admin.
+ * @file query.ts
+ * @description Read-model for the get-admin-email-and-name query. This query has no `handler.ts`, so it
+ * is invoked directly through its port from inside the application layer (see the read-transport rule
+ * in CLAUDE.md) rather than dispatched via the QueryBus.
  */
 
-import { Query } from '@nestjs/cqrs';
-
 /**
- * Fetches the email and name of an admin by their unique identifier.
- */
-export class GetAdminEmailAndNameQuery extends Query<GetAdminEmailAndNameResult> {
-    /**
-     * Initializes the query with its parameters.
-     *
-     * @param id The unique identifier of the admin
-     */
-    constructor(readonly id: string) {
-        super();
-    }
-}
-
-/**
- * The expected result of the GetAdminEmailAndNameQuery.
+ * The email and name projection of an admin, read directly through the query port.
  */
 export type GetAdminEmailAndNameResult = {
     email: string;

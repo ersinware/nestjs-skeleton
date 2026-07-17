@@ -28,6 +28,6 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
             return;
         }
 
-        await this.sessionPort.closeSession(payload.role, payload.sub, payload.jti);
+        await this.sessionPort.closeSession(payload.sub, payload.jti);
     }
 }

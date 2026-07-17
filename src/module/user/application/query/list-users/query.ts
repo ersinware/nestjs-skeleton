@@ -29,7 +29,7 @@ export type ListUsersResult = {
         id: string;
         email: string;
         name: string;
-        isActive: boolean;
+        isBanned: boolean;
         createdAt: Date;
         updatedAt: Date;
     }[];

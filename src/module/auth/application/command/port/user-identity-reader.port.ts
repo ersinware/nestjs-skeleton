@@ -16,8 +16,11 @@ export type AuthIdentity = {
     /** The hashed password of the identity */
     password: string;
 
-    /** The active status of the identity */
-    isActive: boolean;
+    /** The ban status of the identity */
+    isBanned: boolean;
+
+    /** The current session version, embedded into freshly minted tokens */
+    version: number;
 };
 
 export interface IUserIdentityReaderPort {
@@ -31,11 +34,11 @@ export interface IUserIdentityReaderPort {
     getCredentialsByEmail(email: string): Promise<AuthIdentity>;
 
     /**
-     * Retrieves a specific user identity by their unique identifier.
+     * Retrieves a user's ban status and current session version by their unique identifier.
      *
      * @param id The unique identifier of the target identity
-     * @returns True if active, false otherwise
+     * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    checkIsActive(id: string): Promise<boolean>;
+    getAuthState(id: string): Promise<{ isBanned: boolean; version: number }>;
 }

@@ -31,13 +31,13 @@ export class AdminIdentityReaderAdapter implements IAdminIdentityReaderPort {
     }
 
     /**
-     * Retrieves a specific admin identity by their unique identifier to check if they are active.
+     * Retrieves an admin's ban status and current session version by their unique identifier.
      *
      * @param id The unique identifier of the target identity
-     * @returns True if the admin is active, false otherwise
+     * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    async checkIsActive(id: string): Promise<boolean> {
-        return this.adminFacade.checkIsActive(id);
+    async getAuthState(id: string): Promise<{ isBanned: boolean; version: number }> {
+        return this.adminFacade.getAuthState(id);
     }
 }

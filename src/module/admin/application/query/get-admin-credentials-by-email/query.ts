@@ -28,5 +28,6 @@ export type GetAdminCredentialsByEmailResult = {
     id: string;
     password: string;
     role: AdminRole;
-    isActive: boolean;
+    isBanned: boolean;
+    version: number;
 };

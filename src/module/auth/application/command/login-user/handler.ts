@@ -62,7 +62,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
             throw error;
         }
 
-        if (!user.isActive) {
+        if (user.isBanned) {
             this.throwUnauthenticatedException(AuditLogAuthReason.INACTIVE_ACCOUNT, user.id);
         }
 
@@ -71,9 +71,9 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
         }
 
         const id = user.id,
-            tokens = await this.tokenPort.generateTokens(UserRole.USER, id);
+            tokens = await this.tokenPort.generateTokens(UserRole.USER, id, user.version);
 
-        await this.sessionPort.openSession(UserRole.USER, id, tokens.jti);
+        await this.sessionPort.openSession(id, tokens.jti);
 
         this.loggerPort.log(this.createSuccessLogPayload(id));
 

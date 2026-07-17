@@ -11,4 +11,5 @@ export enum AdminEvent {
     DELETED = 'admin.deleted',
     BANNED = 'admin.banned',
     UNBANNED = 'admin.unbanned',
+    SESSION_REUSE_REVOKED = 'admin.session_reuse_revoked',
 }

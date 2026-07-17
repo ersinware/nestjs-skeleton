@@ -30,8 +30,7 @@ export const timestamps = {
 /**
  * Timestamp columns for aggregate root tables where the domain owns `updatedAt` (e.g. admin, user).
  * The aggregate stamps `updatedAt` on every mutation and the writer's upsert persists it verbatim, so
- * `.$onUpdate()` is deliberately omitted — it would never fire on the `onConflictDoUpdate` path anyway,
- * and the session ban-version guard requires the persisted value to equal the in-memory aggregate's.
+ * `.$onUpdate()` is deliberately omitted — it would never fire on the `onConflictDoUpdate` path anyway.
  */
 export const aggregateTimestamps = {
     /**

@@ -26,5 +26,6 @@ export class GetUserCredentialsByEmailQuery extends Query<GetUserCredentialsByEm
 export type GetUserCredentialsByEmailResult = {
     id: string;
     password: string;
-    isActive: boolean;
+    isBanned: boolean;
+    version: number;
 };

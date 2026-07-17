@@ -6,8 +6,6 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import type { ITransactionalOutboxPort } from 'src/core/outbox/port';
-import { TOKEN_TRANSACTIONAL_OUTBOX_PORT } from 'src/core/outbox/port';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security';
 import { CreateUserCommand } from 'src/module/user/application/command/create-user/command';
 import { TOKEN_USER_WRITER_PORT, type IUserWriterPort } from 'src/module/user/application/command/port';
@@ -24,12 +22,10 @@ export class CreateUserCommandHandler implements ICommandHandler<CreateUserComma
      *
      * @param userWriterPort The port used to persist the user aggregate
      * @param hashingPort The port used to hash passwords
-     * @param transactionalOutboxPort The port used for database transactions
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
-        @Inject(TOKEN_TRANSACTIONAL_OUTBOX_PORT) private readonly transactionalOutboxPort: ITransactionalOutboxPort,
     ) {}
 
     /**
@@ -47,7 +43,7 @@ export class CreateUserCommandHandler implements ICommandHandler<CreateUserComma
                 password: await this.hashingPort.hash(password),
             });
 
-        await this.transactionalOutboxPort.run(() => this.userWriterPort.save(user), user);
+        await this.userWriterPort.save(user);
 
         return user.id;
     }

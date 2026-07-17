@@ -3,14 +3,10 @@
  * @description The Admin Aggregate Root. Encapsulates all business rules and state for an Admin.
  */
 
-import {
-    AdminBannedEvent,
-    AdminCreatedEvent,
-    AdminDeletedEvent,
-    AdminUnbannedEvent,
-} from 'src/module/admin/domain/event';
+import { AdminEvent } from 'src/module/admin/domain/event';
 import { AdminRole } from 'src/shared/domain/admin';
 import { AggregateRoot } from 'src/shared/domain/aggregate-root';
+import { DomainEvent } from 'src/shared/domain/event';
 
 /**
  * Properties that define the state of an Admin aggregate.
@@ -20,8 +16,9 @@ type AdminProps = {
     name: string;
     password: string;
     role: AdminRole;
-    isActive: boolean;
+    isBanned: boolean;
     deletedAt: Date | null;
+    version: number;
     createdAt: Date;
     updatedAt: Date;
 };
@@ -52,16 +49,22 @@ export class Admin extends AggregateRoot {
      * @param props The initial properties excluding managed fields
      * @returns The newly created aggregate
      */
-    static create(id: string, props: Omit<AdminProps, 'isActive' | 'deletedAt' | 'createdAt' | 'updatedAt'>): Admin {
+    static create(
+        id: string,
+        props: Omit<AdminProps, 'isBanned' | 'deletedAt' | 'version' | 'createdAt' | 'updatedAt'>,
+    ): Admin {
+        const now = new Date();
+
         const admin = new Admin(id, {
             ...props,
-            isActive: true,
+            isBanned: false,
             deletedAt: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            version: 0,
+            createdAt: now,
+            updatedAt: now,
         });
 
-        admin.addDomainEvent(new AdminCreatedEvent(id));
+        admin.addDomainEvent(new DomainEvent(AdminEvent.CREATED, id));
 
         return admin;
     }
@@ -88,38 +91,68 @@ export class Admin extends AggregateRoot {
     }
 
     /**
-     * Updates the admin's active status.
-     * Emits an UNBANNED or BANNED event if the status is altered.
-     *
-     * @param isActive The new status
+     * Bans the admin. Bumps the session version to instantly evict existing tokens, and emits a
+     * BANNED event. A no-op when the account is already banned.
      */
-    updateStatus(isActive: boolean): void {
-        if (this.props.isActive === isActive) {
+    ban(): void {
+        if (this.props.isBanned) {
             return;
         }
 
-        this.props.isActive = isActive;
+        this.props.isBanned = true;
+        this.props.version++;
+        this.props.updatedAt = new Date();
 
-        if (isActive) {
-            this.addDomainEvent(new AdminUnbannedEvent(this.id));
-        } else {
-            this.addDomainEvent(new AdminBannedEvent(this.id));
+        this.addDomainEvent(new DomainEvent(AdminEvent.BANNED, this.id));
+    }
+
+    /**
+     * Unbans the admin and emits an UNBANNED event. Does not bump the session version — the version is
+     * monotonic and re-login mints a token at the current version. A no-op when the account is not
+     * banned.
+     */
+    unban(): void {
+        if (!this.props.isBanned) {
+            return;
         }
+
+        this.props.isBanned = false;
+        this.props.updatedAt = new Date();
+
+        this.addDomainEvent(new DomainEvent(AdminEvent.UNBANNED, this.id));
+    }
+
+    /**
+     * Revokes every active session after refresh-token reuse was detected for this account. Bumps the
+     * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
+     * SESSION_REUSE_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
+     * owner can simply sign back in (and is separately advised, not forced, to change their password).
+     */
+    revokeSessions(): void {
+        this.props.version++;
+        this.props.updatedAt = new Date();
+
+        this.addDomainEvent(new DomainEvent(AdminEvent.SESSION_REUSE_REVOKED, this.id));
     }
 
     /**
      * Soft-deletes the admin account.
-     * Sets the deletion timestamp, deactivates the account, and emits a DELETED event.
+     * Sets the deletion timestamp, deactivates the account, bumps the session version for a
+     * permanent cut-off, and emits a DELETED event.
      */
     markAsDeleted(): void {
         if (this.props.deletedAt) {
             return;
         }
 
-        this.props.deletedAt = new Date();
-        this.props.isActive = false;
+        const now = new Date();
 
-        this.addDomainEvent(new AdminDeletedEvent(this.id));
+        this.props.deletedAt = now;
+        this.props.isBanned = true;
+        this.props.version++;
+        this.props.updatedAt = now;
+
+        this.addDomainEvent(new DomainEvent(AdminEvent.DELETED, this.id));
     }
 
     get email(): string {
@@ -138,12 +171,16 @@ export class Admin extends AggregateRoot {
         return this.props.role;
     }
 
-    get isActive(): boolean {
-        return this.props.isActive;
+    get isBanned(): boolean {
+        return this.props.isBanned;
     }
 
     get deletedAt(): Date | null {
         return this.props.deletedAt;
+    }
+
+    get version(): number {
+        return this.props.version;
     }
 
     get createdAt(): Date {

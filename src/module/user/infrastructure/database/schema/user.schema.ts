@@ -4,8 +4,8 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { timestamps } from 'src/core/database';
+import { boolean, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { aggregateTimestamps } from 'src/core/database';
 
 /**
  * The Drizzle ORM table definition for the 'users' table.
@@ -35,16 +35,23 @@ export const user = pgTable(
         password: text('password').notNull(),
 
         /**
-         * Flag indicating whether the user account is active.
+         * Flag indicating whether the user account is banned.
          */
-        isActive: boolean('is_active').notNull().default(true),
+        isBanned: boolean('is_banned').notNull().default(false),
 
         /**
          * Timestamp indicating when the user was soft-deleted.
          */
         deletedAt: timestamp('deleted_at'),
 
-        ...timestamps,
+        /**
+         * Monotonic session version. Any token minted with a lower version is rejected by the auth
+         * guard, giving instant, DB-durable revocation. Incremented on ban, password change, and
+         * account deletion.
+         */
+        version: integer('version').notNull().default(0),
+
+        ...aggregateTimestamps,
     },
     (table) => [
         index('users_id_deleted_at_idx')

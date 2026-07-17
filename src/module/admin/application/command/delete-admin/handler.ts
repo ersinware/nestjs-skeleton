@@ -6,10 +6,11 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { AccessDeniedException, ResourceNotFoundException } from 'src/core/exception';
-import type { ITransactionalOutboxPort } from 'src/core/outbox/port';
-import { TOKEN_TRANSACTIONAL_OUTBOX_PORT } from 'src/core/outbox/port';
+import { LogPayload } from 'src/core/observability';
+import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
-import { type IAdminWriterPort, TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port';
+import { TOKEN_ADMIN_WRITER_PORT, type IAdminWriterPort } from 'src/module/admin/application/command/port';
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**
@@ -20,7 +21,8 @@ import { AdminRole } from 'src/shared/domain/admin';
 export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCommand> {
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
-        @Inject(TOKEN_TRANSACTIONAL_OUTBOX_PORT) private readonly transactionalOutboxPort: ITransactionalOutboxPort,
+        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
+        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
     /**
@@ -42,6 +44,14 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
         }
 
         admin.markAsDeleted();
-        await this.transactionalOutboxPort.run(() => this.adminWriterPort.save(admin), admin);
+        await this.adminWriterPort.save(admin);
+
+        try {
+            await this.sessionPort.setVersion(command.id, admin.version);
+        } catch (error) {
+            this.loggerPort.error(
+                new LogPayload({ class: DeleteAdminCommandHandler.name, method: this.execute.name, error }),
+            );
+        }
     }
 }

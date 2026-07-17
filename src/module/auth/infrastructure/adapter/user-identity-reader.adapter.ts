@@ -31,13 +31,13 @@ export class UserIdentityReaderAdapter implements IUserIdentityReaderPort {
     }
 
     /**
-     * Retrieves a specific user identity by their unique identifier to check if they are active.
+     * Retrieves a user's ban status and current session version by their unique identifier.
      *
      * @param id The unique identifier of the target identity
-     * @returns True if the user is active, false otherwise
+     * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    async checkIsActive(id: string): Promise<boolean> {
-        return this.userFacade.checkIsActive(id);
+    async getAuthState(id: string): Promise<{ isBanned: boolean; version: number }> {
+        return this.userFacade.getAuthState(id);
     }
 }
