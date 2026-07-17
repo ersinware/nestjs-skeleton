@@ -18,11 +18,14 @@ export type AuthAdminIdentity = {
     /** The hashed password of the identity */
     password: string;
 
-    /** The active status of the identity */
-    isActive: boolean;
+    /** The ban status of the identity */
+    isBanned: boolean;
 
     /** The explicit authorization role of the administrative identity */
     role: AdminRole;
+
+    /** The current session version, embedded into freshly minted tokens */
+    version: number;
 };
 
 export interface IAdminIdentityReaderPort {
@@ -36,11 +39,11 @@ export interface IAdminIdentityReaderPort {
     getCredentialsByEmail(email: string): Promise<AuthAdminIdentity>;
 
     /**
-     * Retrieves a specific admin identity by their unique identifier.
+     * Retrieves an admin's ban status and current session version by their unique identifier.
      *
      * @param id The unique identifier of the target identity
-     * @returns True if active, false otherwise
+     * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    checkIsActive(id: string): Promise<boolean>;
+    getAuthState(id: string): Promise<{ isBanned: boolean; version: number }>;
 }

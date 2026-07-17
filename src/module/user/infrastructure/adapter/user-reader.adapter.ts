@@ -8,18 +8,18 @@ import { and, count, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
 import {
-    type CheckUserIsActiveResult,
-    type ICheckUserIsActivePort,
-} from 'src/module/user/application/query/check-user-is-active';
+    type GetUserAccessProjectionResult,
+    type IGetUserAccessProjectionPort,
+} from 'src/module/user/application/query/get-user-access-projection';
+import {
+    type GetUserAuthStateResult,
+    type IGetUserAuthStatePort,
+} from 'src/module/user/application/query/get-user-auth-state';
 import { type GetUserByIdResult, type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id';
 import {
     type GetUserCredentialsByEmailResult,
     type IGetUserCredentialsByEmailPort,
 } from 'src/module/user/application/query/get-user-credentials-by-email';
-import {
-    type GetUserCredentialsByIdResult,
-    type IGetUserCredentialsByIdPort,
-} from 'src/module/user/application/query/get-user-credentials-by-id';
 import { type IListUsersPort, type ListUsersResult } from 'src/module/user/application/query/list-users';
 import { user } from 'src/module/user/infrastructure/database/schema';
 import type { PaginationParams } from 'src/shared/pagination';
@@ -28,24 +28,30 @@ import type { SearchParams } from 'src/shared/search';
 @Injectable()
 export class UserReaderAdapter
     implements
-        ICheckUserIsActivePort,
+        IGetUserAuthStatePort,
+        IGetUserAccessProjectionPort,
         IGetUserByIdPort,
         IGetUserCredentialsByEmailPort,
-        IGetUserCredentialsByIdPort,
         IListUsersPort
 {
     constructor(@Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase) {}
 
-    async checkIsActive(id: string): Promise<CheckUserIsActiveResult | null> {
+    async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
         const row = (
             await this.db
-                .select({ isActive: user.isActive })
+                .select({ isBanned: user.isBanned, version: user.version })
                 .from(user)
                 .where(and(eq(user.id, id), isNull(user.deletedAt)))
                 .limit(1)
         )[0];
 
-        return row ? row.isActive : null;
+        return row ?? null;
+    }
+
+    async getAccessProjection(id: string): Promise<GetUserAccessProjectionResult | null> {
+        const row = (await this.db.select({ version: user.version }).from(user).where(eq(user.id, id)).limit(1))[0];
+
+        return row ?? null;
     }
 
     async getById(id: string): Promise<GetUserByIdResult | null> {
@@ -55,7 +61,7 @@ export class UserReaderAdapter
                     id: user.id,
                     email: user.email,
                     name: user.name,
-                    isActive: user.isActive,
+                    isBanned: user.isBanned,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
                 })
@@ -73,26 +79,11 @@ export class UserReaderAdapter
                 .select({
                     id: user.id,
                     password: user.password,
-                    isActive: user.isActive,
+                    isBanned: user.isBanned,
+                    version: user.version,
                 })
                 .from(user)
                 .where(and(eq(user.email, email), isNull(user.deletedAt)))
-                .limit(1)
-        )[0];
-
-        return row ?? null;
-    }
-
-    async getCredentialsById(id: string): Promise<GetUserCredentialsByIdResult | null> {
-        const row = (
-            await this.db
-                .select({
-                    id: user.id,
-                    password: user.password,
-                    isActive: user.isActive,
-                })
-                .from(user)
-                .where(and(eq(user.id, id), isNull(user.deletedAt)))
                 .limit(1)
         )[0];
 
@@ -117,7 +108,7 @@ export class UserReaderAdapter
                     id: user.id,
                     email: user.email,
                     name: user.name,
-                    isActive: user.isActive,
+                    isBanned: user.isBanned,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
                 })

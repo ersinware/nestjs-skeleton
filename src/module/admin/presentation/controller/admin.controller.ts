@@ -3,26 +3,27 @@
  * @description Exposes HTTP endpoints for managing administrative accounts. This controller is strictly protected and only accessible to super admins, ensuring that critical operations like creating or deactivating administrators remain secure.
  */
 
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Query } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
-import { ApiBearerAuth, ApiNoContentResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import {
     ApiDefaultAccessDeniedResponse,
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
+    ApiDefaultOkResponsePaginated,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { InvalidRequestType } from 'src/core/exception';
-import { NotEmptyBodyPipe, ParamIdDto, QueryPaginationDto, ResponsePaginationDto } from 'src/core/http';
+import { ParamIdDto, QueryPaginationDto, ResponsePaginationDto } from 'src/core/http';
 import { Roles } from 'src/core/security';
+import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin';
-import { UpdateAdminStatusCommand } from 'src/module/admin/application/command/update-admin-status';
+import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin';
 import { ListAdminsQuery, type ListAdminsResult } from 'src/module/admin/application/query/list-admins';
-import { PatchAdminStatusDto } from 'src/module/admin/presentation/dto/patch-admin-status.dto';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { AdminRole } from 'src/shared/domain/admin';
 
@@ -61,8 +62,12 @@ export class AdminController {
      * @returns A paginated response containing a list of administrator profiles
      */
     @Get()
-    @ApiOperation({ summary: 'List all admins' })
-    @ApiResponse({ status: HttpStatus.OK, description: 'List of admins retrieved successfully' })
+    @ApiOperation({
+        summary: 'List all admins',
+        description:
+            'Retrieves administrator accounts with pagination. Requires super administrator-level authorization.',
+    })
+    @ApiDefaultOkResponsePaginated({ description: 'Admins successfully retrieved.', type: ResponseAdminDto })
     @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
     async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<ResponseAdminDto>> {
         const { data, total } = await this.queryBus.execute<ListAdminsQuery, ListAdminsResult>(
@@ -97,25 +102,41 @@ export class AdminController {
     }
 
     /**
-     * Updates the active status of an admin account (e.g., active or inactive).
-     * If deactivated, all current sessions belonging to the admin are immediately revoked. Super admins cannot be deactivated. Requires super administrator-level authorization.
+     * Bans an admin account.
+     * All current sessions belonging to the admin are immediately revoked. Super admins cannot be banned. Requires super administrator-level authorization.
      *
      * @param params The URL path parameters containing the target admin ID
-     * @param dto The payload specifying the new active state
      */
-    @Patch(':id/status')
+    @Post(':id/ban')
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Update admin status',
+        summary: 'Ban admin',
         description:
-            'Updates active status and revokes sessions if deactivated. Requires super administrator-level authorization.',
+            'Bans the account and revokes all active sessions. Super admins cannot be banned. Requires super administrator-level authorization.',
     })
-    @ApiNoContentResponse({ description: 'Admin status successfully updated.' })
-    @ApiDefaultInvalidRequestResponse()
+    @ApiNoContentResponse({ description: 'Admin successfully banned.' })
+    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
     @ApiDefaultResourceNotFoundResponse()
-    async updateStatus(@Param() params: ParamIdDto, @Body(NotEmptyBodyPipe) dto: PatchAdminStatusDto) {
-        await this.commandBus.execute<UpdateAdminStatusCommand, void>(
-            new UpdateAdminStatusCommand(params.id, dto.active),
-        );
+    async ban(@Param() params: ParamIdDto) {
+        await this.commandBus.execute<BanAdminCommand, void>(new BanAdminCommand(params.id));
+    }
+
+    /**
+     * Unbans an admin account.
+     * Super admins cannot be modified. Requires super administrator-level authorization.
+     *
+     * @param params The URL path parameters containing the target admin ID
+     */
+    @Post(':id/unban')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({
+        summary: 'Unban admin',
+        description: 'Lifts the ban on the account. Requires super administrator-level authorization.',
+    })
+    @ApiNoContentResponse({ description: 'Admin successfully unbanned.' })
+    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultResourceNotFoundResponse()
+    async unban(@Param() params: ParamIdDto) {
+        await this.commandBus.execute<UnbanAdminCommand, void>(new UnbanAdminCommand(params.id));
     }
 }

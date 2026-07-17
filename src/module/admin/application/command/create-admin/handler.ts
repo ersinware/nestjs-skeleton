@@ -6,8 +6,6 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import type { ITransactionalOutboxPort } from 'src/core/outbox/port';
-import { TOKEN_TRANSACTIONAL_OUTBOX_PORT } from 'src/core/outbox/port';
 import { generateSecurePassword, TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security';
 import { CreateAdminCommand } from 'src/module/admin/application/command/create-admin/command';
 import { TOKEN_ADMIN_WRITER_PORT, type IAdminWriterPort } from 'src/module/admin/application/command/port';
@@ -23,7 +21,6 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
-        @Inject(TOKEN_TRANSACTIONAL_OUTBOX_PORT) private readonly transactionalOutboxPort: ITransactionalOutboxPort,
     ) {}
 
     /**
@@ -40,7 +37,7 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
             role: AdminRole.ADMIN,
         });
 
-        await this.transactionalOutboxPort.run(() => this.adminWriterPort.save(admin), admin);
+        await this.adminWriterPort.save(admin);
 
         return admin.id;
     }

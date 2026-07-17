@@ -40,8 +40,28 @@ function createRedisClient(
             commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
         });
 
+    // One log per outage episode, gated on a per-client transition flag: ioredis re-emits 'error' on
+    // every reconnect attempt while the server is unreachable, so logging each one floods during an
+    // outage. No Sentry here — the health-endpoint alarm is the pager (see docs/observability-alerting.md);
+    // this pair of transition logs is only the forensic breadcrumb that names the cause and the recovery.
+    let isDown = false;
+
     redis.on('error', (error: Error) => {
-        logger.error(new LogPayload({ class: CacheModule.name, method: `${clientName}.on(error)`, error }));
+        if (isDown) {
+            return;
+        }
+
+        isDown = true;
+        logger.warn(new LogPayload({ class: CacheModule.name, method: `${clientName}.on(error)`, error }));
+    });
+
+    redis.on('ready', () => {
+        if (!isDown) {
+            return;
+        }
+
+        isDown = false;
+        logger.log(new LogPayload({ class: CacheModule.name, method: `${clientName}.on(ready)` }));
     });
 
     return redis;

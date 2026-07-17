@@ -11,10 +11,11 @@ import { VERSION_1 } from 'src/core/config';
 import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
+    ApiDefaultResourceConflictResponse,
     ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { InvalidRequestType, UnauthenticatedType } from 'src/core/exception';
+import { InvalidRequestType, ResourceConflictType, UnauthenticatedType } from 'src/core/exception';
 import { NotEmptyBodyPipe } from 'src/core/http';
 import type { AccessTokenPayload } from 'src/core/security';
 import { AccessTokenPayloadDecorator, CriticalThrottle, Public } from 'src/core/security';
@@ -113,6 +114,7 @@ export class AuthController {
      * @returns The newly generated access and refresh token pair
      * @throws {InvalidRequestException} If the payload is invalid
      * @throws {UnauthenticatedException} If the refresh token is invalid or expired
+     * @throws {ResourceConflictException} If a concurrent refresh already rotated the session; retry with the latest token pair
      */
     @Public()
     @CriticalThrottle()
@@ -125,6 +127,7 @@ export class AuthController {
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictType.CONCURRENT_REFRESH)
     async refresh(@Body(NotEmptyBodyPipe) dto: PostRefreshDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
@@ -157,8 +160,8 @@ export class AuthController {
     }
 
     /**
-     * Terminates all active sessions for the authenticated principal across all devices.
-     * Useful for security breaches or password resets, ensuring no rogue sessions remain active. Also blacklists the current access token.
+     * Terminates all active refresh sessions for the authenticated principal across all devices.
+     * Useful for security breaches or password resets, ensuring no device can mint new tokens.
      *
      * @param accessTokenPayload The decoded payload of the currently authenticated request
      * @throws {UnauthenticatedException} If the user is not authenticated
@@ -168,13 +171,11 @@ export class AuthController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Logout from all devices',
-        description: 'Revokes all active sessions for the current principal and blocklists the access token.',
+        description: 'Revokes all active refresh sessions for the current principal.',
     })
     @ApiNoContentResponse({ description: 'Successfully logged out from all devices.' })
     @ApiDefaultUnauthenticatedResponse()
     async logoutAll(@AccessTokenPayloadDecorator() accessTokenPayload: AccessTokenPayload) {
-        await this.commandBus.execute<LogoutAllCommand>(
-            new LogoutAllCommand(accessTokenPayload.role, accessTokenPayload.sub),
-        );
+        await this.commandBus.execute<LogoutAllCommand>(new LogoutAllCommand(accessTokenPayload.sub));
     }
 }

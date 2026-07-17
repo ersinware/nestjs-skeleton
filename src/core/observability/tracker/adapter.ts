@@ -17,7 +17,7 @@ export class ExceptionTrackerAdapter implements IExceptionTrackerPort {
      *
      * @param exception The exception or error to track.
      */
-    captureException(exception: unknown): void {
+    captureException(exception: unknown) {
         Sentry.captureException(exception);
     }
 }

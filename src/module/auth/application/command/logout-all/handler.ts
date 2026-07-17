@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the LogoutAllCommand by closing all active sessions for the specified identity.
+ * @description Handles the LogoutAllCommand by closing all active refresh sessions for the specified identity.
  */
 
 import { Inject } from '@nestjs/common';
@@ -10,20 +10,19 @@ import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all
 
 /**
  * Handler for the LogoutAllCommand.
- * Revokes all sessions belonging to the user/admin.
+ * Revokes all refresh sessions belonging to the user/admin.
  */
 @CommandHandler(LogoutAllCommand)
 export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand> {
     constructor(@Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort) {}
 
     /**
-     * Executes the logout all command.
+     * Executes the logout all command by deleting every refresh session for the principal, so no
+     * device can mint new tokens. Already-issued access tokens expire on their own short TTL.
      *
      * @param command The logout all command parameters
      */
     async execute(command: LogoutAllCommand): Promise<void> {
-        const { role, sub } = command;
-
-        await Promise.all([this.sessionPort.closeAllSessions(role, sub), this.sessionPort.ban(role, sub)]);
+        await this.sessionPort.closeAllSessions(command.sub);
     }
 }

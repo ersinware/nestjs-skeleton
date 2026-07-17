@@ -19,6 +19,9 @@ export type RefreshTokenPayload = {
     /** Unique refresh token identifier. */
     jti: string;
 
+    /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
+    version: number;
+
     /** Classification of the token payload. */
     type: AuthTokenType.REFRESH;
 };

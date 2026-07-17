@@ -11,6 +11,7 @@ import { AccessDeniedException } from 'src/core/exception/class/access-denied.ex
 import { InvalidRequestException } from 'src/core/exception/class/invalid-request.exception';
 import { ResourceConflictException } from 'src/core/exception/class/resource-conflict.exception';
 import { ResourceNotFoundException } from 'src/core/exception/class/resource-not-found.exception';
+import { ServiceUnavailableException } from 'src/core/exception/class/service-unavailable.exception';
 import { SystemException } from 'src/core/exception/class/system.exception';
 import { UnauthenticatedException } from 'src/core/exception/class/unauthenticated.exception';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
@@ -171,6 +172,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                 statusText: this.deriveStatusText(HttpStatus.BAD_REQUEST, exception.name),
             };
         }
+        if (exception instanceof ServiceUnavailableException) {
+            return {
+                statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+                message: [exception.message],
+                statusText: this.deriveStatusText(HttpStatus.SERVICE_UNAVAILABLE, exception.name),
+            };
+        }
         if (exception instanceof SystemException) {
             return {
                 statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
@@ -327,6 +335,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     /**
      * Emits audit logs or critical incident logs based on the determined response data.
+     *
+     * A transient `503` (dependency outage) is deliberately silent here: per-request logging during an
+     * outage is pure flood, and detection is the health-endpoint alarm's job (see
+     * `docs/observability-alerting.md`); the single forensic breadcrumb is the connection-level
+     * state-transition log in `core/cache/module.ts`. Routine `401`s (expired/missing token) are equally
+     * uninteresting, so only `403` (privilege escalation) and `429` (throttle) remain security-audit worthy.
      */
     private logException(exception: unknown, errorDefaultDto: ErrorDefaultDto, request: AuthenticatedRequest) {
         const cause = exception instanceof Error ? (exception as { cause?: unknown }).cause : undefined;
@@ -339,13 +353,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         const { statusCode, message } = errorDefaultDto;
 
-        if (
-            statusCode === HttpStatus.UNAUTHORIZED ||
-            statusCode === HttpStatus.FORBIDDEN ||
-            statusCode === HttpStatus.TOO_MANY_REQUESTS
-        ) {
+        if (statusCode === HttpStatus.FORBIDDEN || statusCode === HttpStatus.TOO_MANY_REQUESTS) {
             this.loggerPort.warn(this.createSecurityAuditLogPayload(message.join(', ') || 'Unknown error', request));
-        } else if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        } else if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR && statusCode !== HttpStatus.SERVICE_UNAVAILABLE) {
             this.loggerPort.error(this.createErrorLogPayload(exception));
             this.exceptionTrackerPort.captureException(exception);
         }

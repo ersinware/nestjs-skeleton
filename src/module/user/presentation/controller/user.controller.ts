@@ -3,7 +3,7 @@
  * @description Exposes HTTP endpoints for user profile management. Enforces role-based access control (RBAC) to ensure standard users can only modify themselves while administrators can manage all users.
  */
 
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import {
     ApiBearerAuth,
@@ -14,7 +14,6 @@ import {
     ApiTags,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import type { FastifyReply } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
 import {
     ApiDefaultAccessDeniedResponse,
@@ -30,15 +29,15 @@ import { InvalidRequestType, ResourceConflictType } from 'src/core/exception';
 import { NotEmptyBodyPipe, ParamIdDto, QuerySearchDto, ResponsePaginationDto } from 'src/core/http';
 import type { AccessTokenPayload } from 'src/core/security';
 import { AccessTokenPayloadDecorator, CriticalThrottle, Public, Roles } from 'src/core/security';
+import { BanUserCommand } from 'src/module/user/application/command/ban-user';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password';
 import { CreateUserCommand } from 'src/module/user/application/command/create-user';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user';
+import { UnbanUserCommand } from 'src/module/user/application/command/unban-user';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user';
-import { UpdateUserStatusCommand } from 'src/module/user/application/command/update-user-status';
 import { GetUserByIdQuery, type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id';
 import { ListUsersQuery, type ListUsersResult } from 'src/module/user/application/query/list-users';
 import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
-import { PatchUserStatusDto } from 'src/module/user/presentation/dto/patch-user-status.dto';
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
@@ -66,7 +65,6 @@ export class UserController {
      * Typically public, allowing unauthenticated guests to sign up.
      *
      * @param postUserDto The payload containing registration details
-     * @param res The Fastify response used to set the Location header
      * @returns The newly created and serialized user profile
      */
     @Public()
@@ -79,15 +77,10 @@ export class UserController {
     @ApiCreatedResponse({ description: 'User account successfully created.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictType.EMAIL_IN_USE)
-    async create(
-        @Body(NotEmptyBodyPipe) postUserDto: PostUserDto,
-        @Res({ passthrough: true }) res: FastifyReply,
-    ): Promise<ResponseUserDto> {
+    async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto): Promise<ResponseUserDto> {
         const id: string = await this.commandBus.execute(
             new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
         );
-
-        res.header('Location', `/v1/user/${id}`);
 
         return plainToInstance(
             ResponseUserDto,
@@ -258,29 +251,47 @@ export class UserController {
     }
 
     /**
-     * Modifies the active status of a user, allowing administrators to suspend or unsuspend accounts.
-     * Suspending a user immediately revokes all their active sessions.
+     * Bans a user, allowing administrators to suspend accounts.
+     * Banning a user immediately revokes all their active sessions.
      *
      * @param params The path parameters containing the target user ID
-     * @param dto The payload containing the desired active state
      */
-    @Patch(':id/status')
+    @Post(':id/ban')
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Update user status',
-        description:
-            'Updates active status and revokes sessions if deactivated. Requires administrator-level authorization.',
+        summary: 'Ban user',
+        description: 'Bans the account and revokes all active sessions. Requires administrator-level authorization.',
     })
-    @ApiNoContentResponse({ description: 'User status successfully updated.' })
-    @ApiDefaultInvalidRequestResponse()
+    @ApiNoContentResponse({ description: 'User successfully banned.' })
+    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    async updateStatus(@Param() params: ParamIdDto, @Body(NotEmptyBodyPipe) dto: PatchUserStatusDto) {
-        await this.commandBus.execute<UpdateUserStatusCommand, void>(
-            new UpdateUserStatusCommand(params.id, dto.active),
-        );
+    async ban(@Param() params: ParamIdDto) {
+        await this.commandBus.execute<BanUserCommand, void>(new BanUserCommand(params.id));
+    }
+
+    /**
+     * Unbans a user, allowing administrators to reinstate suspended accounts.
+     *
+     * @param params The path parameters containing the target user ID
+     */
+    @Post(':id/unban')
+    @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({
+        summary: 'Unban user',
+        description: 'Lifts the ban on the account. Requires administrator-level authorization.',
+    })
+    @ApiNoContentResponse({ description: 'User successfully unbanned.' })
+    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    async unban(@Param() params: ParamIdDto) {
+        await this.commandBus.execute<UnbanUserCommand, void>(new UnbanUserCommand(params.id));
     }
 }

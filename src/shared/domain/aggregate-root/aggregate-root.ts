@@ -30,8 +30,8 @@ export abstract class AggregateRoot {
     }
 
     /**
-     * Clears all domain events after they have been persisted to the outbox.
-     * Called by the Unit of Work after the transaction commits — not by repositories.
+     * Clears all domain events once they have been dispatched.
+     * Called by the writer adapter after it emits them — not by the application layer.
      */
     clearDomainEvents() {
         this._domainEvents.length = 0;

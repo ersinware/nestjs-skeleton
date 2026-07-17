@@ -8,25 +8,22 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
-import { type ICheckAdminIsActivePort } from 'src/module/admin/application/query/check-admin-is-active';
-import { type IGetAdminByIdPort, GetAdminByIdResult } from 'src/module/admin/application/query/get-admin-by-id';
+import {
+    type GetAdminAccessProjectionResult,
+    type IGetAdminAccessProjectionPort,
+} from 'src/module/admin/application/query/get-admin-access-projection';
+import {
+    type GetAdminAuthStateResult,
+    type IGetAdminAuthStatePort,
+} from 'src/module/admin/application/query/get-admin-auth-state';
 import {
     type GetAdminCredentialsByEmailResult,
     type IGetAdminCredentialsByEmailPort,
 } from 'src/module/admin/application/query/get-admin-credentials-by-email';
 import {
-    type GetAdminCredentialsByIdResult,
-    type IGetAdminCredentialsByIdPort,
-} from 'src/module/admin/application/query/get-admin-credentials-by-id';
-import {
     type GetAdminEmailAndNameResult,
     type IGetAdminEmailAndNamePort,
 } from 'src/module/admin/application/query/get-admin-email-and-name';
-import { type GetAdminRoleResult, type IGetAdminRolePort } from 'src/module/admin/application/query/get-admin-role';
-import {
-    type GetDeletedAdminRoleResult,
-    type IGetDeletedAdminRolePort,
-} from 'src/module/admin/application/query/get-deleted-admin-role';
 import { type IListAdminsPort, type ListAdminsResult } from 'src/module/admin/application/query/list-admins';
 import { admin } from 'src/module/admin/infrastructure/database/schema';
 import { PaginationParams } from 'src/shared/pagination';
@@ -38,14 +35,11 @@ import { PaginationParams } from 'src/shared/pagination';
 @Injectable()
 export class AdminReaderAdapter
     implements
-        ICheckAdminIsActivePort,
-        IGetAdminByIdPort,
+        IGetAdminAuthStatePort,
         IGetAdminCredentialsByEmailPort,
-        IGetAdminCredentialsByIdPort,
         IGetAdminEmailAndNamePort,
-        IGetAdminRolePort,
-        IListAdminsPort,
-        IGetDeletedAdminRolePort
+        IGetAdminAccessProjectionPort,
+        IListAdminsPort
 {
     /**
      * Initializes the admin query repository with the database connection.
@@ -55,42 +49,16 @@ export class AdminReaderAdapter
     constructor(@Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase) {}
 
     /**
-     * Checks if an admin is active by ID.
+     * Reads an admin's active status and current session version by ID.
      *
      * @param id The unique identifier
-     * @returns True if active, false if inactive, or null if not found
+     * @returns The auth state, or null if not found
      */
-    async checkIsActive(id: string): Promise<boolean | null> {
+    async getAuthState(id: string): Promise<GetAdminAuthStateResult | null> {
         return (
             (
                 await this.db
-                    .select({ isActive: admin.isActive })
-                    .from(admin)
-                    .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
-                    .limit(1)
-            )[0]?.isActive ?? null
-        );
-    }
-
-    /**
-     * Retrieves the public read-model of a non-deleted admin by ID.
-     *
-     * @param id The unique identifier
-     * @returns The public admin read-model or null
-     */
-    async getById(id: string): Promise<GetAdminByIdResult | null> {
-        return (
-            (
-                await this.db
-                    .select({
-                        id: admin.id,
-                        email: admin.email,
-                        name: admin.name,
-                        role: admin.role,
-                        isActive: admin.isActive,
-                        createdAt: admin.createdAt,
-                        updatedAt: admin.updatedAt,
-                    })
+                    .select({ isBanned: admin.isBanned, version: admin.version })
                     .from(admin)
                     .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
                     .limit(1)
@@ -112,33 +80,11 @@ export class AdminReaderAdapter
                         id: admin.id,
                         password: admin.password,
                         role: admin.role,
-                        isActive: admin.isActive,
+                        isBanned: admin.isBanned,
+                        version: admin.version,
                     })
                     .from(admin)
                     .where(and(eq(admin.email, email), isNull(admin.deletedAt)))
-                    .limit(1)
-            )[0] ?? null
-        );
-    }
-
-    /**
-     * Retrieves credential fields for a non-deleted admin by ID.
-     *
-     * @param id The unique identifier
-     * @returns The minimal credential projection or null if not found
-     */
-    async getCredentialsById(id: string): Promise<GetAdminCredentialsByIdResult | null> {
-        return (
-            (
-                await this.db
-                    .select({
-                        id: admin.id,
-                        password: admin.password,
-                        role: admin.role,
-                        isActive: admin.isActive,
-                    })
-                    .from(admin)
-                    .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
                     .limit(1)
             )[0] ?? null
         );
@@ -163,34 +109,17 @@ export class AdminReaderAdapter
     }
 
     /**
-     * Checks the role of an admin by ID.
+     * Reads the session version of an admin by ID. Deliberately omits the soft-delete filter so a
+     * deleted admin still resolves, letting session reconciliation converge instead of throwing and
+     * looping.
      *
      * @param id The unique identifier
-     * @returns An object containing the role, or null if not found
+     * @returns The session-version projection, or null if no row exists
      */
-    async getRole(id: string): Promise<GetAdminRoleResult | null> {
-        return (
-            (
-                await this.db
-                    .select({ role: admin.role })
-                    .from(admin)
-                    .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
-                    .limit(1)
-            )[0]?.role ?? null
-        );
-    }
+    async getAdminAccessProjection(id: string): Promise<GetAdminAccessProjectionResult | null> {
+        const row = (await this.db.select({ version: admin.version }).from(admin).where(eq(admin.id, id)).limit(1))[0];
 
-    /**
-     * Gets the role of a deleted admin by ID.
-     * Crucially, this explicitly filters for deleted records.
-     *
-     * @param id The admin ID.
-     * @returns The admin role result or null if not found.
-     */
-    async getDeletedAdminRole(id: string): Promise<GetDeletedAdminRoleResult | null> {
-        return (
-            (await this.db.select({ role: admin.role }).from(admin).where(eq(admin.id, id)).limit(1))[0]?.role ?? null
-        );
+        return row ?? null;
     }
 
     /**
@@ -208,7 +137,7 @@ export class AdminReaderAdapter
                         email: admin.email,
                         name: admin.name,
                         role: admin.role,
-                        isActive: admin.isActive,
+                        isBanned: admin.isBanned,
                         createdAt: admin.createdAt,
                         updatedAt: admin.updatedAt,
                     })

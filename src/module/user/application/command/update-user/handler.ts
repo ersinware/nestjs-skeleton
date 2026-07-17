@@ -6,8 +6,6 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ResourceNotFoundException } from 'src/core/exception';
-import type { ITransactionalOutboxPort } from 'src/core/outbox/port';
-import { TOKEN_TRANSACTIONAL_OUTBOX_PORT } from 'src/core/outbox/port';
 import { type IUserWriterPort, TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 
@@ -20,12 +18,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      * Initializes the handler with the required ports.
      *
      * @param userWriterPort The port used to load and save the user aggregate
-     * @param transactionalOutboxPort The port used for database transactions
      */
-    constructor(
-        @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
-        @Inject(TOKEN_TRANSACTIONAL_OUTBOX_PORT) private readonly transactionalOutboxPort: ITransactionalOutboxPort,
-    ) {}
+    constructor(@Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort) {}
 
     /**
      * Executes the update user command.
@@ -49,6 +43,6 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
         }
 
         user.updateProfile({ name, email });
-        await this.transactionalOutboxPort.run(() => this.userWriterPort.save(user), user);
+        await this.userWriterPort.save(user);
     }
 }

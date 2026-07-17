@@ -8,36 +8,23 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { EmailModule } from 'src/core/email/module';
 import { HashingModule, SessionModule } from 'src/core/security';
 import { AdminFacade } from 'src/module/admin/admin.facade';
+import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin';
 import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port';
-import { UpdateAdminStatusCommandHandler } from 'src/module/admin/application/command/update-admin-status';
-import { AdminEmailListener, AdminSessionListener } from 'src/module/admin/application/event';
+import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions';
+import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin';
+import { AdminEmailListener, AdminReuseListener, AdminSessionListener } from 'src/module/admin/application/event';
+import { TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT } from 'src/module/admin/application/query/get-admin-access-projection';
 import {
-    CheckAdminIsActiveQueryHandler,
-    TOKEN_CHECK_ADMIN_IS_ACTIVE_PORT,
-} from 'src/module/admin/application/query/check-admin-is-active';
-import {
-    GetAdminByIdQueryHandler,
-    TOKEN_GET_ADMIN_BY_ID_PORT,
-} from 'src/module/admin/application/query/get-admin-by-id';
+    GetAdminAuthStateQueryHandler,
+    TOKEN_GET_ADMIN_AUTH_STATE_PORT,
+} from 'src/module/admin/application/query/get-admin-auth-state';
 import {
     GetAdminCredentialsByEmailQueryHandler,
     TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT,
 } from 'src/module/admin/application/query/get-admin-credentials-by-email';
-import {
-    GetAdminCredentialsByIdQueryHandler,
-    TOKEN_GET_ADMIN_CREDENTIALS_BY_ID_PORT,
-} from 'src/module/admin/application/query/get-admin-credentials-by-id';
-import {
-    GetAdminEmailAndNameQueryHandler,
-    TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT,
-} from 'src/module/admin/application/query/get-admin-email-and-name';
-import { GetAdminRoleQueryHandler, TOKEN_GET_ADMIN_ROLE_PORT } from 'src/module/admin/application/query/get-admin-role';
-import {
-    GetDeletedAdminRoleQueryHandler,
-    TOKEN_GET_DELETED_ADMIN_ROLE_PORT,
-} from 'src/module/admin/application/query/get-deleted-admin-role';
+import { TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT } from 'src/module/admin/application/query/get-admin-email-and-name';
 import { ListAdminsQueryHandler, TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins';
 import { AdminReaderAdapter, AdminWriterAdapter } from 'src/module/admin/infrastructure/adapter';
 import { AdminController } from 'src/module/admin/presentation/controller/admin.controller';
@@ -54,25 +41,20 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         AdminFacade,
         CreateAdminCommandHandler,
         DeleteAdminCommandHandler,
-        UpdateAdminStatusCommandHandler,
+        BanAdminCommandHandler,
+        UnbanAdminCommandHandler,
+        RevokeAdminSessionsCommandHandler,
         ListAdminsQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
-        GetAdminByIdQueryHandler,
-        GetAdminCredentialsByIdQueryHandler,
-        CheckAdminIsActiveQueryHandler,
-        GetAdminRoleQueryHandler,
-        GetAdminEmailAndNameQueryHandler,
-        GetDeletedAdminRoleQueryHandler,
+        GetAdminAuthStateQueryHandler,
         AdminEmailListener,
+        AdminReuseListener,
         AdminSessionListener,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
-        { provide: TOKEN_CHECK_ADMIN_IS_ACTIVE_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useClass: AdminReaderAdapter },
+        { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_ID_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_GET_ADMIN_ROLE_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_GET_DELETED_ADMIN_ROLE_PORT, useClass: AdminReaderAdapter },
+        { provide: TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReaderAdapter },
     ],
     exports: [AdminFacade],

@@ -40,7 +40,6 @@ export class AuthRolesGuard implements CanActivate {
         }
 
         const accessTokenPayload = context.switchToHttp().getRequest<AuthenticatedRequest>().accessTokenPayload;
-
         if (!accessTokenPayload || !accessTokenPayload.role || !requiredRoles.includes(accessTokenPayload.role)) {
             throw new AccessDeniedException();
         }

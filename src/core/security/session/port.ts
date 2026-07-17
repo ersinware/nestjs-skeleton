@@ -3,7 +3,7 @@
  * @description Contract for the SessionService.
  */
 
-import type { AuthRole } from 'src/core/security/auth/type/auth-role.type';
+import type { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
 
 export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
@@ -11,61 +11,56 @@ export interface ISessionPort {
     /**
      * Registers a new refresh session for a principal in the cache.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
      * @param jti The unique JWT ID of the refresh token.
      */
-    openSession(role: AuthRole, id: string, jti: string): Promise<void>;
-
-    /**
-     * Retrieves a specific refresh session for a principal from the cache.
-     *
-     * @param role The role designation.
-     * @param id The principal identifier.
-     * @param jti The unique JWT ID of the refresh token.
-     * @returns The cached session value, or null if not found.
-     */
-    getSession(role: AuthRole, id: string, jti: string): Promise<string | null>;
+    openSession(id: string, jti: string): Promise<void>;
 
     /**
      * Removes a specific refresh session for a principal from the cache.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
      * @param jti The unique JWT ID of the refresh token.
      */
-    closeSession(role: AuthRole, id: string, jti: string): Promise<void>;
+    closeSession(id: string, jti: string): Promise<void>;
 
     /**
-     * Helper to delete all session keys for a principal.
+     * Atomically rotates a refresh session: closes the current session and opens the next one in a
+     * single Redis round trip, so no state in between can be observed or interleaved by a concurrent
+     * refresh. Acts as the single-use gate and, in the same script, writes a short-lived tombstone for
+     * the old jti so the outcome can be classified three ways instead of a bare success/fail: a real
+     * rotation, a benign concurrent/duplicate replay still inside the grace window, or genuine
+     * post-grace reuse that must revoke the whole family.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
+     * @param oldJti The JWT ID of the refresh token being rotated away.
+     * @param newJti The JWT ID of the newly issued refresh token.
+     * @returns The rotation outcome the caller must react to.
      */
-    closeAllSessions(role: AuthRole, id: string): Promise<void>;
+    rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome>;
 
     /**
-     * Helper to blacklist access tokens in cache.
+     * Removes every refresh session for a principal, logging them out of all devices.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
      */
-    ban(role: AuthRole, id: string): Promise<void>;
+    closeAllSessions(id: string): Promise<void>;
 
     /**
-     * Helper to remove access token blacklist in cache.
+     * Advances the cached session version using a monotonic-max write: the stored value moves forward
+     * only when `version` is strictly greater, so it never regresses regardless of source or delivery
+     * order. The DB is the authority; this only mirrors it for the guard's hot path.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
+     * @param version The candidate session version (the aggregate's monotonic version counter).
      */
-    unban(role: AuthRole, id: string): Promise<void>;
+    setVersion(id: string, version: number): Promise<void>;
 
     /**
-     * Checks if a principal is banned.
+     * Reads the cached session version: the minimum version a token must carry to be accepted.
      *
-     * @param role The role designation.
      * @param id The principal identifier.
-     * @returns A promise resolving to true if banned, otherwise false.
+     * @returns The version, or 0 when none is set.
      */
-    isBanned(role: AuthRole, id: string): Promise<boolean>;
+    getVersion(id: string): Promise<number>;
 }

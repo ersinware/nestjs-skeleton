@@ -6,9 +6,9 @@
 import { Injectable } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
 import {
-    CheckAdminIsActiveQuery,
-    type CheckAdminIsActiveResult,
-} from 'src/module/admin/application/query/check-admin-is-active';
+    GetAdminAuthStateQuery,
+    type GetAdminAuthStateResult,
+} from 'src/module/admin/application/query/get-admin-auth-state';
 import {
     GetAdminCredentialsByEmailQuery,
     type GetAdminCredentialsByEmailResult,
@@ -41,14 +41,12 @@ export class AdminFacade {
     }
 
     /**
-     * Checks if an admin is active by their unique identifier.
+     * Resolves an admin's authentication state (active status + session version) by their unique identifier.
      *
      * @param id The unique identifier of the target admin
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
      */
-    async checkIsActive(id: string): Promise<boolean> {
-        return this.queryBus.execute<CheckAdminIsActiveQuery, CheckAdminIsActiveResult>(
-            new CheckAdminIsActiveQuery(id),
-        );
+    async getAuthState(id: string): Promise<GetAdminAuthStateResult> {
+        return this.queryBus.execute<GetAdminAuthStateQuery, GetAdminAuthStateResult>(new GetAdminAuthStateQuery(id));
     }
 }

@@ -28,7 +28,7 @@ import {
 } from 'src/module/auth/application/command/port';
 import { AdminRole } from 'src/shared/domain/admin';
 
-/**W
+/**
  * Handles the LoginAdminCommand.
  * Validates admin credentials and issues a new session.
  */
@@ -63,7 +63,7 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
             throw error;
         }
 
-        if (!admin.isActive) {
+        if (admin.isBanned) {
             this.throwUnauthenticatedException(AuditLogAuthReason.INACTIVE_ACCOUNT, admin.id, admin.role);
         }
 
@@ -73,9 +73,9 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
 
         const id = admin.id,
             role = admin.role,
-            tokens = await this.tokenPort.generateTokens(role, id);
+            tokens = await this.tokenPort.generateTokens(role, id, admin.version);
 
-        await this.sessionPort.openSession(role, id, tokens.jti);
+        await this.sessionPort.openSession(id, tokens.jti);
 
         this.loggerPort.log(this.createSuccessLogPayload(id, role));
 

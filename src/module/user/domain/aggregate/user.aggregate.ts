@@ -3,21 +3,17 @@
  * @description The User Aggregate Root. Encapsulates all business rules and state for a User.
  */
 
-import {
-    UserBannedEvent,
-    UserDeletedEvent,
-    UserPasswordChangedEvent,
-    UserUnbannedEvent,
-    UserUpdatedEvent,
-} from 'src/module/user/domain/event';
+import { UserEvent } from 'src/module/user/domain/event';
 import { AggregateRoot } from 'src/shared/domain/aggregate-root';
+import { DomainEvent } from 'src/shared/domain/event';
 
 export interface UserProps {
     email: string;
     name: string;
     password: string;
-    isActive: boolean;
+    isBanned: boolean;
     deletedAt: Date | null;
+    version: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -34,14 +30,19 @@ export class User extends AggregateRoot {
      * Factory method to create a new User.
      * Enforces invariant rules on creation and emits a CREATED event.
      */
-    static create(id: string, props: Omit<UserProps, 'isActive' | 'deletedAt' | 'createdAt' | 'updatedAt'>): User {
-        const user = new User(id, {
-            ...props,
-            isActive: true,
-            deletedAt: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
+    static create(
+        id: string,
+        props: Omit<UserProps, 'isBanned' | 'deletedAt' | 'version' | 'createdAt' | 'updatedAt'>,
+    ): User {
+        const now = new Date(),
+            user = new User(id, {
+                ...props,
+                isBanned: false,
+                deletedAt: null,
+                version: 0,
+                createdAt: now,
+                updatedAt: now,
+            });
 
         return user;
     }
@@ -81,48 +82,84 @@ export class User extends AggregateRoot {
         }
 
         if (isUpdated) {
-            this.addDomainEvent(new UserUpdatedEvent(this.id));
+            this.props.updatedAt = new Date();
+            this.addDomainEvent(new DomainEvent(UserEvent.UPDATED, this.id));
         }
     }
 
     /**
-     * Changes the user's password.
+     * Changes the user's password and bumps the session version so that every token minted before
+     * this change is instantly rejected by the auth guard.
      */
     changePassword(password: string) {
         this.props.password = password;
+        this.props.version++;
+        this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new UserPasswordChangedEvent(this.id));
+        this.addDomainEvent(new DomainEvent(UserEvent.PASSWORD_CHANGED, this.id));
     }
 
     /**
-     * Updates the active status of the user.
+     * Bans the user. Bumps the session version to instantly evict existing tokens, and emits a
+     * BANNED event. A no-op when the account is already banned.
      */
-    updateStatus(isActive: boolean): void {
-        if (this.props.isActive === isActive) {
+    ban(): void {
+        if (this.props.isBanned) {
             return;
         }
 
-        this.props.isActive = isActive;
+        this.props.isBanned = true;
+        this.props.version++;
+        this.props.updatedAt = new Date();
 
-        if (isActive) {
-            this.addDomainEvent(new UserUnbannedEvent(this.id));
-        } else {
-            this.addDomainEvent(new UserBannedEvent(this.id));
-        }
+        this.addDomainEvent(new DomainEvent(UserEvent.BANNED, this.id));
     }
 
     /**
-     * Soft deletes the user.
+     * Unbans the user and emits an UNBANNED event. Does not bump the session version — the version is
+     * monotonic and re-login mints a token at the current version. A no-op when the account is not
+     * banned.
+     */
+    unban(): void {
+        if (!this.props.isBanned) {
+            return;
+        }
+
+        this.props.isBanned = false;
+        this.props.updatedAt = new Date();
+
+        this.addDomainEvent(new DomainEvent(UserEvent.UNBANNED, this.id));
+    }
+
+    /**
+     * Revokes every active session after refresh-token reuse was detected for this account. Bumps the
+     * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
+     * SESSION_REUSE_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
+     * owner can simply sign back in (and is separately advised, not forced, to change their password).
+     */
+    revokeSessions(): void {
+        this.props.version++;
+        this.props.updatedAt = new Date();
+
+        this.addDomainEvent(new DomainEvent(UserEvent.SESSION_REUSE_REVOKED, this.id));
+    }
+
+    /**
+     * Soft deletes the user and bumps the session version for a permanent cut-off, since a deleted
+     * account must never be reachable by any previously minted token.
      */
     markAsDeleted(): void {
         if (this.props.deletedAt) {
             return;
         }
 
-        this.props.deletedAt = new Date();
-        this.props.isActive = false;
+        const now = new Date();
+        this.props.deletedAt = now;
+        this.props.isBanned = true;
+        this.props.version++;
+        this.props.updatedAt = now;
 
-        this.addDomainEvent(new UserDeletedEvent(this.id));
+        this.addDomainEvent(new DomainEvent(UserEvent.DELETED, this.id));
     }
 
     get email(): string {
@@ -137,12 +174,16 @@ export class User extends AggregateRoot {
         return this.props.password;
     }
 
-    get isActive(): boolean {
-        return this.props.isActive;
+    get isBanned(): boolean {
+        return this.props.isBanned;
     }
 
     get deletedAt(): Date | null {
         return this.props.deletedAt;
+    }
+
+    get version(): number {
+        return this.props.version;
     }
 
     get createdAt(): Date {

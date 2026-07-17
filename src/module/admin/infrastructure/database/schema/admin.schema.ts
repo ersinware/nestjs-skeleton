@@ -4,8 +4,8 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { timestamps } from 'src/core/database';
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { aggregateTimestamps } from 'src/core/database';
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**
@@ -46,16 +46,22 @@ export const admin = pgTable(
         role: adminRoleEnum('role').notNull().default(AdminRole.ADMIN),
 
         /**
-         * Flag indicating whether the admin account is active.
+         * Flag indicating whether the admin account is banned.
          */
-        isActive: boolean('is_active').notNull().default(true),
+        isBanned: boolean('is_banned').notNull().default(false),
 
         /**
          * Timestamp indicating when the admin was soft-deleted.
          */
         deletedAt: timestamp('deleted_at'),
 
-        ...timestamps,
+        /**
+         * Monotonic session version. Any token minted with a lower version is rejected by the auth
+         * guard, giving instant, DB-durable revocation. Incremented on ban and account deletion.
+         */
+        version: integer('version').notNull().default(0),
+
+        ...aggregateTimestamps,
     },
     (table) => [
         index('admins_id_deleted_at_idx')
