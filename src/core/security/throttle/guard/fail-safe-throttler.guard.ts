@@ -11,15 +11,10 @@ import { Reflector } from '@nestjs/core';
 import type { ThrottlerModuleOptions, ThrottlerStorage } from '@nestjs/throttler';
 import { ThrottlerException, ThrottlerGuard, ThrottlerRequest } from '@nestjs/throttler';
 import { ENV, Environment } from 'src/core/config';
-import {
-    LogPayload,
-    TOKEN_EXCEPTION_TRACKER_PORT,
-    TOKEN_LOGGER_PORT,
-    type IExceptionTrackerPort,
-    type ILoggerPort,
-} from 'src/core/observability';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { KEY_DECORATOR_CRITICAL_THROTTLE } from 'src/core/security/throttle/decorator/critical-throttle.decorator';
-import { ThrottlerName } from 'src/core/security/throttle/enum/throttler-name.enum';
+import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 
 /**
  * Custom rate limiting guard that bypasses limits during testing and handles storage failures gracefully.

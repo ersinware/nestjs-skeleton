@@ -6,10 +6,13 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { CreateUserCommand } from 'src/module/user/application/command/create-user/command';
-import { TOKEN_USER_WRITER_PORT, type IUserWriterPort } from 'src/module/user/application/command/port';
-import { User } from 'src/module/user/domain/aggregate';
+import {
+    TOKEN_USER_WRITER_PORT,
+    type IUserWriterPort,
+} from 'src/module/user/application/command/port/user-writer.port';
+import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { uuidv7 } from 'uuidv7';
 
 /**

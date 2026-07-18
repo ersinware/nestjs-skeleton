@@ -11,15 +11,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { ThrottlerRequest } from '@nestjs/throttler';
 import { getOptionsToken, getStorageToken, ThrottlerException, ThrottlerGuard } from '@nestjs/throttler';
 import { Environment } from 'src/core/config';
-import {
-    LogPayload,
-    TOKEN_EXCEPTION_TRACKER_PORT,
-    TOKEN_LOGGER_PORT,
-    type IExceptionTrackerPort,
-    type ILoggerPort,
-} from 'src/core/observability';
-import { ThrottlerName } from 'src/core/security/throttle/enum/throttler-name.enum';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { FailSafeThrottlerGuard } from 'src/core/security/throttle/guard/fail-safe-throttler.guard';
+import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface ThrottlerGuardSpyTarget {

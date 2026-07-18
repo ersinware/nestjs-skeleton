@@ -16,10 +16,8 @@ import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import type { IDatabaseHealthPort } from 'src/core/database';
 import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
-import type {
-    GetHealthStatusResult,
-    IGetHealthStatusPort,
-} from 'src/module/health/application/query/get-health-status';
+import type { IGetHealthStatusPort } from 'src/module/health/application/query/get-health-status/port';
+import type { GetHealthStatusResult } from 'src/module/health/application/query/get-health-status/query';
 
 /**
  * Adapter that implements the IHealthReaderPort using NestJS Terminus.

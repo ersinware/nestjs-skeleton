@@ -4,7 +4,10 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import type { AuthIdentity, IUserIdentityReaderPort } from 'src/module/auth/application/command/port';
+import type {
+    AuthIdentity,
+    IUserIdentityReaderPort,
+} from 'src/module/auth/application/command/port/user-identity-reader.port';
 import { UserFacade } from 'src/module/user';
 
 /**

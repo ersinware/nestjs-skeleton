@@ -3,7 +3,7 @@
  * @description Outbound port for Admin commands. Defines the contract for the infrastructure layer to persist the Admin aggregate.
  */
 
-import { Admin } from 'src/module/admin/domain/aggregate';
+import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 
 export const TOKEN_ADMIN_WRITER_PORT = Symbol('TOKEN_ADMIN_WRITER_PORT');
 

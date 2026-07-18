@@ -7,11 +7,13 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ResourceNotFoundException } from 'src/core/exception';
-import { LogPayload } from 'src/core/observability';
-import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
-import { TOKEN_USER_WRITER_PORT, type IUserWriterPort } from 'src/module/user/application/command/port';
+import {
+    TOKEN_USER_WRITER_PORT,
+    type IUserWriterPort,
+} from 'src/module/user/application/command/port/user-writer.port';
 
 /**
  * Bans an existing user, revoking all of their active sessions.

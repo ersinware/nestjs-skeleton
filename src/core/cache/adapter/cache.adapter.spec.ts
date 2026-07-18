@@ -6,14 +6,9 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/constant/constant';
-import {
-    LogPayload,
-    TOKEN_EXCEPTION_TRACKER_PORT,
-    TOKEN_LOGGER_PORT,
-    type IExceptionTrackerPort,
-    type ILoggerPort,
-} from 'src/core/observability';
+import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('CacheAdapter', () => {

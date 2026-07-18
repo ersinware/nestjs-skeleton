@@ -5,12 +5,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email/port';
+import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
 import {
     TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT,
     type IGetAdminEmailAndNamePort,
-} from 'src/module/admin/application/query/get-admin-email-and-name';
-import { AdminEvent } from 'src/module/admin/domain/event';
+} from 'src/module/admin/application/query/get-admin-email-and-name/port';
+import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**

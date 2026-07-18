@@ -12,20 +12,15 @@ import {
     AuditLogPayload,
     TOKEN_LOGGER_PORT,
     type ILoggerPort,
-} from 'src/core/observability';
-import {
-    TOKEN_HASHING_PORT,
-    TOKEN_SESSION_PORT,
-    TOKEN_TOKEN_PORT,
-    type IHashingPort,
-    type ISessionPort,
-    type ITokenPort,
-} from 'src/core/security';
+} from 'src/core/observability/logger';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LoginAdminCommand, type LoginAdminResult } from 'src/module/auth/application/command/login-admin/command';
 import {
     TOKEN_ADMIN_IDENTITY_READER_PORT,
     type IAdminIdentityReaderPort,
-} from 'src/module/auth/application/command/port';
+} from 'src/module/auth/application/command/port/admin-identity-reader.port';
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**

@@ -6,7 +6,7 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { QueryPaginationDto } from 'src/core/http/pagination';
+import { QueryPaginationDto } from 'src/core/http/pagination/dto/query-pagination.dto';
 
 /**
  * Generic query parameters for list endpoints.

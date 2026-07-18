@@ -12,8 +12,8 @@ import Redis from 'ioredis';
 import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import { TooManyRequestsType } from 'src/core/exception';
-import { ThrottlerName } from 'src/core/security/throttle/enum/throttler-name.enum';
 import { FailSafeThrottlerGuard } from 'src/core/security/throttle/guard/fail-safe-throttler.guard';
+import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 
 /**
  * Throttling configuration and guard activation module.

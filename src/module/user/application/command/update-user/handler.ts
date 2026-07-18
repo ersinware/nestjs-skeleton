@@ -6,7 +6,10 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ResourceNotFoundException } from 'src/core/exception';
-import { type IUserWriterPort, TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port';
+import {
+    type IUserWriterPort,
+    TOKEN_USER_WRITER_PORT,
+} from 'src/module/user/application/command/port/user-writer.port';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 
 /**

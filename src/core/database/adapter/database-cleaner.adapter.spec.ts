@@ -5,7 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { DatabaseCleanerAdapter } from 'src/core/database/adapter/database-cleaner.adapter';
-import { TOKEN_DATABASE } from 'src/core/database/constant';
+import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('PostgresCleanerAdapter', () => {

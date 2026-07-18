@@ -2,7 +2,7 @@
  * @file emailer.port.ts
  * @description Contract for the MailerService used to send emails.
  */
-import type { EmailPayload } from 'src/core/email/type';
+import type { EmailPayload } from 'src/core/email/email-payload.type';
 
 /**
  * Dependency injection token representing the mailer service contract interface.

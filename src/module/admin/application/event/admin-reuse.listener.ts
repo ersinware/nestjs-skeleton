@@ -7,7 +7,7 @@
 import { Injectable } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
 import { OnEvent } from '@nestjs/event-emitter';
-import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions';
+import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
 

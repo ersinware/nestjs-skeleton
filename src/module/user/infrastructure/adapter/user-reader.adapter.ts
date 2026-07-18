@@ -7,21 +7,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
-import {
-    type GetUserAccessProjectionResult,
-    type IGetUserAccessProjectionPort,
-} from 'src/module/user/application/query/get-user-access-projection';
-import {
-    type GetUserAuthStateResult,
-    type IGetUserAuthStatePort,
-} from 'src/module/user/application/query/get-user-auth-state';
-import { type GetUserByIdResult, type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id';
-import {
-    type GetUserCredentialsByEmailResult,
-    type IGetUserCredentialsByEmailPort,
-} from 'src/module/user/application/query/get-user-credentials-by-email';
-import { type IListUsersPort, type ListUsersResult } from 'src/module/user/application/query/list-users';
-import { user } from 'src/module/user/infrastructure/database/schema';
+import { type IGetUserAccessProjectionPort } from 'src/module/user/application/query/get-user-access-projection/port';
+import { type GetUserAccessProjectionResult } from 'src/module/user/application/query/get-user-access-projection/query';
+import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
+import { type GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
+import { type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
+import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
+import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
+import { type GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import { type IListUsersPort } from 'src/module/user/application/query/list-users/port';
+import { type ListUsersResult } from 'src/module/user/application/query/list-users/query';
+import { user } from 'src/module/user/infrastructure/user.schema';
 import type { PaginationParams } from 'src/shared/pagination';
 import type { SearchParams } from 'src/shared/search';
 

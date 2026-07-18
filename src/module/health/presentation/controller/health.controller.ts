@@ -10,11 +10,11 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { plainToInstance } from 'class-transformer';
 import { ApiDefaultInternalServerErrorResponse } from 'src/core/doc';
 import { ServiceUnavailableType } from 'src/core/exception';
-import { Public } from 'src/core/security';
+import { Public } from 'src/core/security/auth';
 import {
     GetHealthStatusQuery,
     type GetHealthStatusResult,
-} from 'src/module/health/application/query/get-health-status';
+} from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
 

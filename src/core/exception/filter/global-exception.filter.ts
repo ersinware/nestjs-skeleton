@@ -7,28 +7,27 @@
 import type { ArgumentsHost } from '@nestjs/common';
 import { Catch, ExceptionFilter, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { AccessDeniedException } from 'src/core/exception/class/access-denied.exception';
-import { InvalidRequestException } from 'src/core/exception/class/invalid-request.exception';
-import { ResourceConflictException } from 'src/core/exception/class/resource-conflict.exception';
-import { ResourceNotFoundException } from 'src/core/exception/class/resource-not-found.exception';
-import { ServiceUnavailableException } from 'src/core/exception/class/service-unavailable.exception';
-import { SystemException } from 'src/core/exception/class/system.exception';
-import { UnauthenticatedException } from 'src/core/exception/class/unauthenticated.exception';
+import { AccessDeniedException } from 'src/core/exception/access-denied.exception';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
-import { InternalServerErrorType } from 'src/core/exception/enum/internal-server-error-type.enum';
-import { ResourceConflictType } from 'src/core/exception/enum/resource-conflict-type.enum';
-import { ResourceNotFoundType } from 'src/core/exception/enum/resource-not-found-type.enum';
-import { ServiceUnavailableType } from 'src/core/exception/enum/service-unavailable-type.enum';
+import { InternalServerErrorType } from 'src/core/exception/internal-server-error-type.enum';
+import { InvalidRequestException } from 'src/core/exception/invalid-request.exception';
+import { ResourceConflictType } from 'src/core/exception/resource-conflict-type.enum';
+import { ResourceConflictException } from 'src/core/exception/resource-conflict.exception';
+import { ResourceNotFoundType } from 'src/core/exception/resource-not-found-type.enum';
+import { ResourceNotFoundException } from 'src/core/exception/resource-not-found.exception';
+import { ServiceUnavailableType } from 'src/core/exception/service-unavailable-type.enum';
+import { ServiceUnavailableException } from 'src/core/exception/service-unavailable.exception';
+import { SystemException } from 'src/core/exception/system.exception';
+import { UnauthenticatedException } from 'src/core/exception/unauthenticated.exception';
 import {
     AuditLogAction,
     AuditLogPayload,
     LogPayload,
-    TOKEN_EXCEPTION_TRACKER_PORT,
     TOKEN_LOGGER_PORT,
-    type IExceptionTrackerPort,
     type ILoggerPort,
-} from 'src/core/observability';
-import { AuthenticatedRequest } from 'src/core/security';
+} from 'src/core/observability/logger';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
+import { AuthenticatedRequest } from 'src/core/security/auth';
 /**
  * Internal database error payload shape.
  */

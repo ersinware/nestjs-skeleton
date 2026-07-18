@@ -7,8 +7,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { ICachePort } from 'src/core/cache';
 import { TOKEN_CACHE_PORT } from 'src/core/cache';
-import { CacheKeys } from 'src/module/user/application/util';
-import { UserEvent } from 'src/module/user/domain/event';
+import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
+import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**

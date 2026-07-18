@@ -3,7 +3,7 @@
  * @description The User Aggregate Root. Encapsulates all business rules and state for a User.
  */
 
-import { UserEvent } from 'src/module/user/domain/event';
+import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
 import { AggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
 

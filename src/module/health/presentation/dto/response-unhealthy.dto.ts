@@ -6,7 +6,7 @@
 import { ApiExtension, ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { Equals, IsObject, IsString } from 'class-validator';
-import { createHealthyIndicator } from 'src/module/health/presentation/dto/util/dto.util';
+import { createHealthyIndicator } from 'src/module/health/presentation/dto/dto.util';
 
 /**
  * Data transfer object representing an unhealthy application status response.

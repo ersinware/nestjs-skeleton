@@ -6,12 +6,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
     TOKEN_GET_USER_ACCESS_PROJECTION_PORT,
     type IGetUserAccessProjectionPort,
-} from 'src/module/user/application/query/get-user-access-projection';
-import { UserEvent } from 'src/module/user/domain/event';
+} from 'src/module/user/application/query/get-user-access-projection/port';
+import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**

@@ -8,11 +8,11 @@ import { QueryBus } from '@nestjs/cqrs';
 import {
     GetUserAuthStateQuery,
     type GetUserAuthStateResult,
-} from 'src/module/user/application/query/get-user-auth-state';
+} from 'src/module/user/application/query/get-user-auth-state/query';
 import {
     GetUserCredentialsByEmailQuery,
     type GetUserCredentialsByEmailResult,
-} from 'src/module/user/application/query/get-user-credentials-by-email';
+} from 'src/module/user/application/query/get-user-credentials-by-email/query';
 
 /**
  * The single public API for the Users module.

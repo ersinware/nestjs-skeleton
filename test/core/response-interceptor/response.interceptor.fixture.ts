@@ -4,7 +4,7 @@
  */
 
 import { Controller, Get, HttpCode } from '@nestjs/common';
-import { Public } from 'src/core/security';
+import { Public } from 'src/core/security/auth';
 
 @Controller('response-interceptor-trigger')
 @Public()

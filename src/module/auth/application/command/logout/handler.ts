@@ -1,6 +1,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_SESSION_PORT, TOKEN_TOKEN_PORT, type ISessionPort, type ITokenPort } from 'src/core/security';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
 
 /**

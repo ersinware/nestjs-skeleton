@@ -4,9 +4,9 @@
  */
 
 import 'reflect-metadata';
-import { Environment } from 'src/core/config/environment/enum/environment.enum';
+import { Environment } from 'src/core/config/environment/environment.enum';
 import { EnvironmentVariables, validateConfig } from 'src/core/config/environment/environment.validation';
-import { TrackerEnvironment } from 'src/core/observability';
+import { TrackerEnvironment } from 'src/core/observability/tracker';
 import { describe, expect, it } from 'vitest';
 
 describe('env.validation.config', () => {

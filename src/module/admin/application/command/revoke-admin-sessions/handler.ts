@@ -7,12 +7,14 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email/port';
-import type { EmailPayload } from 'src/core/email/type';
-import { LogPayload } from 'src/core/observability';
-import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security';
-import { TOKEN_ADMIN_WRITER_PORT, type IAdminWriterPort } from 'src/module/admin/application/command/port';
+import type { EmailPayload } from 'src/core/email';
+import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import {
+    TOKEN_ADMIN_WRITER_PORT,
+    type IAdminWriterPort,
+} from 'src/module/admin/application/command/port/admin-writer.port';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
 
 /**

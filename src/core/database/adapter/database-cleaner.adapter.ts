@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE } from 'src/core/database/constant';
+import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
 import type { IDatabaseCleanerPort } from 'src/core/database/port/database-cleaner.port';
 
 /**

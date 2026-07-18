@@ -19,11 +19,11 @@ import {
 } from 'src/core/doc';
 import { InvalidRequestType } from 'src/core/exception';
 import { ParamIdDto, QueryPaginationDto, ResponsePaginationDto } from 'src/core/http';
-import { Roles } from 'src/core/security';
-import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin';
-import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin';
-import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin';
-import { ListAdminsQuery, type ListAdminsResult } from 'src/module/admin/application/query/list-admins';
+import { Roles } from 'src/core/security/auth';
+import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
+import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
+import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
+import { ListAdminsQuery, type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { AdminRole } from 'src/shared/domain/admin';
 

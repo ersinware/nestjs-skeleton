@@ -5,13 +5,16 @@
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from 'src/app.module';
-import { type IHashingPort, TOKEN_HASHING_PORT } from 'src/core/security';
-import { type IAdminWriterPort, TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port';
+import { type IHashingPort, TOKEN_HASHING_PORT } from 'src/core/security/hashing';
+import {
+    type IAdminWriterPort,
+    TOKEN_ADMIN_WRITER_PORT,
+} from 'src/module/admin/application/command/port/admin-writer.port';
 import {
     type IGetAdminCredentialsByEmailPort,
     TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT,
-} from 'src/module/admin/application/query/get-admin-credentials-by-email';
-import { Admin } from 'src/module/admin/domain/aggregate';
+} from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
+import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminRole } from 'src/shared/domain/admin';
 import { uuidv7 } from 'uuidv7';
 

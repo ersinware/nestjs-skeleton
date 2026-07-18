@@ -5,7 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheHealthAdapter } from 'src/core/cache/adapter/cache-health.adapter';
-import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/constant/constant';
+import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/cache-client.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('CacheHealthAdapter', () => {

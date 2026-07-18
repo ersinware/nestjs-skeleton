@@ -9,11 +9,10 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
-import { LogPayload } from 'src/core/observability';
-import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import type { IAdminWriterPort } from 'src/module/admin/application/command/port';
-import { Admin } from 'src/module/admin/domain/aggregate';
-import { admin as adminSchema } from 'src/module/admin/infrastructure/database/schema';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
+import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { admin as adminSchema } from 'src/module/admin/infrastructure/admin.schema';
 import { uuidv7 } from 'uuidv7';
 
 /**

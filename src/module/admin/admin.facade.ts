@@ -8,11 +8,11 @@ import { QueryBus } from '@nestjs/cqrs';
 import {
     GetAdminAuthStateQuery,
     type GetAdminAuthStateResult,
-} from 'src/module/admin/application/query/get-admin-auth-state';
+} from 'src/module/admin/application/query/get-admin-auth-state/query';
 import {
     GetAdminCredentialsByEmailQuery,
     type GetAdminCredentialsByEmailResult,
-} from 'src/module/admin/application/query/get-admin-credentials-by-email';
+} from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 
 /**
  * The single public API for the Admins module.
