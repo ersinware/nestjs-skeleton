@@ -4,8 +4,8 @@
  */
 
 import { Module } from '@nestjs/common';
-import { EmailerAdapter } from 'src/core/email/adapter';
-import { TOKEN_EMAILER_PORT } from 'src/core/email/port';
+import { EmailerAdapter } from 'src/core/email/adapter/emailer.adapter';
+import { TOKEN_EMAILER_PORT } from 'src/core/email/port/emailer.port';
 
 /**
  * Module responsible for exposing email delivery to the rest of the application.

@@ -3,7 +3,7 @@
  * @description Outbound port for User commands. Defines the contract for the infrastructure layer to persist the User aggregate.
  */
 
-import { User } from 'src/module/user/domain/aggregate';
+import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 
 export const TOKEN_USER_WRITER_PORT = Symbol('TOKEN_USER_WRITER_PORT');
 

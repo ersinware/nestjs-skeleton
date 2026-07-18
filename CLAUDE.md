@@ -24,29 +24,33 @@ Dependencies flow strictly inward. Every other import is ILLEGAL.
 
 **`eslint.config.mjs` is the authority, not this table.** Enforced by `eslint-plugin-boundaries` (`boundaries/dependencies` with `default: 'disallow'`, plus `boundaries/no-unknown`). Never work around a boundary error — it means the design is wrong, not the config. If a rule genuinely must change, change `eslint.config.mjs` and mirror it here.
 
-| Element                      | May import from                                                                                                 |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `shared`                     | `shared`                                                                                                        |
-| `core`                       | `shared`, `core`                                                                                                |
-| `domain` (`module/*/domain`) | `shared`, own module's `domain`                                                                                 |
-| `application`                | `shared`, `core`, own module's `domain` + `application`                                                         |
-| `infrastructure`             | `shared`, `core`, own module's `domain` + `application` + `infrastructure`, any `facade`, any module `index.ts` |
-| `presentation`               | `shared`, `core`, own module's `application` + `presentation`                                                   |
-| `*.facade.ts`                | own module's `application` ONLY                                                                                 |
-| `module/*/index.ts`          | own `facade` + own `*.module.ts` ONLY                                                                           |
-| `*.module.ts`                | own module's every layer, plus any `facade` / module `index.ts` / `core` / `shared`                             |
+| Element                               | May import from                                                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `shared`                              | `shared`                                                                                                                      |
+| `core`                                | `shared`, `core`                                                                                                              |
+| `domain` (`module/*/domain`)          | `shared`, own module's `domain`                                                                                               |
+| `application`                         | `shared`, `core`, own module's `domain` + `application`                                                                       |
+| `infrastructure`                      | `shared`, `core`, own module's `domain` + `application` + `infrastructure`, any module `index.ts`                             |
+| `presentation`                        | `shared`, `core`, own module's `application` + `presentation`                                                                 |
+| `*.facade.ts`                         | own module's `application` ONLY                                                                                               |
+| `module/*/index.ts`                   | own `facade` + own `*.module.ts` ONLY                                                                                         |
+| `*.module.ts`                         | own module's `presentation` + `application` + `infrastructure` + own `facade`, plus any module `index.ts` / `core` / `shared` |
+| `src/instrument.ts`, `src/tracing.ts` | `shared`, `core` ONLY                                                                                                         |
 
 What the table alone does not say:
 
-- **`domain` is pure TypeScript** — beyond `shared`, it imports no `core`, no `@nestjs/*`, no `drizzle-orm`, no npm framework at all.
+- **`domain` is pure TypeScript** — beyond `shared`, it imports no `core`, no `@nestjs/*`, no `drizzle-orm`, no npm framework at all. Machine-enforced by `boundaries/external` as an **allowlist**: the domain layer is allowed NO external package, so a newly added dependency is denied by default instead of waiting to be blacklisted.
 - **A module's `application/` depends on core's contract surface** (ports, exceptions, types, utils) — never on a core adapter; adapters arrive by DI.
-- **`{{from.captured.module}}` means "own module"**, so cross-module traffic is legal only into a `facade` or a module `index.ts`, and only from `infrastructure` or `*.module.ts`.
-- **`src/main.ts` and `src/app.module.ts` are the only exempt files** (`boundaries/ignore`), because composition roots must see everything.
+- **`{{from.captured.module}}` means "own module"**, so cross-module traffic is legal only into a module `index.ts`, and only from `infrastructure` or `*.module.ts`. A `*.module.ts` may also reach its OWN `facade` — that is wiring inside the context, not a crossing.
+- **Every file must belong to an element** (`boundaries/no-unknown-files`). This is what makes "no fourth pillar" enforceable: a file under no layer is rejected rather than living outside every rule.
+- **`src/main.ts` and `src/app.module.ts` are the only exempt files** (`boundaries/ignore`), because composition roots must see everything. `src/instrument.ts` and `src/tracing.ts` are NOT exempt — they are a `bootstrap` element restricted to `shared` + `core`, since starting Sentry/OTel never requires reading into a module.
 - **Relative imports are banned** (`no-restricted-imports`). Always absolute from `src/` or `test/`.
+- **The `EventEmitter2` class is import-banned** everywhere except `src/core/event-bus/` (`no-restricted-imports`), which is the enforcement of §5's "publish through `IEventBusPort`". `@OnEvent` and `EventEmitterModule` from the same package stay legal — they are the subscribe and wiring sides, and neither has a port to route through.
+- **Boundary rules cover `src/` only.** `test/` is deliberately outside them for now — see § Testing Rules.
 
 ### 2. Module Isolation & the Facade
 
-- **The Facade is the single door into a bounded context** — §1 already makes every other cross-module path illegal.
+- **The Facade is the single door into a bounded context, and that door is reached through `module/<ctx>/index.ts`** — never by importing `<ctx>.facade.ts` directly. §1 already makes every other cross-module path illegal, and `boundaries/entry-point` closes the deep path to the facade itself; a barrel that can be bypassed closes nothing (§ Barrels). The one exception is the context's own `*.module.ts`, which provides and exports the facade.
 - A Facade exposes **READ/Query only**, or pre-transaction validation. Anything that must trigger a mutation elsewhere goes async (§5).
 - It MUST return the **query's own flat result type** — the `type` declared in that query's `query.ts` (e.g. `get-user-auth-state/query.ts` → `GetUserAuthStateResult`). Never a Drizzle object, an Aggregate Root, or a presentation `*.dto.ts` class.
 - `forwardRef()` is **PROHIBITED** — resolve circular deps via EDA (§5).
@@ -108,13 +112,19 @@ Group by bounded-context → hexagonal layer → role.
 
 ```
 src/
+  main.ts                     # composition root — exempt from boundary rules
+  app.module.ts               # composition root — exempt from boundary rules
+  instrument.ts               # Sentry bootstrap  — `bootstrap` element, may reach shared + core only
+  tracing.ts                  # OTel bootstrap    — `bootstrap` element, may reach shared + core only
   shared/
-    domain/                   # base Aggregate Root & Domain Event; per-context enums + integration-event enums (admin/, user/)
-    application/event/        # dispatched-domain-event type
+    domain/                   # SHELF (no index.ts): admin/  user/  event/  aggregate-root/
+    application/              # SHELF (no index.ts): event/
     pagination/  search/  sort/
   core/
     cache/  config/  database/  doc/  email/
-    event-bus/  exception/  http/  observability/  security/
+    event-bus/  exception/  http/
+    observability/            # SHELF (no index.ts): logger/  tracker/
+    security/                 # SHELF (no index.ts): auth/  hashing/  session/  throttle/  token/
   module/
     <module>/
       index.ts
@@ -187,7 +197,11 @@ The only test: _does an outsider import from here, and are the inner files off-l
 
 **In `core/`, "concern" is not a fixed depth — it is whatever outsiders consume as ONE thing.** The barrel goes on the **deepest node imported as a whole**; every folder above it is a shelf with no `index.ts`. Ask only: _does the rest of the app reach for this folder, or for the things inside it?_ `core/cache/` is consumed as one capability → `core/cache/index.ts` exists, its `adapter/` + `port/` closed behind it. `core/security/` shelves five capabilities (`auth`, `hashing`, `token`, `session`, `throttle`) consumed separately by unrelated callers → the barrels sit on each capability (`core/security/auth/index.ts`, …) and **`core/security/index.ts` must not exist**.
 
-**Consequently `index.ts` exists in exactly two kinds of place** — `module/<ctx>/`, and the one core node consumed as a whole; any other is a violation. Stacked nested barrels are impossible: exactly one level per branch passes the test, so if two levels both look right, the parent is a shelf — delete its barrel.
+**`shared/` obeys the same test as `core/`.** It is equally a pillar of concerns, not one concept: `shared/pagination/` is consumed as one thing and carries a barrel, while `shared/domain/` merely shelves `admin`, `user`, `event` and `aggregate-root`, so the barrels sit on those and **`shared/domain/index.ts` must not exist**.
+
+**Consequently `index.ts` exists in exactly three kinds of place** — `module/<ctx>/`, the one core node consumed as a whole, and the one shared node consumed as a whole; any other is a violation. Stacked nested barrels are impossible: exactly one level per branch passes the test, so if two levels both look right, the parent is a shelf — delete its barrel.
+
+**This is machine-enforced** by `boundaries/entry-point`: every `core` and `shared` concern is declared as an element in `eslint.config.mjs`, and `index.ts` is its only legal entry point. A shelf is therefore never declared — only the capabilities inside it are, which is why adding a new concern requires an explicit config entry and forces the shelf-vs-concern decision to be made consciously.
 
 **NEVER use a barrel as a design justification.** "It goes through `index.ts` anyway, so it doesn't matter" would equally defend one 5000-line file or 200 files — an argument that defends everything defends nothing. A barrel only flattens the CONSUMER's view; it gives nothing to the person opening the file to change it, and organization is for that person.
 
@@ -298,6 +312,8 @@ Used once → inline. Used more than once → extract to a named variable.
 - `vitest.config.mts` sets `restoreMocks: true` — never call `vi.clearAllMocks()` / `vi.resetAllMocks()` / `vi.restoreAllMocks()`.
 - Never assert hardcoded validation message strings — use `expect.any(String)` or `expect.stringContaining(...)`.
 - **Positive & Negative Path**: verify all mocks called in chronological order with `.toHaveBeenCalledWith(...)`. In negative paths, assert `.not.toHaveBeenCalled()` only on the **immediate next** function — not further downstream.
+
+**`test/` import rules** — TODO, still to be designed. `test/` is declared as no element, so `boundaries` does not constrain it at all: a test may today import a module's writer adapter directly and lint stays green. Remind the user this is open whenever test structure or a test's imports come up. The likely shape is two elements — `test/api/**` restricted to `module/<ctx>/index.ts` + `presentation` (E2E must drive over HTTP), and a looser one for integration tests that legitimately exercise an adapter — but it is not decided.
 
 ## Reference
 

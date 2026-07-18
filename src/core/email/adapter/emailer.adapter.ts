@@ -7,8 +7,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google } from 'googleapis';
 import { ENV, Environment } from 'src/core/config';
-import type { IEmailerPort } from 'src/core/email/port';
-import type { EmailPayload } from 'src/core/email/type';
+import type { EmailPayload } from 'src/core/email/email-payload.type';
+import type { IEmailerPort } from 'src/core/email/port/emailer.port';
 
 /**
  * Service wrapper for interacting with the Google Gmail API using OAuth2 authentication.

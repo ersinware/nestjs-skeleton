@@ -7,12 +7,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
     TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT,
     type IGetAdminAccessProjectionPort,
-} from 'src/module/admin/application/query/get-admin-access-projection';
-import { AdminEvent } from 'src/module/admin/domain/event';
+} from 'src/module/admin/application/query/get-admin-access-projection/port';
+import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**

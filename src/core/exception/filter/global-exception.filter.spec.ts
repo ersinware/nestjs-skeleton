@@ -8,20 +8,19 @@ import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
-import { InternalServerErrorType } from 'src/core/exception/enum/internal-server-error-type.enum';
-import { ResourceConflictType } from 'src/core/exception/enum/resource-conflict-type.enum';
-import { ResourceNotFoundType } from 'src/core/exception/enum/resource-not-found-type.enum';
-import { ServiceUnavailableType } from 'src/core/exception/enum/service-unavailable-type.enum';
 import { GlobalExceptionFilter } from 'src/core/exception/filter/global-exception.filter';
+import { InternalServerErrorType } from 'src/core/exception/internal-server-error-type.enum';
+import { ResourceConflictType } from 'src/core/exception/resource-conflict-type.enum';
+import { ResourceNotFoundType } from 'src/core/exception/resource-not-found-type.enum';
+import { ServiceUnavailableType } from 'src/core/exception/service-unavailable-type.enum';
 import {
     AuditLogAction,
     AuditLogPayload,
     LogPayload,
-    TOKEN_EXCEPTION_TRACKER_PORT,
     TOKEN_LOGGER_PORT,
-    type IExceptionTrackerPort,
     type ILoggerPort,
-} from 'src/core/observability';
+} from 'src/core/observability/logger';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('GlobalExceptionFilter', () => {

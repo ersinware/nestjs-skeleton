@@ -5,7 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health.adapter';
-import { TOKEN_DATABASE } from 'src/core/database/constant';
+import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('PostgresHealthIndicatorAdapter', () => {

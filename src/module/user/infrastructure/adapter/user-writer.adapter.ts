@@ -9,11 +9,10 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
-import { LogPayload } from 'src/core/observability';
-import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import type { IUserWriterPort } from 'src/module/user/application/command/port';
-import { User } from 'src/module/user/domain/aggregate';
-import { user as userSchema } from 'src/module/user/infrastructure/database/schema';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
+import { User } from 'src/module/user/domain/aggregate/user.aggregate';
+import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
 import { uuidv7 } from 'uuidv7';
 
 @Injectable()

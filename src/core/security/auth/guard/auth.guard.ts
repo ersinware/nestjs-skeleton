@@ -12,11 +12,11 @@ import {
     UnauthenticatedException,
     UnauthenticatedType,
 } from 'src/core/exception';
+import type { AccessTokenPayload } from 'src/core/security/auth/access-token-payload.type';
+import { AuthTokenType } from 'src/core/security/auth/auth-token-type.enum';
+import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
-import { AuthTokenType } from 'src/core/security/auth/enum/auth-token-type.enum';
-import type { AuthenticatedRequest } from 'src/core/security/auth/interface/authenticated-request.interface';
-import type { AccessTokenPayload } from 'src/core/security/auth/type/access-token-payload.type';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session/port';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 
 /**

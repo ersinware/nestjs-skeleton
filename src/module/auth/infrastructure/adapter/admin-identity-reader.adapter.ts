@@ -5,7 +5,10 @@
 
 import { Injectable } from '@nestjs/common';
 import { AdminFacade } from 'src/module/admin';
-import type { AuthAdminIdentity, IAdminIdentityReaderPort } from 'src/module/auth/application/command/port';
+import type {
+    AuthAdminIdentity,
+    IAdminIdentityReaderPort,
+} from 'src/module/auth/application/command/port/admin-identity-reader.port';
 
 /**
  * Adapter that provides the Auth module access to the Admin identity data.

@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 
 /**

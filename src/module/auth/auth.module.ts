@@ -5,18 +5,19 @@
 
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
-import { HashingModule, SessionModule, TokenModule } from 'src/core/security';
+import { HashingModule } from 'src/core/security/hashing';
+import { SessionModule } from 'src/core/security/session';
+import { TokenModule } from 'src/core/security/token';
 import { AdminModule } from 'src/module/admin';
-import { LoginAdminCommandHandler } from 'src/module/auth/application/command/login-admin';
-import { LoginUserCommandHandler } from 'src/module/auth/application/command/login-user';
-import { LogoutCommandHandler } from 'src/module/auth/application/command/logout';
-import { LogoutAllCommandHandler } from 'src/module/auth/application/command/logout-all';
-import {
-    TOKEN_ADMIN_IDENTITY_READER_PORT,
-    TOKEN_USER_IDENTITY_READER_PORT,
-} from 'src/module/auth/application/command/port';
-import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens';
-import { AdminIdentityReaderAdapter, UserIdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter';
+import { LoginAdminCommandHandler } from 'src/module/auth/application/command/login-admin/handler';
+import { LoginUserCommandHandler } from 'src/module/auth/application/command/login-user/handler';
+import { LogoutAllCommandHandler } from 'src/module/auth/application/command/logout-all/handler';
+import { LogoutCommandHandler } from 'src/module/auth/application/command/logout/handler';
+import { TOKEN_ADMIN_IDENTITY_READER_PORT } from 'src/module/auth/application/command/port/admin-identity-reader.port';
+import { TOKEN_USER_IDENTITY_READER_PORT } from 'src/module/auth/application/command/port/user-identity-reader.port';
+import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
+import { AdminIdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter/admin-identity-reader.adapter';
+import { UserIdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter/user-identity-reader.adapter';
 import { AuthController } from 'src/module/auth/presentation/controller/auth.controller';
 import { UserModule } from 'src/module/user';
 

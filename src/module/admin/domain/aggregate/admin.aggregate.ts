@@ -3,7 +3,7 @@
  * @description The Admin Aggregate Root. Encapsulates all business rules and state for an Admin.
  */
 
-import { AdminEvent } from 'src/module/admin/domain/event';
+import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
 import { AdminRole } from 'src/shared/domain/admin';
 import { AggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';

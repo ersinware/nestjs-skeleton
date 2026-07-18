@@ -5,8 +5,8 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/constant/constant';
-import type { ICacheCleanerPort } from 'src/core/cache/port';
+import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/cache-client.token';
+import type { ICacheCleanerPort } from 'src/core/cache/port/cache-cleaner.port';
 
 /**
  * Redis cleaner utility flushing keys to reset cache states during test suites.

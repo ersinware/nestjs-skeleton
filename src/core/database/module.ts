@@ -9,9 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { ENV } from 'src/core/config';
-import { DatabaseCleanerAdapter, DatabaseHealthAdapter } from 'src/core/database/adapter';
-import { TOKEN_DATABASE } from 'src/core/database/constant';
-import { TOKEN_DATABASE_CLEANER_PORT, TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database/port';
+import { DatabaseCleanerAdapter } from 'src/core/database/adapter/database-cleaner.adapter';
+import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health.adapter';
+import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
+import { TOKEN_DATABASE_CLEANER_PORT } from 'src/core/database/port/database-cleaner.port';
+import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database/port/database-health.port';
 
 /**
  * Dependency injection token representing the raw postgres.js client connection pool.

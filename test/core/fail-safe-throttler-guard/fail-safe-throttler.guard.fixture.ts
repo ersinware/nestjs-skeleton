@@ -9,7 +9,8 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { getStorageToken } from '@nestjs/throttler';
 import { Logger } from 'nestjs-pino';
 import { ENV, Environment } from 'src/core/config';
-import { CriticalThrottle, Public } from 'src/core/security';
+import { Public } from 'src/core/security/auth';
+import { CriticalThrottle } from 'src/core/security/throttle';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { MockInstance, vi } from 'vitest';
 

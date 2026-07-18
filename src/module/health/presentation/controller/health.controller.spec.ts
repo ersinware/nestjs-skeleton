@@ -5,7 +5,7 @@
 
 import { QueryBus } from '@nestjs/cqrs';
 import { Test, TestingModule } from '@nestjs/testing';
-import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status';
+import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { HealthController } from 'src/module/health/presentation/controller/health.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

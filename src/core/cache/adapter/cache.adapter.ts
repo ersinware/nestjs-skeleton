@@ -5,15 +5,10 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/constant/constant';
+import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
 import type { ICachePort } from 'src/core/cache/port/cache.port';
-import {
-    LogPayload,
-    TOKEN_EXCEPTION_TRACKER_PORT,
-    TOKEN_LOGGER_PORT,
-    type IExceptionTrackerPort,
-    type ILoggerPort,
-} from 'src/core/observability';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 
 const ERROR_MESSAGE_EMPTY_KEY = 'Cache key must be a non-empty string.';
 

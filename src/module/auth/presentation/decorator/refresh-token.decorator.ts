@@ -6,7 +6,7 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsJWT, IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/constant/constant';
+import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.constraint';
 
 /**
  * Applies strict JWT formatting and length validations alongside standardized Swagger documentation for a refresh token property.

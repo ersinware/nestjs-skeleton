@@ -6,8 +6,8 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsJWT, IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/constant/constant';
 import { IsRefreshToken } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
+import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.constraint';
 
 /**
  * Output DTO returning access and refresh JWT tokens.

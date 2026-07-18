@@ -6,7 +6,7 @@
 
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
-import { Environment } from 'src/core/config/environment/enum';
+import { Environment } from 'src/core/config/environment/environment.enum';
 import { TrackerEnvironment } from 'src/core/observability/tracker';
 
 /**

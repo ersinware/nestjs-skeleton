@@ -15,7 +15,7 @@ import {
     ServiceUnavailableException,
 } from '@nestjs/common';
 import { IsNotEmpty, IsString } from 'class-validator';
-import { Public } from 'src/core/security';
+import { Public } from 'src/core/security/auth';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
 
 @Controller('health-exception-trigger')

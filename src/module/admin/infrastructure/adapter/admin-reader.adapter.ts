@@ -8,24 +8,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE } from 'src/core/database';
-import {
-    type GetAdminAccessProjectionResult,
-    type IGetAdminAccessProjectionPort,
-} from 'src/module/admin/application/query/get-admin-access-projection';
-import {
-    type GetAdminAuthStateResult,
-    type IGetAdminAuthStatePort,
-} from 'src/module/admin/application/query/get-admin-auth-state';
-import {
-    type GetAdminCredentialsByEmailResult,
-    type IGetAdminCredentialsByEmailPort,
-} from 'src/module/admin/application/query/get-admin-credentials-by-email';
-import {
-    type GetAdminEmailAndNameResult,
-    type IGetAdminEmailAndNamePort,
-} from 'src/module/admin/application/query/get-admin-email-and-name';
-import { type IListAdminsPort, type ListAdminsResult } from 'src/module/admin/application/query/list-admins';
-import { admin } from 'src/module/admin/infrastructure/database/schema';
+import { type IGetAdminAccessProjectionPort } from 'src/module/admin/application/query/get-admin-access-projection/port';
+import { type GetAdminAccessProjectionResult } from 'src/module/admin/application/query/get-admin-access-projection/query';
+import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
+import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
+import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
+import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import { type IGetAdminEmailAndNamePort } from 'src/module/admin/application/query/get-admin-email-and-name/port';
+import { type GetAdminEmailAndNameResult } from 'src/module/admin/application/query/get-admin-email-and-name/query';
+import { type IListAdminsPort } from 'src/module/admin/application/query/list-admins/port';
+import { type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
+import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import { PaginationParams } from 'src/shared/pagination';
 
 /**

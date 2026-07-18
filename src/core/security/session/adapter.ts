@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/constant/constant';
+import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import type { ISessionPort } from 'src/core/security/session/port';
 import { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';

@@ -6,11 +6,9 @@
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { TerminusModule } from '@nestjs/terminus';
-import {
-    GetHealthStatusQueryHandler,
-    TOKEN_GET_HEALTH_STATUS_PORT,
-} from 'src/module/health/application/query/get-health-status';
-import { HealthReaderAdapter } from 'src/module/health/infrastructure/adapter';
+import { GetHealthStatusQueryHandler } from 'src/module/health/application/query/get-health-status/handler';
+import { TOKEN_GET_HEALTH_STATUS_PORT } from 'src/module/health/application/query/get-health-status/port';
+import { HealthReaderAdapter } from 'src/module/health/infrastructure/adapter/health-reader.adapter';
 import { HealthController } from 'src/module/health/presentation/controller/health.controller';
 
 /**

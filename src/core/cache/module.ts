@@ -8,11 +8,15 @@ import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { Logger } from 'nestjs-pino';
-import { CacheAdapter, CacheCleanerAdapter, CacheHealthAdapter } from 'src/core/cache/adapter';
-import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/constant';
-import { TOKEN_CACHE_CLEANER_PORT, TOKEN_CACHE_HEALTH_PORT, TOKEN_CACHE_PORT } from 'src/core/cache/port';
+import { CacheCleanerAdapter } from 'src/core/cache/adapter/cache-cleaner.adapter';
+import { CacheHealthAdapter } from 'src/core/cache/adapter/cache-health.adapter';
+import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
+import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port';
+import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
+import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
 import { ENV } from 'src/core/config';
-import { LogPayload } from 'src/core/observability';
+import { LogPayload } from 'src/core/observability/logger';
 
 /**
  * Helper function to create a configured Redis client instance.

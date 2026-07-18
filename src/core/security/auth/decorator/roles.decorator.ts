@@ -4,7 +4,7 @@
  */
 
 import { SetMetadata } from '@nestjs/common';
-import type { AuthRole } from 'src/core/security/auth/type/auth-role.type';
+import type { AuthRole } from 'src/core/security/auth/auth-role.type';
 
 /**
  * Metadata key used to store required roles for authorization.

@@ -5,8 +5,8 @@
 
 import { Controller, Get } from '@nestjs/common';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Roles } from 'src/core/security';
-import { AdminRole } from 'src/shared/domain/admin/enum/admin-role.enum';
+import { Roles } from 'src/core/security/auth';
+import { AdminRole } from 'src/shared/domain/admin/admin-role.enum';
 import type { OptionsTestApp } from 'test/shared/interface/e2e-spec.interface';
 import { createTestApp } from 'test/shared/test-app.factory';
 

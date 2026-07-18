@@ -13,7 +13,7 @@ import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, VERSION_1 } from 'src/core/config';
 import { SwaggerManager, VERSION_CONFIG } from 'src/core/doc';
-import { LogPayload } from 'src/core/observability';
+import { LogPayload } from 'src/core/observability/logger';
 
 /**
  * Scaffolds a minimal application context to inspect NestJS metadata,
