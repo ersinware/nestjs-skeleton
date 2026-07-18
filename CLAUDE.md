@@ -2,153 +2,206 @@
 
 ## Project Purpose
 
-Production-ready NestJS backend — strict DDD, Hexagonal Architecture, horizontal scalability, Lift-and-Shift microservices readiness.
+Production-ready NestJS backend — strict DDD, Hexagonal Architecture, horizontal scalability, Lift-and-Shift microservice readiness.
+
+This repo is a **reference skeleton**, and that goal outranks convenience on every decision:
+
+- **Copy-paste startable.** Clonable as the starting point of a new project with no unpicking: nothing hard-codes this project's identity, and no half-built feature is left for the next user to discover.
+- **Microservice extraction must stay cheap.** Every boundary is drawn so a bounded context can be lifted out without rewriting it.
+- **The bar is architectural correctness, not "it works."** Top-tier engineering practice, security, and standards compliance win over the shorter path.
 
 ## AI Behavior
 
+- **When a request conflicts with this guide, say so and correct it** instead of complying.
 - **Never run tests, lint, or format automatically** — the user runs them.
 - **Do not auto-generate spec/test files** — the user owns tests; generate one **only** when explicitly asked.
-- **Documentation first**: every controller endpoint needs `@ApiTags`, `@ApiOperation`, and `ApiDefault*` decorators.
-- **Complete implementations only** — no placeholder logic.
-- **Enforce architecture**: reject and correct any request contradicting Modular Monolith, DDD, Hexagonal Architecture, or Outbox Pattern before proceeding.
-- **No bulk scripts**: change files via editing tools so each diff is reviewable.
-- **Keep CLAUDE.md in sync**: mirror every CLAUDE.md change identically into `.agents/rules/nestjs-skeleton.md`.
 
-## Architecture Rules
+## Architecture
 
 ### 1. Layer Isolation (Dependency Rule)
 
-Dependencies flow strictly inward. Any other import is ILLEGAL.
+Dependencies flow strictly inward. Every other import is ILLEGAL.
 
-| Layer             | May import from                                                                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `domain/`         | `src/shared/domain/` only. Pure TypeScript — NO `@nestjs/*`, `drizzle-orm`, `@Injectable()`. Holds Aggregates, Entities, Value Objects, Domain Events.                                     |
-| `application/`    | `domain/`, `src/shared/`, and `src/core/` **contracts** (ports, exceptions, types, utils — never core adapters). NOT `infrastructure/` or `presentation/`. MUST NOT throw HTTP exceptions. |
-| `infrastructure/` | `application/`, `domain/`, `src/shared/`, `src/core/`. Implements the application ports.                                                                                                   |
-| `presentation/`   | `application/`, `src/shared/`, `src/core/`. MUST NOT reach into `domain/`.                                                                                                                 |
+**`eslint.config.mjs` is the authority, not this table.** Enforced by `eslint-plugin-boundaries` (`boundaries/dependencies` with `default: 'disallow'`, plus `boundaries/no-unknown`). Never work around a boundary error — it means the design is wrong, not the config. If a rule genuinely must change, change `eslint.config.mjs` and mirror it here.
 
-### 2. Shared & Core
+| Element                      | May import from                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `shared`                     | `shared`                                                                                                        |
+| `core`                       | `shared`, `core`                                                                                                |
+| `domain` (`module/*/domain`) | `shared`, own module's `domain`                                                                                 |
+| `application`                | `shared`, `core`, own module's `domain` + `application`                                                         |
+| `infrastructure`             | `shared`, `core`, own module's `domain` + `application` + `infrastructure`, any `facade`, any module `index.ts` |
+| `presentation`               | `shared`, `core`, own module's `application` + `presentation`                                                   |
+| `*.facade.ts`                | own module's `application` ONLY                                                                                 |
+| `module/*/index.ts`          | own `facade` + own `*.module.ts` ONLY                                                                           |
+| `*.module.ts`                | own module's every layer, plus any `facade` / module `index.ts` / `core` / `shared`                             |
 
-**`src/shared/`** — pure, framework-free primitives usable by any layer. MUST NOT depend on `src/core/` or `@nestjs/*`. Organized by concept, not by hexagonal layer:
+What the table alone does not say:
 
-| Concept                         | Contents                                                                                                 |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `domain/`                       | Base Aggregate Root & Domain Event; per-context role enums + integration-event enums (`admin/`, `user/`) |
-| `application/event/`            | `dispatched-domain-event` type                                                                           |
-| `pagination/` `search/` `sort/` | Pure param **types**, constants, enums (not the HTTP DTOs)                                               |
+- **`domain` is pure TypeScript** — beyond `shared`, it imports no `core`, no `@nestjs/*`, no `drizzle-orm`, no npm framework at all.
+- **A module's `application/` depends on core's contract surface** (ports, exceptions, types, utils) — never on a core adapter; adapters arrive by DI.
+- **`{{from.captured.module}}` means "own module"**, so cross-module traffic is legal only into a `facade` or a module `index.ts`, and only from `infrastructure` or `*.module.ts`.
+- **`src/main.ts` and `src/app.module.ts` are the only exempt files** (`boundaries/ignore`), because composition roots must see everything.
+- **Relative imports are banned** (`no-restricted-imports`). Always absolute from `src/` or `test/`.
 
-**`src/core/`** — the platform kernel: every cross-cutting concern as **port + adapter + NestJS wiring**, exposed via one barrel per concern. Modules' `application/` depends on core's **contract surface** (ports, exceptions, types, utils) — never its adapters (bound via DI). No business rules or domain entities.
+### 2. Module Isolation & the Facade
 
-Concerns: `cache`, `config` (ENV + API-version constants), `database` (connection + base Drizzle schema `id`/`createdAt`/`updatedAt`), `doc` (`ApiDefault*` decorators + Swagger config), `email`, `event-bus`, `exception` (core exception classes, `ErrorDefaultDto`, global filter), `http` (`ResponseInterceptor`, pagination/search DTOs, validation decorators/pipes), `inbox-ledger`, `messaging`, `observability` (logger, tracker), `outbox`, `security` (auth guards + `@Public()`/`@Roles()`, hashing, session, token, `@CriticalThrottle()`).
+- **The Facade is the single door into a bounded context** — §1 already makes every other cross-module path illegal.
+- A Facade exposes **READ/Query only**, or pre-transaction validation. Anything that must trigger a mutation elsewhere goes async (§5).
+- It MUST return the **query's own flat result type** — the `type` declared in that query's `query.ts` (e.g. `get-user-auth-state/query.ts` → `GetUserAuthStateResult`). Never a Drizzle object, an Aggregate Root, or a presentation `*.dto.ts` class.
+- `forwardRef()` is **PROHIBITED** — resolve circular deps via EDA (§5).
 
-### 3. Module Isolation & Facade Pattern
+### 3. CQRS Discipline
 
-- Cross-module imports via paths are **ILLEGAL** — use the module's `[ModuleName]Facade` only.
-- Facades expose READ/Query only and MUST return **flat DTOs** (no Drizzle objects, no Aggregate Roots).
-- `forwardRef()` is **PROHIBITED** — resolve circular deps via EDA.
+- **Commands**: mutate state, return only the affected entity's `id` (or `void`). The Aggregate mutates itself; hand the whole Aggregate to its port. **Exception**: auth token-generation commands (login, refresh) may return `{ accessToken; refreshToken }` — ephemeral tokens that cannot be re-queried.
+- **Queries**: NEVER mutate. Read through the **query port** (reader adapter) into its result type.
+- **Read-models** — a query's result `type` — are co-located in its `query.ts`. A controller dispatching a query MUST annotate its return type with that type, imported from the query folder and never from `domain/`.
+- **Read transport — QueryBus vs. direct port**: use the **QueryBus** only when crossing _into_ the read side from outside — a **controller**, or a **Facade** exposing a cross-module read. Code already in the application layer (event subscriber, cron, command handler) MUST `@Inject(TOKEN)` the **query port directly**; a QueryBus hop here is indirection hiding the dependency graph. **Folder consequence**: `handler.ts` present = QueryBus-dispatched, absent = port-invoked — `handler.ts` is the sole transport signal, while the result type always stays in `query.ts` and the contract in `port.ts`.
+- **Every query owns a thin outbound port (ISP).** The handler depends on **one purpose-specific port** exposing only its read — never a broad/foreign port used for a slice (a health-summary handler must not inject the full cache/database ports just to read a liveness flag). When a read is **composed from other ports**, that composition lives in the port's **adapter**, not the handler: the adapter injects the underlying ports and returns the read-model — true even when just forwarding+merging, because the value is the narrowed contract. (Port/adapter cardinality: see **Adapters**.)
 
-### 4. CQRS Discipline
+### 4. Data & State Boundaries
 
-- **Commands**: mutate state, return only the affected entity's `id` (or `void`). The Aggregate mutates itself; hand the whole Aggregate to its **writer port**. **Exception**: auth token-generation commands (login, refresh) may return `{ accessToken; refreshToken }` — ephemeral tokens that cannot be re-queried.
-
-    **Layout** — each command in its own sub-folder:
-
-    ```
-    application/command/<command-name>/
-      command.ts   # Command class; Result type alias co-located here when the command returns a value
-      handler.ts   # ICommandHandler<Command, Result>
-      index.ts     # folder barrel
-      port.ts      # the command's write port (optional; write ports shared across commands go in command/port/)
-    ```
-
-    Result types are `type` aliases in `command.ts`. Token commands (`login-admin`, `login-user`, `refresh-token`) share the `{ accessToken; refreshToken }` shape; void commands (`logout`, `logout-all`) have none. Controllers dispatching a non-void command MUST annotate the return type with the imported Result alias; void commands need no annotation.
-
-- **Queries**: NEVER mutate. Read through the **query port** (reader adapter) into its result type. Controllers dispatching a query MUST annotate the return type with that type.
-- **Read transport — QueryBus vs. direct port**: use the **QueryBus** only when crossing _into_ the read side from outside — a **controller** or a **Facade** exposing a cross-module read. Code already in the application layer (listener, cron, command handler) MUST `@Inject(TOKEN)` the **query port directly**; a QueryBus hop here is indirection hiding the dependency graph. **Folder consequence**: `handler.ts` present = QueryBus-dispatched, absent = port-invoked. Either way the result type stays in `query.ts`, the contract in `port.ts` — `handler.ts` is the sole transport signal.
-- **Every query owns a thin outbound port (ISP).** The handler depends on **one purpose-specific port** exposing only its read — never a broad/foreign port used for a slice (a health-summary handler must not inject full outbox/email ports just for counts). When a read is **composed from other ports**, that composition lives in the port's **adapter**, not the handler: the adapter injects the underlying ports and returns the read-model — true even when just forwarding+merging (the value is the narrowed contract). **Thin ports segregate; adapters consolidate**: implement a module's many thin read-ports with **one reader adapter per data source** (`AdminReaderAdapter` — one `*-reader.adapter.ts` `implements` all of them, injecting the data source once), never one adapter per port. Bind each token via `{ provide: TOKEN_X, useClass: SharedReaderAdapter }`; handlers still see only their thin port.
-- **Read-models** — a query's result `type` — are co-located in its `query.ts`; there is no separate `read-model/` folder. Controllers import that type from the query folder — MUST NOT import from `domain/`.
-- **Ports live per-role in their own folder**: a query's port in `query/<name>/port.ts`, a command's write port in `command/<name>/port.ts` (or a shared `command/port/`). No module-root `application/port/`.
-- Side-effects via BullMQ or `@nestjs/event-emitter`.
-
-### 5. Database Boundaries
-
-- **No cross-module JOINs.** Each module owns its Drizzle schema — no central registry.
+- **Schema-per-module**: each module owns its Drizzle schema in a PostgreSQL logical schema named after the bounded context (e.g. `user.user`). No central registry; only the owner reads/writes its tables.
+- **No cross-module JOINs.** Merge multi-module data in RAM via Facade calls (API Composition).
 - **Soft links only**: store the UUID as a plain string column — no FK constraints.
-- **API Composition**: merge multi-module data in RAM via Facade calls.
-- **Schema-per-module**: PostgreSQL logical schema named after the bounded context (e.g. `users.users`); only the owner reads/writes its tables.
-- **Eventual consistency**: cross-module state reconciled asynchronously via Domain Events — never a synchronous cross-module transaction.
+- **No synchronous cross-module transaction.** Cross-module state is reconciled asynchronously (§5).
+- **Stateless**: never store session data in local memory — use Redis.
 
-### 6. Sync vs. Async Communication
+### 5. Events & Messaging
 
-- **Sync (Facade)**: Read/Query only, or pre-transaction validation.
-- **Async (Domain Events)**: required when a mutation must trigger reactions in other modules. Publish via `EventEmitter2`. **In-process domain-event subscribers** (fed by the outbox relay / event bus) live in `application/event/`. Only subscribers to an **external network/transport** (Postgres `LISTEN/NOTIFY`, a broker topic, an inbound webhook) live in `presentation/listener/`.
+Async Domain Events are required when a mutation must trigger reactions in other modules.
 
-### 7. Domain Event Discipline
+- **Publish through `IEventBusPort`** (`TOKEN_EVENT_BUS_PORT`) — **never inject `EventEmitter2` directly**; the port is what keeps the transport swappable when the outbox lands.
+- **Events carry ONLY minimal metadata** — typically `type` + `aggregateId`. Never the full payload.
+- **Never trust event data as current** — re-read from DB or Facade when the handler runs.
+- **Listeners stay idempotent**, because at-least-once delivery is the destination.
+- **Where a listener lives is decided by where the event was EMITTED — never by what the listener does.**
+    - **Emitted by our own application, handled in-process** → that module's `application/event/`. Application logic reacting to application logic; nothing crossed a process boundary.
+    - **Emitted by another source, arriving over the network** (Postgres `LISTEN/NOTIFY`, a broker topic, an inbound webhook) → `presentation/listener/`. It is an inbound adapter, exactly like a controller: it terminates a transport, so it lives where transports are terminated.
 
-- Events carry ONLY minimal metadata — typically `id` + `occurredOn`. Never the full payload.
-- Never trust event data as current — re-read from DB or Facade when the handler runs.
+#### Reliable messaging — NOT YET IMPLEMENTED
 
-### 8. Transactional Outbox & Reliable Messaging
+**Delivery is UNRELIABLE and that is a known, accepted gap.** Events are emitted in-process via `IEventBusPort.emitAsync` (`@nestjs/event-emitter`). There is no outbox table, no relay, no queue, no broker — an event is lost if the process dies after the DB commit, and a listener failure never retries.
 
-- Critical Domain Events MUST be inserted into `outbox` in the **same SQL transaction** as the entity write via `run(work, aggregate)`; a Relay Worker emits them afterward.
-    - **Exception — `ITransactionalOutboxPort.publish(events)`**: an event with **no local DB state** to be atomic with (e.g. auth refresh-reuse detection, state living only in Redis) is persisted by a single `outbox` INSERT, no surrounding transaction (one INSERT is already atomic). Never `publish` when a DB mutation accompanies the event — that MUST go through `run` so write and event commit together.
-- **Never delete an outbox row on success** — update `status`.
-- **Consumers MUST be idempotent** — delivery is at-least-once.
-- **Inbox (`IInboxPort`) ONLY for effects harmful to repeat** — email, enqueuing a job, an external API call, a non-idempotent DB write. For DB-backed work `runOnce` commits the dedup marker and effect in the **same transaction**; for external effects use `isProcessed`/`markProcessed`.
-- **Do NOT add the inbox to an intrinsically idempotent handler** — re-running yields the same state (fixed key/value write, version-guarded or monotonic-max Redis write, effect derived purely from re-readable DB/Facade truth). It only adds a round-trip. Idempotency must hold under duplicate, out-of-order, **and** concurrent delivery, proven for the whole handler — not assumed from one primitive. The inbox does **not** order events; convergence stays the handler's job.
-- **On failure**: run a compensating transaction, emit a failure event, write the reason into `status`.
-- **Never swallow errors** — `throw err` so the queue retries. Each queue declares its own `defaultJobOptions` (retry/backoff/retention) inline at `BullModule.registerQueue`, tuned to its failure profile — internal infra recovers in seconds (tight backoff), external providers in minutes (longer).
+- **Do not pretend otherwise.** Never write code, comments, or docs implying at-least-once delivery, retries, or transactional atomicity between a DB write and an event.
+- **Do not invent the outbox piecemeal.** No ad-hoc `outbox` table, `IInboxPort`, dedup ledger, relay cron, or queue module until the pattern is designed as a whole. A half-built outbox is worse than an honest gap: it looks reliable and isn't.
+- **Weigh this when designing.** If a flow cannot tolerate a lost event, raise it rather than silently shipping it over `emitAsync`.
+- **Planned (not present):** transactional outbox — critical events INSERTed into `outbox` in the same SQL transaction as the entity write, drained by a relay worker onto a queue; consumers idempotent; status updated, never deleted; an inbox for effects that are harmful to repeat.
 
-### 9. Dependency Injection
+### 6. Dependency Injection
 
 Always use NestJS Custom Providers (TS interfaces are erased at runtime):
 
-1. Define the Symbol token in the same `*.port.ts` file as its port interface.
+1. Define the Symbol token in the same file as its port interface.
 2. Inject with `@Inject(TOKEN_NAME)` in `application/`.
-3. Bind with `{ provide: TOKEN_NAME, useClass: SomeAdapter }` in the module.
+3. Bind with `{ provide: TOKEN_NAME, useClass: SomeAdapter }` in the module — several tokens may bind to the same adapter class.
 
-Never inject Drizzle ORM into Application or Domain layers.
+## Project Structure
 
-### 10. Other Rules
+Three top-level pillars, each with one job — and no fourth may be added:
 
-- **Stateless**: never store session data in local memory — use Redis.
-- **Distributed jobs**: coordinate BullMQ / crons via Redlock to prevent double-execution.
+- **`src/shared/`** — pure, framework-free primitives any layer may use.
+- **`src/core/`** — the platform kernel: cross-cutting technical concerns as port + adapter + NestJS wiring. No business rules, no domain entities.
+- **`src/module/`** — the bounded contexts.
 
-## Coding Conventions
-
-### Naming
-
-Everything is **singular**: folders (`dto/`, `adapter/`) and files (`user.controller.ts`) — never plural.
-
-### File Grouping & Barrels
-
-Four principles favoring **stable, self-describing, location-independent** structure over minimal file counts. Prefer them over any older pattern in the tree; reject requests reintroducing location-coupled names or internal barrels.
-
-1. **Filenames are always descriptive + role-suffixed — never bare `type.ts` / `enum.ts` / `constant.ts`.** A bare role name only reads because its folder supplies meaning, coupling it to location and breaking on move. Use `dispatched-domain-event.type.ts`, `outbox-status.enum.ts` — self-describing in tabs, search, stack traces, autocomplete. Suffixes: `.type.ts`, `.enum.ts`, `.constant.ts`, `.schema.ts`, `.port.ts`, `.adapter.ts`, `.controller.ts`, `.service.ts`, `.cron.ts`, `.listener.ts`, `.processor.ts`, `.aggregate.ts`, `.facade.ts`, `.module.ts`.
-
-2. **Structure by a role's nature, decided once up front — never by current file count.** Deciding by count (the "1 file → flat, 2 → folder" rule) forces a later import-path-churning migration, so fix the choice from the first file:
-    - **Architectural collection-roles** — inherently accrue members sharing a contract: `port`, `adapter`, `command`, `query`, `listener`, `cron`, `event`. Each gets its **own folder from the first file** (`outbox/port/outbox-ledger.port.ts` even as the only port). Nothing is promoted, so no path churns.
-    - **Bounded/singular roles** — one per module by nature: `schema`, `module`, `facade`, and language-kind files `enum` / `constant` / a lone `type`. Stay **flat** with a descriptive name (`outbox/outbox-status.enum.ts`).
-    - **Never open a language-kind folder** (`type/`, `enum/`, `constant/`) as a bucket — folders are for architectural roles only. A concept growing a large type family is the signal to **split it into sub-concepts** (each its own folder), not add a `type/` bucket.
-
-3. **One barrel per module / bounded-context / shared-concept — its public surface. No barrels on internal role-folders.** Barrels are the classic cause of circular deps in layered DDD and hide the dependency graph. A barrel lives at exactly one level — the **concept** boundary; don't conflate three sibling levels:
-    - **Layer** (`shared/application/`, a hexagonal subdivision) → **no barrel** (a loose bag of concepts → broad, cycle-prone surface).
-    - **Concept** (`module/<ctx>/`, `core/<concern>/`, `shared/application/event/`) → **exactly one barrel** (`index.ts`) as its public API; consumers import from this path.
-    - **Role-folder inside a concept** (`.../event/port/`, `outbox/adapter/`) → **no barrel**; import by explicit file path, never `.../index.ts`.
-
-    So `shared/application/event/index.ts` is correct (barrel on the `event` concept); `shared/application/index.ts` is forbidden (barrel on the `application` layer).
-
-4. **Group by feature/bounded-context first, then hexagonal layer, then technical role LAST.** Macro structure screams the domain (`module/<ctx>/domain|application|infrastructure|presentation`), not the framework. Splitting one concept across many kind-folders (`type/`, `enum/`, `constant/`) too early is the package-by-kind anti-pattern.
-
-**Canonical shape** (a cohesive concept, one barrel, descriptive flat files):
+Group by bounded-context → hexagonal layer → role.
 
 ```
-src/shared/application/event/
-  index.ts                            # the concept's only barrel — its public surface
-  dispatched-domain-event.type.ts     # descriptive, role-suffixed, location-independent
+src/
+  shared/
+    domain/                   # base Aggregate Root & Domain Event; per-context enums + integration-event enums (admin/, user/)
+    application/event/        # dispatched-domain-event type
+    pagination/  search/  sort/
+  core/
+    cache/  config/  database/  doc/  email/
+    event-bus/  exception/  http/  observability/  security/
+  module/
+    <module>/
+      index.ts
+      <module>.module.ts
+      <module>.facade.ts
+      application/
+        command/
+          port/               # write port(s) shared across commands
+          <command-name>/     # command.ts + handler.ts (+ port.ts)
+        query/
+          <query-name>/       # query.ts + port.ts (+ handler.ts)
+        event/
+        cron/
+      domain/
+        aggregate/
+        event/                # domain-event enums
+      infrastructure/
+        adapter/
+        <module>.schema.ts
+      presentation/
+        controller/
+        dto/
+        listener/
+        decorator/            # module-specific (e.g. auth)
+test/                         # E2E and integration tests
 ```
 
-Consumers import from the concept path (`src/shared/application/event`); the barrel resolves it.
+**Core principle: things that change together live together. The grouping axis is the CONCEPT — never a TypeScript keyword.** Everything below follows from this.
+
+### 1. Placement — ask in order, stop at the first "yes"
+
+1. **Does it belong to exactly one contract?** (a port's payload, an exception's message vocabulary) → put it INSIDE that contract's file. They change together; splitting them forces edits in two places.
+2. **Does it have an owner?** (who would _change_ it — not who _uses_ it) → put it next to the owner; others import from there.
+3. **Is it genuinely shared vocabulary?** → one descriptively named file at the concept's root. But check first: if changing it for one consumer would break the other, that is coupling, not sharing — either they are one concept (merge) or the shape should be duplicated. "Two things that happen to look alike" ≠ "the same thing".
+4. **None of the above?** → the concept boundary is wrong. Split the concept, not the file.
+
+### 2. Folders — decided up front by the role's nature, never by file count
+
+The test is NOT "how many files exist now" but **"can this role ever have more than one member?"** If yes, the structure is built for the plural case from the first file — nothing is ever promoted, no path ever churns, every concept has the same shape.
+
+- **Plural roles — own folder from the first file**: `adapter`, `port`, `command`, `query`, `listener`, `cron`, `event`, `controller`, `dto`, `decorator`, `guard`, `filter`, `interceptor`, `pipe`.
+- **Singular roles — stay flat, never get a folder**: `module`, `facade`, `schema`. One per concept by definition; a folder here is an empty box. **No wrapper folder either** — the schema is `infrastructure/<module>.schema.ts`, never `infrastructure/database/<module>.schema.ts`. A `database/` wrapper names a **data source**, and that axis is carried by the **filename** (`user-cache-reader.adapter.ts`), never by a folder. A layer folder like `infrastructure/` is a shelf and is expected to be heterogeneous, so a lone `*.schema.ts` beside `adapter/` is correct.
+- **Growth axis is the sub-concept, never the kind.** A concept accreting a large type family is the signal to split it into sub-concepts (`email/` → `sending/`, `ledger/`, `queue/`, each carrying its own types/enums/ports) — the swelling means the concept does too much. If you cannot name the result, that is a diagnosis: either the split isn't needed, or you are about to create a bag with no coherent identity.
+
+### 3. Naming
+
+- **Everything is singular** — folders (`dto/`, `adapter/`) and files (`user.controller.ts`), never plural.
+- **Role suffix, dot-separated**: `emailer.port.ts`, `user.schema.ts`, `admin.facade.ts`. Never a hyphen — `email-type.ts` reads as "a thing called EmailType"; `email.type.ts` reads as "email, a type file". Two separators in one folder is noise.
+- **KIND is never a folder and never a filename** — `type`, `enum`, `constant`, `util`, `interface`, `class`, `payload`, `common`, `shared`, `helper`, `misc`. A kind names a language keyword, not content: it teaches nothing about the domain, separates things that change together (an exception + its message enum), and collocates things that don't — members that stop belonging become invisible. Never correct, at any size. **The test**: can you name the file after its content without the words "type"/"constant"/"enum"? If not, it is a bag, and reaching for it means the **Placement** questions were skipped. (The three pillars are not kind folders — each names an architectural role that decides dependency direction. The ban targets folders opened _inside_ a concept; nothing below the pillars may reuse their names.)
+- **Bare ROLE names** (`port.ts`, `adapter.ts`, `handler.ts`, `command.ts`, `query.ts`, `module.ts`) depend entirely on the parent folder:
+    - **Inside a CONCEPT folder → required.** `command/create-user/command.ts`, `.../handler.ts`, `.../port.ts`. The folder names a concept and holds exactly one file per role, so it fully supplies identity; re-stating it (`create-user.command.ts`) is stutter.
+    - **Inside a KIND or ROLE folder → forbidden.** `adapter/adapter.ts`, `command/port/port.ts` read only because of the folder, so they die on move — use the role suffix: `user-reader.adapter.ts`, `user-writer.port.ts`. A location-coupled name costs from the very first file (identical tabs, `at adapter.ts:31` stack traces, indistinguishable Ctrl+P results); only a **concept** folder pays that back, because its name is itself the answer you were looking for.
+- **`@file` MUST match the filename.** A stale `@file` makes the file lie about itself and misleads search and review.
+
+### 4. Barrels — a barrel is a BOUNDARY, not an alias
+
+The only test: _does an outsider import from here, and are the inner files off-limits to them?_
+
+- **Yes → add the barrel, and then NOBODY may deep-import past it.** A barrel used alongside deep imports into the same folder closes nothing.
+- **No → do not add one.** A barrel nobody imports from is zero benefit and one more file to maintain.
+
+| Level                                                    | Barrel? | Why                                                                                                                   |
+| -------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| Bounded context (`module/<ctx>/`)                        | YES     | A real boundary. Exposes ONLY the Facade + Module.                                                                    |
+| Core concern — the independently consumed one            | YES     | The concept's public API. Consumers enter only here.                                                                  |
+| A parent that merely SHELVES concerns (`core/security/`) | NO      | Not a concept — a bag of them, same mistake as a layer barrel.                                                        |
+| Hexagonal layer (`application/`, `presentation/`)        | NO      | Not a concept — a bag of them. Broad, cycle-prone surface.                                                            |
+| Role folder (`adapter/`, `port/`, `dto/`)                | NO      | Not a boundary, just an alias — the classic cause of circular deps in layered DDD, and it hides the dependency graph. |
+| Concept folder (`command/<name>/`)                       | NO      | Not a boundary — an alias.                                                                                            |
+
+**In `core/`, "concern" is not a fixed depth — it is whatever outsiders consume as ONE thing.** The barrel goes on the **deepest node imported as a whole**; every folder above it is a shelf with no `index.ts`. Ask only: _does the rest of the app reach for this folder, or for the things inside it?_ `core/cache/` is consumed as one capability → `core/cache/index.ts` exists, its `adapter/` + `port/` closed behind it. `core/security/` shelves five capabilities (`auth`, `hashing`, `token`, `session`, `throttle`) consumed separately by unrelated callers → the barrels sit on each capability (`core/security/auth/index.ts`, …) and **`core/security/index.ts` must not exist**.
+
+**Consequently `index.ts` exists in exactly two kinds of place** — `module/<ctx>/`, and the one core node consumed as a whole; any other is a violation. Stacked nested barrels are impossible: exactly one level per branch passes the test, so if two levels both look right, the parent is a shelf — delete its barrel.
+
+**NEVER use a barrel as a design justification.** "It goes through `index.ts` anyway, so it doesn't matter" would equally defend one 5000-line file or 200 files — an argument that defends everything defends nothing. A barrel only flattens the CONSUMER's view; it gives nothing to the person opening the file to change it, and organization is for that person.
+
+### 5. Adapters — the seam is "what changes together", not a project-wide label
+
+Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the read and write sides change for different reasons and depend on different things?**
+
+- **Inside a module: YES → split reader / writer.** This is CQRS projected onto the infrastructure layer. The writer injects the DB + event bus + logger, takes the Aggregate, and `implements` exactly one write port; the reader injects the data source only, returns read-models, and accretes an `implements` clause per query. They change at different rates, so they must not share a class.
+- **Inside `core/`: NO → split by CAPABILITY instead** (`cache` / `cache-health` / `cache-cleaner`). A technical capability's get and set change for the same reason, over the same connection — `CacheReaderAdapter`/`CacheWriterAdapter` would be pure ceremony, and some concerns have no read side at all (`IEmailerPort.sendEmail`). If a core concern's read and write sides genuinely diverge, split the **concern** into sub-concepts, not the adapter.
+- **Adapter count = data source × (read/write).** A module reading from a second source (e.g. cache) gets its own reader for THAT source — the axis is the source, not read/write. Never bolt a second data source onto an existing reader.
+- **One reader per data source implements every thin read-port of that source** (`AdminReaderAdapter` — one `*-reader.adapter.ts`, injecting the data source once), never one adapter per port; handlers still see only their thin port.
+- **Readers consolidate, writers are singular, and a module that never writes has no writer** — do not open an empty box.
+
+## HTTP Layer
 
 ### DTOs
 
@@ -159,8 +212,29 @@ Consumers import from the concept path (`src/shared/application/event`); the bar
 | Response     | `response-` | `response-user.dto.ts` → `ResponseUserDto`       |
 | Error        | `error-`    | `error-default.dto.ts` → `ErrorDefaultDto`       |
 
-- Every DTO class MUST include `@ApiSchema({ name: '...' })` matching the class name without `Dto`.
-- Response DTOs MUST use `@Exclude()` at class level + `@Expose()` per property.
+**Class-level:**
+
+- `@ApiSchema({ name, description })` on EVERY DTO. `name` is the class name without `Dto` (`PostUserDto` → `'PostUser'`); `description` is a real sentence explaining what the schema is for — never omitted, never a restatement of the name.
+- JSDoc above the class explaining _why_ it exists (what it enforces or guarantees).
+- **Response DTOs**: `@Exclude()` at class level + `@Expose()` on every property. This is a whitelist — anything not `@Expose()`d must never reach a client.
+
+**Per property — the first three always, the fourth on response DTOs:**
+
+1. **JSDoc** describing the field's meaning.
+2. **Validation + documentation, in this order of preference:**
+    - **A composed decorator from `src/core/http/validation/decorator/` if one fits** — `IsUserEmail`, `IsUserName`, `IsStrongPassword`, `IsEntityId`, … Checking that folder first is MANDATORY, and so is using a decorator that fits: it bundles `class-validator` rules AND `@ApiProperty` (type, format, min/max length, description, example) in one call, which keeps a limit (e.g. max length) defined in exactly one place. Pass the field-label prefix (`@IsUserEmail('The email address')`) — it feeds both the Swagger description and the error messages.
+    - **Otherwise, raw `class-validator` rules + an explicit `@ApiProperty`** — the correct, expected outcome for a genuinely one-off field.
+3. **`readonly`** — always. **Required** field: definite assignment, `readonly email!: string`. **Optional** field: `?` plus `@IsOptional()`, `readonly search?: string`. `!` and `?` are mutually exclusive in TypeScript, so an optional property NEVER carries `!`.
+4. On response DTOs, `@Expose()` as well.
+
+**A shape earns a composed decorator on its SECOND use, never the first.** The decorator folder holds shared field vocabulary, so a single-use decorator must never be added there — it buys no single source of truth and enlarges the shared surface for one caller. The moment a second field needs the same shape, promote the raw stack into a composed decorator and migrate both call sites; from then on the limits live in exactly one place.
+
+**Never leave a property undecorated** — DTO validation is the trust boundary, so such a field is both unvalidated input and undocumented output. None of the above is optional where it applies: a DTO that falls short is incomplete work, not a draft.
+
+### Guards & Auth
+
+- `AuthGuard` (JWT) and `AuthRolesGuard` (roles) are global. Mark public endpoints with `@Public()`.
+- Use `@CriticalThrottle()` on sensitive endpoints (login, refresh).
 
 ### Responses & Errors
 
@@ -168,37 +242,44 @@ Consumers import from the concept path (`src/shared/application/event`); the bar
 - Throw the framework-agnostic core exception classes (`src/core/exception`, e.g. `ResourceNotFoundException`) — never NestJS HTTP exceptions; the global filter maps them to `ErrorDefaultDto`.
 - Use `QueryPaginationDto` for pagination input, `ResponsePaginationDto` for output.
 
-### Exception Responsibility
-
-An exception describes a failure **semantically and transport-agnostically**. The global filter is the **sole translator**, turning it into (1) the HTTP contract (`ErrorDefaultDto`) and (2) the observability decision (log level / Sentry). Nothing else is the exception's job.
-
-- **An exception MUST NOT carry a log record.** `LogPayload` / `AuditLogPayload` are the logger's record shape — built **only** by the filter or by a direct `logger.*` call site. Never construct one to throw: a throw site that assembles a log record has taken over the filter's job and bound `application/` to the logger's schema.
-- **`cause` has exactly one meaning: the underlying error** (native `ErrorOptions`). Pass options straight to `super(message, options)` — never hand-roll or unwrap `this.cause`, which silently drops a link of the chain. It stays `unknown` because foreign failures (DB, Redis, providers) cannot be typed; Sentry walks the chain itself.
-- **Structured facts travel in `context`, never in `cause`.** `ExceptionContext` is a framework-free `type` in `src/core/exception` carrying only what the throw site knows and the filter cannot re-derive: `origin` (the throwing `class` + `method`), `event`, `reason`, `subjectId`, `role`.
-- **`origin` belongs to the exception** — a structured, queryable restatement of `stack`, which cannot be filtered on in Grafana. `event` alone does not identify the throw site (admin and user login both emit `LOGIN_FAILED`). The filter falls back to its own `class` / `method` when `origin` is absent.
-- **The log-stream tag (`type: 'AUDIT'`) is NEVER in the exception.** The audit stream exists without exceptions (`LOGIN_SUCCESS`, `EMAILS_RETRIED` are direct `logger.*` audit records), so the tag is the logger's taxonomy: the exception states _what_ failed (`event`), the filter decides _which stream_ the record joins. `context.event`'s presence is itself the audit signal — never add a separate "is security" flag.
-- **The failure taxonomy (`event`, `reason`) is exception vocabulary, not logging vocabulary.** It classifies _what failed_, so it belongs with the exception enums (`src/core/exception/enum/`), not under `observability/logger/enum/`. The filter translates it into the audit record's `action`.
-- **Exceptions stay HTTP-free** — no `HttpStatus` on the class. The exception-type → status mapping is the filter's, keeping `application/` transport-agnostic.
-
-### Observability (Logging & Exception Tracking)
-
-Decide per catch/branch by asking **"who acts on this, and does the system fix itself?"** — never log or capture reflexively.
-
-- **Sentry (`IExceptionTrackerPort.captureException`) → only when a human must intervene and it will NOT self-heal.** E.g. an event permanently dead-lettered (`DEAD` — data loss), a connection down until restart. Pair with an `error`-level log.
-- **`logger.warn` → self-healing failure whose _cause_ is a forensic breadcrumb**, when another signal (metric or existing Sentry alert) already brings someone to the logs. It answers _why_, doesn't alert. Justified only when both hold: (1) something else detects the incident, (2) the warn carries a root cause not available elsewhere. E.g. a relay drain failure (backlog metric brings you in; warn names the cause), a failed `markDead` write (terminal Sentry alert already fired; warn explains the loop).
-- **`logger.log` → operationally significant events** possibly needed later for audit/forensics even without failure (e.g. login/auth-state change). Meaningful state transitions, not routine chatter.
-- **Silent `catch` → fully self-healing failure nobody will investigate.** Swallow with an explanatory comment; no log, no Sentry. E.g. shutdown-cleanup errors (OS reclaims the socket), a missed daily prune (next run + table-size metrics cover it). The `catch` only stops an unhandled rejection.
-- **A self-healing `catch` must not throw** — the outer `finally`/loop bookkeeping (e.g. a single-flight `isDraining` flag) must still run, or the component deadlocks.
-- When a branch drops all logging/Sentry, also remove the now-unused `loggerPort` / `exceptionTrackerPort` injections and imports.
-
-### Guards & Auth
-
-- `AuthGuard` (JWT) and `AuthRolesGuard` (roles) are global. Mark public endpoints with `@Public()`.
-- Use `@CriticalThrottle()` on sensitive endpoints (login, refresh).
+**Exception Responsibility** — TODO, this section is still to be written. Remind the user it is empty whenever exception design comes up.
 
 ### API Documentation
 
-Before adding raw `@ApiResponse`, check `src/core/doc/decorator/` for existing `ApiDefault*` decorators.
+**Documentation first**: every controller endpoint needs `@ApiTags`, `@ApiOperation`, and `ApiDefault*` decorators. Before adding a raw `@ApiResponse`, check `src/core/doc/decorator/` for an existing `ApiDefault*`.
+
+## Observability (Logging & Exception Tracking)
+
+Decide per catch/branch by asking **"who acts on this, and does the system fix itself?"** — never log or capture reflexively.
+
+- **Sentry (`IExceptionTrackerPort.captureException`) → only when a human must intervene and it will NOT self-heal.**
+- **`logger.warn` → self-healing failure whose _cause_ is a forensic breadcrumb.** It answers _why_, doesn't alert. Justified only when both hold: (1) something else — a metric or an existing Sentry alert — already detects the incident and brings someone to the logs, (2) the warn carries a root cause not available elsewhere. E.g. a relay drain failure (backlog metric brings you in; warn names the cause), a failed `markDead` write (terminal Sentry alert already fired; warn explains the loop).
+- **`logger.log` → operationally significant events** possibly needed later for audit/forensics even without failure (e.g. login/auth-state change). Meaningful state transitions, not routine chatter.
+- **Silent `catch` → fully self-healing failure nobody will investigate.** Swallow with an explanatory comment; no log, no Sentry. E.g. shutdown-cleanup errors (OS reclaims the socket), a missed daily prune (next run + table-size metrics cover it). The `catch` only stops an unhandled rejection.
+- **A self-healing `catch` must not throw.**
+
+## Coding Conventions
+
+### JSDoc
+
+Every file MUST start with `@file` + `@description`. All classes, interfaces, methods, and functions need JSDoc explaining _why_ they exist.
+
+- `@param` MUST NOT include TypeScript types.
+- `@throws {ExceptionType}` in curly braces.
+- No `@returns` on `void`/`Promise<void>` methods.
+- Decorator functions returning a decorator: describe the value, not the raw type.
+
+### `interface` vs `type`
+
+- **`interface`** — a **contract or behavior** a class will `implement`: Ports, Repositories, Service contracts.
+- **`type`** — a pure **data shape** with no behavior: Command/Query payloads, results, read-models, unions/intersections, utility compositions (`Pick`, `Omit`, `Partial`), tuples.
+
+Rule: "What does it **do**?" → `interface`. "What does it **contain**?" → `type`.
+
+### Return Types
+
+- **Interfaces**: always annotate explicitly (including `void`/`Promise<void>`).
+- **Class implementations**: do NOT annotate `void`/`Promise<void>`; DO annotate all non-void returns.
 
 ### Environment Variables
 
@@ -210,32 +291,7 @@ configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
 
 ### Variable Inlining
 
-- Used once → inline. Used more than once → extract to a named variable.
-
-### Return Types
-
-- **Interfaces**: always annotate explicitly (including `void`/`Promise<void>`).
-- **Class implementations**: do NOT annotate `void`/`Promise<void>`; DO annotate all non-void returns.
-
-### `interface` vs `type`
-
-- **`interface`** — a **contract or behavior** a class will `implement`: Ports, Repositories, Service contracts.
-- **`type`** — a pure **data shape** with no behavior: Command/Query payloads, results, read-models, unions/intersections, utility compositions (`Pick`, `Omit`, `Partial`), tuples.
-
-Rule: "What does it **do**?" → `interface`. "What does it **contain**?" → `type`.
-
-### Injection Tokens
-
-Each token is defined in the **same `*.port.ts` file as its port interface**. A token tied to no port lives in a descriptive constant file next to what it configures. Always inject via the Symbol token, never by class across module boundaries.
-
-### JSDoc
-
-Every file MUST start with `@file` + `@description`. All exported classes, interfaces, methods, and functions need JSDoc explaining _why_ they exist.
-
-- `@param` MUST NOT include TypeScript types.
-- `@throws {ExceptionType}` in curly braces.
-- No `@returns` on `void`/`Promise<void>` methods.
-- Decorator functions returning a decorator: describe the value, not the raw type.
+Used once → inline. Used more than once → extract to a named variable.
 
 ## Testing Rules
 
@@ -243,56 +299,9 @@ Every file MUST start with `@file` + `@description`. All exported classes, inter
 - Never assert hardcoded validation message strings — use `expect.any(String)` or `expect.stringContaining(...)`.
 - **Positive & Negative Path**: verify all mocks called in chronological order with `.toHaveBeenCalledWith(...)`. In negative paths, assert `.not.toHaveBeenCalled()` only on the **immediate next** function — not further downstream.
 
-## What NOT to Do
+## Reference
 
-- No Drizzle, NestJS decorators, or HTTP types inside `domain/` or `application/`.
-- No `LogPayload` / `AuditLogPayload` inside a thrown exception — exceptions carry facts in `context`, the filter builds the log record.
-- No DB queries across module boundaries — go through the Facade.
-- No `any` — ESLint enforces `@typescript-eslint/no-explicit-any`.
-- No `process.env` access anywhere except `src/core/config/environment/environment.validation.ts`.
-- No skipping `class-validator` decorators on any DTO property.
-- No state or uploaded files in local memory or filesystem.
-
-## Directory Structure
-
-Group by bounded-context → hexagonal layer → role. `module/` and everything under it is **singular**.
-
-```
-src/
-  core/                         # NestJS framework wiring only — no business logic
-    cache/  config/  database/  doc/  email/  event-bus/  exception/
-    http/  inbox-ledger/  messaging/  observability/  outbox/  security/
-  module/                       # Bounded Contexts
-    <module>/
-      index.ts                  # module barrel — public surface
-      <module>.module.ts
-      <module>.facade.ts        # public READ API for other modules
-      application/
-        command/<command-name>/ # command.ts + handler.ts + index.ts (+ port.ts for its write port)
-          port/                 # write port(s) shared across the module's commands
-        query/<query-name>/     # query.ts (holds the result/read-model type) + port.ts + index.ts
-                                #   (+ handler.ts only when QueryBus-dispatched)
-        event/                  # in-process domain-event listeners (outbox relay / event bus)
-        constant/
-      domain/
-        aggregate/
-        event/                  # domain-event enums
-      infrastructure/
-        adapter/                # reader + writer adapters implementing application ports
-        database/schema/        # module-owned Drizzle schema
-      presentation/
-        controller/
-        dto/
-        decorator/              # module-specific (e.g. auth)
-  shared/                       # cross-module building blocks (MUST NOT depend on src/core/)
-    domain/                     # pure TS — base Aggregate Root & Domain Event; per-context enums + integration-event enums (admin/, user/)
-    application/event/          # dispatched-domain-event type
-    pagination/  search/  sort/ # shared param types, constants, enums
-test/                           # E2E and integration tests
-.agents/rules/nestjs-skeleton.md   # mirror of CLAUDE.md — always kept in sync
-```
-
-## Commands
+### Commands
 
 | Task                   | Command                   |
 | ---------------------- | ------------------------- |
@@ -313,7 +322,7 @@ test/                           # E2E and integration tests
 | Build Swagger JSON     | `npm run build:doc`       |
 | Build typed API client | `npm run build:client`    |
 
-## Tech Stack
+### Tech Stack
 
 | Concern            | Technology                                                    |
 | ------------------ | ------------------------------------------------------------- |
@@ -321,7 +330,8 @@ test/                           # E2E and integration tests
 | HTTP               | Fastify (`@nestjs/platform-fastify`)                          |
 | Database           | Drizzle ORM + PostgreSQL (`postgres` client)                  |
 | Cache / Rate Limit | Redis (`ioredis`, `@nest-lab/throttler-storage-redis`)        |
-| Queue              | BullMQ (Outbox Pattern & side-effects)                        |
+| Events             | `@nestjs/event-emitter` — in-process, behind `IEventBusPort`  |
+| Queue              | none yet — see **Events & Messaging**                         |
 | Email              | Google APIs (Gmail)                                           |
 | Hashing            | Argon2                                                        |
 | Validation         | `class-validator` + `class-transformer`                       |
