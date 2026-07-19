@@ -5,14 +5,12 @@
  * instead of throwing a 500 error, ensuring system availability.
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { ThrottlerModuleOptions, ThrottlerStorage } from '@nestjs/throttler';
 import { ThrottlerException, ThrottlerGuard, ThrottlerRequest } from '@nestjs/throttler';
 import { ENV, Environment } from 'src/core/config';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { KEY_DECORATOR_CRITICAL_THROTTLE } from 'src/core/security/throttle/decorator/critical-throttle.decorator';
 import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 
@@ -28,15 +26,12 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
      * @param storageService Rate-limiting storage provider.
      * @param reflector NestJS Reflector to read route metadata.
      * @param configService Configuration reader service.
-     * @param loggerPort Injected logger service.
      */
     constructor(
         options: ThrottlerModuleOptions,
         storageService: ThrottlerStorage,
         reflector: Reflector,
         private readonly configService: ConfigService,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
-        @Inject(TOKEN_EXCEPTION_TRACKER_PORT) private readonly exceptionTrackerPort: IExceptionTrackerPort,
     ) {
         super(options, storageService, reflector);
     }
@@ -75,23 +70,11 @@ export class FailSafeThrottlerGuard extends ThrottlerGuard {
                 throw error;
             }
 
-            const _error = error instanceof Error ? error : new Error(String(error));
-
-            this.loggerPort.error(this.createLogPayload(_error));
-            this.exceptionTrackerPort.captureException(_error);
-
+            // Fail-open: rate limiting degrades gracefully and self-heals when the storage recovers.
+            // No log, no Sentry — the storage is the state Redis client, so the outage is already
+            // detected by the health alarm and its cause named by the connection-transition log in
+            // `core/cache/module.ts`; a per-request record here would only flood during the outage.
             return true;
         }
-    }
-
-    /**
-     * Creates a standardized log payload for the fail-safe throttler guard.
-     */
-    private createLogPayload(error: Error): LogPayload {
-        return new LogPayload({
-            class: this.constructor.name,
-            method: this.handleRequest.name,
-            error,
-        });
     }
 }

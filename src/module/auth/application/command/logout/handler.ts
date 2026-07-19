@@ -1,3 +1,8 @@
+/**
+ * @file handler.ts
+ * @description Handles the LogoutCommand by closing the caller's refresh session on a best-effort basis.
+ */
+
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';

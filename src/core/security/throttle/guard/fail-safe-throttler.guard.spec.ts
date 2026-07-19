@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 /**
  * @file fail-safe-throttler.guard.spec.ts
  * @description Unit tests for the fail-safe throttler rate-limiting guard.
@@ -11,8 +10,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { ThrottlerRequest } from '@nestjs/throttler';
 import { getOptionsToken, getStorageToken, ThrottlerException, ThrottlerGuard } from '@nestjs/throttler';
 import { Environment } from 'src/core/config';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { FailSafeThrottlerGuard } from 'src/core/security/throttle/guard/fail-safe-throttler.guard';
 import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,25 +31,9 @@ describe('FailSafeThrottlerGuard', () => {
             getTracker: vi.fn(),
             generateKey: vi.fn(),
         } satisfies ThrottlerRequest,
-        mockParentGuard = ThrottlerGuard.prototype as unknown as ThrottlerGuardSpyTarget,
-        mockLoggerPort = {
-            error: vi.fn(),
-            warn: vi.fn(),
-            log: vi.fn(),
-        } as unknown as ILoggerPort,
-        mockExceptionTrackerPort = {
-            captureException: vi.fn(),
-        } as unknown as IExceptionTrackerPort;
+        mockParentGuard = ThrottlerGuard.prototype as unknown as ThrottlerGuardSpyTarget;
 
     let guard: FailSafeThrottlerGuard, configService: ConfigService, reflector: Reflector;
-
-    function createLogPayload(error: Error) {
-        return new LogPayload({
-            class: FailSafeThrottlerGuard.name,
-            method: guard['handleRequest'].name,
-            error,
-        });
-    }
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -78,8 +59,6 @@ describe('FailSafeThrottlerGuard', () => {
                         getOrThrow: vi.fn(),
                     },
                 },
-                { provide: TOKEN_LOGGER_PORT, useValue: mockLoggerPort },
-                { provide: TOKEN_EXCEPTION_TRACKER_PORT, useValue: mockExceptionTrackerPort },
             ],
         }).compile();
 
@@ -175,10 +154,9 @@ describe('FailSafeThrottlerGuard', () => {
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(exception);
 
             await expect(guard['handleRequest'](mockRequest)).rejects.toThrow(exception);
-            expect(mockLoggerPort.error).not.toHaveBeenCalled();
         });
 
-        it('should log storage error and return true (fail-open) when super.handleRequest throws a generic Error', async () => {
+        it('should return true silently (fail-open) when super.handleRequest throws a generic Error', async () => {
             const error = new Error();
 
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
@@ -186,12 +164,9 @@ describe('FailSafeThrottlerGuard', () => {
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(error);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(error));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(error);
         });
 
-        it('should log string representation and return true (fail-open) when super.handleRequest throws a primitive string', async () => {
+        it('should return true silently (fail-open) when super.handleRequest throws a primitive string', async () => {
             const error = 'string error';
 
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
@@ -199,12 +174,9 @@ describe('FailSafeThrottlerGuard', () => {
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(error);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(new Error(error)));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(new Error(error));
         });
 
-        it('should log string representation and return true (fail-open) when super.handleRequest throws null', async () => {
+        it('should return true silently (fail-open) when super.handleRequest throws null', async () => {
             const error = null;
 
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
@@ -212,9 +184,6 @@ describe('FailSafeThrottlerGuard', () => {
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(error);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(new Error(String(error))));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(new Error(String(error)));
         });
     });
 });

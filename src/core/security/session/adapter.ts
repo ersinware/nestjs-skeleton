@@ -1,5 +1,5 @@
 /**
- * @file session.service.ts
+ * @file adapter.ts
  * @description Service responsible for managing user and admin sessions directly in Redis.
  */
 
@@ -10,6 +10,7 @@ import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import type { ISessionPort } from 'src/core/security/session/port';
 import { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
+import { SystemException } from 'src/shared/exception';
 
 /**
  * Monotonic-max write of the session version: advances the stored value only when the incoming
@@ -179,13 +180,15 @@ export class SessionAdapter implements ISessionPort {
      *
      * @param ttl The TTL string to convert.
      * @returns The duration in seconds.
-     * @throws {Error} if the TTL format is invalid or unsupported.
+     * @throws {SystemException} if the TTL format is invalid or unsupported.
      */
     parseTtlToSeconds(ttl: string): number {
         const matches = ttl.match(/^(\d+)([smhd])$/);
 
         if (!matches) {
-            throw new Error(`Invalid TTL format: "${ttl}". Expected format like "15m", "7d", "1h", "30s".`);
+            throw new SystemException(`Invalid TTL format: "${ttl}". Expected format like "15m", "7d", "1h", "30s".`, {
+                context: { class: this.constructor.name, method: this.parseTtlToSeconds.name },
+            });
         }
 
         const value = parseInt(matches[1]!, 10);
@@ -200,7 +203,9 @@ export class SessionAdapter implements ISessionPort {
             case 'd':
                 return value * 24 * 60 * 60;
             default:
-                throw new Error(`Unsupported TTL unit in "${ttl}"`);
+                throw new SystemException(`Unsupported TTL unit in "${ttl}"`, {
+                    context: { class: this.constructor.name, method: this.parseTtlToSeconds.name },
+                });
         }
     }
 }

@@ -7,13 +7,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
 import type { ICachePort } from 'src/core/cache/port/cache.port';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
+import { SystemException } from 'src/shared/exception';
 
 const ERROR_MESSAGE_EMPTY_KEY = 'Cache key must be a non-empty string.';
 
 /**
  * Service managing cache operations backed by Redis client.
+ *
+ * Every Redis failure is swallowed and the operation degrades to a cache miss: the caller falls back
+ * to its authoritative source, so the failure is fully self-healing per request. No logging or
+ * capture here — detection is the health alarm's job and the per-outage connection transition log in
+ * `core/cache/module.ts` names the cause; a per-call record would only flood during an outage.
  */
 @Injectable()
 export class CacheAdapter implements ICachePort {
@@ -21,24 +25,21 @@ export class CacheAdapter implements ICachePort {
      * Creates an instance of CacheAdapter.
      *
      * @param redis The injected Redis client.
-     * @param logger The injected Logger service.
      */
-    constructor(
-        @Inject(TOKEN_CACHE_CLIENT) protected readonly redis: Redis,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
-        @Inject(TOKEN_EXCEPTION_TRACKER_PORT) private readonly exceptionTrackerPort: IExceptionTrackerPort,
-    ) {}
+    constructor(@Inject(TOKEN_CACHE_CLIENT) protected readonly redis: Redis) {}
 
     /**
      * Gets a key's value from Redis, automatically parsing JSON values if applicable.
      *
      * @param key Cache key.
      * @returns A promise resolving to the typed value if found, otherwise null.
-     * @throws {Error} if key is empty.
+     * @throws {SystemException} if key is empty.
      */
     async get<T = string>(key: string): Promise<T | null> {
         if (!key) {
-            throw new Error(ERROR_MESSAGE_EMPTY_KEY);
+            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+                context: { class: this.constructor.name, method: this.get.name },
+            });
         }
 
         try {
@@ -48,12 +49,8 @@ export class CacheAdapter implements ICachePort {
             }
 
             return this.safeParse<T>(value) as T;
-        } catch (error) {
-            const _error = error instanceof Error ? error : new Error(String(error));
-
-            this.loggerPort.error(this.createLogPayload(this.get.name, _error));
-            this.exceptionTrackerPort.captureException(_error);
-
+        } catch {
+            // Fail-open: indistinguishable from a cache miss to the caller, which re-reads its source.
             return null;
         }
     }
@@ -65,7 +62,7 @@ export class CacheAdapter implements ICachePort {
      * @param value Cache value.
      * @param ttlSeconds Optional time-to-live in seconds.
      * @param options Optional configuration parameters.
-     * @throws {Error} if key is empty.
+     * @throws {SystemException} if key is empty.
      */
     async set(
         key: string,
@@ -74,7 +71,9 @@ export class CacheAdapter implements ICachePort {
         options?: { useJitter?: boolean; jitterMaxPercent?: number },
     ) {
         if (!key) {
-            throw new Error(ERROR_MESSAGE_EMPTY_KEY);
+            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+                context: { class: this.constructor.name, method: this.set.name },
+            });
         }
 
         try {
@@ -95,11 +94,8 @@ export class CacheAdapter implements ICachePort {
             } else {
                 await this.redis.set(key, stringValue);
             }
-        } catch (error) {
-            const _error = error instanceof Error ? error : new Error(String(error));
-
-            this.loggerPort.error(this.createLogPayload(this.set.name, _error));
-            this.exceptionTrackerPort.captureException(_error);
+        } catch {
+            // Fail-open: the value simply isn't cached; the next read falls back to the source.
         }
     }
 
@@ -107,20 +103,19 @@ export class CacheAdapter implements ICachePort {
      * Deletes a key from Redis.
      *
      * @param key Cache key.
-     * @throws {Error} if key is empty.
+     * @throws {SystemException} if key is empty.
      */
     async delete(key: string) {
         if (!key) {
-            throw new Error(ERROR_MESSAGE_EMPTY_KEY);
+            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+                context: { class: this.constructor.name, method: this.delete.name },
+            });
         }
 
         try {
             await this.redis.del(key);
-        } catch (error) {
-            const _error = error instanceof Error ? error : new Error(String(error));
-
-            this.loggerPort.error(this.createLogPayload(this.delete.name, _error));
-            this.exceptionTrackerPort.captureException(_error);
+        } catch {
+            // Fail-open: a stale entry outlives its invalidation but expires with its TTL.
         }
     }
 
@@ -128,11 +123,13 @@ export class CacheAdapter implements ICachePort {
      * Deletes all keys matching a specific pattern cursor-by-cursor using SCAN.
      *
      * @param pattern Glob-style key pattern.
-     * @throws {Error} if pattern is empty.
+     * @throws {SystemException} if pattern is empty.
      */
     async deletePattern(pattern: string) {
         if (!pattern) {
-            throw new Error('Cache pattern must be a non-empty string.');
+            throw new SystemException('Cache pattern must be a non-empty string.', {
+                context: { class: this.constructor.name, method: this.deletePattern.name },
+            });
         }
 
         try {
@@ -146,11 +143,8 @@ export class CacheAdapter implements ICachePort {
                     await this.redis.del(...keys);
                 }
             } while (cursor !== '0');
-        } catch (error) {
-            const _error = error instanceof Error ? error : new Error(String(error));
-
-            this.loggerPort.error(this.createLogPayload(this.deletePattern.name, _error));
-            this.exceptionTrackerPort.captureException(_error);
+        } catch {
+            // Fail-open: unswept entries outlive their invalidation but expire with their TTLs.
         }
     }
 
@@ -159,21 +153,19 @@ export class CacheAdapter implements ICachePort {
      *
      * @param key Cache key.
      * @returns A promise resolving to true if key exists, otherwise false.
-     * @throws {Error} if key is empty.
+     * @throws {SystemException} if key is empty.
      */
     async exists(key: string): Promise<boolean> {
         if (!key) {
-            throw new Error(ERROR_MESSAGE_EMPTY_KEY);
+            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+                context: { class: this.constructor.name, method: this.exists.name },
+            });
         }
 
         try {
             return (await this.redis.exists(key)) > 0;
-        } catch (error) {
-            const _error = error instanceof Error ? error : new Error(String(error));
-
-            this.loggerPort.error(this.createLogPayload(this.exists.name, _error));
-            this.exceptionTrackerPort.captureException(_error);
-
+        } catch {
+            // Fail-open: reported as absent, so the caller re-derives from its source.
             return false;
         }
     }
@@ -190,16 +182,5 @@ export class CacheAdapter implements ICachePort {
         } catch {
             return value;
         }
-    }
-
-    /**
-     * Creates a standardized log payload for the Redis service.
-     */
-    private createLogPayload(method: string, error: Error): LogPayload {
-        return new LogPayload({
-            class: this.constructor.name,
-            method,
-            error,
-        });
     }
 }

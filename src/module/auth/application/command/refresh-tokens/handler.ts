@@ -6,7 +6,6 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
@@ -48,7 +47,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         private readonly adminIdentityReaderPort: IAdminIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
     /**
@@ -138,8 +136,8 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // transactions), so the trigger is emitted on the in-process bus. Auth raises no aggregate of its
         // own, so the event is dispatched here rather than from a writer adapter. Fire-and-forget: the
         // sessions are already evicted and the caller must still get the 401 below, so a failing listener
-        // must not turn this into a 503. Until the outbox returns there is no delivery guarantee behind
-        // it, so a rejected dispatch is logged rather than swallowed.
+        // must not turn this into a 503. A rejected dispatch is swallowed — the family is already
+        // revoked above; the catch only stops an unhandled rejection.
         this.eventBusPort
             .emitAsync(
                 role === UserRole.USER
@@ -147,17 +145,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                     : AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
                 { aggregateId: sub, eventId: uuidv7() },
             )
-            .catch((error: unknown) =>
-                this.loggerPort.error(
-                    new LogPayload({
-                        class: RefreshTokensCommandHandler.name,
-                        method: this.execute.name,
-                        error,
-                        sub,
-                        role,
-                    }),
-                ),
-            );
+            .catch(() => {});
 
         throw this.createUnauthenticatedException(AuthRejectionReason.SESSION_REUSE, sub, role);
     }

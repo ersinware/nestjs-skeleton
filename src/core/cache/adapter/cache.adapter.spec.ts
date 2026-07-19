@@ -1,38 +1,23 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 /**
- * @file redis.service.spec.ts
+ * @file cache.adapter.spec.ts
  * @description Unit tests for the Redis cache service.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
 import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('CacheAdapter', () => {
     const mockRedis = {
-            get: vi.fn(),
-            set: vi.fn(),
-            del: vi.fn(),
-            scan: vi.fn(),
-            exists: vi.fn(),
-        },
-        mockLoggerPort = {
-            error: vi.fn(),
-            warn: vi.fn(),
-            log: vi.fn(),
-        } as unknown as ILoggerPort,
-        mockExceptionTrackerPort = {
-            captureException: vi.fn(),
-        } as unknown as IExceptionTrackerPort;
+        get: vi.fn(),
+        set: vi.fn(),
+        del: vi.fn(),
+        scan: vi.fn(),
+        exists: vi.fn(),
+    };
 
     let adapter: CacheAdapter;
-
-    function createLogPayload(method: string, error: Error) {
-        return new LogPayload({ class: CacheAdapter.name, method, error });
-    }
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -41,14 +26,6 @@ describe('CacheAdapter', () => {
                 {
                     provide: TOKEN_CACHE_CLIENT,
                     useValue: mockRedis,
-                },
-                {
-                    provide: TOKEN_LOGGER_PORT,
-                    useValue: mockLoggerPort,
-                },
-                {
-                    provide: TOKEN_EXCEPTION_TRACKER_PORT,
-                    useValue: mockExceptionTrackerPort,
                 },
             ],
         }).compile();
@@ -90,16 +67,13 @@ describe('CacheAdapter', () => {
             expect(mockRedis.get).toHaveBeenCalledWith(key);
         });
 
-        it('should log error and return null when Redis client throws an error (fail-open)', async () => {
+        it('should return null silently when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key';
             const error = new Error();
 
             mockRedis.get.mockRejectedValueOnce(error);
 
             expect(await adapter.get(key)).toBeNull();
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(adapter.get.name, error));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(error);
         });
 
         it('should throw an error if key is empty', async () => {
@@ -187,7 +161,7 @@ describe('CacheAdapter', () => {
             expect(mockRedis.set).toHaveBeenCalledWith(key, expectedSerialized);
         });
 
-        it('should log error when Redis client throws an error (fail-open)', async () => {
+        it('should swallow the error silently when Redis client throws (fail-open)', async () => {
             const key = 'test_key',
                 value = 'test_value';
             const error = new Error();
@@ -195,9 +169,6 @@ describe('CacheAdapter', () => {
             mockRedis.set.mockRejectedValueOnce(error);
 
             await expect(adapter.set(key, value)).resolves.toBeUndefined();
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(adapter.set.name, error));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(error);
         });
 
         it('should throw an error if key is empty', async () => {
@@ -216,16 +187,13 @@ describe('CacheAdapter', () => {
             expect(mockRedis.del).toHaveBeenCalledWith(key);
         });
 
-        it('should log error when Redis client throws an error (fail-open)', async () => {
+        it('should swallow the error silently when Redis client throws (fail-open)', async () => {
             const key = 'test_key';
             const error = new Error();
 
             mockRedis.del.mockRejectedValueOnce(error);
 
             await expect(adapter.delete(key)).resolves.toBeUndefined();
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(adapter.delete.name, error));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(error);
         });
 
         it('should throw an error if key is empty', async () => {
@@ -275,16 +243,13 @@ describe('CacheAdapter', () => {
             expect(mockRedis.del).not.toHaveBeenCalled();
         });
 
-        it('should log error when Redis client throws an error (fail-open)', async () => {
+        it('should swallow the error silently when Redis client throws (fail-open)', async () => {
             const pattern = 'prefix:*';
             const error = new Error('Redis scan failed');
 
             mockRedis.scan.mockRejectedValueOnce(error);
 
             await expect(adapter.deletePattern(pattern)).resolves.toBeUndefined();
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(adapter.deletePattern.name, error));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(error);
         });
 
         it('should throw an error if pattern is empty', async () => {
@@ -312,16 +277,13 @@ describe('CacheAdapter', () => {
             expect(mockRedis.exists).toHaveBeenCalledWith(key);
         });
 
-        it('should log error and return false when Redis client throws an error (fail-open)', async () => {
+        it('should return false silently when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key';
             const error = new Error('Redis exists failed');
 
             mockRedis.exists.mockRejectedValueOnce(error);
 
             expect(await adapter.exists(key)).toBe(false);
-
-            expect(mockLoggerPort.error).toHaveBeenCalledWith(createLogPayload(adapter.exists.name, error));
-            expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(error);
         });
 
         it('should throw an error if key is empty', async () => {

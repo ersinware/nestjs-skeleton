@@ -5,7 +5,6 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
@@ -29,13 +28,11 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
      * @param userWriterPort The port used to load and save the user aggregate
      * @param hashingPort The port used to verify and hash passwords
      * @param sessionPort The port used to push the session version to Redis
-     * @param loggerPort The port used to record best-effort sync-write failures
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
     /**
@@ -70,10 +67,8 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
         // before it.
         try {
             await this.sessionPort.setVersion(id, user.version);
-        } catch (error) {
-            this.loggerPort.error(
-                new LogPayload({ class: ChangeUserPasswordCommandHandler.name, method: this.execute.name, error }),
-            );
+        } catch {
+            // Best-effort instant eviction.
         }
     }
 }
