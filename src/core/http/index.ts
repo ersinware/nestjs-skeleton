@@ -13,3 +13,4 @@ export * from 'src/core/http/validation/decorator/name.decorator';
 export * from 'src/core/http/validation/decorator/password.decorator';
 export * from 'src/core/http/validation/dto/param-id.dto';
 export * from 'src/core/http/validation/pipe/not-empty-body.pipe';
+export * from 'src/core/http/validation/request-validation-message.enum';

@@ -46,18 +46,18 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
             user = await this.userIdentityReaderPort.getCredentialsByEmail(command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                this.throwUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND);
+                throw this.createUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND);
             }
 
             throw error;
         }
 
         if (user.isBanned) {
-            this.throwUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, user.id);
+            throw this.createUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, user.id);
         }
 
         if (!(await this.hashingPort.verify(user.password, command.password))) {
-            this.throwUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, user.id);
+            throw this.createUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, user.id);
         }
 
         const id = user.id,
@@ -71,12 +71,16 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
     }
 
     /**
-     * Throws the rejection with the detail of the failed attempt attached. Attaching context is this
+     * Builds the rejection with the detail of the failed attempt attached. Attaching context is this
      * handler's whole contribution — recording it is the exception filter's job — and it is also what
      * separates a deliberately rejected credential from the routine expired-token `401`s that carry none.
+     *
+     * @param reason Why the attempt was rejected, recorded for the audit log
+     * @param sub The rejected account's id, absent when no account matched the email
+     * @returns The exception the caller throws
      */
-    private throwUnauthenticatedException(reason: AuthRejectionReason, sub?: string): never {
-        throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
+    private createUnauthenticatedException(reason: AuthRejectionReason, sub?: string): UnauthenticatedException {
+        return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
             context: {
                 class: this.constructor.name,
                 method: this.execute.name,

@@ -8,6 +8,7 @@ import { QueryBus } from '@nestjs/cqrs';
 import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { plainToInstance } from 'class-transformer';
+import { ROUTE_HEALTH } from 'src/core/config';
 import { ApiDefaultInternalServerErrorResponse } from 'src/core/doc';
 import { Public } from 'src/core/security/auth';
 import {
@@ -23,7 +24,7 @@ import { DependencyUnavailableMessage } from 'src/shared/exception';
  * Used to confirm that the application is capable of handling incoming requests successfully.
  */
 @Controller({
-    path: 'health',
+    path: ROUTE_HEALTH,
     version: VERSION_NEUTRAL,
 })
 @SkipThrottle()

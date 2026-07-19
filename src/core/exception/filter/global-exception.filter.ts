@@ -6,6 +6,7 @@
 import type { ArgumentsHost } from '@nestjs/common';
 import { Catch, ExceptionFilter, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
+import { PATH_HEALTH } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import {
     AuditLogAction,
@@ -24,12 +25,6 @@ import {
     SystemMessage,
     type ExceptionContext,
 } from 'src/shared/exception';
-
-/**
- * The exact request path of the health endpoint (global `api` prefix + version-neutral `health`
- * route), whose intentional 503 must bypass response normalization.
- */
-const PATH_HEALTH = '/api/health';
 
 /**
  * The single place the transport-neutral exception taxonomy meets HTTP. Typed as an exhaustive
@@ -135,11 +130,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         const statusCode = KIND_TO_STATUS[exception.kind];
 
-        return {
+        return new ErrorDefaultDto({
             statusCode,
             message: [exception.message],
             statusText: this.deriveStatusText(statusCode, exception.name),
-        };
+        });
     }
 
     /**
@@ -160,7 +155,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             message = this.extractMessages(exception.getResponse(), exception.message);
         }
 
-        return { statusCode, message, statusText: this.deriveStatusText(statusCode, exception.name) };
+        return new ErrorDefaultDto({
+            statusCode,
+            message,
+            statusText: this.deriveStatusText(statusCode, exception.name),
+        });
     }
 
     /**
@@ -207,11 +206,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * Fallback standard payload for completely unknown or unhandled internal errors.
      */
     private formatInternalServerError(): ErrorDefaultDto {
-        return {
+        return new ErrorDefaultDto({
             statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
             message: [SystemMessage.DEFAULT],
             statusText: 'Internal Server Error',
-        };
+        });
     }
 
     /**
@@ -239,9 +238,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             (statusCode === HttpStatus.UNAUTHORIZED && context !== undefined);
 
         if (isSecurityAudited) {
-            this.loggerPort.warn(
-                this.createSecurityAuditLogPayload(message.join(', ') || 'Unknown error', request, context),
-            );
+            this.loggerPort.warn(this.createSecurityAuditLogPayload(message.join(', '), request, context));
         } else if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR && statusCode !== HttpStatus.SERVICE_UNAVAILABLE) {
             this.loggerPort.error(this.createErrorLogPayload(exception, context));
             this.exceptionTrackerPort.captureException(exception);

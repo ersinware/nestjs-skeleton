@@ -84,20 +84,20 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                     : await this.adminIdentityReaderPort.getAuthState(sub);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                this.throwUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, sub, role);
+                throw this.createUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, sub, role);
             }
 
             throw error;
         }
 
         if (identity.isBanned) {
-            this.throwUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, sub, role);
+            throw this.createUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, sub, role);
         }
 
         // Version is read from the DB (the authority), so a ban/password-change/delete that advanced
         // the version rejects the refresh before it can mint a fresh token.
         if (payload.version < identity.version) {
-            this.throwUnauthenticatedException(AuthRejectionReason.SESSION_REVOKED, sub, role);
+            throw this.createUnauthenticatedException(AuthRejectionReason.SESSION_REVOKED, sub, role);
         }
 
         const tokens = await this.tokenPort.generateTokens(role, sub, identity.version);
@@ -159,17 +159,26 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 ),
             );
 
-        this.throwUnauthenticatedException(AuthRejectionReason.SESSION_REUSE, sub, role);
+        throw this.createUnauthenticatedException(AuthRejectionReason.SESSION_REUSE, sub, role);
     }
 
     /**
-     * Throws the rejection with the detail of the failed refresh attached. Attaching context is this
+     * Builds the rejection with the detail of the failed refresh attached. Attaching context is this
      * handler's whole contribution — recording it is the exception filter's job — and it is also what
      * separates a revoked session or detected token reuse from the routine expired-token `401`s that
      * carry none.
+     *
+     * @param reason Why the refresh was rejected, recorded for the audit log
+     * @param sub The rejected token's subject
+     * @param role The rejected token's role
+     * @returns The exception the caller throws
      */
-    private throwUnauthenticatedException(reason: AuthRejectionReason, sub?: string, role?: string): never {
-        throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, {
+    private createUnauthenticatedException(
+        reason: AuthRejectionReason,
+        sub: string,
+        role: string,
+    ): UnauthenticatedException {
+        return new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, {
             context: {
                 class: this.constructor.name,
                 method: this.execute.name,

@@ -11,14 +11,15 @@ import { UnauthenticatedMessage } from 'src/shared/exception';
  * Custom Swagger decorator to standardize the 401 Unauthorized response.
  * Uses the default ErrorDefaultDto and standard error messages based on authorization failure type.
  *
- * @param type The type of authorization failure.
+ * @param message The client-safe unauthenticated message — typed as a plain string because module-owned
+ * vocabularies (e.g. a use case's rejection messages) must be documentable without core knowing them.
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultUnauthenticatedResponse(
-    type: UnauthenticatedMessage = UnauthenticatedMessage.DEFAULT,
+    message: string = UnauthenticatedMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiUnauthorizedResponse({
-        description: type,
+        description: message,
         type: ErrorDefaultDto,
     });
 }

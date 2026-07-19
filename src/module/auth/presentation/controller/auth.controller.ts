@@ -15,7 +15,7 @@ import {
     ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { NotEmptyBodyPipe } from 'src/core/http';
+import { NotEmptyBodyPipe, RequestValidationMessage } from 'src/core/http';
 import { AccessTokenPayloadDecorator, Public } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
 import type { AccessTokenPayload } from 'src/core/security/token';
@@ -31,7 +31,7 @@ import {
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
-import { InvalidInputMessage, UnauthenticatedMessage } from 'src/shared/exception';
+import { UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * The controller handling session lifecycle endpoints.
@@ -70,7 +70,7 @@ export class AuthController {
         description: 'Validates credentials and issues a JWT access and refresh token pair for a user.',
     })
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
     async loginUser(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
@@ -100,7 +100,7 @@ export class AuthController {
             'Validates administrative credentials and issues a JWT access and refresh token pair for an admin.',
     })
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
     async loginAdmin(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
@@ -130,7 +130,7 @@ export class AuthController {
         description: 'Exchanges a valid refresh token for a new access and refresh token pair.',
     })
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceConflictResponse(RefreshTokensMessage.CONCURRENT_REFRESH)
     async refresh(@Body(NotEmptyBodyPipe) dto: PostRefreshDto): Promise<ResponseTokensDto> {
@@ -158,7 +158,7 @@ export class AuthController {
         description: 'Invalidates the current session by removing its refresh token from the cache.',
     })
     @ApiNoContentResponse({ description: 'Successfully logged out.' })
-    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     async logout(@Body(NotEmptyBodyPipe) dto: PostRefreshDto) {
         await this.commandBus.execute<LogoutCommand>(new LogoutCommand(dto.refreshToken));
