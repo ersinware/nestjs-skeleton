@@ -17,7 +17,9 @@ export default defineConfig({
         root: './',
         restoreMocks: true,
         clearMocks: true,
-        include: ['src/**/*.spec.ts'],
+        // `test/architecture/` holds tests about the repository's own structure, so they belong with
+        // the unit run rather than the e2e one (which matches only `*.e2e-spec.ts` and boots an app).
+        include: ['src/**/*.spec.ts', 'test/architecture/**/*.spec.ts'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],

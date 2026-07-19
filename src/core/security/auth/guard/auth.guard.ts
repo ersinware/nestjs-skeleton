@@ -12,12 +12,10 @@ import {
     UnauthenticatedException,
     UnauthenticatedType,
 } from 'src/core/exception';
-import type { AccessTokenPayload } from 'src/core/security/auth/access-token-payload.type';
-import { AuthTokenType } from 'src/core/security/auth/auth-token-type.enum';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { AuthTokenType, TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
 
 /**
  * Authentication guard enforcing global JWT check with automatic instant eviction via the cached session version.

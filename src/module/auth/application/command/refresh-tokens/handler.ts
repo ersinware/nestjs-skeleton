@@ -23,9 +23,8 @@ import {
     TOKEN_LOGGER_PORT,
     type ILoggerPort,
 } from 'src/core/observability/logger';
-import { AuthTokenType } from 'src/core/security/auth';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     TOKEN_ADMIN_IDENTITY_READER_PORT,
     type IAdminIdentityReaderPort,

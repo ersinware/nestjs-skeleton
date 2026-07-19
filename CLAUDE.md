@@ -39,18 +39,19 @@ Dependencies flow strictly inward. Every other import is ILLEGAL.
 
 What the table alone does not say:
 
-- **`domain` is pure TypeScript** — beyond `shared`, it imports no `core`, no `@nestjs/*`, no `drizzle-orm`, no npm framework at all. Machine-enforced by `boundaries/external` as an **allowlist**: the domain layer is allowed NO external package, so a newly added dependency is denied by default instead of waiting to be blacklisted.
+- **`domain` AND `shared` are pure TypeScript** — no `core`, no `@nestjs/*`, no `drizzle-orm`, no npm framework at all. `shared` is held to the same bar because `domain` imports it: a package admitted there would reach `domain` transitively. Machine-enforced as an **allowlist**: `checkAllOrigins` brings npm packages under the rule's `default: 'disallow'`, and both layers are then denied every `origin: 'external'` dependency — a newly added package is refused by default instead of waiting to be blacklisted. Node builtins remain legal.
 - **A module's `application/` depends on core's contract surface** (ports, exceptions, types, utils) — never on a core adapter; adapters arrive by DI.
 - **`{{from.captured.module}}` means "own module"**, so cross-module traffic is legal only into a module `index.ts`, and only from `infrastructure` or `*.module.ts`. A `*.module.ts` may also reach its OWN `facade` — that is wiring inside the context, not a crossing.
 - **Every file must belong to an element** (`boundaries/no-unknown-files`). This is what makes "no fourth pillar" enforceable: a file under no layer is rejected rather than living outside every rule.
-- **`src/main.ts` and `src/app.module.ts` are the only exempt files** (`boundaries/ignore`), because composition roots must see everything. `src/instrument.ts` and `src/tracing.ts` are NOT exempt — they are a `bootstrap` element restricted to `shared` + `core`, since starting Sentry/OTel never requires reading into a module.
+- **`src/main.ts` and `src/app.module.ts` are the only exempt files** (`boundaries/ignore`), because composition roots must see everything — and `boundaries/no-ignored` bans importing them, so nothing sees the composition roots back. `src/instrument.ts` and `src/tracing.ts` are NOT exempt — they are a `bootstrap` element restricted to `shared` + `core`, since starting Sentry/OTel never requires reading into a module.
 - **Relative imports are banned** (`no-restricted-imports`). Always absolute from `src/` or `test/`.
-- **The `EventEmitter2` class is import-banned** everywhere except `src/core/event-bus/` (`no-restricted-imports`), which is the enforcement of §5's "publish through `IEventBusPort`". `@OnEvent` and `EventEmitterModule` from the same package stay legal — they are the subscribe and wiring sides, and neither has a port to route through.
+- **Cycles inside one layer are caught by `import/no-cycle`** — `boundaries` only constrains direction BETWEEN layers, and `forwardRef()` is prohibited (§2), so this rule is the only net for intra-layer cycles.
+- **devDependencies must not be imported from `src/`** (`import/no-extraneous-dependencies`) — they die at container start under `npm ci --omit=dev`. Co-located `*.spec.ts` files are the sole exemption.
 - **Boundary rules cover `src/` only.** `test/` is deliberately outside them for now — see § Testing Rules.
 
 ### 2. Module Isolation & the Facade
 
-- **The Facade is the single door into a bounded context, and that door is reached through `module/<ctx>/index.ts`** — never by importing `<ctx>.facade.ts` directly. §1 already makes every other cross-module path illegal, and `boundaries/entry-point` closes the deep path to the facade itself; a barrel that can be bypassed closes nothing (§ Barrels). The one exception is the context's own `*.module.ts`, which provides and exports the facade.
+- **The Facade is the single door into a bounded context, and that door is reached through `module/<ctx>/index.ts`** — never by importing `<ctx>.facade.ts` directly: no layer lists `facade` as an allowed cross-module target, only `moduleIndex`, because a barrel that can be bypassed closes nothing (§ Barrels). The one exception is the context's own `*.module.ts`, which provides and exports the facade.
 - A Facade exposes **READ/Query only**, or pre-transaction validation. Anything that must trigger a mutation elsewhere goes async (§5).
 - It MUST return the **query's own flat result type** — the `type` declared in that query's `query.ts` (e.g. `get-user-auth-state/query.ts` → `GetUserAuthStateResult`). Never a Drizzle object, an Aggregate Root, or a presentation `*.dto.ts` class.
 - `forwardRef()` is **PROHIBITED** — resolve circular deps via EDA (§5).
@@ -75,7 +76,7 @@ What the table alone does not say:
 
 Async Domain Events are required when a mutation must trigger reactions in other modules.
 
-- **Publish through `IEventBusPort`** (`TOKEN_EVENT_BUS_PORT`) — **never inject `EventEmitter2` directly**; the port is what keeps the transport swappable when the outbox lands.
+- **Publish through `IEventBusPort`** (`TOKEN_EVENT_BUS_PORT`) — never inject `EventEmitter2` directly; the port is what keeps the transport swappable when the outbox lands. Lint-enforced: the `EventEmitter2` class is import-banned everywhere except `src/core/event-bus/` (`no-restricted-imports`), while `@OnEvent` and `EventEmitterModule` stay legal — they are the subscribe and wiring sides, and neither has a port to route through.
 - **Events carry ONLY minimal metadata** — typically `type` + `aggregateId`. Never the full payload.
 - **Never trust event data as current** — re-read from DB or Facade when the handler runs.
 - **Listeners stay idempotent**, because at-least-once delivery is the destination.
@@ -107,6 +108,8 @@ Three top-level pillars, each with one job — and no fourth may be added:
 - **`src/shared/`** — pure, framework-free primitives any layer may use.
 - **`src/core/`** — the platform kernel: cross-cutting technical concerns as port + adapter + NestJS wiring. No business rules, no domain entities.
 - **`src/module/`** — the bounded contexts.
+
+**Adding a folder under `core/` or `shared/` is a two-file change: the folder AND a `boundaries/elements` entry in `eslint.config.mjs`.** Which form the entry takes is the shelf-vs-concern decision — see § Barrels for the forms and their failure modes.
 
 Group by bounded-context → hexagonal layer → role.
 
@@ -189,19 +192,24 @@ The only test: _does an outsider import from here, and are the inner files off-l
 | Level                                                    | Barrel? | Why                                                                                                                   |
 | -------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
 | Bounded context (`module/<ctx>/`)                        | YES     | A real boundary. Exposes ONLY the Facade + Module.                                                                    |
-| Core concern — the independently consumed one            | YES     | The concept's public API. Consumers enter only here.                                                                  |
+| Core/shared concern — the independently consumed one     | YES     | The concept's public API. Consumers enter only here.                                                                  |
 | A parent that merely SHELVES concerns (`core/security/`) | NO      | Not a concept — a bag of them, same mistake as a layer barrel.                                                        |
 | Hexagonal layer (`application/`, `presentation/`)        | NO      | Not a concept — a bag of them. Broad, cycle-prone surface.                                                            |
 | Role folder (`adapter/`, `port/`, `dto/`)                | NO      | Not a boundary, just an alias — the classic cause of circular deps in layered DDD, and it hides the dependency graph. |
 | Concept folder (`command/<name>/`)                       | NO      | Not a boundary — an alias.                                                                                            |
 
-**In `core/`, "concern" is not a fixed depth — it is whatever outsiders consume as ONE thing.** The barrel goes on the **deepest node imported as a whole**; every folder above it is a shelf with no `index.ts`. Ask only: _does the rest of the app reach for this folder, or for the things inside it?_ `core/cache/` is consumed as one capability → `core/cache/index.ts` exists, its `adapter/` + `port/` closed behind it. `core/security/` shelves five capabilities (`auth`, `hashing`, `token`, `session`, `throttle`) consumed separately by unrelated callers → the barrels sit on each capability (`core/security/auth/index.ts`, …) and **`core/security/index.ts` must not exist**.
-
-**`shared/` obeys the same test as `core/`.** It is equally a pillar of concerns, not one concept: `shared/pagination/` is consumed as one thing and carries a barrel, while `shared/domain/` merely shelves `admin`, `user`, `event` and `aggregate-root`, so the barrels sit on those and **`shared/domain/index.ts` must not exist**.
+**In `core/` AND `shared/`, "concern" is not a fixed depth — it is whatever outsiders consume as ONE thing.** The barrel goes on the **deepest node imported as a whole**; every folder above it is a shelf with no `index.ts`. Ask only: _does the rest of the app reach for this folder, or for the things inside it?_ `core/cache/` and `shared/pagination/` are each consumed as one capability → the barrel sits on them, their inner files closed behind it. `core/security/` shelves five capabilities (`auth`, `hashing`, `token`, `session`, `throttle`) and `shared/domain/` shelves four (`admin`, `user`, `event`, `aggregate-root`), each consumed separately by unrelated callers → the barrels sit on the capabilities, and **`core/security/index.ts` / `shared/domain/index.ts` must not exist**.
 
 **Consequently `index.ts` exists in exactly three kinds of place** — `module/<ctx>/`, the one core node consumed as a whole, and the one shared node consumed as a whole; any other is a violation. Stacked nested barrels are impossible: exactly one level per branch passes the test, so if two levels both look right, the parent is a shelf — delete its barrel.
 
-**This is machine-enforced** by `boundaries/entry-point`: every `core` and `shared` concern is declared as an element in `eslint.config.mjs`, and `index.ts` is its only legal entry point. A shelf is therefore never declared — only the capabilities inside it are, which is why adding a new concern requires an explicit config entry and forces the shelf-vs-concern decision to be made consciously.
+**This is machine-enforced** by `boundaries/dependencies`: every `core` and `shared` concern is declared as an element in `eslint.config.mjs`, and a trailing rule denies any dependency whose `internalPath` is not `index.ts`, making the barrel its only legal entry point. A shelf is never declared — only the capabilities inside it are — which is why adding a concern requires an explicit config entry (§ Project Structure) and forces the shelf-vs-concern decision to be made consciously. The two forms are not interchangeable:
+
+| The folder is…                        | It has…            | Declare it as | Example                                            |
+| ------------------------------------- | ------------------ | ------------- | -------------------------------------------------- |
+| a **concern** (consumed as one thing) | its own `index.ts` | no wildcard   | `{ type: 'core', pattern: 'src/core/cache' }`      |
+| a **shelf** (holds concerns)          | NO `index.ts`      | trailing `/*` | `{ type: 'core', pattern: 'src/core/security/*' }` |
+
+Forgetting the entry fails loudly — `boundaries/no-unknown-files` rejects every file in the folder. **Getting the form wrong fails silently**: declaring a shelf as a concern collapses everything under it into ONE element, and since dependencies inside a single element are never examined, the barrel between its capabilities stops being enforced while lint stays green. `test/architecture/boundaries-element.spec.ts` exists to catch exactly that, by deriving the expected form from whether `index.ts` is on disk.
 
 **NEVER use a barrel as a design justification.** "It goes through `index.ts` anyway, so it doesn't matter" would equally defend one 5000-line file or 200 files — an argument that defends everything defends nothing. A barrel only flattens the CONSUMER's view; it gives nothing to the person opening the file to change it, and organization is for that person.
 

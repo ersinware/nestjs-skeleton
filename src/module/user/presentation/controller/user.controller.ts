@@ -27,9 +27,9 @@ import {
 } from 'src/core/doc';
 import { InvalidRequestType, ResourceConflictType } from 'src/core/exception';
 import { NotEmptyBodyPipe, ParamIdDto, QuerySearchDto, ResponsePaginationDto } from 'src/core/http';
-import type { AccessTokenPayload } from 'src/core/security/auth';
 import { AccessTokenPayloadDecorator, Public, Roles } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
+import type { AccessTokenPayload } from 'src/core/security/token';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
 import { CreateUserCommand } from 'src/module/user/application/command/create-user/command';

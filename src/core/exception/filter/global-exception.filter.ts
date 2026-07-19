@@ -27,7 +27,8 @@ import {
     type ILoggerPort,
 } from 'src/core/observability/logger';
 import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
-import { AuthenticatedRequest } from 'src/core/security/auth';
+import type { AuthenticatedRequest } from 'src/core/security/auth';
+
 /**
  * Internal database error payload shape.
  */
