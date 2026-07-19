@@ -6,6 +6,7 @@
 import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
 import { AggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
+import { SystemException } from 'src/shared/exception';
 
 export interface UserProps {
     email: string;
@@ -65,10 +66,30 @@ export class User extends AggregateRoot {
     }
 
     /**
+     * Guards the "a soft-deleted account is immutable" invariant. Writers load only non-deleted
+     * rows, so reaching this guard means a broken code path handed a deleted aggregate to a
+     * mutator — a system fault surfaced as 500 + Sentry, never a client error.
+     *
+     * @param method The mutating method that was called, recorded as the exception origin
+     * @throws {SystemException} When the account has been soft-deleted
+     */
+    private assertNotDeleted(method: string): void {
+        if (this.props.deletedAt) {
+            throw new SystemException('Mutation attempted on a soft-deleted account.', {
+                context: { class: User.name, method },
+            });
+        }
+    }
+
+    /**
      * Updates the basic profile information of the user.
      * Only applies changes if the provided values differ from the current state.
+     *
+     * @throws {SystemException} When the account has been soft-deleted
      */
     updateProfile(payload: { name?: string | undefined; email?: string | undefined }) {
+        this.assertNotDeleted(this.updateProfile.name);
+
         let isUpdated = false;
 
         if (payload.name && payload.name !== this.props.name) {
@@ -90,8 +111,12 @@ export class User extends AggregateRoot {
     /**
      * Changes the user's password and bumps the session version so that every token minted before
      * this change is instantly rejected by the auth guard.
+     *
+     * @throws {SystemException} When the account has been soft-deleted
      */
     changePassword(password: string) {
+        this.assertNotDeleted(this.changePassword.name);
+
         this.props.password = password;
         this.props.version++;
         this.props.updatedAt = new Date();
@@ -102,8 +127,12 @@ export class User extends AggregateRoot {
     /**
      * Bans the user. Bumps the session version to instantly evict existing tokens, and emits a
      * BANNED event. A no-op when the account is already banned.
+     *
+     * @throws {SystemException} When the account has been soft-deleted
      */
     ban(): void {
+        this.assertNotDeleted(this.ban.name);
+
         if (this.props.isBanned) {
             return;
         }
@@ -119,8 +148,12 @@ export class User extends AggregateRoot {
      * Unbans the user and emits an UNBANNED event. Does not bump the session version — the version is
      * monotonic and re-login mints a token at the current version. A no-op when the account is not
      * banned.
+     *
+     * @throws {SystemException} When the account has been soft-deleted
      */
     unban(): void {
+        this.assertNotDeleted(this.unban.name);
+
         if (!this.props.isBanned) {
             return;
         }
@@ -136,8 +169,12 @@ export class User extends AggregateRoot {
      * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
      * SESSION_REUSE_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
      * owner can simply sign back in (and is separately advised, not forced, to change their password).
+     *
+     * @throws {SystemException} When the account has been soft-deleted
      */
     revokeSessions(): void {
+        this.assertNotDeleted(this.revokeSessions.name);
+
         this.props.version++;
         this.props.updatedAt = new Date();
 

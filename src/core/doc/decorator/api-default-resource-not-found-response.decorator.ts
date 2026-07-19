@@ -4,7 +4,8 @@
  */
 
 import { ApiNotFoundResponse } from '@nestjs/swagger';
-import { ErrorDefaultDto, ResourceNotFoundType } from 'src/core/exception';
+import { ErrorDefaultDto } from 'src/core/exception';
+import { ResourceNotFoundMessage } from 'src/shared/exception';
 
 /**
  * Custom Swagger decorator to standardize the 404 Not Found response.
@@ -14,7 +15,7 @@ import { ErrorDefaultDto, ResourceNotFoundType } from 'src/core/exception';
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultResourceNotFoundResponse(
-    type: ResourceNotFoundType = ResourceNotFoundType.DEFAULT,
+    type: ResourceNotFoundMessage = ResourceNotFoundMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiNotFoundResponse({
         description: type,

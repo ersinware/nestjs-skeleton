@@ -5,13 +5,13 @@
 
 import { Inject } from '@nestjs/common';
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException } from 'src/core/exception';
 import type { IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { TOKEN_GET_ADMIN_AUTH_STATE_PORT } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import {
     GetAdminAuthStateQuery,
     GetAdminAuthStateResult,
 } from 'src/module/admin/application/query/get-admin-auth-state/query';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Returns an admin's active status and current session version by ID.

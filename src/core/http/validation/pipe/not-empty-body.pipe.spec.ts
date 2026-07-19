@@ -4,8 +4,8 @@
  */
 
 import { ArgumentMetadata } from '@nestjs/common';
-import { InvalidRequestException } from 'src/core/exception';
 import { NotEmptyBodyPipe } from 'src/core/http/validation/pipe/not-empty-body.pipe';
+import { InvalidInputException } from 'src/shared/exception';
 import { describe, expect, it } from 'vitest';
 
 describe('NotEmptyBodyPipe', () => {
@@ -33,46 +33,46 @@ describe('NotEmptyBodyPipe', () => {
 
     describe('when metadata type is body', () => {
         describe('falsy values', () => {
-            it('should throw InvalidRequestException when value is null', () => {
-                expect(() => pipe.transform(null, bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is null', () => {
+                expect(() => pipe.transform(null, bodyMetadata)).toThrow(InvalidInputException);
             });
 
-            it('should throw InvalidRequestException when value is undefined', () => {
-                expect(() => pipe.transform(undefined, bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is undefined', () => {
+                expect(() => pipe.transform(undefined, bodyMetadata)).toThrow(InvalidInputException);
             });
 
-            it('should throw InvalidRequestException when value is an empty string', () => {
-                expect(() => pipe.transform('', bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is an empty string', () => {
+                expect(() => pipe.transform('', bodyMetadata)).toThrow(InvalidInputException);
             });
         });
 
         describe('non-object types', () => {
-            it('should throw InvalidRequestException when value is a string', () => {
-                expect(() => pipe.transform('hello', bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is a string', () => {
+                expect(() => pipe.transform('hello', bodyMetadata)).toThrow(InvalidInputException);
             });
 
-            it('should throw InvalidRequestException when value is a number', () => {
-                expect(() => pipe.transform(123, bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is a number', () => {
+                expect(() => pipe.transform(123, bodyMetadata)).toThrow(InvalidInputException);
             });
 
-            it('should throw InvalidRequestException when value is a boolean', () => {
-                expect(() => pipe.transform(true, bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is a boolean', () => {
+                expect(() => pipe.transform(true, bodyMetadata)).toThrow(InvalidInputException);
             });
         });
 
         describe('arrays', () => {
-            it('should throw InvalidRequestException when value is an empty array', () => {
-                expect(() => pipe.transform([], bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is an empty array', () => {
+                expect(() => pipe.transform([], bodyMetadata)).toThrow(InvalidInputException);
             });
 
-            it('should throw InvalidRequestException when value is a non-empty array', () => {
-                expect(() => pipe.transform([1, 2, 3], bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is a non-empty array', () => {
+                expect(() => pipe.transform([1, 2, 3], bodyMetadata)).toThrow(InvalidInputException);
             });
         });
 
         describe('empty objects', () => {
-            it('should throw InvalidRequestException when value is an empty object', () => {
-                expect(() => pipe.transform({}, bodyMetadata)).toThrow(InvalidRequestException);
+            it('should throw InvalidInputException when value is an empty object', () => {
+                expect(() => pipe.transform({}, bodyMetadata)).toThrow(InvalidInputException);
             });
         });
 

@@ -6,13 +6,13 @@
 
 import { Inject } from '@nestjs/common';
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException } from 'src/core/exception';
 import type { IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import {
     GetAdminCredentialsByEmailQuery,
     type GetAdminCredentialsByEmailResult,
 } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Returns the minimal credential projection for an admin by email address.

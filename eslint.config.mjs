@@ -75,9 +75,9 @@ export default tseslint.config(
             'boundaries/elements': [
                 { type: 'shared', pattern: 'src/shared/domain/*' },
                 { type: 'shared', pattern: 'src/shared/application/*' },
+                { type: 'shared', pattern: 'src/shared/exception' },
                 { type: 'shared', pattern: 'src/shared/pagination' },
                 { type: 'shared', pattern: 'src/shared/search' },
-                { type: 'shared', pattern: 'src/shared/sort' },
                 { type: 'core', pattern: 'src/core/observability/*' },
                 { type: 'core', pattern: 'src/core/security/*' },
                 { type: 'core', pattern: 'src/core/cache' },

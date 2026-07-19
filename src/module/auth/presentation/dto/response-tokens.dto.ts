@@ -5,7 +5,6 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsJWT, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import { IsRefreshToken } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
 import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.constraint';
 
@@ -24,13 +23,10 @@ export class ResponseTokensDto {
      * Contains the principal's claims and is used as a Bearer token in the Authorization header for protected routes.
      */
     @Expose()
-    @IsString()
-    @IsNotEmpty()
-    @IsJWT()
-    @MaxLength(TOKEN_MAX_LENGTH)
     @ApiProperty({
         type: 'string',
         format: 'jwt',
+        minLength: 1,
         maxLength: TOKEN_MAX_LENGTH,
         description: 'JWT Access Token.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',

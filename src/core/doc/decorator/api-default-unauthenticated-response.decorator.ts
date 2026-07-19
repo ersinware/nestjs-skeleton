@@ -4,7 +4,8 @@
  */
 
 import { ApiUnauthorizedResponse } from '@nestjs/swagger';
-import { ErrorDefaultDto, UnauthenticatedType } from 'src/core/exception';
+import { ErrorDefaultDto } from 'src/core/exception';
+import { UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * Custom Swagger decorator to standardize the 401 Unauthorized response.
@@ -14,7 +15,7 @@ import { ErrorDefaultDto, UnauthenticatedType } from 'src/core/exception';
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultUnauthenticatedResponse(
-    type: UnauthenticatedType = UnauthenticatedType.DEFAULT,
+    type: UnauthenticatedMessage = UnauthenticatedMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiUnauthorizedResponse({
         description: type,

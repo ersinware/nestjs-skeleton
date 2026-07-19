@@ -6,16 +6,16 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
-import {
-    ServiceUnavailableException,
-    ServiceUnavailableType,
-    UnauthenticatedException,
-    UnauthenticatedType,
-} from 'src/core/exception';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
+import {
+    DependencyUnavailableException,
+    DependencyUnavailableMessage,
+    UnauthenticatedException,
+    UnauthenticatedMessage,
+} from 'src/shared/exception';
 
 /**
  * Authentication guard enforcing global JWT check with automatic instant eviction via the cached session version.
@@ -42,7 +42,7 @@ export class AuthGuard implements CanActivate {
      * @param context Execution context of the request.
      * @returns A promise resolving to true if authorized.
      * @throws {UnauthenticatedException} if token validation or the session-version check fails.
-     * @throws {ServiceUnavailableException} if the cache is unreachable — the guard fails closed rather than skipping the session-version check.
+     * @throws {DependencyUnavailableException} if the cache is unreachable — the guard fails closed rather than skipping the session-version check.
      */
     async canActivate(context: ExecutionContext): Promise<boolean> {
         if (
@@ -55,7 +55,7 @@ export class AuthGuard implements CanActivate {
             authorization = request.headers['authorization'];
 
         if (!authorization) {
-            throw new UnauthenticatedException(UnauthenticatedType.MISSING_CREDENTIALS);
+            throw new UnauthenticatedException(UnauthenticatedMessage.MISSING_CREDENTIALS);
         }
 
         const [type, token] = authorization.split(' ');
@@ -84,7 +84,7 @@ export class AuthGuard implements CanActivate {
             // Fail closed: without the cached version we cannot honour instant session eviction, so we
             // reject rather than admit a possibly-revoked token. 503 (not 500) marks this as a transient
             // dependency outage the client may retry; the global filter also reports it to Sentry.
-            throw new ServiceUnavailableException(ServiceUnavailableType.DEFAULT, { cause: error });
+            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
         }
 
         if (payload.version < currentVersion) {

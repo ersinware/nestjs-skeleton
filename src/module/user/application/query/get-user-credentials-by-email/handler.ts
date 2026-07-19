@@ -6,13 +6,13 @@
 
 import { Inject } from '@nestjs/common';
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException } from 'src/core/exception';
 import type { IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import {
     GetUserCredentialsByEmailQuery,
     type GetUserCredentialsByEmailResult,
 } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Returns the minimal credential projection for a user by email address.

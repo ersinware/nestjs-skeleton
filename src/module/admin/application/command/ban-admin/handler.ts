@@ -5,7 +5,6 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { AccessDeniedException, ResourceNotFoundException } from 'src/core/exception';
 import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
@@ -14,6 +13,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { AdminRole } from 'src/shared/domain/admin';
+import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Handler for the BanAdminCommand.

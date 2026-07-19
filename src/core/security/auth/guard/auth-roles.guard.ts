@@ -5,10 +5,10 @@
 
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AccessDeniedException } from 'src/core/exception';
 import type { AuthRole } from 'src/core/security/auth/auth-role.type';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
 import { KEY_DECORATOR_ROLES } from 'src/core/security/auth/decorator/roles.decorator';
+import { AccessDeniedException } from 'src/shared/exception';
 
 /**
  * Authorization guard matching user role claims against route role requirements.

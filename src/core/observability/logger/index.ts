@@ -4,7 +4,6 @@
  */
 
 export * from 'src/core/observability/logger/audit-log-action.enum';
-export * from 'src/core/observability/logger/audit-log-auth-reason.enum';
 export * from 'src/core/observability/logger/audit-log-payload';
 export * from 'src/core/observability/logger/log-payload';
 export * from 'src/core/observability/logger/module';

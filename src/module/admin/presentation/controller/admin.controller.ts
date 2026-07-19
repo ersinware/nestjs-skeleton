@@ -17,7 +17,6 @@ import {
     ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { InvalidRequestType } from 'src/core/exception';
 import { ParamIdDto, QueryPaginationDto, ResponsePaginationDto } from 'src/core/http';
 import { Roles } from 'src/core/security/auth';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
@@ -26,6 +25,7 @@ import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-ad
 import { ListAdminsQuery, type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { AdminRole } from 'src/shared/domain/admin';
+import { InvalidInputMessage } from 'src/shared/exception';
 
 /**
  * The controller handling admin management endpoints.
@@ -68,7 +68,7 @@ export class AdminController {
             'Retrieves administrator accounts with pagination. Requires super administrator-level authorization.',
     })
     @ApiDefaultOkResponsePaginated({ description: 'Admins successfully retrieved.', type: ResponseAdminDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<ResponseAdminDto>> {
         const { data, total } = await this.queryBus.execute<ListAdminsQuery, ListAdminsResult>(
             new ListAdminsQuery(query),
@@ -95,7 +95,7 @@ export class AdminController {
         description: 'Soft deletes an admin account. Requires super administrator-level authorization.',
     })
     @ApiNoContentResponse({ description: 'Admin account successfully deleted.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
     async deleteAdmin(@Param() params: ParamIdDto) {
         await this.commandBus.execute<DeleteAdminCommand, void>(new DeleteAdminCommand(params.id));
@@ -115,7 +115,7 @@ export class AdminController {
             'Bans the account and revokes all active sessions. Super admins cannot be banned. Requires super administrator-level authorization.',
     })
     @ApiNoContentResponse({ description: 'Admin successfully banned.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
     async ban(@Param() params: ParamIdDto) {
         await this.commandBus.execute<BanAdminCommand, void>(new BanAdminCommand(params.id));
@@ -134,7 +134,7 @@ export class AdminController {
         description: 'Lifts the ban on the account. Requires super administrator-level authorization.',
     })
     @ApiNoContentResponse({ description: 'Admin successfully unbanned.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
     async unban(@Param() params: ParamIdDto) {
         await this.commandBus.execute<UnbanAdminCommand, void>(new UnbanAdminCommand(params.id));

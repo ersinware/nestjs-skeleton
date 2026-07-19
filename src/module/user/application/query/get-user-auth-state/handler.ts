@@ -5,13 +5,13 @@
 
 import { Inject } from '@nestjs/common';
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException } from 'src/core/exception';
 import type { IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
 import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import {
     GetUserAuthStateQuery,
     GetUserAuthStateResult,
 } from 'src/module/user/application/query/get-user-auth-state/query';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Returns a user's active status and current session version by ID.

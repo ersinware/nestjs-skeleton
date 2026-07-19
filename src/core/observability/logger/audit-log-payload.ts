@@ -9,7 +9,7 @@ import { LogPayload } from 'src/core/observability/logger/log-payload';
 /**
  * Custom log payload representing an Audit Log entry.
  * Automatically sets type to 'AUDIT'.
- * Intended to be passed inside standard HttpException 'cause' options.
+ * Written by whoever can classify the event as audit-worthy, never inferred from a caught exception.
  */
 export class AuditLogPayload extends LogPayload {
     /**

@@ -5,23 +5,18 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedType } from 'src/core/exception';
-import {
-    AuditLogAction,
-    AuditLogAuthReason,
-    AuditLogPayload,
-    TOKEN_LOGGER_PORT,
-    type ILoggerPort,
-} from 'src/core/observability/logger';
+import { AuditLogAction, AuditLogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import { LoginAdminCommand, type LoginAdminResult } from 'src/module/auth/application/command/login-admin/command';
 import {
     TOKEN_ADMIN_IDENTITY_READER_PORT,
     type IAdminIdentityReaderPort,
 } from 'src/module/auth/application/command/port/admin-identity-reader.port';
 import { AdminRole } from 'src/shared/domain/admin';
+import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * Handles the LoginAdminCommand.
@@ -52,18 +47,18 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
             admin = await this.adminIdentityReaderPort.getCredentialsByEmail(command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                this.throwUnauthenticatedException(AuditLogAuthReason.ACCOUNT_NOT_FOUND, undefined, AdminRole.ADMIN);
+                this.throwUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, undefined, AdminRole.ADMIN);
             }
 
             throw error;
         }
 
         if (admin.isBanned) {
-            this.throwUnauthenticatedException(AuditLogAuthReason.INACTIVE_ACCOUNT, admin.id, admin.role);
+            this.throwUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, admin.id, admin.role);
         }
 
         if (!(await this.hashingPort.verify(admin.password, command.password))) {
-            this.throwUnauthenticatedException(AuditLogAuthReason.INVALID_PASSWORD, admin.id, admin.role);
+            this.throwUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, admin.id, admin.role);
         }
 
         const id = admin.id,
@@ -78,18 +73,23 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
     }
 
     /**
-     * Throws an UnauthenticatedException with a properly formatted audit log payload.
+     * Throws the rejection with the detail of the failed attempt attached. Attaching context is this
+     * handler's whole contribution — recording it is the exception filter's job — and it is also what
+     * separates a deliberately rejected credential from the routine expired-token `401`s that carry none.
      */
-    private throwUnauthenticatedException(reason: AuditLogAuthReason, sub: string | undefined, role: AdminRole): never {
-        throw new UnauthenticatedException(UnauthenticatedType.CREDENTIALS, {
-            cause: new AuditLogPayload({
+    private throwUnauthenticatedException(
+        reason: AuthRejectionReason,
+        sub: string | undefined,
+        role: AdminRole,
+    ): never {
+        throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
+            context: {
                 class: this.constructor.name,
                 method: this.execute.name,
-                action: AuditLogAction.LOGIN_FAILED,
                 reason,
                 sub,
                 role,
-            }),
+            },
         });
     }
 
