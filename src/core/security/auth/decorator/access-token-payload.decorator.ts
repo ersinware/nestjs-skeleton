@@ -4,8 +4,8 @@
  */
 
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import type { AccessTokenPayload } from 'src/core/security/auth/access-token-payload.type';
 import { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
+import type { AccessTokenPayload } from 'src/core/security/token';
 
 /**
  * Decorator to retrieve the current user's authenticated JWT payload from the request context.

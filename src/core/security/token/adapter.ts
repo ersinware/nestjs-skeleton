@@ -8,9 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { ENV } from 'src/core/config';
-import type { AccessTokenPayload, AuthRole, RefreshTokenPayload } from 'src/core/security/auth';
-import { AuthTokenType } from 'src/core/security/auth';
+import type { AuthRole } from 'src/core/security/auth';
+import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { ITokenPort } from 'src/core/security/token/port';
+import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 
 /**
  * Service responsible for generating, signing, and verifying JWT access and refresh tokens.

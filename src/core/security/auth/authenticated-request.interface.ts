@@ -4,7 +4,7 @@
  */
 
 import type { FastifyRequest } from 'fastify';
-import type { AccessTokenPayload } from 'src/core/security/auth/access-token-payload.type';
+import type { AccessTokenPayload } from 'src/core/security/token';
 
 /**
  * Extended HTTP Request context carrying parsed security attributes.

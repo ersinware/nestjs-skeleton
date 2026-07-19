@@ -3,7 +3,9 @@
  * @description Contract for the TokenService.
  */
 
-import type { AccessTokenPayload, AuthRole, RefreshTokenPayload } from 'src/core/security/auth';
+import type { AuthRole } from 'src/core/security/auth';
+import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 
 export const TOKEN_TOKEN_PORT = Symbol('TOKEN_TOKEN_PORT');
 

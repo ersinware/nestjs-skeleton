@@ -17,9 +17,9 @@ import {
 } from 'src/core/doc';
 import { InvalidRequestType, ResourceConflictType, UnauthenticatedType } from 'src/core/exception';
 import { NotEmptyBodyPipe } from 'src/core/http';
-import type { AccessTokenPayload } from 'src/core/security/auth';
 import { AccessTokenPayloadDecorator, Public } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
+import type { AccessTokenPayload } from 'src/core/security/token';
 import { LoginAdminCommand, type LoginAdminResult } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand, type LoginUserResult } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
