@@ -16,7 +16,7 @@ import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
 import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
 import { ENV } from 'src/core/config';
-import { LogPayload } from 'src/core/observability/logger';
+import { ConnectionLogMessage, LogPayload } from 'src/core/observability/logger';
 
 /**
  * Helper function to create a configured Redis client instance.
@@ -46,7 +46,7 @@ function createRedisClient(
 
     // One log per outage episode, gated on a per-client transition flag: ioredis re-emits 'error' on
     // every reconnect attempt while the server is unreachable, so logging each one floods during an
-    // outage. No Sentry here — the health-endpoint alarm is the pager (see docs/observability-alerting.md);
+    // outage. No Sentry here — the health-endpoint alarm is the pager;
     // this pair of transition logs is only the forensic breadcrumb that names the cause and the recovery.
     let isDown = false;
 
@@ -56,7 +56,14 @@ function createRedisClient(
         }
 
         isDown = true;
-        logger.warn(new LogPayload({ class: CacheModule.name, method: `${clientName}.on(error)`, error }));
+        logger.warn(
+            new LogPayload({
+                class: CacheModule.name,
+                method: `${clientName}.on(error)`,
+                message: ConnectionLogMessage.LOST,
+                error,
+            }),
+        );
     });
 
     redis.on('ready', () => {
@@ -65,7 +72,13 @@ function createRedisClient(
         }
 
         isDown = false;
-        logger.log(new LogPayload({ class: CacheModule.name, method: `${clientName}.on(ready)` }));
+        logger.log(
+            new LogPayload({
+                class: CacheModule.name,
+                method: `${clientName}.on(ready)`,
+                message: ConnectionLogMessage.RESTORED,
+            }),
+        );
     });
 
     return redis;

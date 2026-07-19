@@ -9,7 +9,6 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE, isUniqueViolation } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
@@ -23,12 +22,10 @@ export class UserWriterAdapter implements IUserWriterPort {
      *
      * @param db The PostgresJs database instance
      * @param eventBusPort The in-process bus the aggregate's domain events are dispatched on
-     * @param loggerPort The port used to record a dispatch that no listener chain completed
      */
     constructor(
         @Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase,
         @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
     /**
@@ -99,27 +96,17 @@ export class UserWriterAdapter implements IUserWriterPort {
      * Emitted after the row is written so a listener that re-reads the user observes the new state.
      *
      * Dispatch is fire-and-forget: the write is the caller's contract, so a failing listener must not
-     * fail the command that already persisted the row. Until the outbox returns there is no delivery
-     * guarantee behind this — a rejected dispatch is a permanently dropped event, so it is logged
-     * rather than swallowed, since nothing else would reveal the gap.
+     * fail the command that already persisted the row. A rejected dispatch is swallowed; the flows
+     * that matter reconcile through authoritative reads (refresh reads the version from the DB).
      *
      * @param user The aggregate whose domain events are dispatched
      */
     private publishDomainEvents(user: User) {
         for (const event of user.domainEvents) {
+            // The catch only stops an unhandled rejection from crashing the process.
             this.eventBusPort
                 .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
-                .catch((error: unknown) =>
-                    this.loggerPort.error(
-                        new LogPayload({
-                            class: UserWriterAdapter.name,
-                            method: this.publishDomainEvents.name,
-                            error,
-                            type: event.type,
-                            aggregateId: event.aggregateId,
-                        }),
-                    ),
-                );
+                .catch(() => {});
         }
 
         user.clearDomainEvents();

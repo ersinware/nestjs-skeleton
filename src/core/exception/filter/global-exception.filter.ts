@@ -217,20 +217,37 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * Emits audit logs or critical incident logs based on the determined response data.
      *
      * A transient `503` (dependency outage) is deliberately silent here: per-request logging during an
-     * outage is pure flood, and detection is the health-endpoint alarm's job (see
-     * `docs/observability-alerting.md`); the single forensic breadcrumb is the connection-level
+     * outage is pure flood, and detection is the health-endpoint alarm's job; the single
+     * forensic breadcrumb is the connection-level
      * state-transition log in `core/cache/module.ts`. Routine `401`s (expired/missing token) are equally
-     * uninteresting, so only `403` (privilege escalation) and `429` (throttle) remain security-audit worthy.
+     * uninteresting, so of the context-free statuses only `403` (privilege escalation) and `429`
+     * (throttle) remain security-audit worthy.
      *
-     * An `ExceptionContext` widens the security branch rather than being interpreted: a `401` is audited
-     * only when the thrower attached context, because attaching it is how code says "this rejection was
-     * deliberate and I have detail on it" — a guard refusing an expired token attaches nothing. The
-     * context is then carried verbatim under its own key, never merged or read, so the filter stays
-     * ignorant of the thrower's vocabulary.
+     * An `ExceptionContext` means "this rejection was deliberate and I have detail on it", so ANY
+     * non-5xx status carrying context is recorded — a guard refusing an expired token attaches nothing
+     * and stays silent. Recorded is not the same as security-audited, though: the SECURITY_EXCEPTION
+     * action is stamped only on the genuinely security-relevant statuses (`403`, `429`, and a `401`
+     * whose thrower attached context); any other context-carrying rejection gets a plain `warn`
+     * without the action, so filtering the audit trail by action never surfaces non-security noise.
+     * Either way the context is carried verbatim under its own key, never merged or read, so the
+     * filter stays ignorant of the thrower's vocabulary. The 5xx branch is checked first so a
+     * `SystemException` carrying context still reaches the error log and Sentry rather than degrading
+     * to a `warn`.
      */
     private logException(exception: unknown, errorDefaultDto: ErrorDefaultDto, request: AuthenticatedRequest) {
         const { statusCode, message } = errorDefaultDto,
             context = exception instanceof AppException ? exception.context : undefined;
+
+        if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
+            return;
+        }
+
+        if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+            this.loggerPort.error(this.createErrorLogPayload(exception, context));
+            this.exceptionTrackerPort.captureException(exception);
+
+            return;
+        }
 
         const isSecurityAudited =
             statusCode === HttpStatus.FORBIDDEN ||
@@ -239,9 +256,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         if (isSecurityAudited) {
             this.loggerPort.warn(this.createSecurityAuditLogPayload(message.join(', '), request, context));
-        } else if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR && statusCode !== HttpStatus.SERVICE_UNAVAILABLE) {
-            this.loggerPort.error(this.createErrorLogPayload(exception, context));
-            this.exceptionTrackerPort.captureException(exception);
+        } else if (context !== undefined) {
+            this.loggerPort.warn(this.createRejectionLogPayload(message.join(', '), request, context));
         }
     }
 
@@ -257,6 +273,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             class: this.constructor.name,
             method: this.catch.name,
             action: AuditLogAction.SECURITY_EXCEPTION,
+            error,
+            sub: request.accessTokenPayload?.sub,
+            role: request.accessTokenPayload?.role,
+            context,
+        });
+    }
+
+    /**
+     * Creates the plain log payload for a deliberate, context-carrying rejection that is not a
+     * security event — the thrower asked for its detail to be recorded, but stamping it with a
+     * security action would pollute the audit trail. The caller's identity is still attached for
+     * correlation when the route was authenticated.
+     */
+    private createRejectionLogPayload(
+        error: string,
+        request: AuthenticatedRequest,
+        context: ExceptionContext,
+    ): LogPayload {
+        return new LogPayload({
+            class: this.constructor.name,
+            method: this.catch.name,
             error,
             sub: request.accessTokenPayload?.sub,
             role: request.accessTokenPayload?.role,

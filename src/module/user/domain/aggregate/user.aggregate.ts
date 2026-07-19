@@ -76,7 +76,7 @@ export class User extends AggregateRoot {
     private assertNotDeleted(method: string): void {
         if (this.props.deletedAt) {
             throw new SystemException('Mutation attempted on a soft-deleted account.', {
-                context: { class: User.name, method },
+                context: { class: User.name, method, id: this.id },
             });
         }
     }

@@ -83,7 +83,8 @@ export class AuthGuard implements CanActivate {
         } catch (error) {
             // Fail closed: without the cached version we cannot honour instant session eviction, so we
             // reject rather than admit a possibly-revoked token. 503 (not 500) marks this as a transient
-            // dependency outage the client may retry; the global filter also reports it to Sentry.
+            // dependency outage the client may retry; the global filter keeps 503s out of the logs and
+            // Sentry — detection is the health-endpoint alarm's job.
             throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
         }
 

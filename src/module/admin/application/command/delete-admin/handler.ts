@@ -5,7 +5,6 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
 import {
@@ -24,7 +23,6 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
     /**
@@ -50,10 +48,8 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
         try {
             await this.sessionPort.setVersion(command.id, admin.version);
-        } catch (error) {
-            this.loggerPort.error(
-                new LogPayload({ class: DeleteAdminCommandHandler.name, method: this.execute.name, error }),
-            );
+        } catch {
+            // Best-effort instant eviction.
         }
     }
 }

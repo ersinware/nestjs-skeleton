@@ -9,7 +9,6 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import type { EmailPayload } from 'src/core/email';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -28,13 +27,11 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param emailerPort The port used to send the security-notice email
      * @param sessionPort The port used to push the session version to Redis
-     * @param loggerPort The port used to record best-effort sync-write failures
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
     /**
@@ -57,10 +54,8 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
 
         try {
             await this.sessionPort.setVersion(command.id, admin.version);
-        } catch (error) {
-            this.loggerPort.error(
-                new LogPayload({ class: RevokeAdminSessionsCommandHandler.name, method: this.execute.name, error }),
-            );
+        } catch {
+            // Best-effort instant eviction.
         }
     }
 
