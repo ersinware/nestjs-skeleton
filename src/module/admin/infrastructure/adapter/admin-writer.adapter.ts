@@ -36,13 +36,12 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * Maps a database row to the Admin aggregate root.
      */
     private mapToDomain(row: InferSelectModel<typeof adminSchema>): Admin {
-        return Admin.reconstitute(row.id, {
+        return Admin.reconstitute(row.id, row.deletedAt, {
             email: row.email,
             name: row.name,
             password: row.password,
             role: row.role,
             isBanned: row.isBanned,
-            deletedAt: row.deletedAt,
             version: row.version,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,

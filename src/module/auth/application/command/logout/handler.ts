@@ -25,7 +25,7 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
      *
      * @param command The logout command parameters
      */
-    async execute(command: LogoutCommand): Promise<void> {
+    async execute(command: LogoutCommand) {
         let payload;
 
         try {

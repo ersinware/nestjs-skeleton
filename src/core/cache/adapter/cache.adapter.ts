@@ -9,7 +9,7 @@ import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
 import type { ICachePort } from 'src/core/cache/port/cache.port';
 import { SystemException } from 'src/shared/exception';
 
-const ERROR_MESSAGE_EMPTY_KEY = 'Cache key must be a non-empty string.';
+const EMPTY_KEY_ERROR_MESSAGE = 'Cache key must be a non-empty string.';
 
 /**
  * Service managing cache operations backed by Redis client.
@@ -37,7 +37,7 @@ export class CacheAdapter implements ICachePort {
      */
     async get<T = string>(key: string): Promise<T | null> {
         if (!key) {
-            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+            throw new SystemException(EMPTY_KEY_ERROR_MESSAGE, {
                 context: { class: this.constructor.name, method: this.get.name },
             });
         }
@@ -71,7 +71,7 @@ export class CacheAdapter implements ICachePort {
         options?: { useJitter?: boolean; jitterMaxPercent?: number },
     ) {
         if (!key) {
-            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+            throw new SystemException(EMPTY_KEY_ERROR_MESSAGE, {
                 context: { class: this.constructor.name, method: this.set.name },
             });
         }
@@ -107,7 +107,7 @@ export class CacheAdapter implements ICachePort {
      */
     async delete(key: string) {
         if (!key) {
-            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+            throw new SystemException(EMPTY_KEY_ERROR_MESSAGE, {
                 context: { class: this.constructor.name, method: this.delete.name },
             });
         }
@@ -157,7 +157,7 @@ export class CacheAdapter implements ICachePort {
      */
     async exists(key: string): Promise<boolean> {
         if (!key) {
-            throw new SystemException(ERROR_MESSAGE_EMPTY_KEY, {
+            throw new SystemException(EMPTY_KEY_ERROR_MESSAGE, {
                 context: { class: this.constructor.name, method: this.exists.name },
             });
         }
