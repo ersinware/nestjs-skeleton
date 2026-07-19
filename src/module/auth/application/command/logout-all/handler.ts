@@ -22,7 +22,7 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      *
      * @param command The logout all command parameters
      */
-    async execute(command: LogoutAllCommand): Promise<void> {
+    async execute(command: LogoutAllCommand) {
         await this.sessionPort.closeAllSessions(command.sub);
     }
 }

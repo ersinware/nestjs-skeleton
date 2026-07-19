@@ -32,12 +32,11 @@ export class UserWriterAdapter implements IUserWriterPort {
      * Maps a database row to the User aggregate root.
      */
     private mapToDomain(row: InferSelectModel<typeof userSchema>): User {
-        return User.reconstitute(row.id, {
+        return User.reconstitute(row.id, row.deletedAt, {
             email: row.email,
             name: row.name,
             password: row.password,
             isBanned: row.isBanned,
-            deletedAt: row.deletedAt,
             version: row.version,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,

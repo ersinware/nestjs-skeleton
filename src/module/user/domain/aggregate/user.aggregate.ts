@@ -4,26 +4,27 @@
  */
 
 import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
-import { AggregateRoot } from 'src/shared/domain/aggregate-root';
+import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
-import { SystemException } from 'src/shared/exception';
 
-export interface UserProps {
+/**
+ * Properties that define the state of a User aggregate.
+ */
+type UserProps = {
     email: string;
     name: string;
     password: string;
     isBanned: boolean;
-    deletedAt: Date | null;
     version: number;
     createdAt: Date;
     updatedAt: Date;
-}
+};
 
-export class User extends AggregateRoot {
+export class User extends SoftDeletableAggregateRoot {
     private props: UserProps;
 
-    private constructor(id: string, props: UserProps) {
-        super(id);
+    private constructor(id: string, deletedAt: Date | null, props: UserProps) {
+        super(id, deletedAt);
         this.props = props;
     }
 
@@ -31,15 +32,11 @@ export class User extends AggregateRoot {
      * Factory method to create a new User.
      * Enforces invariant rules on creation and emits a CREATED event.
      */
-    static create(
-        id: string,
-        props: Omit<UserProps, 'isBanned' | 'deletedAt' | 'version' | 'createdAt' | 'updatedAt'>,
-    ): User {
+    static create(id: string, props: Omit<UserProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): User {
         const now = new Date(),
-            user = new User(id, {
+            user = new User(id, null, {
                 ...props,
                 isBanned: false,
-                deletedAt: null,
                 version: 0,
                 createdAt: now,
                 updatedAt: now,
@@ -51,34 +48,20 @@ export class User extends AggregateRoot {
     /**
      * Factory method to reconstitute an existing User from the database.
      */
-    static reconstitute(id: string, props: UserProps): User {
-        return new User(id, props);
+    static reconstitute(id: string, deletedAt: Date | null, props: UserProps): User {
+        return new User(id, deletedAt, props);
     }
 
     /**
-     * Creates a snapshot of the aggregate state for persistence.
+     * Creates a snapshot of the aggregate state for persistence: the module-owned props plus the
+     * identity and deletion timestamp owned by the aggregate-root bases.
      */
-    toSnapshot(): UserProps & { id: string } {
+    toSnapshot(): { id: string; deletedAt: Date | null } & UserProps {
         return {
             id: this.id,
+            deletedAt: this.deletedAt,
             ...this.props,
         };
-    }
-
-    /**
-     * Guards the "a soft-deleted account is immutable" invariant. Writers load only non-deleted
-     * rows, so reaching this guard means a broken code path handed a deleted aggregate to a
-     * mutator — a system fault surfaced as 500 + Sentry, never a client error.
-     *
-     * @param method The mutating method that was called, recorded as the exception origin
-     * @throws {SystemException} When the account has been soft-deleted
-     */
-    private assertNotDeleted(method: string): void {
-        if (this.props.deletedAt) {
-            throw new SystemException('Mutation attempted on a soft-deleted account.', {
-                context: { class: User.name, method, id: this.id },
-            });
-        }
     }
 
     /**
@@ -130,7 +113,7 @@ export class User extends AggregateRoot {
      *
      * @throws {SystemException} When the account has been soft-deleted
      */
-    ban(): void {
+    ban() {
         this.assertNotDeleted(this.ban.name);
 
         if (this.props.isBanned) {
@@ -151,7 +134,7 @@ export class User extends AggregateRoot {
      *
      * @throws {SystemException} When the account has been soft-deleted
      */
-    unban(): void {
+    unban() {
         this.assertNotDeleted(this.unban.name);
 
         if (!this.props.isBanned) {
@@ -172,7 +155,7 @@ export class User extends AggregateRoot {
      *
      * @throws {SystemException} When the account has been soft-deleted
      */
-    revokeSessions(): void {
+    revokeSessions() {
         this.assertNotDeleted(this.revokeSessions.name);
 
         this.props.version++;
@@ -185,13 +168,13 @@ export class User extends AggregateRoot {
      * Soft deletes the user and bumps the session version for a permanent cut-off, since a deleted
      * account must never be reachable by any previously minted token.
      */
-    markAsDeleted(): void {
-        if (this.props.deletedAt) {
+    markAsDeleted() {
+        if (this.deletedAt) {
             return;
         }
 
         const now = new Date();
-        this.props.deletedAt = now;
+        this.setDeletedAt(now);
         this.props.isBanned = true;
         this.props.version++;
         this.props.updatedAt = now;
@@ -213,10 +196,6 @@ export class User extends AggregateRoot {
 
     get isBanned(): boolean {
         return this.props.isBanned;
-    }
-
-    get deletedAt(): Date | null {
-        return this.props.deletedAt;
     }
 
     get version(): number {
