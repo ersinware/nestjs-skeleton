@@ -7,12 +7,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE } from 'src/core/database';
+import { TOKEN_DATABASE, isUniqueViolation } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
 import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
+import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 @Injectable()
@@ -62,21 +63,32 @@ export class UserWriterAdapter implements IUserWriterPort {
      * Saves a User aggregate to the database, then dispatches the domain events it accumulated.
      *
      * @param user The User aggregate root to save
+     * @throws {ResourceConflictException} if the email address is already taken
      */
     async save(user: User) {
         const payload = user.toSnapshot();
 
-        await this.db
-            .insert(userSchema)
-            .values(payload)
-            .onConflictDoUpdate({
-                target: userSchema.id,
-                set: {
-                    ...payload,
-                    id: undefined,
-                    createdAt: undefined,
-                },
-            });
+        try {
+            await this.db
+                .insert(userSchema)
+                .values(payload)
+                .onConflictDoUpdate({
+                    target: userSchema.id,
+                    set: {
+                        ...payload,
+                        id: undefined,
+                        createdAt: undefined,
+                    },
+                });
+        } catch (error) {
+            // The id conflict is absorbed by onConflictDoUpdate and email is this table's only other
+            // unique constraint, so a unique violation here can only mean the address is taken.
+            if (isUniqueViolation(error)) {
+                throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE, { cause: error });
+            }
+
+            throw error;
+        }
 
         // TODO
         this.publishDomainEvents(user);

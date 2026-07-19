@@ -25,7 +25,6 @@ import {
     ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { InvalidRequestType, ResourceConflictType } from 'src/core/exception';
 import { NotEmptyBodyPipe, ParamIdDto, QuerySearchDto, ResponsePaginationDto } from 'src/core/http';
 import { AccessTokenPayloadDecorator, Public, Roles } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
@@ -43,6 +42,7 @@ import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
 import { AdminRole } from 'src/shared/domain/admin';
+import { InvalidInputMessage, ResourceConflictMessage } from 'src/shared/exception';
 
 /**
  * The controller providing routing and handling for user domain API requests.
@@ -76,8 +76,8 @@ export class UserController {
         description: 'Creates a new user profile.',
     })
     @ApiCreatedResponse({ description: 'User account successfully created.', type: ResponseUserDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
-    @ApiDefaultResourceConflictResponse(ResourceConflictType.EMAIL_IN_USE)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
     async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto): Promise<ResponseUserDto> {
         const id: string = await this.commandBus.execute(
             new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
@@ -105,7 +105,7 @@ export class UserController {
             'Retrieves registered users with pagination and optional search query. Requires administrator-level authorization.',
     })
     @ApiDefaultOkResponsePaginated({ description: 'Users successfully retrieved.', type: ResponseUserDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     async findAll(@Query() query: QuerySearchDto): Promise<ResponsePaginationDto<ResponseUserDto>> {
@@ -157,7 +157,7 @@ export class UserController {
         description: 'Retrieves details of a specific user. Requires administrator-level authorization.',
     })
     @ApiOkResponse({ description: 'User details successfully retrieved.', type: ResponseUserDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
@@ -183,10 +183,10 @@ export class UserController {
         description: "Updates details of the currently authenticated user's profile.",
     })
     @ApiOkResponse({ description: 'User successfully updated.', type: ResponseUserDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictType.EMAIL_IN_USE)
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
     async updateMe(
         @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
         @Body(NotEmptyBodyPipe) patchUserDto: PatchUserDto,
@@ -215,7 +215,7 @@ export class UserController {
             "Updates the currently authenticated user's password. Doing so will immediately revoke all active sessions.",
     })
     @ApiNoContentResponse({ description: 'Password successfully changed.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async changePasswordMe(
@@ -266,7 +266,7 @@ export class UserController {
         description: 'Bans the account and revokes all active sessions. Requires administrator-level authorization.',
     })
     @ApiNoContentResponse({ description: 'User successfully banned.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
@@ -288,7 +288,7 @@ export class UserController {
         description: 'Lifts the ban on the account. Requires administrator-level authorization.',
     })
     @ApiNoContentResponse({ description: 'User successfully unbanned.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PARAM)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()

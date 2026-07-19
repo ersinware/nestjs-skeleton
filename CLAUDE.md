@@ -122,7 +122,7 @@ src/
   shared/
     domain/                   # SHELF (no index.ts): admin/  user/  event/  aggregate-root/
     application/              # SHELF (no index.ts): event/
-    pagination/  search/  sort/
+    exception/  pagination/  search/
   core/
     cache/  config/  database/  doc/  email/
     event-bus/  exception/  http/
@@ -222,6 +222,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 - **Adapter count = data source × (read/write).** A module reading from a second source (e.g. cache) gets its own reader for THAT source — the axis is the source, not read/write. Never bolt a second data source onto an existing reader.
 - **One reader per data source implements every thin read-port of that source** (`AdminReaderAdapter` — one `*-reader.adapter.ts`, injecting the data source once), never one adapter per port; handlers still see only their thin port.
 - **Readers consolidate, writers are singular, and a module that never writes has no writer** — do not open an empty box.
+- **Writers own driver-error translation.** A constraint violation is meaningful only to the schema's owner, so the writer catches the driver error at the port boundary and rethrows the matching taxonomy exception with `{ cause }` (e.g. unique-violation on `email` → `ResourceConflictException(EMAIL_IN_USE)`). The driver-classification predicates live in `core/database` (`isUniqueViolation`); a raw driver error must never escape infrastructure, and the global filter knows no driver vocabulary — anything unclassified surfaces as a 500 + Sentry, which is correct for an unexpected constraint.
 
 ## HTTP Layer
 
@@ -246,6 +247,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 2. **Validation + documentation, in this order of preference:**
     - **A composed decorator from `src/core/http/validation/decorator/` if one fits** — `IsUserEmail`, `IsUserName`, `IsStrongPassword`, `IsEntityId`, … Checking that folder first is MANDATORY, and so is using a decorator that fits: it bundles `class-validator` rules AND `@ApiProperty` (type, format, min/max length, description, example) in one call, which keeps a limit (e.g. max length) defined in exactly one place. Pass the field-label prefix (`@IsUserEmail('The email address')`) — it feeds both the Swagger description and the error messages.
     - **Otherwise, raw `class-validator` rules + an explicit `@ApiProperty`** — the correct, expected outcome for a genuinely one-off field.
+    - **Exception — response DTOs never carry raw `class-validator` rules.** Nothing validates an outgoing body at runtime, so a validator there is dead code posing as a guarantee; the documentation duty falls entirely on `@ApiProperty`, which must express every constraint (`minimum`/`maximum`, `minLength`/`maxLength`, `minItems`, `enum`) the field's contract implies. A composed decorator on a response DTO stays — it is the single source of that field's `@ApiProperty` metadata, and unbundling it would copy limits into a second place.
 3. **`readonly`** — always. **Required** field: definite assignment, `readonly email!: string`. **Optional** field: `?` plus `@IsOptional()`, `readonly search?: string`. `!` and `?` are mutually exclusive in TypeScript, so an optional property NEVER carries `!`.
 4. On response DTOs, `@Expose()` as well.
 
@@ -261,10 +263,19 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 ### Responses & Errors
 
 - `ResponseInterceptor` wraps all responses — do not wrap manually.
-- Throw the framework-agnostic core exception classes (`src/core/exception`, e.g. `ResourceNotFoundException`) — never NestJS HTTP exceptions; the global filter maps them to `ErrorDefaultDto`.
+- Throw the exception taxonomy classes from `src/shared/exception` (subclasses of `AppException`, e.g. `ResourceNotFoundException`) — never NestJS HTTP exceptions. Each class carries a transport-neutral `ExceptionKind`; the global filter (`src/core/exception`) owns the exhaustive kind→HTTP-status mapping and renders `ErrorDefaultDto`.
 - Use `QueryPaginationDto` for pagination input, `ResponsePaginationDto` for output.
 
-**Exception Responsibility** — TODO, this section is still to be written. Remind the user it is empty whenever exception design comes up.
+#### Exception Responsibility
+
+Who owns what, from throw to HTTP response — each concern lives in exactly one place:
+
+- **`src/shared/exception` owns the taxonomy.** Abstract `AppException` (transport-neutral `ExceptionKind` + `AppExceptionOptions`) and its subclasses, each co-locating its `*Message` enum in the same file — message vocabulary belongs to the contract that speaks it (§ Placement rule 1). The taxonomy knows no HTTP, no framework.
+- **Message vocabulary follows the thrower.** A shared `*Message` enum holds only messages generic to the exception kind (`DEFAULT`, `EMAIL_IN_USE`); a use case's own rejection messages live in that concept's `command.ts` (e.g. `RefreshTokensMessage.CONCURRENT_REFRESH`), importable by its handler and its own controller's doc decorators; a message with a single thrower is inlined at the throw site (§ Variable Inlining); a core-owned thrower keeps its vocabulary in its own concern (`RateLimitMessage` in `core/security/throttle`). Never grow a shared enum for one module's need — and a core doc decorator that must document a module-owned message takes `string`, because core cannot import a module's enum.
+- **Throwers throw; they do not log.** Application code raises `new ...Exception(message, { context })` and nothing else — no `loggerPort` calls on exception paths; whether and how the failure is logged is the filter's decision alone. `context` is `{ class: string; method: string; [key: string]: unknown }` — only the origin is typed; everything else is free-form so `shared` never learns a module's vocabulary. `cause` is reserved for the underlying error. Attaching `context` is also a signal: it means "this rejection was deliberate and I have detail on it". **Context vocabulary follows the thrower too**: no key in `context` may come from a consumer of the log — a logger enum (`AuditLogAction`) in a thrower's context couples the exception path to the observability module for a value the filter never reads. Rejection vocabulary shared by several commands of one module lives in one descriptively named file at that module's `application/command/` root (e.g. auth's `auth-rejection-reason.enum.ts`); the filter records it as opaque data. On `@Public()` routes (login, refresh) the thrower's `sub`/`role` in context are NOT redundant with the filter's `request.accessTokenPayload` — the guard never ran there, so context is the audit log's only identity source.
+- **Aggregates own their invariants; the throw-or-no-op test is the requested END STATE.** If the end state already holds (`ban()` on a banned account, `updateProfile` with nothing changed), the method is a silent idempotent no-op that emits nothing — re-emitting the domain event would lie. If the transition would break an invariant the aggregate owns, the aggregate throws the taxonomy exception itself (`domain` may import `shared`, so this is legal and preferred) — never trust callers to pre-check. Pick the kind by who can trigger it: a rejection a client can legitimately cause takes the matching client-facing kind (`InvalidInputException`, `ResourceConflictException`); a state that is unreachable through normal flows takes `SystemException`, because reaching it means a broken code path and 500 + Sentry is the intended outcome. Current instance: **a soft-deleted account is immutable** — every mutator except `markAsDeleted` calls `assertNotDeleted`, which throws `SystemException` with `context`, since writers' `load()` filters `deletedAt IS NULL` and only a bug can hand a deleted aggregate to a mutator.
+- **The global filter (`src/core/exception`) is the only place the taxonomy meets HTTP.** It maps kind→status through the exhaustive `KIND_TO_STATUS` Record (a new kind without a status fails compilation), renders `ErrorDefaultDto`, and owns all exception logging: `403`/`429` are security-audited, `401` only when the thrower attached `context` (routine expired-token rejections stay silent), `>=500` except `503` gets an error log + Sentry, and `503` is silent per request (outage detection is the health alarm's job). It carries `context` verbatim under its own key — never merged, never read — so it stays ignorant of every thrower's vocabulary.
+- **Infrastructure translates; nothing leaks.** Writers convert driver errors into taxonomy exceptions at the port boundary with `{ cause }` (§ Adapters — "Writers own driver-error translation"); the filter knows no driver vocabulary, so an untranslated infrastructure error surfaces as a generic 500 + Sentry — the correct outcome for the unexpected, never a formatting gap to patch in the filter.
 
 ### API Documentation
 

@@ -5,23 +5,18 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedType } from 'src/core/exception';
-import {
-    AuditLogAction,
-    AuditLogAuthReason,
-    AuditLogPayload,
-    TOKEN_LOGGER_PORT,
-    type ILoggerPort,
-} from 'src/core/observability/logger';
+import { AuditLogAction, AuditLogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import { LoginUserCommand, type LoginUserResult } from 'src/module/auth/application/command/login-user/command';
 import {
     TOKEN_USER_IDENTITY_READER_PORT,
     type IUserIdentityReaderPort,
 } from 'src/module/auth/application/command/port/user-identity-reader.port';
 import { UserRole } from 'src/shared/domain/user';
+import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * Handles the LoginUserCommand.
@@ -51,18 +46,18 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
             user = await this.userIdentityReaderPort.getCredentialsByEmail(command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                this.throwUnauthenticatedException(AuditLogAuthReason.ACCOUNT_NOT_FOUND);
+                this.throwUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND);
             }
 
             throw error;
         }
 
         if (user.isBanned) {
-            this.throwUnauthenticatedException(AuditLogAuthReason.INACTIVE_ACCOUNT, user.id);
+            this.throwUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, user.id);
         }
 
         if (!(await this.hashingPort.verify(user.password, command.password))) {
-            this.throwUnauthenticatedException(AuditLogAuthReason.INVALID_PASSWORD, user.id);
+            this.throwUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, user.id);
         }
 
         const id = user.id,
@@ -76,18 +71,19 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
     }
 
     /**
-     * Throws an UnauthenticatedException with a properly formatted audit log payload.
+     * Throws the rejection with the detail of the failed attempt attached. Attaching context is this
+     * handler's whole contribution — recording it is the exception filter's job — and it is also what
+     * separates a deliberately rejected credential from the routine expired-token `401`s that carry none.
      */
-    private throwUnauthenticatedException(reason: AuditLogAuthReason, sub?: string): never {
-        throw new UnauthenticatedException(UnauthenticatedType.CREDENTIALS, {
-            cause: new AuditLogPayload({
+    private throwUnauthenticatedException(reason: AuthRejectionReason, sub?: string): never {
+        throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
+            context: {
                 class: this.constructor.name,
                 method: this.execute.name,
-                action: AuditLogAction.LOGIN_FAILED,
                 reason,
                 sub,
                 role: UserRole.USER,
-            }),
+            },
         });
     }
 

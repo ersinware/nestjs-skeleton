@@ -9,7 +9,6 @@ import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } f
 import { SkipThrottle } from '@nestjs/throttler';
 import { plainToInstance } from 'class-transformer';
 import { ApiDefaultInternalServerErrorResponse } from 'src/core/doc';
-import { ServiceUnavailableType } from 'src/core/exception';
 import { Public } from 'src/core/security/auth';
 import {
     GetHealthStatusQuery,
@@ -17,6 +16,7 @@ import {
 } from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
+import { DependencyUnavailableMessage } from 'src/shared/exception';
 
 /**
  * The controller exposing endpoints to verify the operational state of the service and its key dependencies.
@@ -43,7 +43,7 @@ export class HealthController {
      * This endpoint is critical for readiness probes that determine if the application is fully booted and operational.
      *
      * @returns The resolved health check result payload containing the status of all evaluated indicators
-     * @throws {ServiceUnavailableException} If one or more health indicators fail.
+     * @throws {DependencyUnavailableException} If one or more health indicators fail.
      */
     @Get()
     @ApiOperation({
@@ -55,7 +55,7 @@ export class HealthController {
         type: ResponseHealthyDto,
     })
     @ApiServiceUnavailableResponse({
-        description: ServiceUnavailableType.DEFAULT,
+        description: DependencyUnavailableMessage.DEFAULT,
         type: ResponseUnhealthyDto,
     })
     async getStatus(): Promise<ResponseHealthyDto> {

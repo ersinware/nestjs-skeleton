@@ -4,7 +4,7 @@
  */
 
 import { ArgumentMetadata, Injectable, PipeTransform } from '@nestjs/common';
-import { InvalidRequestException, InvalidRequestType } from 'src/core/exception';
+import { InvalidInputException } from 'src/shared/exception';
 
 /**
  * Validates that incoming payload is a non-empty object.
@@ -17,7 +17,7 @@ export class NotEmptyBodyPipe implements PipeTransform {
      * @param value Incoming payload.
      * @param metadata Metadata of the validated argument.
      * @returns The validated payload.
-     * @throws {InvalidRequestException} if payload is invalid or empty.
+     * @throws {InvalidInputException} if payload is invalid or empty.
      */
     transform(value: unknown, metadata: ArgumentMetadata): unknown {
         if (metadata.type !== 'body') {
@@ -25,7 +25,9 @@ export class NotEmptyBodyPipe implements PipeTransform {
         }
 
         if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length === 0) {
-            throw new InvalidRequestException(InvalidRequestType.EMPTY_BODY);
+            // The message lives here, not in the shared taxonomy: this pipe is its only thrower, so
+            // the vocabulary is owned by the guard rail that enforces it.
+            throw new InvalidInputException('Request body must be a non-empty plain object.');
         }
 
         return value;

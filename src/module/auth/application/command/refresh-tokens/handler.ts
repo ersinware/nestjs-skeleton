@@ -6,25 +6,10 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
-import {
-    ResourceConflictException,
-    ResourceConflictType,
-    ResourceNotFoundException,
-    ServiceUnavailableException,
-    ServiceUnavailableType,
-    UnauthenticatedException,
-    UnauthenticatedType,
-} from 'src/core/exception';
-import {
-    AuditLogAction,
-    AuditLogAuthReason,
-    AuditLogPayload,
-    LogPayload,
-    TOKEN_LOGGER_PORT,
-    type ILoggerPort,
-} from 'src/core/observability/logger';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import {
     TOKEN_ADMIN_IDENTITY_READER_PORT,
     type IAdminIdentityReaderPort,
@@ -35,10 +20,19 @@ import {
 } from 'src/module/auth/application/command/port/user-identity-reader.port';
 import {
     RefreshTokensCommand,
+    RefreshTokensMessage,
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
 import { UserIntegrationEvent, UserRole } from 'src/shared/domain/user';
+import {
+    DependencyUnavailableException,
+    DependencyUnavailableMessage,
+    ResourceConflictException,
+    ResourceNotFoundException,
+    UnauthenticatedException,
+    UnauthenticatedMessage,
+} from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -64,7 +58,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
      * @throws {ResourceConflictException} When a concurrent refresh already rotated the session (benign — the client should retry with its latest token pair).
-     * @throws {ServiceUnavailableException} When the session cache is unreachable while rotating the session or revoking the family.
+     * @throws {DependencyUnavailableException} When the session cache is unreachable while rotating the session or revoking the family.
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
@@ -90,35 +84,20 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                     : await this.adminIdentityReaderPort.getAuthState(sub);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                this.throwUnauthenticatedException(
-                    AuditLogAction.REFRESH_FAILED,
-                    AuditLogAuthReason.ACCOUNT_NOT_FOUND,
-                    sub,
-                    role,
-                );
+                this.throwUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, sub, role);
             }
 
             throw error;
         }
 
         if (identity.isBanned) {
-            this.throwUnauthenticatedException(
-                AuditLogAction.REFRESH_FAILED,
-                AuditLogAuthReason.INACTIVE_ACCOUNT,
-                sub,
-                role,
-            );
+            this.throwUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, sub, role);
         }
 
         // Version is read from the DB (the authority), so a ban/password-change/delete that advanced
         // the version rejects the refresh before it can mint a fresh token.
         if (payload.version < identity.version) {
-            this.throwUnauthenticatedException(
-                AuditLogAction.REFRESH_FAILED,
-                AuditLogAuthReason.SESSION_REVOKED,
-                sub,
-                role,
-            );
+            this.throwUnauthenticatedException(AuthRejectionReason.SESSION_REVOKED, sub, role);
         }
 
         const tokens = await this.tokenPort.generateTokens(role, sub, identity.version);
@@ -131,7 +110,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         try {
             outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.jti);
         } catch (error) {
-            throw new ServiceUnavailableException(ServiceUnavailableType.DEFAULT, { cause: error });
+            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
         }
 
         if (outcome === RotateOutcome.ROTATED) {
@@ -141,7 +120,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         if (outcome === RotateOutcome.CONCURRENT_REPLAY) {
             // A legitimate duplicate/concurrent refresh lost the race. Benign — reject only this request
             // with a 409 and leave the session family untouched. No audit log: this is not an attack.
-            throw new ResourceConflictException(ResourceConflictType.CONCURRENT_REFRESH);
+            throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
         }
 
         // RotateOutcome.REUSE_DETECTED — per the BCP, revoke the entire refresh family so a stolen token
@@ -151,7 +130,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         try {
             await this.sessionPort.closeAllSessions(sub);
         } catch (error) {
-            throw new ServiceUnavailableException(ServiceUnavailableType.DEFAULT, { cause: error });
+            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
         }
 
         // TODO
@@ -180,32 +159,24 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 ),
             );
 
-        this.throwUnauthenticatedException(
-            AuditLogAction.REFRESH_REUSE_DETECTED,
-            AuditLogAuthReason.SESSION_REUSE,
-            sub,
-            role,
-        );
+        this.throwUnauthenticatedException(AuthRejectionReason.SESSION_REUSE, sub, role);
     }
 
     /**
-     * Throws an UnauthenticatedException with a properly formatted audit log payload.
+     * Throws the rejection with the detail of the failed refresh attached. Attaching context is this
+     * handler's whole contribution — recording it is the exception filter's job — and it is also what
+     * separates a revoked session or detected token reuse from the routine expired-token `401`s that
+     * carry none.
      */
-    private throwUnauthenticatedException(
-        action: AuditLogAction,
-        reason?: AuditLogAuthReason,
-        sub?: string,
-        role?: string,
-    ): never {
-        throw new UnauthenticatedException(UnauthenticatedType.DEFAULT, {
-            cause: new AuditLogPayload({
+    private throwUnauthenticatedException(reason: AuthRejectionReason, sub?: string, role?: string): never {
+        throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, {
+            context: {
                 class: this.constructor.name,
                 method: this.execute.name,
-                action,
                 reason,
                 sub,
                 role,
-            }),
+            },
         });
     }
 }

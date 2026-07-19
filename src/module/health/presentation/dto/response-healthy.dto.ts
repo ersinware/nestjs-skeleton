@@ -5,7 +5,6 @@
 
 import { ApiExtension, ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { Equals, IsObject, IsString } from 'class-validator';
 import { createHealthyIndicator } from 'src/module/health/presentation/dto/dto.util';
 
 /**
@@ -24,8 +23,6 @@ export class ResponseHealthyDto {
      * Always set to "ok" to allow quick string matching by external health monitors.
      */
     @Expose()
-    @IsString()
-    @Equals('ok', { message: 'Status must be exactly "ok".' })
     @ApiProperty({
         type: 'string',
         enum: ['ok'],
@@ -39,7 +36,6 @@ export class ResponseHealthyDto {
      * Useful for diagnosing which components are currently active and performing well.
      */
     @Expose()
-    @IsObject({ message: 'Info must be an object.' })
     @ApiProperty(createHealthDetailsSchema('Information about healthy indicators.'))
     readonly info!: Record<string, unknown>;
 
@@ -48,7 +44,6 @@ export class ResponseHealthyDto {
      * Required by the schema to maintain a consistent shape even when everything is healthy.
      */
     @Expose()
-    @IsObject({ message: 'Error must be an object.' })
     @ApiProperty({
         type: 'object',
         additionalProperties: false,
@@ -62,7 +57,6 @@ export class ResponseHealthyDto {
      * Provides a consolidated view of all tested systems in one object.
      */
     @Expose()
-    @IsObject({ message: 'Details must be an object.' })
     @ApiProperty(createHealthDetailsSchema('Combined details of healthy indicators.'))
     readonly details!: Record<string, unknown>;
 }

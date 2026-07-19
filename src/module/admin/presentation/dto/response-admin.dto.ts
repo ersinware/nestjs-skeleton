@@ -5,7 +5,6 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEnum } from 'class-validator';
 import { IsEntityId, IsUserEmail, IsUserName } from 'src/core/http';
 import { AdminRole } from 'src/shared/domain/admin';
 
@@ -45,7 +44,6 @@ export class ResponseAdminDto {
      * Exposed so the client application can render role-specific UI components or enforce client-side guardrails.
      */
     @Expose()
-    @IsEnum(AdminRole)
     @ApiProperty({
         type: String,
         enum: [AdminRole.ADMIN, AdminRole.SUPER_ADMIN],

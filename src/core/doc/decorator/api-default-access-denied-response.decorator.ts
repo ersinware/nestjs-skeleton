@@ -4,7 +4,8 @@
  */
 
 import { ApiForbiddenResponse } from '@nestjs/swagger';
-import { AccessDeniedType, ErrorDefaultDto } from 'src/core/exception';
+import { ErrorDefaultDto } from 'src/core/exception';
+import { AccessDeniedMessage } from 'src/shared/exception';
 
 /**
  * Custom Swagger decorator to standardize the 403 Forbidden response.
@@ -14,7 +15,7 @@ import { AccessDeniedType, ErrorDefaultDto } from 'src/core/exception';
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultAccessDeniedResponse(
-    type: AccessDeniedType = AccessDeniedType.DEFAULT,
+    type: AccessDeniedMessage = AccessDeniedMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiForbiddenResponse({
         description: type,

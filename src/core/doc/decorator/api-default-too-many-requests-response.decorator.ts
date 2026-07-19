@@ -4,20 +4,21 @@
  */
 
 import { ApiTooManyRequestsResponse } from '@nestjs/swagger';
-import { ErrorDefaultDto, TooManyRequestsType } from 'src/core/exception';
+import { ErrorDefaultDto } from 'src/core/exception';
+import { RateLimitMessage } from 'src/core/security/throttle';
 
 /**
  * Custom Swagger decorator to standardize the 429 Too Many Requests response.
  * Uses the default ErrorDefaultDto and standard error messages based on target type.
  *
- * @param type The type of validation target.
+ * @param message The client-safe rate-limit message.
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultTooManyRequestsResponse(
-    type: TooManyRequestsType = TooManyRequestsType.DEFAULT,
+    message: RateLimitMessage = RateLimitMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiTooManyRequestsResponse({
-        description: type,
+        description: message,
         type: ErrorDefaultDto,
     });
 }

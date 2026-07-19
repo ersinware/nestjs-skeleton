@@ -6,11 +6,11 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
-import { AccessDeniedException, AccessDeniedType } from 'src/core/exception';
 import { KEY_DECORATOR_ROLES } from 'src/core/security/auth/decorator/roles.decorator';
 import { AuthRolesGuard } from 'src/core/security/auth/guard/auth-roles.guard';
 import { AdminRole } from 'src/shared/domain/admin';
 import { UserRole } from 'src/shared/domain/user';
+import { AccessDeniedException, AccessDeniedMessage } from 'src/shared/exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('AuthRolesGuard', () => {
@@ -74,7 +74,7 @@ describe('AuthRolesGuard', () => {
             vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([AdminRole.ADMIN]);
 
             expect(() => guard.canActivate(createMockContext(undefined))).toThrow(
-                new AccessDeniedException(AccessDeniedType.DEFAULT),
+                new AccessDeniedException(AccessDeniedMessage.DEFAULT),
             );
         });
 
@@ -82,7 +82,7 @@ describe('AuthRolesGuard', () => {
             vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([AdminRole.ADMIN]);
 
             expect(() => guard.canActivate(createMockContext({}))).toThrow(
-                new AccessDeniedException(AccessDeniedType.DEFAULT),
+                new AccessDeniedException(AccessDeniedMessage.DEFAULT),
             );
         });
 
@@ -90,7 +90,7 @@ describe('AuthRolesGuard', () => {
             vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([AdminRole.ADMIN, AdminRole.SUPER_ADMIN]);
 
             expect(() => guard.canActivate(createMockContext({ role: UserRole.USER }))).toThrow(
-                new AccessDeniedException(AccessDeniedType.DEFAULT),
+                new AccessDeniedException(AccessDeniedMessage.DEFAULT),
             );
         });
 

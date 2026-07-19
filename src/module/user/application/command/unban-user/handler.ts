@@ -5,12 +5,12 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ResourceNotFoundException } from 'src/core/exception';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Lifts the ban on an existing user. Unlike banning, no session eviction is needed: the version is

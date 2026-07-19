@@ -8,12 +8,12 @@ import { Inject } from '@nestjs/common';
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import type { ICachePort } from 'src/core/cache';
 import { TOKEN_CACHE_PORT } from 'src/core/cache';
-import { ResourceNotFoundException } from 'src/core/exception';
 import type { IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
 import { TOKEN_GET_USER_BY_ID_PORT } from 'src/module/user/application/query/get-user-by-id/port';
 import { GetUserByIdQuery, type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { USER_CACHE_TTL_SECONDS } from 'src/module/user/application/query/user-cache.constant';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Returns the public user read-model by ID.

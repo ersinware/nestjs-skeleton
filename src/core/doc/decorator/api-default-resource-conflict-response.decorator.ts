@@ -4,20 +4,22 @@
  */
 
 import { ApiConflictResponse } from '@nestjs/swagger';
-import { ErrorDefaultDto, ResourceConflictType } from 'src/core/exception';
+import { ErrorDefaultDto } from 'src/core/exception';
+import { ResourceConflictMessage } from 'src/shared/exception';
 
 /**
  * Custom Swagger decorator to standardize the 409 Conflict response.
  * Uses the default ErrorDefaultDto and standard error message.
  *
- * @param type The conflict failure type.
+ * @param message The client-safe conflict message — typed as a plain string because module-owned
+ * vocabularies (e.g. a use case's rejection messages) must be documentable without core knowing them.
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultResourceConflictResponse(
-    type: ResourceConflictType = ResourceConflictType.DEFAULT,
+    message: string = ResourceConflictMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiConflictResponse({
-        description: type,
+        description: message,
         type: ErrorDefaultDto,
     });
 }

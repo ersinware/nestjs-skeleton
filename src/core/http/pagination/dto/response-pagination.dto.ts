@@ -5,7 +5,6 @@
 
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsArray, IsInt, Min } from 'class-validator';
 import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/shared/pagination';
 
 /**
@@ -19,7 +18,6 @@ export class ResponsePaginationDto<T> {
      * to support proper Swagger/Scalar schema and example generation.
      */
     @Expose()
-    @IsArray({ message: 'Items must be an array.' })
     @ApiProperty({
         type: 'array',
         items: { type: 'object' },
@@ -32,8 +30,6 @@ export class ResponsePaginationDto<T> {
      * Total number of matching items in the database.
      */
     @Expose()
-    @IsInt({ message: 'Total must be an integer.' })
-    @Min(0, { message: 'Total cannot be less than 0.' })
     @ApiProperty({
         type: 'integer',
         minimum: 0,
@@ -46,8 +42,6 @@ export class ResponsePaginationDto<T> {
      * Current page number.
      */
     @Expose()
-    @IsInt({ message: 'Page must be an integer.' })
-    @Min(1, { message: 'Page cannot be less than 1.' })
     @ApiProperty({
         type: 'integer',
         minimum: 1,
@@ -60,8 +54,6 @@ export class ResponsePaginationDto<T> {
      * Number of items per page.
      */
     @Expose()
-    @IsInt({ message: 'Limit must be an integer.' })
-    @Min(1, { message: 'Limit cannot be less than 1.' })
     @ApiProperty({
         type: 'integer',
         minimum: 1,
@@ -74,8 +66,6 @@ export class ResponsePaginationDto<T> {
      * Total number of pages.
      */
     @Expose()
-    @IsInt({ message: 'Total pages must be an integer.' })
-    @Min(0, { message: 'Total pages cannot be less than 0.' })
     @ApiProperty({
         type: 'integer',
         minimum: 0,

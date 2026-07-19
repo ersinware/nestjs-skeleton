@@ -5,7 +5,6 @@
 
 import { ApiExtension, ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { Equals, IsObject, IsString } from 'class-validator';
 import { createHealthyIndicator } from 'src/module/health/presentation/dto/dto.util';
 
 /**
@@ -24,8 +23,6 @@ export class ResponseUnhealthyDto {
      * Always set to "error" to allow external systems to immediately recognize a failure state.
      */
     @Expose()
-    @IsString()
-    @Equals('error', { message: 'Status must be exactly "error".' })
     @ApiProperty({
         type: 'string',
         enum: ['error'],
@@ -39,7 +36,6 @@ export class ResponseUnhealthyDto {
      * Useful for understanding which parts of the system are still functioning despite the overall failure.
      */
     @Expose()
-    @IsObject({ message: 'Info must be an object.' })
     @ApiProperty(createUnhealthyInfoSchema('Information about healthy indicators.'))
     readonly info!: Record<string, unknown>;
 
@@ -48,7 +44,6 @@ export class ResponseUnhealthyDto {
      * Essential for debugging and identifying exactly which dependency triggered the unhealthy status.
      */
     @Expose()
-    @IsObject({ message: 'Error must be an object.' })
     @ApiProperty(createUnhealthyErrorSchema('Information about indicators that failed.'))
     readonly error!: Record<string, unknown>;
 
@@ -57,7 +52,6 @@ export class ResponseUnhealthyDto {
      * Provides a consolidated view of all tested systems in one object for comprehensive monitoring.
      */
     @Expose()
-    @IsObject({ message: 'Details must be an object.' })
     @ApiProperty(createUnhealthyDetailsSchema('Combined details of all health indicators.'))
     readonly details!: Record<string, unknown>;
 }

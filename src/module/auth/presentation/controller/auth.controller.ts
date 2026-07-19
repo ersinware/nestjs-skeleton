@@ -15,7 +15,6 @@ import {
     ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { InvalidRequestType, ResourceConflictType, UnauthenticatedType } from 'src/core/exception';
 import { NotEmptyBodyPipe } from 'src/core/http';
 import { AccessTokenPayloadDecorator, Public } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
@@ -26,11 +25,13 @@ import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
 import {
     RefreshTokensCommand,
+    RefreshTokensMessage,
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
+import { InvalidInputMessage, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * The controller handling session lifecycle endpoints.
@@ -57,7 +58,7 @@ export class AuthController {
      *
      * @param dto The payload containing the user's email and password
      * @returns The generated access and refresh token pair
-     * @throws {InvalidRequestException} If the payload is invalid
+     * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
      */
     @Public()
@@ -69,8 +70,8 @@ export class AuthController {
         description: 'Validates credentials and issues a JWT access and refresh token pair for a user.',
     })
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
-    @ApiDefaultUnauthenticatedResponse(UnauthenticatedType.CREDENTIALS)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
     async loginUser(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
@@ -86,7 +87,7 @@ export class AuthController {
      *
      * @param dto The payload containing the admin's email and password
      * @returns The generated access and refresh token pair
-     * @throws {InvalidRequestException} If the payload is invalid
+     * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
      */
     @Public()
@@ -99,8 +100,8 @@ export class AuthController {
             'Validates administrative credentials and issues a JWT access and refresh token pair for an admin.',
     })
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
-    @ApiDefaultUnauthenticatedResponse(UnauthenticatedType.CREDENTIALS)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
+    @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
     async loginAdmin(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
@@ -116,7 +117,7 @@ export class AuthController {
      *
      * @param dto The payload containing the current valid refresh token
      * @returns The newly generated access and refresh token pair
-     * @throws {InvalidRequestException} If the payload is invalid
+     * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the refresh token is invalid or expired
      * @throws {ResourceConflictException} If a concurrent refresh already rotated the session; retry with the latest token pair
      */
@@ -129,9 +130,9 @@ export class AuthController {
         description: 'Exchanges a valid refresh token for a new access and refresh token pair.',
     })
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictType.CONCURRENT_REFRESH)
+    @ApiDefaultResourceConflictResponse(RefreshTokensMessage.CONCURRENT_REFRESH)
     async refresh(@Body(NotEmptyBodyPipe) dto: PostRefreshDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
@@ -146,7 +147,7 @@ export class AuthController {
      * Invalidates the provided refresh token in the backend cache to ensure it can no longer be used to generate new access tokens.
      *
      * @param dto The payload containing the refresh token to invalidate
-     * @throws {InvalidRequestException} If the payload is invalid
+     * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the user is not authenticated
      */
     @Post('logout')
@@ -157,7 +158,7 @@ export class AuthController {
         description: 'Invalidates the current session by removing its refresh token from the cache.',
     })
     @ApiNoContentResponse({ description: 'Successfully logged out.' })
-    @ApiDefaultInvalidRequestResponse(InvalidRequestType.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     async logout(@Body(NotEmptyBodyPipe) dto: PostRefreshDto) {
         await this.commandBus.execute<LogoutCommand>(new LogoutCommand(dto.refreshToken));

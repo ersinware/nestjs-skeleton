@@ -5,15 +5,18 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { InvalidRequestException, InvalidRequestType, ResourceNotFoundException } from 'src/core/exception';
 import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
+import {
+    ChangeUserPasswordCommand,
+    ChangeUserPasswordMessage,
+} from 'src/module/user/application/command/change-user-password/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
+import { InvalidInputException, ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Changes the password for an existing user account.
@@ -40,7 +43,7 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the user does not exist
-     * @throws {InvalidRequestException} When the current password is invalid or the new password is the same
+     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      */
     async execute(command: ChangeUserPasswordCommand) {
         const { id, currentPassword, newPassword } = command,
@@ -53,11 +56,11 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
         const hashedPassword = user.password;
 
         if (!(await this.hashingPort.verify(hashedPassword, currentPassword))) {
-            throw new InvalidRequestException(InvalidRequestType.CURRENT_PASSWORD_MISMATCH);
+            throw new InvalidInputException(ChangeUserPasswordMessage.CURRENT_PASSWORD_MISMATCH);
         }
 
         if (await this.hashingPort.verify(hashedPassword, newPassword)) {
-            throw new InvalidRequestException(InvalidRequestType.PASSWORD_REUSE);
+            throw new InvalidInputException(ChangeUserPasswordMessage.PASSWORD_REUSE);
         }
 
         user.changePassword(await this.hashingPort.hash(newPassword));

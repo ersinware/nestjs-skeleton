@@ -7,6 +7,7 @@ export * from 'src/core/database/adapter/database-cleaner.adapter';
 export * from 'src/core/database/adapter/database-health.adapter';
 export * from 'src/core/database/base.schema';
 export * from 'src/core/database/database-client.token';
+export * from 'src/core/database/driver-error';
 export * from 'src/core/database/module';
 export * from 'src/core/database/port/database-cleaner.port';
 export * from 'src/core/database/port/database-health.port';

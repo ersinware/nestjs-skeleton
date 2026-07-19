@@ -5,13 +5,13 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { AccessDeniedException, ResourceNotFoundException } from 'src/core/exception';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
 import { AdminRole } from 'src/shared/domain/admin';
+import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Handler for the UnbanAdminCommand.

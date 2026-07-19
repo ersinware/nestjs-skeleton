@@ -5,7 +5,6 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { Equals } from 'class-validator';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { AdminRole } from 'src/shared/domain/admin';
 
@@ -21,7 +20,6 @@ export class ResponseCreatedAdminDto extends ResponseAdminDto {
      * Prevents accidental elevation of privileges during the creation flow.
      */
     @Expose()
-    @Equals(AdminRole.ADMIN)
     @ApiProperty({
         type: String,
         enum: [AdminRole.ADMIN],

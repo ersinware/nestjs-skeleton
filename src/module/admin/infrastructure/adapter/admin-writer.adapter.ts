@@ -7,12 +7,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE } from 'src/core/database';
+import { TOKEN_DATABASE, isUniqueViolation } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
 import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { admin as adminSchema } from 'src/module/admin/infrastructure/admin.schema';
+import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -73,21 +74,32 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * Saves an Admin aggregate to the database, then dispatches the domain events it accumulated.
      *
      * @param admin The Admin aggregate root to save
+     * @throws {ResourceConflictException} if the email address is already taken
      */
     async save(admin: Admin) {
         const payload = admin.toSnapshot();
 
-        await this.db
-            .insert(adminSchema)
-            .values(payload)
-            .onConflictDoUpdate({
-                target: adminSchema.id,
-                set: {
-                    ...payload,
-                    id: undefined,
-                    createdAt: undefined,
-                },
-            });
+        try {
+            await this.db
+                .insert(adminSchema)
+                .values(payload)
+                .onConflictDoUpdate({
+                    target: adminSchema.id,
+                    set: {
+                        ...payload,
+                        id: undefined,
+                        createdAt: undefined,
+                    },
+                });
+        } catch (error) {
+            // The id conflict is absorbed by onConflictDoUpdate and email is this table's only other
+            // unique constraint, so a unique violation here can only mean the address is taken.
+            if (isUniqueViolation(error)) {
+                throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE, { cause: error });
+            }
+
+            throw error;
+        }
 
         // TODO
         this.publishDomainEvents(admin);
