@@ -15,7 +15,7 @@ import { apiReference } from '@scalar/nestjs-api-reference';
 import { IncomingMessage, ServerResponse } from 'http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from 'src/app.module';
-import { ACTIVE_VERSIONS, ENV, VERSION_1 } from 'src/core/config';
+import { ACTIVE_VERSIONS, ENV, GLOBAL_PREFIX, VERSION_1 } from 'src/core/config';
 import { SwaggerManager } from 'src/core/doc';
 
 /**
@@ -30,7 +30,7 @@ async function bootstrap() {
 
     app.enableShutdownHooks()
         .enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1 })
-        .setGlobalPrefix('api')
+        .setGlobalPrefix(GLOBAL_PREFIX)
         .useLogger(app.get(Logger));
 
     setupDocumentation(app);
@@ -46,7 +46,7 @@ async function bootstrap() {
  */
 function setupDocumentation(app: NestFastifyApplication) {
     ACTIVE_VERSIONS.forEach((version) => {
-        const path = `/api/v${version}/docs`;
+        const path = `/${GLOBAL_PREFIX}/v${version}/docs`;
 
         app.use(
             path,

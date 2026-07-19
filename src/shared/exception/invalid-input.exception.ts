@@ -14,14 +14,6 @@ export enum InvalidInputMessage {
      * Targets validation errors in both request body and parameters.
      */
     DEFAULT = 'Invalid request payload or parameter format.',
-    /**
-     * Targets validation errors in the request body.
-     */
-    PAYLOAD = 'Invalid request payload format.',
-    /**
-     * Targets validation errors in the request parameters.
-     */
-    PARAM = 'Invalid request parameter format.',
 }
 
 /**

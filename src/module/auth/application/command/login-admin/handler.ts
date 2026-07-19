@@ -47,18 +47,18 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
             admin = await this.adminIdentityReaderPort.getCredentialsByEmail(command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                this.throwUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, undefined, AdminRole.ADMIN);
+                throw this.createUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, AdminRole.ADMIN);
             }
 
             throw error;
         }
 
         if (admin.isBanned) {
-            this.throwUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, admin.id, admin.role);
+            throw this.createUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, admin.role, admin.id);
         }
 
         if (!(await this.hashingPort.verify(admin.password, command.password))) {
-            this.throwUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, admin.id, admin.role);
+            throw this.createUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, admin.role, admin.id);
         }
 
         const id = admin.id,
@@ -73,16 +73,21 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
     }
 
     /**
-     * Throws the rejection with the detail of the failed attempt attached. Attaching context is this
+     * Builds the rejection with the detail of the failed attempt attached. Attaching context is this
      * handler's whole contribution — recording it is the exception filter's job — and it is also what
      * separates a deliberately rejected credential from the routine expired-token `401`s that carry none.
+     *
+     * @param reason Why the attempt was rejected, recorded for the audit log
+     * @param role The rejected account's role, falling back to the endpoint's own role when no account matched the email
+     * @param sub The rejected account's id, absent when no account matched the email
+     * @returns The exception the caller throws
      */
-    private throwUnauthenticatedException(
+    private createUnauthenticatedException(
         reason: AuthRejectionReason,
-        sub: string | undefined,
         role: AdminRole,
-    ): never {
-        throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
+        sub?: string,
+    ): UnauthenticatedException {
+        return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
             context: {
                 class: this.constructor.name,
                 method: this.execute.name,

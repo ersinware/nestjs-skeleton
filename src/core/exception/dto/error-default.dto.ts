@@ -53,4 +53,16 @@ export class ErrorDefaultDto {
         example: 'Bad Request',
     })
     readonly statusText!: string;
+
+    /**
+     * Creates the error response, so the global exception filter always emits a real instance of
+     * this class rather than a structurally similar object literal.
+     *
+     * @param fields The status code, messages, and status text of the failed request
+     */
+    constructor(fields: { statusCode: HttpStatus; message: string[]; statusText: string }) {
+        this.statusCode = fields.statusCode;
+        this.message = fields.message;
+        this.statusText = fields.statusText;
+    }
 }

@@ -11,11 +11,12 @@ import { RateLimitMessage } from 'src/core/security/throttle';
  * Custom Swagger decorator to standardize the 429 Too Many Requests response.
  * Uses the default ErrorDefaultDto and standard error messages based on target type.
  *
- * @param message The client-safe rate-limit message.
+ * @param message The client-safe rate-limit message — typed as a plain string because module-owned
+ * vocabularies (e.g. a use case's rejection messages) must be documentable without core knowing them.
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultTooManyRequestsResponse(
-    message: RateLimitMessage = RateLimitMessage.DEFAULT,
+    message: string = RateLimitMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiTooManyRequestsResponse({
         description: message,

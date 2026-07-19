@@ -11,14 +11,15 @@ import { ResourceNotFoundMessage } from 'src/shared/exception';
  * Custom Swagger decorator to standardize the 404 Not Found response.
  * Uses the default ErrorDefaultDto and standard error message.
  *
- * @param type The not found failure type.
+ * @param message The client-safe not-found message — typed as a plain string because module-owned
+ * vocabularies (e.g. a use case's rejection messages) must be documentable without core knowing them.
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultResourceNotFoundResponse(
-    type: ResourceNotFoundMessage = ResourceNotFoundMessage.DEFAULT,
+    message: string = ResourceNotFoundMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiNotFoundResponse({
-        description: type,
+        description: message,
         type: ErrorDefaultDto,
     });
 }

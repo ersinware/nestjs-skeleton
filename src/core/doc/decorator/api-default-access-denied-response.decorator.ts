@@ -11,14 +11,15 @@ import { AccessDeniedMessage } from 'src/shared/exception';
  * Custom Swagger decorator to standardize the 403 Forbidden response.
  * Uses the default ErrorDefaultDto and standard error message.
  *
- * @param type The forbidden failure type.
+ * @param message The client-safe access-denied message — typed as a plain string because module-owned
+ * vocabularies (e.g. a use case's rejection messages) must be documentable without core knowing them.
  * @returns A decorator function that can be applied to controllers or methods.
  */
 export function ApiDefaultAccessDeniedResponse(
-    type: AccessDeniedMessage = AccessDeniedMessage.DEFAULT,
+    message: string = AccessDeniedMessage.DEFAULT,
 ): MethodDecorator & ClassDecorator {
     return ApiForbiddenResponse({
-        description: type,
+        description: message,
         type: ErrorDefaultDto,
     });
 }
