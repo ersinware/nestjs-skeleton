@@ -9,7 +9,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache';
+import { CacheModule, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import { FailSafeThrottlerGuard } from 'src/core/security/throttle/guard/fail-safe-throttler.guard';
 import { RateLimitMessage } from 'src/core/security/throttle/rate-limit-message.enum';
@@ -21,7 +21,7 @@ import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 @Module({
     imports: [
         ThrottlerModule.forRootAsync({
-            imports: [ConfigModule],
+            imports: [ConfigModule, CacheModule],
             inject: [ConfigService, TOKEN_CACHE_STATE_CLIENT],
             useFactory: (config: ConfigService, redis: Redis) => ({
                 errorMessage: RateLimitMessage.DEFAULT,

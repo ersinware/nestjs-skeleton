@@ -1,10 +1,10 @@
 /**
  * @file database.module.ts
- * @description Global NestJS module establishing database connections and configuring Drizzle ORM.
+ * @description NestJS module establishing database connections and configuring Drizzle ORM.
  * Connects to PostgreSQL using postgres.js and manages connections gracefully across the application lifecycle.
  */
 
-import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -14,6 +14,7 @@ import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health
 import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
 import { TOKEN_DATABASE_CLEANER_PORT } from 'src/core/database/port/database-cleaner.port';
 import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database/port/database-health.port';
+import { LoggerModule } from 'src/core/observability/logger';
 
 /**
  * Dependency injection token representing the raw postgres.js client connection pool.
@@ -21,10 +22,10 @@ import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database/port/database-heal
 const TOKEN_DATABASE_CLIENT = Symbol('TOKEN_DATABASE_CLIENT');
 
 /**
- * Global database module providing database clients to other modules.
+ * Database module providing database clients to other modules.
  */
-@Global()
 @Module({
+    imports: [LoggerModule],
     providers: [
         {
             provide: TOKEN_DATABASE_CLIENT,

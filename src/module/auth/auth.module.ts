@@ -5,6 +5,8 @@
 
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
+import { EventBusModule } from 'src/core/event-bus';
+import { AuditModule } from 'src/core/observability/audit';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -26,7 +28,16 @@ import { UserModule } from 'src/module/user';
  * It encapsulates the business logic for login, token refresh, and session management, exposing the `AuthService` for internal cross-module usage.
  */
 @Module({
-    imports: [HashingModule, TokenModule, SessionModule, UserModule, AdminModule, CqrsModule],
+    imports: [
+        AuditModule,
+        EventBusModule,
+        HashingModule,
+        TokenModule,
+        SessionModule,
+        UserModule,
+        AdminModule,
+        CqrsModule,
+    ],
     controllers: [AuthController],
     providers: [
         LoginAdminCommandHandler,

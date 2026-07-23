@@ -5,7 +5,10 @@
 
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
+import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
+import { EventBusModule } from 'src/core/event-bus';
+import { AuditModule } from 'src/core/observability/audit';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { AdminFacade } from 'src/module/admin/admin.facade';
@@ -36,7 +39,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
  * and exposes the AdminFacade for cross-domain usage.
  */
 @Module({
-    imports: [HashingModule, SessionModule, EmailModule, CqrsModule],
+    imports: [AuditModule, DatabaseModule, EventBusModule, HashingModule, SessionModule, EmailModule, CqrsModule],
     controllers: [AdminController],
     providers: [
         AdminFacade,

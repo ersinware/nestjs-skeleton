@@ -1,9 +1,9 @@
 /**
  * @file logger.module.ts
- * @description NestJS module configuring Pino logger globally.
+ * @description NestJS module configuring the Pino logger.
  */
 
-import { Global, Module, RequestMethod } from '@nestjs/common';
+import { Module, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IncomingMessage } from 'http';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
@@ -12,9 +12,8 @@ import { LoggerAdapter } from 'src/core/observability/logger/adapter';
 import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
 
 /**
- * Global LoggerModule wrapper encapsulating pino configurations.
+ * LoggerModule wrapper encapsulating pino configurations.
  */
-@Global()
 @Module({
     imports: [
         PinoLoggerModule.forRootAsync({
