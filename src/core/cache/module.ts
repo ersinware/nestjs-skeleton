@@ -7,7 +7,6 @@
 import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { Logger } from 'nestjs-pino';
 import { CacheCleanerAdapter } from 'src/core/cache/adapter/cache-cleaner.adapter';
 import { CacheHealthAdapter } from 'src/core/cache/adapter/cache-health.adapter';
 import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
@@ -16,7 +15,7 @@ import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
 import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
 import { ENV } from 'src/core/config';
-import { ConnectionLogMessage, LogPayload } from 'src/core/observability/logger';
+import { ConnectionLogMessage, LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
  * Helper function to create a configured Redis client instance.
@@ -29,7 +28,7 @@ import { ConnectionLogMessage, LogPayload } from 'src/core/observability/logger'
  */
 function createRedisClient(
     config: ConfigService,
-    logger: Logger,
+    logger: ILoggerPort,
     env: { host: string; port: string; password: string; tls: string },
     clientName: string,
 ) {
@@ -91,9 +90,9 @@ function createRedisClient(
 @Module({
     providers: [
         {
-            inject: [ConfigService, Logger],
+            inject: [ConfigService, TOKEN_LOGGER_PORT],
             provide: TOKEN_CACHE_CLIENT,
-            useFactory: (config: ConfigService, logger: Logger) =>
+            useFactory: (config: ConfigService, logger: ILoggerPort) =>
                 createRedisClient(
                     config,
                     logger,
@@ -107,9 +106,9 @@ function createRedisClient(
                 ),
         },
         {
-            inject: [ConfigService, Logger],
+            inject: [ConfigService, TOKEN_LOGGER_PORT],
             provide: TOKEN_CACHE_STATE_CLIENT,
-            useFactory: (config: ConfigService, logger: Logger) =>
+            useFactory: (config: ConfigService, logger: ILoggerPort) =>
                 createRedisClient(
                     config,
                     logger,

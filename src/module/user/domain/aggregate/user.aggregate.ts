@@ -68,9 +68,11 @@ export class User extends SoftDeletableAggregateRoot {
      * Updates the basic profile information of the user.
      * Only applies changes if the provided values differ from the current state.
      *
+     * @returns Whether any field actually changed — the caller records the audit entry only on a real
+     * transition, so a request that matched the current state leaves no fabricated trail.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    updateProfile(payload: { name?: string | undefined; email?: string | undefined }) {
+    updateProfile(payload: { name?: string | undefined; email?: string | undefined }): boolean {
         this.assertNotDeleted(this.updateProfile.name);
 
         let isUpdated = false;
@@ -89,6 +91,8 @@ export class User extends SoftDeletableAggregateRoot {
             this.props.updatedAt = new Date();
             this.addDomainEvent(new DomainEvent(UserEvent.UPDATED, this.id));
         }
+
+        return isUpdated;
     }
 
     /**
@@ -111,13 +115,15 @@ export class User extends SoftDeletableAggregateRoot {
      * Bans the user. Bumps the session version to instantly evict existing tokens, and emits a
      * BANNED event. A no-op when the account is already banned.
      *
+     * @returns Whether the account actually transitioned — the caller persists, audits, and evicts
+     * only on a real ban, so a repeated request triggers none of them.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    ban() {
+    ban(): boolean {
         this.assertNotDeleted(this.ban.name);
 
         if (this.props.isBanned) {
-            return;
+            return false;
         }
 
         this.props.isBanned = true;
@@ -125,6 +131,8 @@ export class User extends SoftDeletableAggregateRoot {
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(UserEvent.BANNED, this.id));
+
+        return true;
     }
 
     /**
@@ -132,19 +140,23 @@ export class User extends SoftDeletableAggregateRoot {
      * monotonic and re-login mints a token at the current version. A no-op when the account is not
      * banned.
      *
+     * @returns Whether the account actually transitioned — the caller persists and audits only on a
+     * real unban, so lifting a ban that was never in place triggers neither.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    unban() {
+    unban(): boolean {
         this.assertNotDeleted(this.unban.name);
 
         if (!this.props.isBanned) {
-            return;
+            return false;
         }
 
         this.props.isBanned = false;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(UserEvent.UNBANNED, this.id));
+
+        return true;
     }
 
     /**

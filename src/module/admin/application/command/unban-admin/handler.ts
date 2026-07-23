@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
@@ -20,7 +21,10 @@ import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exc
  */
 @CommandHandler(UnbanAdminCommand)
 export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminCommand> {
-    constructor(@Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort) {}
+    constructor(
+        @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+    ) {}
 
     /**
      * Executes the unban admin command.
@@ -40,7 +44,14 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
             throw new AccessDeniedException();
         }
 
-        admin.unban();
+        // `unban()` is a silent no-op on an account that is not banned and reports whether it actually
+        // transitioned. On a no-op there is nothing to persist or audit — saving would rewrite
+        // identical values, and an entry for a ban that was never in place would be a fabricated fact.
+        if (!admin.unban()) {
+            return;
+        }
+
         await this.adminWriterPort.save(admin);
+        this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: command.id });
     }
 }

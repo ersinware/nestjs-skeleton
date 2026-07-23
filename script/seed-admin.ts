@@ -27,7 +27,7 @@ async function seed() {
     const hashingPort = app.get<IHashingPort>(TOKEN_HASHING_PORT);
 
     const email = 'ersin@ersinware.com';
-    const password = 'SuperAdminPassword123!';
+    const password = 'Password123!';
 
     console.log('Hashing password...');
     const hashedPassword = await hashingPort.hash(password);

@@ -5,15 +5,16 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
-    type IUserWriterPort,
     TOKEN_USER_WRITER_PORT,
+    type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Updates profile fields on an existing user and returns the entity ID.
+ * Updates profile fields on an existing user.
  */
 @CommandHandler(UpdateUserCommand)
 export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserCommand> {
@@ -21,15 +22,18 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      * Initializes the handler with the required ports.
      *
      * @param userWriterPort The port used to load and save the user aggregate
+     * @param auditPort The port used to record the profile change for the audit trail
      */
-    constructor(@Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort) {}
+    constructor(
+        @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+    ) {}
 
     /**
      * Executes the update user command.
-     * When neither email nor name is provided the command is a no-op and the ID is returned immediately.
+     * When neither email nor name is provided the command is a no-op and returns immediately.
      *
      * @param command The command payload
-     * @returns The unique identifier of the updated user
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      */
     async execute(command: UpdateUserCommand) {
@@ -45,7 +49,18 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             throw new ResourceNotFoundException();
         }
 
-        user.updateProfile({ name, email });
+        // `updateProfile` is a silent no-op when the payload matches the current state: nothing
+        // mutated, no domain event accrued. With nothing changed there is nothing to persist and no
+        // fact to audit, so both are skipped — saving here would rewrite identical values, and an
+        // entry for a change that changed nothing would be a fabricated fact (the same truth the
+        // domain event follows).
+        if (!user.updateProfile({ name, email })) {
+            return;
+        }
+
         await this.userWriterPort.save(user);
+
+        // The actor comes from the ambient audit context, not from here.
+        this.auditPort.record({ action: AuditAction.USER_UPDATED, targetId: id });
     }
 }

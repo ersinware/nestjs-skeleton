@@ -10,7 +10,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PATH_HEALTH } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { GlobalExceptionFilter } from 'src/core/exception/filter/global-exception.filter';
-import { AuditLogAction, AuditLogPayload, LogPayload, TOKEN_LOGGER_PORT } from 'src/core/observability/logger';
+import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
+import { LogPayload, TOKEN_LOGGER_PORT } from 'src/core/observability/logger';
 import { TOKEN_EXCEPTION_TRACKER_PORT } from 'src/core/observability/tracker';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
 import {
@@ -34,6 +35,9 @@ describe('GlobalExceptionFilter', () => {
             error: vi.fn(),
             warn: vi.fn(),
             log: vi.fn(),
+        },
+        mockAuditPort = {
+            record: vi.fn(),
         },
         mockExceptionTrackerPort = {
             captureException: vi.fn(),
@@ -81,6 +85,7 @@ describe('GlobalExceptionFilter', () => {
                     useValue: { httpAdapter: { reply: mockReply } },
                 },
                 { provide: TOKEN_LOGGER_PORT, useValue: mockLoggerPort },
+                { provide: TOKEN_AUDIT_PORT, useValue: mockAuditPort },
                 {
                     provide: TOKEN_EXCEPTION_TRACKER_PORT,
                     useValue: mockExceptionTrackerPort,
@@ -107,8 +112,8 @@ describe('GlobalExceptionFilter', () => {
                 { error: indicatorBody },
                 HttpStatus.SERVICE_UNAVAILABLE,
             );
-            expect(mockLoggerPort.warn).not.toHaveBeenCalled();
             expect(mockLoggerPort.error).not.toHaveBeenCalled();
+            expect(mockAuditPort.record).not.toHaveBeenCalled();
             expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
         });
 
@@ -254,11 +259,11 @@ describe('GlobalExceptionFilter', () => {
 
     describe('logging decision', () => {
         describe('503 — silent', () => {
-            it('should neither log nor capture a dependency-unavailable rejection', () => {
+            it('should neither log, audit, nor capture a dependency-unavailable rejection', () => {
                 filter.catch(new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT), createHost());
 
-                expect(mockLoggerPort.warn).not.toHaveBeenCalled();
                 expect(mockLoggerPort.error).not.toHaveBeenCalled();
+                expect(mockAuditPort.record).not.toHaveBeenCalled();
                 expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
 
@@ -268,8 +273,8 @@ describe('GlobalExceptionFilter', () => {
                     createHost(),
                 );
 
-                expect(mockLoggerPort.warn).not.toHaveBeenCalled();
                 expect(mockLoggerPort.error).not.toHaveBeenCalled();
+                expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
         });
 
@@ -283,76 +288,57 @@ describe('GlobalExceptionFilter', () => {
                     new LogPayload({
                         class: GlobalExceptionFilter.name,
                         method: 'catch',
+                        message: 'boom',
                         error: thrown,
-                        context: undefined,
+                        data: { context: undefined },
                     }),
                 );
                 expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);
-                expect(mockLoggerPort.warn).not.toHaveBeenCalled();
+                expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
 
             it('should coerce a non-Error throwable into an Error for the log payload', () => {
                 filter.catch('boom', createHost());
 
                 expect(mockLoggerPort.error).toHaveBeenCalledWith(
-                    expect.objectContaining({ error: new Error('boom') }),
+                    expect.objectContaining({ message: 'boom', error: new Error('boom') }),
                 );
                 expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith('boom');
             });
 
-            it('should keep a context-carrying SystemException on the error path rather than degrading to warn', () => {
+            it("should carry a taxonomy exception's context into the error log rather than degrading to an audit record", () => {
                 const thrown = new SystemException('Mutation attempted on a soft-deleted account.', { context });
 
                 filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.error).toHaveBeenCalledWith(expect.objectContaining({ context }));
+                expect(mockLoggerPort.error).toHaveBeenCalledWith(expect.objectContaining({ data: { context } }));
                 expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);
-                expect(mockLoggerPort.warn).not.toHaveBeenCalled();
+                expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
         });
 
-        describe('security-audited statuses', () => {
-            it('should audit a 403 with the SECURITY_EXCEPTION action', () => {
+        describe('audit-recorded refusals — 403 and 429 only', () => {
+            it('should record an ACCESS_DENIED audit entry for a 403', () => {
                 filter.catch(new AccessDeniedException('Insufficient privileges.'), createHost());
 
-                expect(mockLoggerPort.warn).toHaveBeenCalledWith(
-                    new AuditLogPayload({
-                        class: GlobalExceptionFilter.name,
-                        method: 'catch',
-                        action: AuditLogAction.SECURITY_EXCEPTION,
-                        error: 'Insufficient privileges.',
-                        sub: undefined,
-                        role: undefined,
-                        context: undefined,
-                    }),
-                );
+                expect(mockAuditPort.record).toHaveBeenCalledWith({
+                    action: AuditAction.ACCESS_DENIED,
+                    reason: 'Insufficient privileges.',
+                    targetId: undefined,
+                });
+                expect(mockLoggerPort.error).not.toHaveBeenCalled();
                 expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
 
-            it('should audit a 429 with the SECURITY_EXCEPTION action', () => {
+            it('should record a RATE_LIMITED audit entry for a 429', () => {
                 filter.catch(new HttpException('Too many requests', HttpStatus.TOO_MANY_REQUESTS), createHost());
 
-                expect(mockLoggerPort.warn).toHaveBeenCalledWith(
-                    expect.objectContaining({ action: AuditLogAction.SECURITY_EXCEPTION }),
+                expect(mockAuditPort.record).toHaveBeenCalledWith(
+                    expect.objectContaining({ action: AuditAction.RATE_LIMITED }),
                 );
             });
 
-            it('should audit a 401 that carries context', () => {
-                filter.catch(new UnauthenticatedException('Session reuse detected.', { context }), createHost());
-
-                expect(mockLoggerPort.warn).toHaveBeenCalledWith(
-                    expect.objectContaining({ action: AuditLogAction.SECURITY_EXCEPTION, context }),
-                );
-            });
-
-            it('should stay silent on a routine 401 with no context', () => {
-                filter.catch(new UnauthenticatedException('Token expired.'), createHost());
-
-                expect(mockLoggerPort.warn).not.toHaveBeenCalled();
-                expect(mockLoggerPort.error).not.toHaveBeenCalled();
-            });
-
-            it("should attach the caller's identity when the route was authenticated", () => {
+            it("should carry the authenticated caller's subject as the audit target", () => {
                 const accessTokenPayload = { sub: 'user-1', role: 'USER' };
 
                 filter.catch(
@@ -360,12 +346,12 @@ describe('GlobalExceptionFilter', () => {
                     createHost({ accessTokenPayload } as Partial<AuthenticatedRequest>),
                 );
 
-                expect(mockLoggerPort.warn).toHaveBeenCalledWith(
-                    expect.objectContaining({ sub: 'user-1', role: 'USER' }),
+                expect(mockAuditPort.record).toHaveBeenCalledWith(
+                    expect.objectContaining({ action: AuditAction.ACCESS_DENIED, targetId: 'user-1' }),
                 );
             });
 
-            it('should join a multi-message body into a single error string', () => {
+            it('should join a multi-message body into a single reason string', () => {
                 const exception = new HttpException(
                     { message: ['first reason', 'second reason'] },
                     HttpStatus.FORBIDDEN,
@@ -373,57 +359,31 @@ describe('GlobalExceptionFilter', () => {
 
                 filter.catch(exception, createHost());
 
-                expect(mockLoggerPort.warn).toHaveBeenCalledWith(
-                    expect.objectContaining({ error: 'first reason, second reason' }),
+                expect(mockAuditPort.record).toHaveBeenCalledWith(
+                    expect.objectContaining({ reason: 'first reason, second reason' }),
                 );
             });
         });
 
-        describe('non-security rejections carrying context', () => {
-            it('should warn without the security action for a context-carrying 400', () => {
-                filter.catch(new InvalidInputException('Password is too weak.', { context }), createHost());
-
-                const [payload] = mockLoggerPort.warn.mock.calls[0] as [LogPayload];
-
-                expect(payload).toBeInstanceOf(LogPayload);
-                expect(payload).not.toBeInstanceOf(AuditLogPayload);
-                expect(payload['action']).toBeUndefined();
-                expect(payload['context']).toEqual(context);
-            });
-
+        describe('everything else below 500 — silent', () => {
             it.each([
-                ['404', ResourceNotFoundException],
-                ['409', ResourceConflictException],
-            ])('should warn without the security action for a context-carrying %s', (_label, ExceptionClass) => {
-                filter.catch(new ExceptionClass('Some failure.', { context }), createHost());
-
-                expect(mockLoggerPort.warn).toHaveBeenCalledWith(expect.objectContaining({ context }));
-                expect(mockLoggerPort.warn).not.toHaveBeenCalledWith(
-                    expect.objectContaining({ action: AuditLogAction.SECURITY_EXCEPTION }),
-                );
-            });
-
-            it('should carry the context verbatim under its own key without merging it', () => {
-                filter.catch(new InvalidInputException('Password is too weak.', { context }), createHost());
-
-                const [payload] = mockLoggerPort.warn.mock.calls[0] as [LogPayload];
-
-                expect(payload['context']).toBe(context);
-                expect(payload['reason']).toBeUndefined();
-            });
-        });
-
-        describe('rejections with neither context nor a security status', () => {
-            it.each([
-                ['a 400', new InvalidInputException('Password is too weak.')],
+                ['a 401 that carries context', new UnauthenticatedException('Session reuse detected.', { context })],
+                ['a routine 401 with no context', new UnauthenticatedException('Token expired.')],
+                ['a 400 that carries context', new InvalidInputException('Password is too weak.', { context })],
+                ['a 404 that carries context', new ResourceNotFoundException('Some failure.', { context })],
+                ['a 409 that carries context', new ResourceConflictException('Some failure.', { context })],
+                [
+                    'a 400 with neither context nor a security status',
+                    new InvalidInputException('Password is too weak.'),
+                ],
                 ['a 404', new ResourceNotFoundException('User not found.')],
                 ['a 409', new ResourceConflictException('Email already in use.')],
                 ['a non-taxonomy 4xx HttpException', new HttpException('Bad payload', HttpStatus.BAD_REQUEST)],
-            ])('should stay silent for %s', (_label, thrown) => {
+            ])('should neither log, audit, nor capture %s', (_label, thrown) => {
                 filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.warn).not.toHaveBeenCalled();
                 expect(mockLoggerPort.error).not.toHaveBeenCalled();
+                expect(mockAuditPort.record).not.toHaveBeenCalled();
                 expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
         });

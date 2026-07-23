@@ -22,8 +22,16 @@ import { LogPayload } from 'src/core/observability/logger';
 async function bootstrap() {
     let app: NestFastifyApplication | undefined;
 
-    function createLogPayload(options: Record<string, unknown>) {
-        return new LogPayload({ class: 'build-doc.ts', method: 'bootstrap', ...options });
+    function createLogPayload({
+        message,
+        error,
+        data,
+    }: {
+        message: string;
+        error?: unknown;
+        data?: Record<string, unknown>;
+    }) {
+        return new LogPayload({ class: 'build-doc.ts', method: bootstrap.name, message, error, data });
     }
 
     try {
@@ -54,7 +62,12 @@ async function bootstrap() {
                 SwaggerManager.generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
             );
 
-            logger.log(createLogPayload({ jsonFilename, htmlFilename }));
+            logger.log(
+                createLogPayload({
+                    message: 'Swagger artifacts written.',
+                    data: { jsonFilename, htmlFilename },
+                }),
+            );
         });
 
         await app.close();
@@ -67,13 +80,10 @@ async function bootstrap() {
                 throw new Error('App not initialized', { cause: _error });
             }
 
-            app.get(Logger).error(createLogPayload({ error: _error }));
+            app.get(Logger).error(createLogPayload({ message: _error.message, error: _error }));
         } catch {
             new NestLogger('BuildSwagger').error(
-                createLogPayload({
-                    error: _error.message,
-                    stack: _error.stack,
-                }),
+                createLogPayload({ message: _error.message, data: { stack: _error.stack } }),
             );
         }
 

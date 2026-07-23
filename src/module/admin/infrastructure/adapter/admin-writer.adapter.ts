@@ -97,7 +97,6 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             throw error;
         }
 
-        // TODO
         this.publishDomainEvents(admin);
     }
 

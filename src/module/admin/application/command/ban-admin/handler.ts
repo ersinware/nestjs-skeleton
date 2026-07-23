@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import {
@@ -23,6 +24,7 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand> 
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
@@ -43,8 +45,22 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand> 
             throw new AccessDeniedException();
         }
 
-        admin.ban();
+        // `ban()` is a silent no-op on an already-banned account and reports whether it actually
+        // transitioned. On a no-op there is nothing to persist, audit, or evict: re-writing identical
+        // values and re-pushing the eviction would be pure noise — and because the setVersion failure
+        // below is swallowed and silent, "re-ban to retry a lost eviction" was never an actionable
+        // path anyway; a real ban stays effective within one access-token TTL regardless, since
+        // refresh is refused for a banned identity.
+        if (!admin.ban()) {
+            return;
+        }
+
         await this.adminWriterPort.save(admin);
+
+        // Recorded once the write is durable, and before the best-effort eviction below: the ban is
+        // already a fact at this point, and an unreachable Redis must not cost the trail its only
+        // evidence of who imposed it. The actor comes from the ambient audit context, not from here.
+        this.auditPort.record({ action: AuditAction.ADMIN_BANNED, targetId: command.id });
 
         try {
             await this.sessionPort.setVersion(command.id, admin.version);

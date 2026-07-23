@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
 import {
@@ -23,6 +24,7 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
@@ -45,6 +47,10 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
         admin.markAsDeleted();
         await this.adminWriterPort.save(admin);
+
+        // Unconditional: the writer's `load()` filters out soft-deleted rows, so reaching here means
+        // the account was live and the transition genuinely happened.
+        this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: command.id });
 
         try {
             await this.sessionPort.setVersion(command.id, admin.version);

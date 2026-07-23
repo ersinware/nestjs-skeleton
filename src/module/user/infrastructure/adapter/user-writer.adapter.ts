@@ -86,7 +86,6 @@ export class UserWriterAdapter implements IUserWriterPort {
             throw error;
         }
 
-        // TODO
         this.publishDomainEvents(user);
     }
 

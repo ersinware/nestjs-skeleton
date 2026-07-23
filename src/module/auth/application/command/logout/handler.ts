@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
@@ -18,6 +19,7 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
@@ -35,5 +37,9 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
         }
 
         await this.sessionPort.closeSession(payload.sub, payload.jti);
+
+        // The unverifiable-token path above returns without a record on purpose: nothing was closed,
+        // and the subject is unknown — there is no fact to file.
+        this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
     }
 }

@@ -67,6 +67,24 @@ services:
         networks:
             - api-network
 
+    otel-collector:
+        # Tail-sampling gateway in front of Jaeger. The API exports 100% of its traces here; this is
+        # where the keep/drop decision is made on the completed trace's outcome (see
+        # docker/otel-collector/config.yml). Contrib image — tail_sampling is not in the core distro.
+        image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+        container_name: otel-collector
+        command: ['--config=/etc/otelcol-contrib/config.yml']
+        environment:
+            # The single on/off knob. 100 = keep every trace (OFF, default); lower it to sample.
+            # Read from the project-root .env by compose, defaulting to 100 when unset.
+            - OTEL_TAIL_SAMPLING_PERCENTAGE=${OTEL_TAIL_SAMPLING_PERCENTAGE:-100}
+        volumes:
+            - ./docker/otel-collector/config.yml:/etc/otelcol-contrib/config.yml
+        depends_on:
+            - jaeger
+        networks:
+            - api-network
+
     loki:
         image: grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
         container_name: loki

@@ -8,13 +8,8 @@ import { Catch, ExceptionFilter, HttpException, HttpStatus, Inject, Injectable }
 import { HttpAdapterHost } from '@nestjs/core';
 import { PATH_HEALTH } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
-import {
-    AuditLogAction,
-    AuditLogPayload,
-    LogPayload,
-    TOKEN_LOGGER_PORT,
-    type ILoggerPort,
-} from 'src/core/observability/logger';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
 import {
@@ -23,7 +18,6 @@ import {
     ExceptionKind,
     ResourceNotFoundMessage,
     SystemMessage,
-    type ExceptionContext,
 } from 'src/shared/exception';
 
 /**
@@ -51,11 +45,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * Creates an instance of GlobalExceptionFilter.
      *
      * @param httpAdapterHost Host of the HTTP adapter.
-     * @param logger Injection of pino logger service.
+     * @param loggerPort Writes the operational log entries this filter decides to emit.
+     * @param auditPort Writes the audit records for the refusals the transport itself establishes.
+     * @param exceptionTrackerPort Reports the failures a human must act on.
      */
     constructor(
         private readonly httpAdapterHost: HttpAdapterHost,
         @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_EXCEPTION_TRACKER_PORT) private readonly exceptionTrackerPort: IExceptionTrackerPort,
     ) {}
 
@@ -214,102 +211,86 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     /**
-     * Emits audit logs or critical incident logs based on the determined response data.
+     * Decides what a caught exception leaves behind — a Sentry-backed error log, an audit record, or
+     * deliberately nothing.
      *
-     * A transient `503` (dependency outage) is deliberately silent here: per-request logging during an
-     * outage is pure flood, and detection is the health-endpoint alarm's job; the single
-     * forensic breadcrumb is the connection-level
-     * state-transition log in `core/cache/module.ts`. Routine `401`s (expired/missing token) are equally
-     * uninteresting, so of the context-free statuses only `403` (privilege escalation) and `429`
-     * (throttle) remain security-audit worthy.
+     * A transient `503` (dependency outage) is silent: per-request logging during an outage is pure
+     * flood, detection is the health-endpoint alarm's job, and the single forensic breadcrumb is the
+     * connection-level state-transition log in `core/cache/module.ts`.
      *
-     * An `ExceptionContext` means "this rejection was deliberate and I have detail on it", so ANY
-     * non-5xx status carrying context is recorded — a guard refusing an expired token attaches nothing
-     * and stays silent. Recorded is not the same as security-audited, though: the SECURITY_EXCEPTION
-     * action is stamped only on the genuinely security-relevant statuses (`403`, `429`, and a `401`
-     * whose thrower attached context); any other context-carrying rejection gets a plain `warn`
-     * without the action, so filtering the audit trail by action never surfaces non-security noise.
-     * Either way the context is carried verbatim under its own key, never merged or read, so the
-     * filter stays ignorant of the thrower's vocabulary. The 5xx branch is checked first so a
-     * `SystemException` carrying context still reaches the error log and Sentry rather than degrading
-     * to a `warn`.
+     * Everything `>= 500` is an operational failure a human must act on: it takes the error log plus
+     * a Sentry capture, and its `context` — the thrower's diagnostic detail — travels into that log.
+     * This is checked before the audit branch so a `SystemException` can never degrade into a mere
+     * audit record, and it is the ONLY path on which the filter reads `context` at all.
+     *
+     * Below `500` the only thing recorded is a refusal the transport itself establishes — a `403` or
+     * a `429`, classified purely by status code. What a refusal MEANT is known to whoever threw it,
+     * not to this filter: a 4xx exception is client-facing, so its thrower attaches no `context`, and
+     * a thrower with a genuine security fact to record (the auth handlers) writes its own audit
+     * record and stays silent here. There is deliberately no operational `warn` branch — nothing
+     * below 500 carries context to log.
      */
     private logException(exception: unknown, errorDefaultDto: ErrorDefaultDto, request: AuthenticatedRequest) {
-        const { statusCode, message } = errorDefaultDto,
-            context = exception instanceof AppException ? exception.context : undefined;
+        const { statusCode, message } = errorDefaultDto;
 
         if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
             return;
         }
 
         if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
-            this.loggerPort.error(this.createErrorLogPayload(exception, context));
+            this.loggerPort.error(this.createErrorLogPayload(exception));
             this.exceptionTrackerPort.captureException(exception);
 
             return;
         }
 
-        const isSecurityAudited =
-            statusCode === HttpStatus.FORBIDDEN ||
-            statusCode === HttpStatus.TOO_MANY_REQUESTS ||
-            (statusCode === HttpStatus.UNAUTHORIZED && context !== undefined);
+        const auditAction = this.resolveAuditAction(statusCode);
 
-        if (isSecurityAudited) {
-            this.loggerPort.warn(this.createSecurityAuditLogPayload(message.join(', '), request, context));
-        } else if (context !== undefined) {
-            this.loggerPort.warn(this.createRejectionLogPayload(message.join(', '), request, context));
+        if (auditAction !== undefined) {
+            this.auditPort.record({
+                action: auditAction,
+                reason: message.join(', '),
+                targetId: request.accessTokenPayload?.sub,
+            });
         }
     }
 
     /**
-     * Creates an audit log payload for security-related exceptions.
+     * Classifies a sub-500 refusal into an audit action, or into nothing. The status code is the
+     * ONLY input: only `403` and `429` are refusals the transport itself can attest to — "this
+     * subject was not allowed through" holds regardless of what the thrower knew. Reaching into an
+     * opaque `context` to classify any further would encode the thrower's vocabulary into core, the
+     * very coupling the taxonomy exists to prevent.
+     *
+     * @param statusCode The status the response will carry.
+     * @returns The action to record, or undefined when the refusal is not auditable here.
      */
-    private createSecurityAuditLogPayload(
-        error: string,
-        request: AuthenticatedRequest,
-        context?: ExceptionContext,
-    ): AuditLogPayload {
-        return new AuditLogPayload({
-            class: this.constructor.name,
-            method: this.catch.name,
-            action: AuditLogAction.SECURITY_EXCEPTION,
-            error,
-            sub: request.accessTokenPayload?.sub,
-            role: request.accessTokenPayload?.role,
-            context,
-        });
+    private resolveAuditAction(statusCode: HttpStatus): AuditAction | undefined {
+        if (statusCode === HttpStatus.FORBIDDEN) {
+            return AuditAction.ACCESS_DENIED;
+        }
+
+        if (statusCode === HttpStatus.TOO_MANY_REQUESTS) {
+            return AuditAction.RATE_LIMITED;
+        }
+
+        return undefined;
     }
 
     /**
-     * Creates the plain log payload for a deliberate, context-carrying rejection that is not a
-     * security event — the thrower asked for its detail to be recorded, but stamping it with a
-     * security action would pollute the audit trail. The caller's identity is still attached for
-     * correlation when the route was authenticated.
+     * Creates the log payload for an unhandled 5xx failure, carrying the thrower's diagnostic
+     * `context` when the exception is a taxonomy one — the single path on which `context` is read.
      */
-    private createRejectionLogPayload(
-        error: string,
-        request: AuthenticatedRequest,
-        context: ExceptionContext,
-    ): LogPayload {
-        return new LogPayload({
-            class: this.constructor.name,
-            method: this.catch.name,
-            error,
-            sub: request.accessTokenPayload?.sub,
-            role: request.accessTokenPayload?.role,
-            context,
-        });
-    }
+    private createErrorLogPayload(exception: unknown): LogPayload {
+        const error = exception instanceof Error ? exception : new Error(String(exception)),
+            context = exception instanceof AppException ? exception.context : undefined;
 
-    /**
-     * Creates a standard log payload for unhandled internal server errors.
-     */
-    private createErrorLogPayload(exception: unknown, context?: ExceptionContext): LogPayload {
         return new LogPayload({
             class: this.constructor.name,
             method: this.catch.name,
-            error: exception instanceof Error ? exception : new Error(String(exception)),
-            context,
+            message: error.message,
+            error,
+            data: { context },
         });
     }
 }

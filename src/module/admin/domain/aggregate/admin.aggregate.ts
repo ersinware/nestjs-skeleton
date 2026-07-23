@@ -93,13 +93,15 @@ export class Admin extends SoftDeletableAggregateRoot {
      * Bans the admin. Bumps the session version to instantly evict existing tokens, and emits a
      * BANNED event. A no-op when the account is already banned.
      *
+     * @returns Whether the account actually transitioned — the caller persists, audits, and evicts
+     * only on a real ban, so a repeated request triggers none of them.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    ban() {
+    ban(): boolean {
         this.assertNotDeleted(this.ban.name);
 
         if (this.props.isBanned) {
-            return;
+            return false;
         }
 
         this.props.isBanned = true;
@@ -107,6 +109,8 @@ export class Admin extends SoftDeletableAggregateRoot {
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.BANNED, this.id));
+
+        return true;
     }
 
     /**
@@ -114,19 +118,23 @@ export class Admin extends SoftDeletableAggregateRoot {
      * monotonic and re-login mints a token at the current version. A no-op when the account is not
      * banned.
      *
+     * @returns Whether the account actually transitioned — the caller persists and audits only on a
+     * real unban, so lifting a ban that was never in place triggers neither.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    unban() {
+    unban(): boolean {
         this.assertNotDeleted(this.unban.name);
 
         if (!this.props.isBanned) {
-            return;
+            return false;
         }
 
         this.props.isBanned = false;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.UNBANNED, this.id));
+
+        return true;
     }
 
     /**

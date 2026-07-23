@@ -32,6 +32,7 @@ import {
     RequestValidationMessage,
     ResponsePaginationDto,
 } from 'src/core/http';
+import { AuditAction, Audited } from 'src/core/observability/audit';
 import { AccessTokenPayloadDecorator, Public, Roles } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
 import type { AccessTokenPayload } from 'src/core/security/token';
@@ -157,6 +158,7 @@ export class UserController {
      */
     @Get(':id')
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @Audited(AuditAction.PERSONAL_DATA_EXPORTED)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get user by ID',

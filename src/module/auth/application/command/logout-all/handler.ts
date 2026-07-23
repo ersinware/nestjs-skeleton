@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 
@@ -14,7 +15,10 @@ import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all
  */
 @CommandHandler(LogoutAllCommand)
 export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand> {
-    constructor(@Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort) {}
+    constructor(
+        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+    ) {}
 
     /**
      * Executes the logout all command by deleting every refresh session for the principal, so no
@@ -24,5 +28,9 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      */
     async execute(command: LogoutAllCommand) {
         await this.sessionPort.closeAllSessions(command.sub);
+
+        // Recorded as LOGOUT_ALL rather than LOGOUT so the trail keeps the account-wide revocation
+        // distinct from a single-device sign-out — a different fact for an auditor.
+        this.auditPort.record({ action: AuditAction.LOGOUT_ALL, targetId: command.sub });
     }
 }

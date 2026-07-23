@@ -3,21 +3,31 @@
  * @description Contract for logging services injected into the application domain.
  */
 
+import { LogPayload } from 'src/core/observability/logger/log-payload';
+
 export const TOKEN_LOGGER_PORT = Symbol('TOKEN_LOGGER_PORT');
 
+/**
+ * Structured-only logging contract. Every level takes the closed {@link LogPayload} envelope and
+ * nothing else: a free-form signature would let an unstructured string through, and a single such
+ * call makes the log stream unqueryable for the field the rest of the codebase guarantees.
+ * The surface is deliberately three levels — `debug` and `fatal` have no caller and would only
+ * invite level drift.
+ */
 export interface ILoggerPort {
     /**
-     * Write a 'log' level log.
+     * Records an operationally significant event. Emitted at pino's `info` level — `log` keeps the
+     * NestJS-facing name so call sites read the same as the rest of the framework.
      */
-    log(message: unknown, ...optionalParams: unknown[]): void;
+    log(payload: LogPayload): void;
 
     /**
-     * Write an 'error' level log.
+     * Records a failure that resolves itself but whose cause is worth a forensic breadcrumb.
      */
-    error(message: unknown, ...optionalParams: unknown[]): void;
+    warn(payload: LogPayload): void;
 
     /**
-     * Write a 'warn' level log.
+     * Records a failure a human must act on. Pairs with the exception tracker, never replaces it.
      */
-    warn(message: unknown, ...optionalParams: unknown[]): void;
+    error(payload: LogPayload): void;
 }
