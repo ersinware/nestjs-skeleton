@@ -101,6 +101,8 @@ Always use NestJS Custom Providers (TS interfaces are erased at runtime):
 2. Inject with `@Inject(TOKEN_NAME)` in `application/`.
 3. Bind with `{ provide: TOKEN_NAME, useClass: SomeAdapter }` in the module — several tokens may bind to the same adapter class.
 
+**No module of ours is `@Global()`.** Every module explicitly imports each module whose exported provider it injects, so each `*.module.ts` is a complete manifest of its own dependencies — the visible extraction cost of a bounded context, which a global scope would hide. Injecting a token therefore has two obligations, not one: the `@Inject` AND the providing module in `imports`. This is enforced at boot (Nest throws on an unresolved provider) and at review, NOT by lint — `boundaries` constrains layer direction, not DI wiring. **Sole exceptions**, both deliberate: `ConfigModule` (NestJS's canonical `isGlobal: true` — config is universal) and `EventEmitterModule.forRoot()` (global by framework design).
+
 ## Project Structure
 
 Three top-level pillars, each with one job — and no fourth may be added:

@@ -3,15 +3,14 @@
  * @description The EventBus module that provides the global messaging infrastructure.
  */
 
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { EventBusAdapter } from 'src/core/event-bus/event-bus.adapter';
 import { TOKEN_EVENT_BUS_PORT } from 'src/core/event-bus/event-bus.port';
 
 /**
- * Global module that registers and exports the Event Bus infrastructure.
- * This makes the event bus available across the entire NestJS application.
+ * Module that registers and exports the Event Bus infrastructure.
+ * Each module that publishes domain events imports it explicitly.
  */
-@Global()
 @Module({
     providers: [
         {

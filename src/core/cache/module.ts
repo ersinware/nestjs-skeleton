@@ -4,7 +4,7 @@
  * Manages connections and handles graceful shutdowns by closing active client connections.
  */
 
-import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CacheCleanerAdapter } from 'src/core/cache/adapter/cache-cleaner.adapter';
@@ -15,7 +15,13 @@ import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
 import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
 import { ENV } from 'src/core/config';
-import { ConnectionLogMessage, LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import {
+    ConnectionLogMessage,
+    LoggerModule,
+    LogPayload,
+    TOKEN_LOGGER_PORT,
+    type ILoggerPort,
+} from 'src/core/observability/logger';
 
 /**
  * Helper function to create a configured Redis client instance.
@@ -84,10 +90,10 @@ function createRedisClient(
 }
 
 /**
- * Global module providing the cache client singleton across the application.
+ * Module providing the cache client singleton to the modules that import it.
  */
-@Global()
 @Module({
+    imports: [LoggerModule],
     providers: [
         {
             inject: [ConfigService, TOKEN_LOGGER_PORT],
