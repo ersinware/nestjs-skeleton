@@ -5,8 +5,10 @@
 
 import { Global, Module, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Logger, LoggerModule as PinoLoggerModule } from 'nestjs-pino';
+import { IncomingMessage } from 'http';
+import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
 import { ENV, Environment } from 'src/core/config';
+import { LoggerAdapter } from 'src/core/observability/logger/adapter';
 import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
 
 /**
@@ -29,6 +31,25 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
                                   ? 'debug'
                                   : 'silent',
                         serializers: {
+                            // Whitelist, not denylist — the same philosophy as the response DTOs'
+                            // `@Exclude()` + `@Expose()`. A denylist of sensitive headers protects only
+                            // the headers someone thought of, and silently leaks every one added later;
+                            // here a new header is private by default and must be named to be logged.
+                            // The request BODY is never logged at all, at any level: it is the one place
+                            // credentials, tokens and full PII payloads reliably appear, and no
+                            // operational question is worth keeping that standing risk.
+                            req: (req: IncomingMessage & { id: unknown; remoteAddress: string }) => ({
+                                id: req.id,
+                                method: req.method,
+                                url: req.url,
+                                remoteAddress: req.remoteAddress,
+                                userAgent: req.headers['user-agent'],
+                            }),
+                            // Response headers are dropped wholesale rather than filtered: they answer
+                            // no diagnostic question a log line is asked, while Set-Cookie and any
+                            // future token-bearing header would land there by default. The status code
+                            // is the only part worth keeping.
+                            res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
                             error: function serialize(error: unknown): unknown {
                                 if (error instanceof Error) {
                                     return {
@@ -45,67 +66,6 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
                         formatters: {
                             level: (label: string) => ({ level: label }),
                         },
-                        redact: [
-                            // Sensitive Request Headers
-                            'req.headers.authorization',
-                            'req.headers.cookie',
-                            'req.headers["x-api-key"]',
-                            'req.headers["x-refresh-token"]',
-                            'req.headers["x-access-token"]',
-                            'req.headers.session',
-
-                            // Sensitive Response Headers
-                            'res.headers["set-cookie"]',
-                            'res.headers.cookie',
-
-                            // Sensitive Body Keys (Direct)
-                            'req.body.password',
-                            'req.body.passwordConfirmation',
-                            'req.body.currentPassword',
-                            'req.body.newPassword',
-                            'req.body.oldPassword',
-                            'req.body.pin',
-                            'req.body.cvv',
-                            'req.body.cvc',
-                            'req.body.cardNumber',
-                            'req.body.creditCard',
-                            'req.body.ssn',
-                            'req.body.tckn',
-                            'req.body.secret',
-                            'req.body.clientSecret',
-                            'req.body.apiKey',
-                            'req.body.token',
-                            'req.body.accessToken',
-                            'req.body.refreshToken',
-                            'req.body.otp',
-                            'req.body.verificationCode',
-                            'req.body.securityCode',
-                            'req.body.pass',
-
-                            // Sensitive Body Keys (Nested 1-Level)
-                            'req.body.*.password',
-                            'req.body.*.passwordConfirmation',
-                            'req.body.*.currentPassword',
-                            'req.body.*.newPassword',
-                            'req.body.*.oldPassword',
-                            'req.body.*.pin',
-                            'req.body.*.cvv',
-                            'req.body.*.cvc',
-                            'req.body.*.cardNumber',
-                            'req.body.*.creditCard',
-                            'req.body.*.ssn',
-                            'req.body.*.tckn',
-                            'req.body.*.secret',
-                            'req.body.*.clientSecret',
-                            'req.body.*.apiKey',
-                            'req.body.*.token',
-                            'req.body.*.accessToken',
-                            'req.body.*.refreshToken',
-                            'req.body.*.otp',
-                            'req.body.*.verificationCode',
-                            'req.body.*.securityCode',
-                            'req.body.*.pass',
-                        ],
                     },
                     exclude: [
                         { method: RequestMethod.ALL, path: 'health' },
@@ -119,7 +79,7 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
     providers: [
         {
             provide: TOKEN_LOGGER_PORT,
-            useExisting: Logger,
+            useClass: LoggerAdapter,
         },
     ],
     exports: [PinoLoggerModule, TOKEN_LOGGER_PORT],

@@ -1,0 +1,60 @@
+# OpenTelemetry Collector — tail-sampling gateway for traces.
+#
+# Sits between the API and Jaeger: the app exports 100% of its spans here, and THIS is where the
+# keep/drop decision is made — after each trace is complete, so it can be made on the OUTCOME
+# (error / latency), which head sampling in the app cannot do.
+#
+# The whole thing is toggled by ONE variable, OTEL_TAIL_SAMPLING_PERCENTAGE (passed in by
+# docker-compose):
+#   100 -> keep every trace  = tail sampling effectively OFF (ships inert by default)
+#    10 -> keep 1 in 10 of the ordinary traces = ON
+# Errors and slow traces are ALWAYS kept regardless of the percentage — that is the entire point of
+# deciding at the tail, so turning the knob down never costs you the traces worth reading.
+
+receivers:
+    otlp:
+        protocols:
+            http:
+                endpoint: 0.0.0.0:4318
+            grpc:
+                endpoint: 0.0.0.0:4317
+
+processors:
+    # Policies are OR-ed: a trace is kept if ANY policy elects it. So keep-errors OR keep-slow OR the
+    # probabilistic sample of everything else.
+    tail_sampling:
+        # How long to wait after first seeing a trace before deciding — must exceed your slowest
+        # expected request so late spans are not judged as a truncated (and misleadingly fast) trace.
+        decision_wait: 10s
+        num_traces: 50000
+        expected_new_traces_per_sec: 100
+        policies:
+            - name: keep-errors
+              type: status_code
+              status_code:
+                  status_codes: [ERROR]
+            - name: keep-slow
+              type: latency
+              latency:
+                  threshold_ms: 200
+            - name: sample-the-rest
+              type: probabilistic
+              probabilistic:
+                  # The single knob. 100 = keep all (OFF), lower = shed ordinary-traffic volume.
+                  sampling_percentage: ${env:OTEL_TAIL_SAMPLING_PERCENTAGE}
+
+    # Batches AFTER the sampling decision so only kept traces are shipped onward.
+    batch: {}
+
+exporters:
+    # Forward the surviving traces to Jaeger over the same OTLP/HTTP endpoint the app used to hit
+    # directly, before the collector was inserted in front of it.
+    otlphttp/jaeger:
+        endpoint: http://jaeger:4318
+
+service:
+    pipelines:
+        traces:
+            receivers: [otlp]
+            processors: [tail_sampling, batch]
+            exporters: [otlphttp/jaeger]

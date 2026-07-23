@@ -9,6 +9,7 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import type { EmailPayload } from 'src/core/email';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
     TOKEN_USER_WRITER_PORT,
@@ -27,11 +28,13 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
      * @param userWriterPort The port used to load and save the user aggregate
      * @param emailerPort The port used to send the security-notice email
      * @param sessionPort The port used to push the session version to Redis
+     * @param auditPort The port used to record the revocation for the audit trail
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
@@ -49,14 +52,31 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
 
         user.revokeSessions();
 
+        // Ordered by what each step costs if it fails, strongest guarantee first.
+        //
+        // The save is the actual security outcome: the bumped version lives in the DB, which is the
+        // authority every later refresh is checked against. The audit record comes next, while the
+        // fact is established and nothing that can throw has run yet.
+        //
+        // The email used to sit between them. A transient Gmail failure therefore threw before the
+        // version ever reached Redis, and — because this handler runs under a listener registered
+        // with `suppressErrors: false` — the error was swallowed by the emitter's caller. The net
+        // result was no email, no eviction, and no trace of either.
         await this.userWriterPort.save(user);
-        await this.emailerPort.sendEmail(this.buildSecurityEmail(user.email, user.name));
 
+        this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: command.id });
+
+        // Best-effort instant eviction, deliberately guarded: the DB version already denies the next
+        // refresh, so Redis being unreachable delays the cut-off rather than defeating it.
         try {
             await this.sessionPort.setVersion(command.id, user.version);
         } catch {
             // Best-effort instant eviction.
         }
+
+        // Last and unguarded: everything that must not be lost is already durable, so a failure here
+        // is free to surface.
+        await this.emailerPort.sendEmail(this.buildSecurityEmail(user.email, user.name));
     }
 
     /**

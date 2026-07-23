@@ -23,5 +23,5 @@ export interface IUserWriterPort {
      * @param user The User aggregate root to save.
      * @param tx Optional transaction context
      */
-    save(user: User, tx?: unknown): Promise<void>;
+    save(user: User): Promise<void>;
 }

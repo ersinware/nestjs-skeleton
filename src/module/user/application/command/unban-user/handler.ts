@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
@@ -22,8 +23,12 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
      * Initializes the handler with the required ports.
      *
      * @param userWriterPort The port used to load and save the user aggregate
+     * @param auditPort The port used to record the lifted ban for the audit trail
      */
-    constructor(@Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort) {}
+    constructor(
+        @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+    ) {}
 
     /**
      * Executes the unban user command.
@@ -38,7 +43,14 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
             throw new ResourceNotFoundException();
         }
 
-        user.unban();
+        // `unban()` is a silent no-op on an account that is not banned and reports whether it actually
+        // transitioned. On a no-op there is nothing to persist or audit — saving would rewrite
+        // identical values, and an entry for a ban that was never in place would be a fabricated fact.
+        if (!user.unban()) {
+            return;
+        }
+
         await this.userWriterPort.save(user);
+        this.auditPort.record({ action: AuditAction.USER_UNBANNED, targetId: command.id });
     }
 }

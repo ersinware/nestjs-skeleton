@@ -44,7 +44,7 @@ if (process.env[ENV.NODE_ENV] !== Environment.TEST && !process.env['VITEST'] && 
     function handleShutdown() {
         otelSDK!
             .shutdown()
-            .catch((error) => console.log('Error shutting down OpenTelemetry SDK', error))
+            .catch((error) => console.error('Error shutting down OpenTelemetry SDK', error))
             .finally(() => process.exit(0));
     }
 

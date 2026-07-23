@@ -14,6 +14,7 @@ import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { GlobalExceptionFilter } from 'src/core/exception';
 import { NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
+import { AuditContextInterceptor, AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { LoggerModule } from 'src/core/observability/logger';
 import { TrackerModule } from 'src/core/observability/tracker';
 import { AuthGuard, AuthRolesGuard } from 'src/core/security/auth';
@@ -38,6 +39,7 @@ import { UserModule } from 'src/module/user';
         }),
         EventEmitterModule.forRoot(),
         LoggerModule,
+        AuditModule,
         TrackerModule,
         EventBusModule,
         CacheModule,
@@ -76,6 +78,18 @@ import { UserModule } from 'src/module/user';
                 },
                 transform: true,
             }),
+        },
+        // Registered before every other interceptor: it establishes the ambient audit context, so
+        // anything that reads that context must run inside it.
+        {
+            provide: APP_INTERCEPTOR,
+            useClass: AuditContextInterceptor,
+        },
+        // Registered after the context interceptor so the actor is already in scope when it records
+        // an `@Audited` disclosure.
+        {
+            provide: APP_INTERCEPTOR,
+            useClass: AuditInterceptor,
         },
         {
             provide: APP_INTERCEPTOR,

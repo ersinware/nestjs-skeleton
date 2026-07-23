@@ -6,6 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
@@ -30,7 +31,6 @@ import {
     ResourceConflictException,
     ResourceNotFoundException,
     UnauthenticatedException,
-    UnauthenticatedMessage,
 } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
@@ -47,6 +47,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         private readonly adminIdentityReaderPort: IAdminIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
@@ -82,20 +83,24 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                     : await this.adminIdentityReaderPort.getAuthState(sub);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                throw this.createUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, sub, role);
+                throw new UnauthenticatedException();
             }
 
             throw error;
         }
 
+        // The three rejections below leave no audit record on purpose: each is the CONSEQUENCE of an
+        // act that is itself audited where it happened — the deletion, the ban, or whatever advanced
+        // the version. Recording the refusal too would file the same event twice under a weaker name,
+        // and the client's only correct response to all three is to authenticate again.
         if (identity.isBanned) {
-            throw this.createUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, sub, role);
+            throw new UnauthenticatedException();
         }
 
         // Version is read from the DB (the authority), so a ban/password-change/delete that advanced
         // the version rejects the refresh before it can mint a fresh token.
         if (payload.version < identity.version) {
-            throw this.createUnauthenticatedException(AuthRejectionReason.SESSION_REVOKED, sub, role);
+            throw new UnauthenticatedException();
         }
 
         const tokens = await this.tokenPort.generateTokens(role, sub, identity.version);
@@ -121,7 +126,21 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
         }
 
-        // RotateOutcome.REUSE_DETECTED — per the BCP, revoke the entire refresh family so a stolen token
+        // RotateOutcome.REUSE_DETECTED. The record is written FIRST, before any of the remediation
+        // below: the fact is already established by the rotation, and everything that follows can
+        // fail — an unreachable Redis would turn this into a 503 and lose the most serious signal the
+        // system can raise, exactly when an attacker would most like it lost.
+        //
+        // This handler is also the only place that can tell a replayed refresh token apart from any
+        // other 401: the distinction lives in RotateOutcome and never leaves this method. Left to the
+        // filter, which sees a status code, it would be filed alongside routine rate limiting.
+        this.auditPort.record({
+            action: AuditAction.REFRESH_REUSE_DETECTED,
+            reason: AuthRejectionReason.SESSION_REUSE,
+            targetId: sub,
+        });
+
+        // Per the BCP, revoke the entire refresh family so a stolen token
         // cannot keep minting sessions. This immediate Redis eviction is the fast path; the follow-up
         // (a cross-module session-version bump that also kills outstanding access tokens, plus a security
         // email) is driven by the reuse integration event emitted below.
@@ -131,7 +150,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
         }
 
-        // TODO
         // The owning module (user or admin) can only be reached asynchronously (§5 forbids cross-module
         // transactions), so the trigger is emitted on the in-process bus. Auth raises no aggregate of its
         // own, so the event is dispatched here rather than from a writer adapter. Fire-and-forget: the
@@ -147,33 +165,8 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             )
             .catch(() => {});
 
-        throw this.createUnauthenticatedException(AuthRejectionReason.SESSION_REUSE, sub, role);
-    }
-
-    /**
-     * Builds the rejection with the detail of the failed refresh attached. Attaching context is this
-     * handler's whole contribution — recording it is the exception filter's job — and it is also what
-     * separates a revoked session or detected token reuse from the routine expired-token `401`s that
-     * carry none.
-     *
-     * @param reason Why the refresh was rejected, recorded for the audit log
-     * @param sub The rejected token's subject
-     * @param role The rejected token's role
-     * @returns The exception the caller throws
-     */
-    private createUnauthenticatedException(
-        reason: AuthRejectionReason,
-        sub: string,
-        role: string,
-    ): UnauthenticatedException {
-        return new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, {
-            context: {
-                class: this.constructor.name,
-                method: this.execute.name,
-                reason,
-                sub,
-                role,
-            },
-        });
+        // No context: the event has an audit record of its own, and the response must stay
+        // indistinguishable from every other rejected refresh so a probe learns nothing from it.
+        throw new UnauthenticatedException();
     }
 }

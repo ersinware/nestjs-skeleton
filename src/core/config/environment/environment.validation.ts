@@ -5,7 +5,7 @@
  */
 
 import { plainToInstance, Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNumber, IsString, Matches, validateSync } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsString, Matches, Max, Min, validateSync } from 'class-validator';
 import { Environment } from 'src/core/config/environment/environment.enum';
 import { TrackerEnvironment } from 'src/core/observability/tracker';
 
@@ -273,6 +273,24 @@ export class EnvironmentVariables {
      */
     @IsString()
     readonly OTEL_SERVICE_NAME!: string;
+
+    /**
+     * OpenTelemetry trace sampler strategy (e.g. `parentbased_traceidratio`). Read natively by the
+     * OTel SDK; declared here only so an unknown value fails fast at boot instead of silently falling
+     * back to the SDK default.
+     */
+    @IsString()
+    readonly OTEL_TRACES_SAMPLER!: string;
+
+    /**
+     * Keep-ratio for the `*traceidratio` sampler: 1 records every trace, 0.1 one in ten. Ignored by
+     * `always_on`/`always_off`. This is the single knob to turn down to shed trace volume at scale —
+     * the access log remains the unsampled ground truth, so lowering it never loses request evidence.
+     */
+    @IsNumber()
+    @Min(0)
+    @Max(1)
+    readonly OTEL_TRACES_SAMPLER_ARG!: number;
 }
 
 /**

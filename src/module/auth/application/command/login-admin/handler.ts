@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { AuditLogAction, AuditLogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -15,7 +15,6 @@ import {
     TOKEN_ADMIN_IDENTITY_READER_PORT,
     type IAdminIdentityReaderPort,
 } from 'src/module/auth/application/command/port/admin-identity-reader.port';
-import { AdminRole } from 'src/shared/domain/admin';
 import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -30,7 +29,7 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
+        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
@@ -47,18 +46,18 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
             admin = await this.adminIdentityReaderPort.getCredentialsByEmail(command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
-                throw this.createUnauthenticatedException(AuthRejectionReason.ACCOUNT_NOT_FOUND, AdminRole.ADMIN);
+                throw this.denyLogin(AuthRejectionReason.ACCOUNT_NOT_FOUND);
             }
 
             throw error;
         }
 
         if (admin.isBanned) {
-            throw this.createUnauthenticatedException(AuthRejectionReason.INACTIVE_ACCOUNT, admin.role, admin.id);
+            throw this.denyLogin(AuthRejectionReason.INACTIVE_ACCOUNT, admin.id);
         }
 
         if (!(await this.hashingPort.verify(admin.password, command.password))) {
-            throw this.createUnauthenticatedException(AuthRejectionReason.INVALID_PASSWORD, admin.role, admin.id);
+            throw this.denyLogin(AuthRejectionReason.INVALID_PASSWORD, admin.id);
         }
 
         const id = admin.id,
@@ -67,47 +66,30 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
 
         await this.sessionPort.openSession(id, tokens.jti);
 
-        this.loggerPort.log(this.createSuccessLogPayload(id, role));
+        this.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
 
         return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
     }
 
     /**
-     * Builds the rejection with the detail of the failed attempt attached. Attaching context is this
-     * handler's whole contribution — recording it is the exception filter's job — and it is also what
-     * separates a deliberately rejected credential from the routine expired-token `401`s that carry none.
+     * Records the failed attempt and builds the rejection the caller throws.
      *
-     * @param reason Why the attempt was rejected, recorded for the audit log
-     * @param role The rejected account's role, falling back to the endpoint's own role when no account matched the email
+     * This handler is the only code that knows WHY the attempt failed — the response deliberately
+     * says nothing beyond "credentials", so an observer downstream cannot tell an unknown email from
+     * a wrong password. Writing the audit record here rather than attaching the reason as exception
+     * `context` is what keeps the two apart: the auditor gets the precise reason, the client gets none.
+     *
+     * The exception therefore carries NO context. Context is a diagnostic channel read on 5xx; a
+     * deliberate 401 that has already been audited has nothing left to say to an operator, and
+     * leaving it attached would duplicate the same event into the operational log as a `warn`.
+     *
+     * @param reason Why the attempt was rejected — the audit record's own vocabulary
      * @param sub The rejected account's id, absent when no account matched the email
      * @returns The exception the caller throws
      */
-    private createUnauthenticatedException(
-        reason: AuthRejectionReason,
-        role: AdminRole,
-        sub?: string,
-    ): UnauthenticatedException {
-        return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
-            context: {
-                class: this.constructor.name,
-                method: this.execute.name,
-                reason,
-                sub,
-                role,
-            },
-        });
-    }
+    private denyLogin(reason: AuthRejectionReason, sub?: string): UnauthenticatedException {
+        this.auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, targetId: sub });
 
-    /**
-     * Creates an audit log payload for a successful login.
-     */
-    private createSuccessLogPayload(sub: string, role: AdminRole): AuditLogPayload {
-        return new AuditLogPayload({
-            class: this.constructor.name,
-            method: this.execute.name,
-            action: AuditLogAction.LOGIN_SUCCESS,
-            sub,
-            role,
-        });
+        return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
     }
 }
