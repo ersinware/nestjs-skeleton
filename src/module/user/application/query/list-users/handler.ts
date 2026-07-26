@@ -18,9 +18,9 @@ export class ListUsersQueryHandler implements IQueryHandler<ListUsersQuery> {
     /**
      * Initializes the handler with the required ports.
      *
-     * @param listUsersPort The port used to execute the query
+     * @param port The port used to execute the query
      */
-    constructor(@Inject(TOKEN_LIST_USERS_PORT) private readonly listUsersPort: IListUsersPort) {}
+    constructor(@Inject(TOKEN_LIST_USERS_PORT) private readonly port: IListUsersPort) {}
 
     /**
      * Executes the list users query.
@@ -29,6 +29,6 @@ export class ListUsersQueryHandler implements IQueryHandler<ListUsersQuery> {
      * @returns A paginated list of users
      */
     async execute(query: ListUsersQuery): Promise<ListUsersResult> {
-        return this.listUsersPort.listUsers(query.params);
+        return this.port.listUsers(query.params);
     }
 }
