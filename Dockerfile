@@ -31,6 +31,9 @@ WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 EXPOSE 3000
+# Readiness, not liveness: a container is "healthy" to Compose/Swarm only once it can actually serve
+# traffic, and the readiness probe is the one that verifies the database and cache. The detailed
+# endpoint is deliberately not used here — it requires a super-admin token.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD wget -q --tries=1 --spider http://localhost:3000/api/health/ready || exit 1
 CMD ["npm", "run", "start:prod"]

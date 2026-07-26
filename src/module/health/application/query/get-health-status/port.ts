@@ -12,7 +12,7 @@ export interface IGetHealthStatusPort {
      * Executes the health checks.
      *
      * @returns A promise resolving to the health check result.
-     * @throws {Error} If the health check execution encounters a critical failure.
+     * @throws {ServiceUnavailableException} If one or more health indicators fail; the raw framework exception is deliberately left untranslated (see the adapter).
      */
     getStatus(): Promise<GetHealthStatusResult>;
 }

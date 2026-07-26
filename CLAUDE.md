@@ -63,7 +63,7 @@ What the table alone does not say:
 
 - **Commands** extend `Command<R>` — the typed base carries the result type — mutate state, and return only the affected entity's `id` (or `void`). The Aggregate mutates itself; hand the whole Aggregate to its port. **Exception**: auth token-generation commands (login, refresh) may return `{ accessToken; refreshToken }` — ephemeral tokens that cannot be re-queried.
 - **Queries** extend `Query<T>` and NEVER mutate. They read through the **query port** (reader adapter) into a **read-model** — the query's result `type`, co-located in its `query.ts`. The typed base carries that type, so any edge dispatching the query infers it: never re-import a result type at the call site, never annotate from `domain/`.
-- **Read/write transport — the pipeline, never the raw bus or a hand-run port.** Every EDGE crossing into the application core — **controller**, **Facade**, event **listener**, **cron** — dispatches through the **`QueryPipeline`/`CommandPipeline`** (`core/cqrs`), never the framework `QueryBus`/`CommandBus`: the pipeline is the one seam cross-cutting concerns (caching, invalidation, later tracing) hang off, and a use case invoked by hand would bypass them. A **handler** is the opposite — it `@Inject(TOKEN)`s its **port(s) directly** (a query handler reads on its own port; a command handler loads/saves and reads on its ports) and must NEVER touch the pipeline or a bus: a write decision must not run on cached/stale data, and a bus hop hides the dependency graph. **Folder consequence**: `handler.ts` present = pipeline-dispatched, absent = port-invoked; the result type always stays in `query.ts`, the contract in `port.ts`.
+- **Read/write transport — the pipeline, never the raw bus or a hand-run port.** Every EDGE crossing into the application core — **controller**, **Facade**, event **listener**, **cron** — dispatches through the **`QueryPipeline`/`CommandPipeline`** (`core/cqrs`), never the framework `QueryBus`/`CommandBus`: the pipeline is the one seam cross-cutting concerns (caching, invalidation, later tracing) hang off, and a use case invoked by hand would bypass them. A **handler** is the opposite — it `@Inject(TOKEN)`s its **port(s) directly** (a query handler reads on its own port; a command handler loads/saves and reads on its ports) and must NEVER touch the pipeline or a bus: a write decision must not run on cached/stale data, and a bus hop hides the dependency graph. **Folder consequence**: `handler.ts` present = pipeline-dispatched, absent = port-invoked; the result type always stays in `query.ts`, the contract in `port.ts`. **The single exemption is the liveness probe**, which dispatches nothing because reaching the handler method IS its entire answer — an edge with no use case behind it, not a shortcut around one.
 - **Every query owns a thin outbound port (ISP).** The handler depends on **one purpose-specific port** exposing only its read — never a broad or foreign port (a health-summary handler must not inject the full cache/database ports for a liveness flag). A read **composed from other ports** is composed in the port's **adapter**, never the handler — true even for pure forwarding+merging, because the value is the narrowed contract. (Cardinality: § Adapters.)
 
 **The pipeline WRAPS, never replaces, the framework buses.** `QueryPipeline`/`CommandPipeline` compose an ordered behavior chain (middleware onion) around `QueryBus`/`CommandBus` — a token override can't work because the framework's `ExplorerService` binds handlers to the `CqrsModule`-scoped bus, so `CqrsPipelineModule` wraps the bus and re-exports `CqrsModule` (handler registration still needs it). Two behaviors ship, each keyed off an opt-in interface the query/command implements:
@@ -276,6 +276,19 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 
 Never invent a per-endpoint message enum to enumerate causes — the client branches on the status code, and the body already carries the specific message at runtime.
 
+### Health Probes
+
+Three endpoints split by AUDIENCE, and the split is load-bearing:
+
+- **`/health/live`** — public, `204`, checks **nothing**. A dependency check here would let one Redis/Postgres outage restart every otherwise-healthy instance. It is the sole edge that dispatches no use case (§3).
+- **`/health/ready`** — public, checks every dependency, answers `204`/`503` with **no body**. The caller is a load balancer branching on the status code; a body would disclose the dependency topology to anonymous callers. The container `HEALTHCHECK` and a k8s `readinessProbe` point here, never at liveness.
+- **`/health`** — the per-indicator detail, `@Roles(AdminRole.SUPER_ADMIN)`: naming which dependency is down is reconnaissance material.
+
+Two consequences look like defects and MUST NOT be "fixed":
+
+- **The health adapter lets Terminus's raw `ServiceUnavailableException` escape** — the one exemption to "infrastructure translates, nothing leaks" (§ Exceptions). The filter's passthrough keys off `instanceof HttpException`, so translating it into a taxonomy `DependencyUnavailableException` would silently re-normalize both probes and put an `ErrorDefaultDto` body back on the readiness probe.
+- **During a cache outage `/health` is unreachable** — `AuthGuard` fails closed, so the operator view answers `503` from the guard before an indicator runs. Accepted: `/health/ready` still reports the instance as not serving, and the forensic path during an outage is the connection-level `LOST`/`RESTORED` log (§ Dependency outages), not this endpoint.
+
 ## Exceptions
 
 Who owns what, from throw to HTTP response — each concern lives in exactly one place.
@@ -346,9 +359,9 @@ configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
 
 ### Route & Prefix Literals
 
-Any route fragment visible from more than one place is a constant in `core/config` — `GLOBAL_PREFIX`, `ROUTE_HEALTH`, and the `PATH_HEALTH` derived from them — never a string literal repeated at each site.
+Any route fragment visible from more than one place is a constant in `core/config` — `GLOBAL_PREFIX`, `ROUTE_HEALTH`/`ROUTE_HEALTH_LIVE`/`ROUTE_HEALTH_READY`, and the `PATH_HEALTH*` derived from them — never a string literal repeated at each site.
 
-A module's route segment living in `core/` is a deliberate, narrow concession: the global filter must recognize the exact health path to let its intentional `503` through unnormalized, and `core` may not import a module. The constant stops the filter and the controller drifting apart silently on a rename.
+A module's route segment living in `core/` is a deliberate, narrow concession: the global filter must recognize the exact health paths to let their intentional `503` through unnormalized (§ Health Probes), and `core` may not import a module. The constant stops the filter and the controller drifting apart silently on a rename.
 
 ### Variable Inlining
 
