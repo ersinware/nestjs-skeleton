@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 /**
  * @file database-health.adapter.spec.ts
  * @description Unit tests for the PostgreSQL database health indicator service.
@@ -15,11 +14,11 @@ describe('PostgresHealthIndicatorAdapter', () => {
         execute: vi.fn(),
     };
 
-    const mockLoggerPort: ILoggerPort = {
+    const mockLoggerPort = {
         log: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
-    };
+    } satisfies ILoggerPort;
 
     let adapter: DatabaseHealthAdapter;
 

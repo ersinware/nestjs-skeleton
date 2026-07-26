@@ -16,7 +16,12 @@ import {
     TOKEN_IDENTITY_READER_PORT,
     type IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
-import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    UnauthenticatedException,
+    UnauthenticatedMessage,
+    isExceptionOfKind,
+} from 'src/shared/exception';
 
 /**
  * Handles the LoginUserCommand.
@@ -45,7 +50,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
         try {
             user = await this.identityReaderPort.getCredentialsByEmail(IdentityRealm.USER, command.email);
         } catch (error) {
-            if (error instanceof ResourceNotFoundException) {
+            if (isExceptionOfKind(error, ExceptionKind.NOT_FOUND)) {
                 throw this.denyLogin(AuthRejectionReason.ACCOUNT_NOT_FOUND);
             }
 

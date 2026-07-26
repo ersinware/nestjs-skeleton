@@ -25,9 +25,10 @@ import { UserIntegrationEvent, UserRole } from 'src/shared/domain/user';
 import {
     DependencyUnavailableException,
     DependencyUnavailableMessage,
+    ExceptionKind,
     ResourceConflictException,
-    ResourceNotFoundException,
     UnauthenticatedException,
+    isExceptionOfKind,
 } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
@@ -77,7 +78,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 sub,
             );
         } catch (error) {
-            if (error instanceof ResourceNotFoundException) {
+            if (isExceptionOfKind(error, ExceptionKind.NOT_FOUND)) {
                 throw new UnauthenticatedException();
             }
 
