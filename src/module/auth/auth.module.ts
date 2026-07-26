@@ -15,11 +15,9 @@ import { LoginAdminCommandHandler } from 'src/module/auth/application/command/lo
 import { LoginUserCommandHandler } from 'src/module/auth/application/command/login-user/handler';
 import { LogoutAllCommandHandler } from 'src/module/auth/application/command/logout-all/handler';
 import { LogoutCommandHandler } from 'src/module/auth/application/command/logout/handler';
-import { TOKEN_ADMIN_IDENTITY_READER_PORT } from 'src/module/auth/application/command/port/admin-identity-reader.port';
-import { TOKEN_USER_IDENTITY_READER_PORT } from 'src/module/auth/application/command/port/user-identity-reader.port';
+import { TOKEN_IDENTITY_READER_PORT } from 'src/module/auth/application/command/port/identity-reader.port';
 import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
-import { AdminIdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter/admin-identity-reader.adapter';
-import { UserIdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter/user-identity-reader.adapter';
+import { IdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter/identity-reader.adapter';
 import { AuthController } from 'src/module/auth/presentation/controller/auth.controller';
 import { UserModule } from 'src/module/user';
 
@@ -46,12 +44,8 @@ import { UserModule } from 'src/module/user';
         LogoutAllCommandHandler,
         RefreshTokensCommandHandler,
         {
-            provide: TOKEN_USER_IDENTITY_READER_PORT,
-            useClass: UserIdentityReaderAdapter,
-        },
-        {
-            provide: TOKEN_ADMIN_IDENTITY_READER_PORT,
-            useClass: AdminIdentityReaderAdapter,
+            provide: TOKEN_IDENTITY_READER_PORT,
+            useClass: IdentityReaderAdapter,
         },
     ],
 })

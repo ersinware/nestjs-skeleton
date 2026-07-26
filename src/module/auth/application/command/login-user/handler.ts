@@ -12,10 +12,10 @@ import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import { LoginUserCommand, type LoginUserResult } from 'src/module/auth/application/command/login-user/command';
 import {
-    TOKEN_USER_IDENTITY_READER_PORT,
-    type IUserIdentityReaderPort,
-} from 'src/module/auth/application/command/port/user-identity-reader.port';
-import { UserRole } from 'src/shared/domain/user';
+    IdentityRealm,
+    TOKEN_IDENTITY_READER_PORT,
+    type IIdentityReaderPort,
+} from 'src/module/auth/application/command/port/identity-reader.port';
 import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -25,7 +25,7 @@ import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMes
 @CommandHandler(LoginUserCommand)
 export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand> {
     constructor(
-        @Inject(TOKEN_USER_IDENTITY_READER_PORT) private readonly userIdentityReaderPort: IUserIdentityReaderPort,
+        @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
@@ -43,7 +43,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
         let user;
 
         try {
-            user = await this.userIdentityReaderPort.getCredentialsByEmail(command.email);
+            user = await this.identityReaderPort.getCredentialsByEmail(IdentityRealm.USER, command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
                 throw this.denyLogin(AuthRejectionReason.ACCOUNT_NOT_FOUND);
@@ -61,7 +61,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
         }
 
         const id = user.id,
-            tokens = await this.tokenPort.generateTokens(UserRole.USER, id, user.version);
+            tokens = await this.tokenPort.generateTokens(user.role, id, user.version);
 
         await this.sessionPort.openSession(id, tokens.jti);
 

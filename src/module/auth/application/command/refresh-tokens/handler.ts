@@ -11,13 +11,10 @@ import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/s
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import {
-    TOKEN_ADMIN_IDENTITY_READER_PORT,
-    type IAdminIdentityReaderPort,
-} from 'src/module/auth/application/command/port/admin-identity-reader.port';
-import {
-    TOKEN_USER_IDENTITY_READER_PORT,
-    type IUserIdentityReaderPort,
-} from 'src/module/auth/application/command/port/user-identity-reader.port';
+    IdentityRealm,
+    TOKEN_IDENTITY_READER_PORT,
+    type IIdentityReaderPort,
+} from 'src/module/auth/application/command/port/identity-reader.port';
 import {
     RefreshTokensCommand,
     RefreshTokensMessage,
@@ -42,9 +39,7 @@ import { uuidv7 } from 'uuidv7';
 export class RefreshTokensCommandHandler implements ICommandHandler<RefreshTokensCommand> {
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
-        @Inject(TOKEN_USER_IDENTITY_READER_PORT) private readonly userIdentityReaderPort: IUserIdentityReaderPort,
-        @Inject(TOKEN_ADMIN_IDENTITY_READER_PORT)
-        private readonly adminIdentityReaderPort: IAdminIdentityReaderPort,
+        @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -77,10 +72,10 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
         let identity;
         try {
-            identity =
-                role === UserRole.USER
-                    ? await this.userIdentityReaderPort.getAuthState(sub)
-                    : await this.adminIdentityReaderPort.getAuthState(sub);
+            identity = await this.identityReaderPort.getAuthState(
+                role === UserRole.USER ? IdentityRealm.USER : IdentityRealm.ADMIN,
+                sub,
+            );
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
                 throw new UnauthenticatedException();

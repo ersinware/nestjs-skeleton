@@ -20,7 +20,7 @@ import type { IGetHealthStatusPort } from 'src/module/health/application/query/g
 import type { GetHealthStatusResult } from 'src/module/health/application/query/get-health-status/query';
 
 /**
- * Adapter that implements the IHealthReaderPort using NestJS Terminus.
+ * Adapter that implements the IGetHealthStatusPort using NestJS Terminus.
  */
 @Injectable()
 export class HealthReaderAdapter implements IGetHealthStatusPort {
