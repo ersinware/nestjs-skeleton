@@ -12,9 +12,10 @@ import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import { LoginAdminCommand, type LoginAdminResult } from 'src/module/auth/application/command/login-admin/command';
 import {
-    TOKEN_ADMIN_IDENTITY_READER_PORT,
-    type IAdminIdentityReaderPort,
-} from 'src/module/auth/application/command/port/admin-identity-reader.port';
+    IdentityRealm,
+    TOKEN_IDENTITY_READER_PORT,
+    type IIdentityReaderPort,
+} from 'src/module/auth/application/command/port/identity-reader.port';
 import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -24,8 +25,7 @@ import { ResourceNotFoundException, UnauthenticatedException, UnauthenticatedMes
 @CommandHandler(LoginAdminCommand)
 export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminCommand> {
     constructor(
-        @Inject(TOKEN_ADMIN_IDENTITY_READER_PORT)
-        private readonly adminIdentityReaderPort: IAdminIdentityReaderPort,
+        @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
@@ -43,7 +43,7 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
         let admin;
 
         try {
-            admin = await this.adminIdentityReaderPort.getCredentialsByEmail(command.email);
+            admin = await this.identityReaderPort.getCredentialsByEmail(IdentityRealm.ADMIN, command.email);
         } catch (error) {
             if (error instanceof ResourceNotFoundException) {
                 throw this.denyLogin(AuthRejectionReason.ACCOUNT_NOT_FOUND);
