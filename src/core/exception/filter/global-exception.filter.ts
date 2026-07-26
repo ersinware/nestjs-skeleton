@@ -6,7 +6,7 @@
 import type { ArgumentsHost } from '@nestjs/common';
 import { Catch, ExceptionFilter, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { PATH_HEALTH } from 'src/core/config';
+import { PATH_HEALTH, PATH_HEALTH_READY } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
@@ -66,14 +66,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const ctx = host.switchToHttp(),
             response = ctx.getResponse<unknown>();
 
-        if (this.isHealthCheckUnavailable(exception, ctx.getRequest<{ url?: string }>())) {
-            const httpException = exception as HttpException;
+        const healthPassthrough = this.resolveHealthCheckPassthrough(exception, ctx.getRequest<{ url?: string }>());
 
-            this.httpAdapterHost.httpAdapter.reply(
-                response,
-                { error: httpException.getResponse() },
-                httpException.getStatus(),
-            );
+        if (healthPassthrough !== null) {
+            this.httpAdapterHost.httpAdapter.reply(response, healthPassthrough.body, HttpStatus.SERVICE_UNAVAILABLE);
 
             return;
         }
@@ -85,19 +81,45 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     /**
-     * Identifies if the exception is an intentional 503 response from health checks,
-     * which must pass the raw output of the indicator. The URL is matched against the exact
-     * health-endpoint path (query string stripped) so an unrelated route merely containing
-     * "health" in its path or query can never bypass response normalization.
+     * Decides whether the exception is an intentional 503 raised by a health probe, and with what
+     * body it must leave — the two probes answer different audiences, so one passthrough rule cannot
+     * serve both:
+     *
+     * - The detailed endpoint (operators, super admins) passes the raw indicator output through, so
+     *   the failing dependency is named.
+     * - The readiness probe (orchestrators) answers with NOTHING. A load balancer branches on the
+     *   status code alone, and the probe is unauthenticated: a body there would publish the
+     *   infrastructure topology and which dependency is currently down to anyone who asks.
+     *
+     * URLs are matched against the exact path (query string stripped) so an unrelated route merely
+     * containing "health" in its path or query can never bypass response normalization.
+     *
+     * @param exception The caught error.
+     * @param request The incoming request, read for its URL only.
+     * @returns The body to reply with, or null when this is not a health-probe 503.
      */
-    private isHealthCheckUnavailable(exception: unknown, request: { url?: string }): boolean {
+    private resolveHealthCheckPassthrough(exception: unknown, request: { url?: string }): { body: unknown } | null {
         if (!(exception instanceof HttpException)) {
-            return false;
+            return null;
         }
 
         const statusCode: HttpStatus = exception.getStatus();
 
-        return statusCode === HttpStatus.SERVICE_UNAVAILABLE && request?.url?.split('?')[0] === PATH_HEALTH;
+        if (statusCode !== HttpStatus.SERVICE_UNAVAILABLE) {
+            return null;
+        }
+
+        const path = request?.url?.split('?')[0];
+
+        if (path === PATH_HEALTH_READY) {
+            return { body: undefined };
+        }
+
+        if (path === PATH_HEALTH) {
+            return { body: { error: exception.getResponse() } };
+        }
+
+        return null;
     }
 
     /**

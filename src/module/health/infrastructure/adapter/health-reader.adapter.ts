@@ -47,8 +47,14 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
     /**
      * Executes the combined health check for memory, database, and cache.
      *
+     * On failure Terminus throws its own `ServiceUnavailableException` carrying the indicator report,
+     * and that raw framework exception is deliberately NOT translated into a taxonomy one — the sole
+     * exemption to "infrastructure translates, nothing leaks". The global filter recognizes it by
+     * `instanceof HttpException` to decide what each health path may disclose, so translating it here
+     * would silently put a normalized error body back onto the anonymous readiness probe.
+     *
      * @returns A promise resolving to the health check result.
-     * @throws {Error} If one or more health indicators fail.
+     * @throws {ServiceUnavailableException} If one or more health indicators fail.
      */
     async getStatus(): Promise<GetHealthStatusResult> {
         const result = await this.health.check([
