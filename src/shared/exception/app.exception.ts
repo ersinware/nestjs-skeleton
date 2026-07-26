@@ -1,6 +1,6 @@
 /**
  * @file app.exception.ts
- * @description Abstract base of the application's exception taxonomy, together with the forensic context an exception may carry. Every domain, application, and infrastructure failure is expressed as a subclass carrying a transport-neutral kind.
+ * @description Abstract base of the application's exception taxonomy, together with the forensic context an exception may carry and the predicate classifying a caught error by kind. Every domain, application, and infrastructure failure is expressed as a subclass carrying a transport-neutral kind.
  */
 
 import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
@@ -58,4 +58,26 @@ export abstract class AppException extends Error {
 
         if (options?.context) this.context = options.context;
     }
+}
+
+/**
+ * Reports whether a caught error is a taxonomy failure of the given category, so a caller that
+ * treats one category as an expected outcome can tell it apart from everything else it must rethrow.
+ *
+ * Classifying by `kind` rather than by `instanceof ResourceNotFoundException` is what makes the
+ * check mean what the caller intends: the caller reacts to the CATEGORY, so a category gaining a
+ * second subclass — or a subclass being renamed — must not silently stop matching at a call site
+ * that never named a class. Matching structurally on the field, in turn, is why the check keeps
+ * holding where class identity does not: a duplicated module instance or an error rebuilt from a
+ * serialized payload carries the same `kind` string but a different prototype.
+ *
+ * The predicate is a taxonomy concern and lives here, with the base class, so the shape of a
+ * classification is defined once instead of being restated at every catch site.
+ *
+ * @param error The caught value, of unknown type as every `catch` binding is
+ * @param kind The failure category the caller is prepared to handle
+ * @returns True when the error is a taxonomy failure of that category
+ */
+export function isExceptionOfKind(error: unknown, kind: ExceptionKind): error is AppException {
+    return error !== null && typeof error === 'object' && (error as { kind?: unknown }).kind === kind;
 }
