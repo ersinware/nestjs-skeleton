@@ -10,7 +10,18 @@ import { Observable, concatMap, of } from 'rxjs';
 import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 import { KEY_DECORATOR_AUDITED } from 'src/core/observability/audit/decorator/audited.decorator';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit/port';
-import type { AuthenticatedRequest } from 'src/core/security/auth';
+
+/**
+ * The only part of the request this interceptor reads.
+ *
+ * Narrowed to the route parameters rather than typed as `AuthenticatedRequest`, because the actor is
+ * NOT read here — it arrives through the ambient context. Naming the authenticated shape would have
+ * made the audit concern depend on the auth concern for a field it never touches, and auth in turn
+ * publishes the actor into this concern's context: a cycle bought with nothing.
+ */
+type AuditedRequest = {
+    readonly params: Record<string, string | undefined>;
+};
 
 /**
  * Records an audit entry for handlers annotated with {@link Audited}, and does nothing for the rest.
@@ -21,10 +32,10 @@ import type { AuthenticatedRequest } from 'src/core/security/auth';
  * is a rule of the {@link Audited} decorator, not something this class can check.
  *
  * The two identities on the record come from different places by nature: the actor — who is looking —
- * is an ambient transport fact the {@link AuditAdapter} fills from the context {@link
- * AuditContextInterceptor} established earlier in the pipeline (hence its earlier registration),
- * while the subject — whose data is looked at — is the `:id` route parameter and is read here. The
- * IP, user agent and trace likewise come from the ambient context, not from this class.
+ * is filled by the {@link AuditAdapter} from the ambient context, opened by `auditContextHook` on
+ * arrival and completed by `AuthGuard`, both of which run before any interceptor; while the subject —
+ * whose data is looked at — is the `:id` route parameter and is read here. The IP, user agent, route
+ * and trace likewise come from the ambient context, not from this class.
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -69,7 +80,7 @@ export class AuditInterceptor implements NestInterceptor {
         // target is absent and the actor from the ambient context is itself the subject.
         // Typed `string` by the route generic, but genuinely absent on a param-less route, so it is
         // held as optional — an unattributed target is the truth there, not an empty string.
-        const targetId: string | undefined = context.switchToHttp().getRequest<AuthenticatedRequest>().params['id'];
+        const targetId: string | undefined = context.switchToHttp().getRequest<AuditedRequest>().params['id'];
 
         return next.handle().pipe(
             concatMap((data) => {

@@ -13,6 +13,7 @@ describe('env.validation.config', () => {
     const validConfig: Record<string, unknown> = {
         PORT: 3000,
         NODE_ENV: Environment.DEVELOPMENT,
+        TRUST_PROXY: 'false',
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_POOL_SIZE: 10,
         DATABASE_CONNECT_TIMEOUT: 5000,
@@ -36,10 +37,15 @@ describe('env.validation.config', () => {
         JWT_REFRESH_TTL: '7d',
         SESSION_ROTATION_GRACE_TTL: '30s',
 
-        THROTTLE_TTL: 60,
-        THROTTLE_LIMIT: 100,
-        THROTTLE_CRITICAL_TTL: 60000,
-        THROTTLE_CRITICAL_LIMIT: 5,
+        THROTTLE_TTL: 60000,
+        THROTTLE_LIMIT: 300,
+        THROTTLE_BLOCK_DURATION: 60000,
+        THROTTLE_CRITICAL_BURST_TTL: 60000,
+        THROTTLE_CRITICAL_BURST_LIMIT: 10,
+        THROTTLE_CRITICAL_BURST_BLOCK_DURATION: 60000,
+        THROTTLE_CRITICAL_SUSTAINED_TTL: 3600000,
+        THROTTLE_CRITICAL_SUSTAINED_LIMIT: 60,
+        THROTTLE_CRITICAL_SUSTAINED_BLOCK_DURATION: 3600000,
 
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
@@ -81,8 +87,8 @@ describe('env.validation.config', () => {
             PORT: '4000',
             DATABASE_POOL_SIZE: '15',
             THROTTLE_TTL: '120',
-            THROTTLE_CRITICAL_TTL: '1000',
-            THROTTLE_CRITICAL_LIMIT: '2',
+            THROTTLE_CRITICAL_BURST_TTL: '1000',
+            THROTTLE_CRITICAL_BURST_LIMIT: '2',
             REDIS_CACHE_TLS: 'true',
             REDIS_STATE_TLS: 'false',
         });
@@ -90,8 +96,8 @@ describe('env.validation.config', () => {
         expect(result.PORT).toBe(4000);
         expect(result.DATABASE_POOL_SIZE).toBe(15);
         expect(result.THROTTLE_TTL).toBe(120);
-        expect(result.THROTTLE_CRITICAL_TTL).toBe(1000);
-        expect(result.THROTTLE_CRITICAL_LIMIT).toBe(2);
+        expect(result.THROTTLE_CRITICAL_BURST_TTL).toBe(1000);
+        expect(result.THROTTLE_CRITICAL_BURST_LIMIT).toBe(2);
         expect(result.REDIS_CACHE_TLS).toBe(true);
         expect(result.REDIS_STATE_TLS).toBe(false);
     });

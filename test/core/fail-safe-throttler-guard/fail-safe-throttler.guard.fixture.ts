@@ -10,7 +10,7 @@ import { getStorageToken } from '@nestjs/throttler';
 import { Logger } from 'nestjs-pino';
 import { ENV, Environment } from 'src/core/config';
 import { Public } from 'src/core/security/auth';
-import { CriticalThrottle } from 'src/core/security/throttle';
+import { ThrottlePolicy, UseThrottlePolicy } from 'src/core/security/throttle';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { MockInstance, vi } from 'vitest';
 
@@ -47,12 +47,29 @@ export async function createFailSafeThrottlerTestApp(options: {
                         return 60000;
                     }
 
-                    if (key === ENV.THROTTLE_CRITICAL_LIMIT) {
+                    if (key === ENV.THROTTLE_CRITICAL_BURST_LIMIT) {
                         return 1;
                     }
 
-                    if (key === ENV.THROTTLE_CRITICAL_TTL) {
+                    if (
+                        key === ENV.THROTTLE_CRITICAL_BURST_TTL ||
+                        key === ENV.THROTTLE_BLOCK_DURATION ||
+                        key === ENV.THROTTLE_CRITICAL_BURST_BLOCK_DURATION
+                    ) {
                         return 60000;
+                    }
+
+                    // Kept far above the burst limit so the sustained window never decides the
+                    // outcome of a burst-focused test.
+                    if (key === ENV.THROTTLE_CRITICAL_SUSTAINED_LIMIT) {
+                        return 1000;
+                    }
+
+                    if (
+                        key === ENV.THROTTLE_CRITICAL_SUSTAINED_TTL ||
+                        key === ENV.THROTTLE_CRITICAL_SUSTAINED_BLOCK_DURATION
+                    ) {
+                        return 3600000;
                     }
 
                     if (key === ENV.REDIS_CACHE_TLS || key === ENV.REDIS_STATE_TLS) {
@@ -96,7 +113,7 @@ export class FailSafeThrottlerTriggerController {
     }
 
     @Get('critical')
-    @CriticalThrottle()
+    @UseThrottlePolicy(ThrottlePolicy.CRITICAL)
     critical() {
         return { success: true };
     }

@@ -10,7 +10,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { ThrottlerRequest } from '@nestjs/throttler';
 import { getOptionsToken, getStorageToken, ThrottlerException, ThrottlerGuard } from '@nestjs/throttler';
 import { Environment } from 'src/core/config';
+import { TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
 import { FailSafeThrottlerGuard } from 'src/core/security/throttle/guard/fail-safe-throttler.guard';
+import { ThrottlePolicy } from 'src/core/security/throttle/throttle-policy.enum';
 import { ThrottlerName } from 'src/core/security/throttle/throttler-name.enum';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,6 +61,12 @@ describe('FailSafeThrottlerGuard', () => {
                         getOrThrow: vi.fn(),
                     },
                 },
+                {
+                    provide: TOKEN_AUDIT_PORT,
+                    useValue: {
+                        record: vi.fn(),
+                    },
+                },
             ],
         }).compile();
 
@@ -82,7 +90,7 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should call super.handleRequest when NODE_ENV is not test', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             const superHandleRequestSpy = vi.spyOn(mockParentGuard, 'handleRequest').mockResolvedValueOnce(true);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
@@ -91,7 +99,7 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should bypass the default throttler if the route is critical', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(true);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.CRITICAL);
             const superHandleRequestSpy = vi.spyOn(mockParentGuard, 'handleRequest');
 
             const result = await guard['handleRequest']({
@@ -104,12 +112,12 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should bypass the critical throttler if the route is not critical', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             const superHandleRequestSpy = vi.spyOn(mockParentGuard, 'handleRequest');
 
             const result = await guard['handleRequest']({
                 ...mockRequest,
-                throttler: { name: ThrottlerName.CRITICAL, limit: 5, ttl: 60 },
+                throttler: { name: ThrottlerName.CRITICAL_BURST, limit: 5, ttl: 60 },
             });
             expect(result).toBe(true);
             expect(superHandleRequestSpy).not.toHaveBeenCalled();
@@ -117,12 +125,12 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should run super.handleRequest if the route is critical and critical throttler is evaluated', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(true);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.CRITICAL);
             const superHandleRequestSpy = vi.spyOn(mockParentGuard, 'handleRequest').mockResolvedValueOnce(true);
 
             const criticalRequest = {
                 ...mockRequest,
-                throttler: { name: ThrottlerName.CRITICAL, limit: 5, ttl: 60 },
+                throttler: { name: ThrottlerName.CRITICAL_BURST, limit: 5, ttl: 60 },
             };
 
             const result = await guard['handleRequest'](criticalRequest);
@@ -132,7 +140,7 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should return true when super.handleRequest returns true', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             vi.spyOn(mockParentGuard, 'handleRequest').mockResolvedValueOnce(true);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
@@ -140,7 +148,7 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should return false when super.handleRequest returns false', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             vi.spyOn(mockParentGuard, 'handleRequest').mockResolvedValueOnce(false);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(false);
@@ -148,7 +156,7 @@ describe('FailSafeThrottlerGuard', () => {
 
         it('should rethrow ThrottlerException when super.handleRequest throws it', async () => {
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
 
             const exception = new ThrottlerException();
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(exception);
@@ -160,7 +168,7 @@ describe('FailSafeThrottlerGuard', () => {
             const error = new Error();
 
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(error);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
@@ -170,7 +178,7 @@ describe('FailSafeThrottlerGuard', () => {
             const error = 'string error';
 
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(error);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);
@@ -180,7 +188,7 @@ describe('FailSafeThrottlerGuard', () => {
             const error = null;
 
             vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
-            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(false);
+            vi.spyOn(reflector, 'getAllAndOverride').mockReturnValueOnce(ThrottlePolicy.DEFAULT);
             vi.spyOn(mockParentGuard, 'handleRequest').mockRejectedValueOnce(error);
 
             expect(await guard['handleRequest'](mockRequest)).toBe(true);

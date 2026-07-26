@@ -34,7 +34,7 @@ import {
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { AccessTokenPayloadDecorator, Public, Roles } from 'src/core/security/auth';
-import { CriticalThrottle } from 'src/core/security/throttle';
+import { ThrottlePolicy, UseThrottlePolicy } from 'src/core/security/throttle';
 import type { AccessTokenPayload } from 'src/core/security/token';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
@@ -76,7 +76,7 @@ export class UserController {
      * @returns The newly created and serialized user profile
      */
     @Public()
-    @CriticalThrottle()
+    @UseThrottlePolicy(ThrottlePolicy.CRITICAL)
     @Post()
     @ApiOperation({
         summary: 'Register user',
@@ -202,6 +202,10 @@ export class UserController {
      * @param payload The decoded access token payload of the requester
      * @param patchUserPasswordDto The payload containing the current and new passwords
      */
+    // Critical for the same reason login is: the endpoint verifies a guessable secret (the current
+    // password), so without a strict budget a stolen access token could brute-force it at the default
+    // rate and complete the account takeover.
+    @UseThrottlePolicy(ThrottlePolicy.CRITICAL)
     @Patch('me/password')
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)

@@ -3,8 +3,8 @@
  * @description Type defining the JWT refresh token payload structure.
  */
 
-import type { AuthRole } from 'src/core/security/auth';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
+import type { AuthRole } from 'src/shared/domain/auth-role';
 
 /**
  * Structure of a decoded JWT refresh token payload.

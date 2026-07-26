@@ -42,5 +42,8 @@ export type AuditEntry = AuditRecordInput & {
     readonly actorRole?: string | undefined;
     readonly sourceIp?: string | undefined;
     readonly userAgent?: string | undefined;
+    readonly method?: string | undefined;
+    /** The route TEMPLATE (`/v1/user/:id`), never the resolved URL — see `auditContextHook`. */
+    readonly route?: string | undefined;
     readonly traceId?: string | undefined;
 };

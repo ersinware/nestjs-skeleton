@@ -60,7 +60,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
 
         await this.userWriterPort.save(user);
 
-        // The actor comes from the ambient audit context, not from here.
-        this.auditPort.record({ action: AuditAction.USER_UPDATED, targetId: id });
+        // The actor comes from the ambient audit context, not from here — and no `targetId` either:
+        // this command is reachable only from the self-scoped route, so the subject IS that actor.
+        this.auditPort.record({ action: AuditAction.USER_UPDATED });
     }
 }

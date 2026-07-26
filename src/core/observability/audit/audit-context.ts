@@ -4,7 +4,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { AuthRole } from 'src/core/security/auth';
+import type { AuthRole } from 'src/shared/domain/auth-role';
 
 /**
  * Who is acting and over which transport, carried alongside the call rather than through it.
@@ -17,12 +17,29 @@ import type { AuthRole } from 'src/core/security/auth';
  *
  * Every field is optional because none is knowable on every path: a `@Public()` login route has no
  * authenticated actor yet, and a record written outside a request has no transport at all.
+ *
+ * The two halves are filled at different moments, which is why the identity half is mutable, and each
+ * is written by whoever brings that fact into existence:
+ *
+ * - **Transport** — true the instant the request arrives, so `auditContextHook` seeds it on arrival,
+ *   ahead of every guard. That is what makes a refusal raised by a guard attributable at all.
+ *   `method` and `route` belong to this half because the generic refusals — `ACCESS_DENIED`,
+ *   `RATE_LIMITED` — name no subject of their own: without them the record says someone was refused
+ *   something, which is not evidence of anything.
+ * - **Identity** — does not exist until a token has been VERIFIED, so `AuthGuard` writes it at the
+ *   moment it establishes it. Doing this downstream, in an interceptor, would leave a `403` from the
+ *   roles guard with no actor — a record of a refusal that is entirely about an identity, naming none.
+ *
+ * A field stays absent when it is genuinely unknown: a `@Public()` route has no actor, a `429` is
+ * refused before any token is read, and a record written outside a request has no transport at all.
  */
 export type AuditContext = {
-    readonly actorId?: string | undefined;
-    readonly actorRole?: AuthRole | undefined;
+    actorId?: string | undefined;
+    actorRole?: AuthRole | undefined;
     readonly sourceIp?: string | undefined;
     readonly userAgent?: string | undefined;
+    readonly method?: string | undefined;
+    readonly route?: string | undefined;
 };
 
 /**
