@@ -82,6 +82,13 @@ export default tseslint.config(
                 { type: 'core', pattern: 'src/core/security/*' },
                 { type: 'core', pattern: 'src/core/cache' },
                 { type: 'core', pattern: 'src/core/config' },
+                /**
+                 * The CQRS pipeline is its OWN element, not a plain `core` concern: it is the one
+                 * core surface a `facade` may import (QueryPipeline/CommandPipeline), and nothing
+                 * else in `core`. A dedicated type lets the facade rule allow exactly this door
+                 * (`coreCqrs`) instead of opening all of `core` to facades.
+                 */
+                { type: 'coreCqrs', pattern: 'src/core/cqrs' },
                 { type: 'core', pattern: 'src/core/database' },
                 { type: 'core', pattern: 'src/core/doc' },
                 { type: 'core', pattern: 'src/core/email' },
@@ -139,6 +146,15 @@ export default tseslint.config(
                             allow: [{ to: { type: 'shared' } }, { to: { type: 'core' } }],
                         },
                         {
+                            /**
+                             * The pipeline concern is a core capability: it composes the behaviors
+                             * (cache-aside, invalidation) over the framework buses, so it reaches
+                             * `core` (e.g. `core/cache`) and `shared` like any other core concern.
+                             */
+                            from: { type: 'coreCqrs' },
+                            allow: [{ to: { type: 'shared' } }, { to: { type: 'core' } }],
+                        },
+                        {
                             from: { type: 'bootstrap' },
                             allow: [{ to: { type: 'shared' } }, { to: { type: 'core' } }],
                         },
@@ -154,6 +170,7 @@ export default tseslint.config(
                             allow: [
                                 { to: { type: 'shared' } },
                                 { to: { type: 'core' } },
+                                { to: { type: 'coreCqrs' } },
                                 { to: { type: 'domain', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'application', captured: { module: '{{from.captured.module}}' } } },
                             ],
@@ -174,13 +191,22 @@ export default tseslint.config(
                             allow: [
                                 { to: { type: 'shared' } },
                                 { to: { type: 'core' } },
+                                { to: { type: 'coreCqrs' } },
                                 { to: { type: 'application', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'presentation', captured: { module: '{{from.captured.module}}' } } },
                             ],
                         },
                         {
+                            /**
+                             * A facade dispatches cross-module reads through the QueryPipeline, so it
+                             * reaches `coreCqrs` — and ONLY that core surface, never the rest of
+                             * `core`. This is the single deliberate widening of the facade's imports.
+                             */
                             from: { type: 'facade' },
-                            allow: [{ to: { type: 'application', captured: { module: '{{from.captured.module}}' } } }],
+                            allow: [
+                                { to: { type: 'coreCqrs' } },
+                                { to: { type: 'application', captured: { module: '{{from.captured.module}}' } } },
+                            ],
                         },
                         {
                             from: { type: 'moduleIndex' },
@@ -198,6 +224,7 @@ export default tseslint.config(
                                 { to: { type: 'facade', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'moduleIndex' } },
                                 { to: { type: 'core' } },
+                                { to: { type: 'coreCqrs' } },
                                 { to: { type: 'shared' } },
                             ],
                         },
@@ -231,7 +258,7 @@ export default tseslint.config(
                          * unaffected: `checkInternals` defaults to false.
                          */
                         {
-                            to: { type: ['shared', 'core'], internalPath: '!index.ts' },
+                            to: { type: ['shared', 'core', 'coreCqrs'], internalPath: '!index.ts' },
                             disallow: [{ from: { type: '*' } }],
                             message:
                                 'A core/shared concern may only be entered through its index.ts barrel (CLAUDE.md § Barrels).',

@@ -5,8 +5,8 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
 import { OnEvent } from '@nestjs/event-emitter';
+import { CommandPipeline } from 'src/core/cqrs';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 import { UserIntegrationEvent } from 'src/shared/domain/user';
@@ -18,11 +18,11 @@ import { UserIntegrationEvent } from 'src/shared/domain/user';
 @Injectable()
 export class UserReuseListener {
     /**
-     * Injects the command bus used to dispatch the revocation command.
+     * Injects the command pipeline used to dispatch the revocation command.
      *
-     * @param commandBus The CQRS command bus.
+     * @param commandPipeline The CQRS command pipeline.
      */
-    constructor(private readonly commandBus: CommandBus) {}
+    constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
      * Dispatches session revocation when auth reports refresh-token reuse for a user. The unique event id
@@ -36,6 +36,6 @@ export class UserReuseListener {
      */
     @OnEvent(UserIntegrationEvent.REFRESH_REUSE_DETECTED, { suppressErrors: false })
     async handleRefreshReuseDetected(event: DispatchedDomainEvent) {
-        await this.commandBus.execute(new RevokeUserSessionsCommand(event.aggregateId, event.eventId));
+        await this.commandPipeline.execute(new RevokeUserSessionsCommand(event.aggregateId, event.eventId));
     }
 }

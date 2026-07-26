@@ -4,17 +4,14 @@
  */
 
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
-import { QueryBus } from '@nestjs/cqrs';
 import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { plainToInstance } from 'class-transformer';
 import { ROUTE_HEALTH } from 'src/core/config';
+import { QueryPipeline } from 'src/core/cqrs';
 import { ApiDefaultInternalServerErrorResponse } from 'src/core/doc';
 import { Public } from 'src/core/security/auth';
-import {
-    GetHealthStatusQuery,
-    type GetHealthStatusResult,
-} from 'src/module/health/application/query/get-health-status/query';
+import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
 import { DependencyUnavailableMessage } from 'src/shared/exception';
@@ -33,11 +30,13 @@ import { DependencyUnavailableMessage } from 'src/shared/exception';
 @ApiDefaultInternalServerErrorResponse()
 export class HealthController {
     /**
-     * Injects the underlying query bus to execute health check queries.
+     * Injects the query pipeline to execute health check queries. The health query is deliberately
+     * non-cacheable, so the pipeline passes it straight through to the handler — routing every edge
+     * through the pipeline keeps the "no query bypasses the behavior chain" invariant intact.
      *
-     * @param queryBus The command-query responsibility segregation query bus.
+     * @param queryPipeline The CQRS query pipeline.
      */
-    constructor(private readonly queryBus: QueryBus) {}
+    constructor(private readonly queryPipeline: QueryPipeline) {}
 
     /**
      * Evaluates the application and dependency statuses by checking memory limits, database connectivity, and Redis availability.
@@ -60,9 +59,6 @@ export class HealthController {
         type: ResponseUnhealthyDto,
     })
     async getStatus(): Promise<ResponseHealthyDto> {
-        return plainToInstance(
-            ResponseHealthyDto,
-            await this.queryBus.execute<GetHealthStatusQuery, GetHealthStatusResult>(new GetHealthStatusQuery()),
-        );
+        return plainToInstance(ResponseHealthyDto, await this.queryPipeline.execute(new GetHealthStatusQuery()));
     }
 }

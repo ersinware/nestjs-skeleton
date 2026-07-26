@@ -4,10 +4,10 @@
  */
 
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
+import { CommandPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
@@ -19,15 +19,11 @@ import { NotEmptyBodyPipe, RequestValidationMessage } from 'src/core/http';
 import { AccessTokenPayloadDecorator, Public } from 'src/core/security/auth';
 import { CriticalThrottle } from 'src/core/security/throttle';
 import type { AccessTokenPayload } from 'src/core/security/token';
-import { LoginAdminCommand, type LoginAdminResult } from 'src/module/auth/application/command/login-admin/command';
-import { LoginUserCommand, type LoginUserResult } from 'src/module/auth/application/command/login-user/command';
+import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
+import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
-import {
-    RefreshTokensCommand,
-    RefreshTokensMessage,
-    type RefreshTokensResult,
-} from 'src/module/auth/application/command/refresh-tokens/command';
+import { RefreshTokensCommand, RefreshTokensMessage } from 'src/module/auth/application/command/refresh-tokens/command';
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
@@ -46,11 +42,11 @@ import { UnauthenticatedMessage } from 'src/shared/exception';
 @ApiDefaultTooManyRequestsResponse()
 export class AuthController {
     /**
-     * Initializes the controller with the command bus to dispatch authentication commands.
+     * Initializes the controller with the command pipeline to dispatch authentication commands.
      *
-     * @param commandBus The CQRS command bus
+     * @param commandPipeline The CQRS command pipeline (invalidation behavior applies)
      */
-    constructor(private readonly commandBus: CommandBus) {}
+    constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
      * Authenticates standard user credentials and initializes a secure session.
@@ -75,9 +71,7 @@ export class AuthController {
     async loginUser(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
-            await this.commandBus.execute<LoginUserCommand, LoginUserResult>(
-                new LoginUserCommand(dto.email, dto.password),
-            ),
+            await this.commandPipeline.execute(new LoginUserCommand(dto.email, dto.password)),
         );
     }
 
@@ -105,9 +99,7 @@ export class AuthController {
     async loginAdmin(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
-            await this.commandBus.execute<LoginAdminCommand, LoginAdminResult>(
-                new LoginAdminCommand(dto.email, dto.password),
-            ),
+            await this.commandPipeline.execute(new LoginAdminCommand(dto.email, dto.password)),
         );
     }
 
@@ -136,9 +128,7 @@ export class AuthController {
     async refresh(@Body(NotEmptyBodyPipe) dto: PostRefreshDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
-            await this.commandBus.execute<RefreshTokensCommand, RefreshTokensResult>(
-                new RefreshTokensCommand(dto.refreshToken),
-            ),
+            await this.commandPipeline.execute(new RefreshTokensCommand(dto.refreshToken)),
         );
     }
 
@@ -161,7 +151,7 @@ export class AuthController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     async logout(@Body(NotEmptyBodyPipe) dto: PostRefreshDto) {
-        await this.commandBus.execute<LogoutCommand>(new LogoutCommand(dto.refreshToken));
+        await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken));
     }
 
     /**
@@ -181,6 +171,6 @@ export class AuthController {
     @ApiNoContentResponse({ description: 'Successfully logged out from all devices.' })
     @ApiDefaultUnauthenticatedResponse()
     async logoutAll(@AccessTokenPayloadDecorator() accessTokenPayload: AccessTokenPayload) {
-        await this.commandBus.execute<LogoutAllCommand>(new LogoutAllCommand(accessTokenPayload.sub));
+        await this.commandPipeline.execute(new LogoutAllCommand(accessTokenPayload.sub));
     }
 }

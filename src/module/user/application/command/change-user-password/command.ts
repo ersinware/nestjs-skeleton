@@ -4,6 +4,8 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
+import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
  * Enum defining the client-safe messages of change-password rejections. Lives with the command
@@ -21,9 +23,11 @@ export enum ChangeUserPasswordMessage {
 }
 
 /**
- * Command to change an existing user's password.
+ * Command to change an existing user's password. Invalidating: a password change bumps the session
+ * version (revoking existing sessions), so it evicts the auth-state read. The public profile
+ * projection is unaffected and deliberately not evicted.
  */
-export class ChangeUserPasswordCommand extends Command<void> {
+export class ChangeUserPasswordCommand extends Command<void> implements ICacheInvalidatingCommand {
     /**
      * Initializes the command payload.
      *
@@ -37,5 +41,14 @@ export class ChangeUserPasswordCommand extends Command<void> {
         readonly newPassword: string,
     ) {
         super();
+    }
+
+    /**
+     * The cache key this password change evicts: the user's auth-state (session version bumped).
+     *
+     * @returns The cache keys to evict on success
+     */
+    invalidatedKeys(): string[] {
+        return [CacheKeys.userAuthState(this.id)];
     }
 }

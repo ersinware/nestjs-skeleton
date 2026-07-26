@@ -1,47 +1,37 @@
 /**
  * @file user-session.listener.ts
  * @description Event listener that reconciles Redis session/ban/watermark state with the database
- * whenever a user's access-relevant state changes.
+ * whenever a user's access-relevant state changes, by dispatching the reconcile command.
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import {
-    TOKEN_GET_USER_ACCESS_PROJECTION_PORT,
-    type IGetUserAccessProjectionPort,
-} from 'src/module/user/application/query/get-user-access-projection/port';
+import { CommandPipeline } from 'src/core/cqrs';
+import { ReconcileUserSessionCommand } from 'src/module/user/application/command/reconcile-user-session/command';
 import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**
- * Listener that keeps the Redis session version in sync with the database by pushing current DB truth
- * on every access-relevant user event.
+ * Keeps the Redis session version in sync with the database by dispatching the reconcile command on
+ * every access-relevant user event. Kept thin: it only forwards the id; the read-and-push work and its
+ * idempotency live in the command handler.
  */
 @Injectable()
 export class UserSessionListener {
     /**
-     * Injects the session port and the access-projection query port.
+     * Injects the command pipeline used to dispatch the reconcile command.
      *
-     * @param sessionPort The service managing the session version in Redis.
-     * @param accessProjectionPort The query port that reads the user's session version, including soft-deleted rows.
+     * @param commandPipeline The CQRS command pipeline.
      */
-    constructor(
-        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_GET_USER_ACCESS_PROJECTION_PORT)
-        private readonly accessProjectionPort: IGetUserAccessProjectionPort,
-    ) {}
+    constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Pushes the user's current DB session version into Redis. Reading the version from the database
-     * makes the outcome converge under duplicate, out-of-order, and concurrent delivery regardless of
-     * the event verb. No inbox is used: the write is monotonic-max and its input derives from the
-     * re-readable database (CLAUDE.md §8).
+     * Dispatches session reconciliation on every access-relevant user event.
      *
      * `suppressErrors: false` is load-bearing: the library default is `true`, which catches a thrown
-     * error and only logs it, letting `emitAsync` resolve — a Redis outage here would then silently
-     * leave the revocation unapplied. With it set, the failure surfaces to the `save()` that emitted
-     * the event.
+     * error and only logs it, letting `emitAsync` resolve — a Redis outage in the handler would then
+     * silently leave the revocation unapplied. With it set, the failure surfaces to the `save()` that
+     * emitted the event.
      *
      * @param event The dispatched event message carrying the user id.
      */
@@ -51,13 +41,6 @@ export class UserSessionListener {
     @OnEvent(UserEvent.DELETED, { suppressErrors: false })
     @OnEvent(UserEvent.SESSION_REUSE_REVOKED, { suppressErrors: false })
     async reconcile(event: DispatchedDomainEvent) {
-        const projection = await this.accessProjectionPort.getAccessProjection(event.aggregateId);
-
-        // A missing row means the account never existed — nothing to reconcile.
-        if (!projection) {
-            return;
-        }
-
-        await this.sessionPort.setVersion(event.aggregateId, projection.version);
+        await this.commandPipeline.execute(new ReconcileUserSessionCommand(event.aggregateId));
     }
 }
