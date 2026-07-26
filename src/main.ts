@@ -16,7 +16,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, ENV, GLOBAL_PREFIX, VERSION_1 } from 'src/core/config';
-import { SwaggerManager } from 'src/core/doc';
+import { createSwaggerDocument } from 'src/core/doc';
 
 /**
  * Bootstraps the NestJS application using the Fastify adapter.
@@ -69,7 +69,7 @@ function setupDocumentation(app: NestFastifyApplication) {
         app.use(
             path,
             apiReference({
-                spec: { content: SwaggerManager.createDocument(app, version) },
+                spec: { content: createSwaggerDocument(app, version) },
                 showOperationId: true,
                 operationsSorter: 'method',
             } as unknown as Parameters<typeof apiReference>[0]),

@@ -12,7 +12,7 @@ import { Logger } from 'nestjs-pino';
 import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, VERSION_1 } from 'src/core/config';
-import { SwaggerManager, VERSION_CONFIG } from 'src/core/doc';
+import { createSwaggerDocument, generateStaticScalarHtml, VERSION_CONFIG } from 'src/core/doc';
 import { LogPayload } from 'src/core/observability/logger';
 
 /**
@@ -55,11 +55,11 @@ async function bootstrap() {
 
             fs.writeFileSync(
                 path.join(docsDir, jsonFilename),
-                JSON.stringify(SwaggerManager.createDocument(app!, version), null, 2),
+                JSON.stringify(createSwaggerDocument(app!, version), null, 2),
             );
             fs.writeFileSync(
                 path.join(docsDir, htmlFilename),
-                SwaggerManager.generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
+                generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
             );
 
             logger.log(
