@@ -3,7 +3,7 @@
  * @description Contract for looking up an authenticatable identity, from whichever bounded context owns it.
  */
 
-import type { AuthRole } from 'src/core/security/auth';
+import type { AuthRole } from 'src/shared/domain/auth-role';
 
 export const TOKEN_IDENTITY_READER_PORT = Symbol('TOKEN_IDENTITY_READER_PORT');
 

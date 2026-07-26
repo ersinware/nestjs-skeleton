@@ -10,6 +10,30 @@ import { Environment } from 'src/core/config/environment/environment.enum';
 import { TrackerEnvironment } from 'src/core/observability/tracker';
 
 /**
+ * The one `TRUST_PROXY` value that is well-formed and unsafe, given its own constraint so the failure
+ * explains the danger instead of merely reporting a shape mismatch.
+ */
+const TRUST_PROXY_FORBIDDEN = /^(?!true$)/;
+
+/**
+ * The two shapes this application accepts: `false`, or a comma-separated list of IPv4/IPv6
+ * addresses, CIDR ranges and the named presets (`loopback`, `linklocal`, `uniquelocal`).
+ *
+ * Fastify would also take a trusted-HOP COUNT, and that form is deliberately excluded. A count is
+ * positional and silent: it says "believe the second-from-last entry" without saying whose entry
+ * that is, so inserting a CDN or a service-mesh sidecar shifts the resolved client IP to a different
+ * hop and NOTHING fails — rate-limit buckets and audit `sourceIp` quietly start naming the wrong
+ * party. A list is declarative: it names the machines actually operated, and any hop not on it is
+ * simply not believed, whatever position it arrives in.
+ *
+ * The pattern is otherwise shape-only — the exact address grammar is proxy-addr's to enforce, and
+ * duplicating it here would be a second parser to keep in step. What it owes the application is that
+ * nothing outside these shapes, `true` above all, ever reaches the adapter.
+ */
+export const TRUST_PROXY_PATTERN =
+    /^(?:false|(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal)(?:\s*,\s*(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal))*)$/;
+
+/**
  * Transforms string values representing booleans ('true', 'false') to actual booleans.
  * Note: Must be paired with `@Type(() => Object)` on the class property to bypass
  * class-transformer's eager casting that converts all non-empty strings (including 'false') to true.
@@ -45,6 +69,26 @@ export class EnvironmentVariables {
      */
     @IsEnum(Environment)
     readonly NODE_ENV!: Environment;
+
+    /**
+     * Which reverse-proxy hops in front of the app may be believed when they claim a client's IP.
+     *
+     * Every downstream decision keyed on "who made this request" — rate limiting and the audit
+     * record's `sourceIp` — resolves to `request.ip`, which is derived from the `X-Forwarded-For`
+     * header. That header is client-writable, so trusting it blindly hands the client its own
+     * identity. Accepted values are `false` (no proxy) or a comma-separated list of proxy
+     * IPs/CIDRs; both `true` and a bare hop count are rejected — see {@link TRUST_PROXY_PATTERN}.
+     */
+    @IsString()
+    @Matches(TRUST_PROXY_FORBIDDEN, {
+        message:
+            'TRUST_PROXY must not be "true": it would believe every hop in X-Forwarded-For, letting any client spoof its own IP and so pick its own rate-limit bucket and audit sourceIp. List the trusted proxy IPs/CIDRs instead.',
+    })
+    @Matches(TRUST_PROXY_PATTERN, {
+        message:
+            'TRUST_PROXY must be "false" or a comma-separated list of proxy IPs/CIDRs (loopback, linklocal and uniquelocal are also accepted). A hop count is not accepted: it silently resolves to a different hop whenever the proxy chain changes.',
+    })
+    readonly TRUST_PROXY!: string;
 
     /**
      * PostgreSQL database connection URL.
@@ -185,28 +229,69 @@ export class EnvironmentVariables {
     readonly SESSION_ROTATION_GRACE_TTL!: string;
 
     /**
-     * Time-to-live (TTL) window in seconds for the rate limiter.
+     * Window in MILLISECONDS over which ordinary requests are counted.
+     *
+     * Every throttle duration below is milliseconds, without exception — that is the unit
+     * `@nestjs/throttler` has taken since v5. The distinction is not cosmetic: a value meant as
+     * seconds ("60") becomes a 60ms window, which silently disables rate limiting rather than failing.
      */
     @IsNumber()
     readonly THROTTLE_TTL!: number;
 
     /**
-     * Maximum number of requests allowed within the defined THROTTLE_TTL window.
+     * Maximum number of ordinary requests allowed within THROTTLE_TTL.
+     *
+     * This limit is an abuse smoother, not a security control — the security controls are the critical
+     * limiters below — so it is set generously. A frontend served through a BFF makes several calls per
+     * screen, and the counter is currently shared by everyone behind one IP.
      */
     @IsNumber()
     readonly THROTTLE_LIMIT!: number;
 
     /**
-     * Time-to-live (TTL) window in milliseconds for the critical rate limiter.
+     * How long, in MILLISECONDS, an ordinary caller stays blocked after exceeding THROTTLE_LIMIT.
      */
     @IsNumber()
-    readonly THROTTLE_CRITICAL_TTL!: number;
+    readonly THROTTLE_BLOCK_DURATION!: number;
 
     /**
-     * Maximum number of requests allowed within the defined THROTTLE_CRITICAL_TTL window.
+     * Window in MILLISECONDS of the SHORT critical limiter — the one that catches a fast automated
+     * burst against a sensitive endpoint.
      */
     @IsNumber()
-    readonly THROTTLE_CRITICAL_LIMIT!: number;
+    readonly THROTTLE_CRITICAL_BURST_TTL!: number;
+
+    /**
+     * Maximum number of critical requests allowed within THROTTLE_CRITICAL_BURST_TTL.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_BURST_LIMIT!: number;
+
+    /**
+     * How long, in MILLISECONDS, a caller stays blocked after exceeding the burst limit.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_BURST_BLOCK_DURATION!: number;
+
+    /**
+     * Window in MILLISECONDS of the LONG critical limiter — the ceiling on how many attempts one
+     * tracker may accumulate against sensitive endpoints over an extended period, which is what a
+     * short window alone cannot see: an attacker pacing itself under the burst limit is invisible to it.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_SUSTAINED_TTL!: number;
+
+    /**
+     * Maximum number of critical requests allowed within THROTTLE_CRITICAL_SUSTAINED_TTL.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_SUSTAINED_LIMIT!: number;
+
+    /**
+     * How long, in MILLISECONDS, a caller stays blocked after exceeding the sustained limit.
+     */
+    @IsNumber()
+    readonly THROTTLE_CRITICAL_SUSTAINED_BLOCK_DURATION!: number;
 
     /**
      * Heap memory limit (in MB) for system health checks.

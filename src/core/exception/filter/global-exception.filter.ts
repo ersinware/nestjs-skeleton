@@ -11,7 +11,6 @@ import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
-import type { AuthenticatedRequest } from 'src/core/security/auth';
 import {
     AppException,
     DependencyUnavailableMessage,
@@ -76,7 +75,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         const errorDefaultDto = this.normalizeException(exception);
 
-        this.logException(exception, errorDefaultDto, ctx.getRequest<AuthenticatedRequest>());
+        this.logException(exception, errorDefaultDto);
         this.httpAdapterHost.httpAdapter.reply(response, { error: errorDefaultDto }, errorDefaultDto.statusCode);
     }
 
@@ -245,14 +244,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * This is checked before the audit branch so a `SystemException` can never degrade into a mere
      * audit record, and it is the ONLY path on which the filter reads `context` at all.
      *
-     * Below `500` the only thing recorded is a refusal the transport itself establishes — a `403` or
-     * a `429`, classified purely by status code. What a refusal MEANT is known to whoever threw it,
-     * not to this filter: a 4xx exception is client-facing, so its thrower attaches no `context`, and
-     * a thrower with a genuine security fact to record (the auth handlers) writes its own audit
-     * record and stays silent here. There is deliberately no operational `warn` branch — nothing
-     * below 500 carries context to log.
+     * Below `500` the only thing recorded is the `403`, and it is classified by status code alone:
+     * "this subject was not allowed through" holds regardless of what the thrower knew. Reaching into
+     * an opaque `context` to classify any further would encode the thrower's vocabulary into core, the
+     * very coupling the taxonomy exists to prevent. What a refusal MEANT is known to whoever threw it:
+     * a 4xx exception is client-facing, so its thrower attaches no `context`, and a thrower with a
+     * genuine security fact to record (the auth handlers) writes its own record and stays silent here.
+     * There is deliberately no operational `warn` branch — nothing below 500 carries context to log.
+     *
+     * The `429` is NOT recorded here, though the status is equally transport-established. A block is
+     * one episode refusing thousands of requests, and only the throttler guard can tell the request
+     * that caused it from the ones merely caught behind it, so the record is written there — once.
+     *
+     * No identity is passed: the actor reaches the entry through the ambient context, published by
+     * `AuthGuard` at the moment it verified the token. Naming the same principal again as `targetId`
+     * would file the subject of the refusal as its object.
      */
-    private logException(exception: unknown, errorDefaultDto: ErrorDefaultDto, request: AuthenticatedRequest) {
+    private logException(exception: unknown, errorDefaultDto: ErrorDefaultDto) {
         const { statusCode, message } = errorDefaultDto;
 
         if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
@@ -266,37 +274,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return;
         }
 
-        const auditAction = this.resolveAuditAction(statusCode);
-
-        if (auditAction !== undefined) {
-            this.auditPort.record({
-                action: auditAction,
-                reason: message.join(', '),
-                targetId: request.accessTokenPayload?.sub,
-            });
-        }
-    }
-
-    /**
-     * Classifies a sub-500 refusal into an audit action, or into nothing. The status code is the
-     * ONLY input: only `403` and `429` are refusals the transport itself can attest to — "this
-     * subject was not allowed through" holds regardless of what the thrower knew. Reaching into an
-     * opaque `context` to classify any further would encode the thrower's vocabulary into core, the
-     * very coupling the taxonomy exists to prevent.
-     *
-     * @param statusCode The status the response will carry.
-     * @returns The action to record, or undefined when the refusal is not auditable here.
-     */
-    private resolveAuditAction(statusCode: HttpStatus): AuditAction | undefined {
         if (statusCode === HttpStatus.FORBIDDEN) {
-            return AuditAction.ACCESS_DENIED;
+            this.auditPort.record({ action: AuditAction.ACCESS_DENIED, reason: message.join(', ') });
         }
-
-        if (statusCode === HttpStatus.TOO_MANY_REQUESTS) {
-            return AuditAction.RATE_LIMITED;
-        }
-
-        return undefined;
     }
 
     /**

@@ -40,6 +40,11 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
 
         // The unverifiable-token path above returns without a record on purpose: nothing was closed,
         // and the subject is unknown — there is no fact to file.
+        //
+        // `targetId` is kept here, unlike the self-scoped commands: the subject comes from the REFRESH
+        // token in the body, not from the access token the guard verified, so it is not guaranteed to
+        // be the actor. On the request where they differ — a principal closing a session that belongs
+        // to someone else — that divergence is the whole of what the record is worth.
         this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
     }
 }

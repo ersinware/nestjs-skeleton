@@ -69,7 +69,10 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
         // The two rejections above leave no record: a wrong current password is a failed credential
         // check on an already-authenticated session, not a privileged action, and auditing every
         // mistyped password would bury the changes that did happen.
-        this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED, targetId: id });
+        // No `targetId`: this command is reachable only from the self-scoped route, so the subject is
+        // the actor the ambient context already names. Restating it would not add a fact, it would
+        // make the same principal appear twice under two meanings.
+        this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
 
         // A password change bumps the session version for a permanent cut-off of every token minted
         // before it.

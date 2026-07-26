@@ -49,8 +49,9 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
         await this.userWriterPort.save(user);
 
         // Unconditional: the writer's `load()` filters out soft-deleted rows, so reaching here means
-        // the account was live and the transition genuinely happened.
-        this.auditPort.record({ action: AuditAction.USER_DELETED, targetId: command.id });
+        // the account was live and the transition genuinely happened. No `targetId` — the command is
+        // reachable only from the self-scoped route, where the subject is the actor already on record.
+        this.auditPort.record({ action: AuditAction.USER_DELETED });
 
         try {
             await this.sessionPort.setVersion(command.id, user.version);

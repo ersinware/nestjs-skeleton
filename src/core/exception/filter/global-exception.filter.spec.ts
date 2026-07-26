@@ -317,28 +317,25 @@ describe('GlobalExceptionFilter', () => {
             });
         });
 
-        describe('audit-recorded refusals — 403 and 429 only', () => {
+        describe('audit-recorded refusals — 403 only', () => {
             it('should record an ACCESS_DENIED audit entry for a 403', () => {
                 filter.catch(new AccessDeniedException('Insufficient privileges.'), createHost());
 
                 expect(mockAuditPort.record).toHaveBeenCalledWith({
                     action: AuditAction.ACCESS_DENIED,
                     reason: 'Insufficient privileges.',
-                    targetId: undefined,
                 });
                 expect(mockLoggerPort.error).not.toHaveBeenCalled();
                 expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
 
-            it('should record a RATE_LIMITED audit entry for a 429', () => {
+            it('should leave a 429 to the throttler guard, which records the block once', () => {
                 filter.catch(new HttpException('Too many requests', HttpStatus.TOO_MANY_REQUESTS), createHost());
 
-                expect(mockAuditPort.record).toHaveBeenCalledWith(
-                    expect.objectContaining({ action: AuditAction.RATE_LIMITED }),
-                );
+                expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
 
-            it("should carry the authenticated caller's subject as the audit target", () => {
+            it('should not name the acting principal as the audit target', () => {
                 const accessTokenPayload = { sub: 'user-1', role: 'USER' };
 
                 filter.catch(
@@ -346,9 +343,7 @@ describe('GlobalExceptionFilter', () => {
                     createHost({ accessTokenPayload } as Partial<AuthenticatedRequest>),
                 );
 
-                expect(mockAuditPort.record).toHaveBeenCalledWith(
-                    expect.objectContaining({ action: AuditAction.ACCESS_DENIED, targetId: 'user-1' }),
-                );
+                expect(mockAuditPort.record).toHaveBeenCalledWith(expect.not.objectContaining({ targetId: 'user-1' }));
             });
 
             it('should join a multi-message body into a single reason string', () => {

@@ -14,7 +14,7 @@ import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { GlobalExceptionFilter } from 'src/core/exception';
 import { NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
-import { AuditContextInterceptor, AuditInterceptor, AuditModule } from 'src/core/observability/audit';
+import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { LoggerModule } from 'src/core/observability/logger';
 import { TrackerModule } from 'src/core/observability/tracker';
 import { AuthGuard, AuthRolesGuard } from 'src/core/security/auth';
@@ -79,14 +79,9 @@ import { UserModule } from 'src/module/user';
                 transform: true,
             }),
         },
-        // Registered before every other interceptor: it establishes the ambient audit context, so
-        // anything that reads that context must run inside it.
-        {
-            provide: APP_INTERCEPTOR,
-            useClass: AuditContextInterceptor,
-        },
-        // Registered after the context interceptor so the actor is already in scope when it records
-        // an `@Audited` disclosure.
+        // The ambient audit context is opened by `auditContextHook` on request arrival and completed
+        // by `AuthGuard`, both of which run before any interceptor — so the actor is already in scope
+        // when this records an `@Audited` disclosure.
         {
             provide: APP_INTERCEPTOR,
             useClass: AuditInterceptor,
