@@ -4,7 +4,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { QueryBus } from '@nestjs/cqrs';
+import { QueryPipeline } from 'src/core/cqrs';
 import {
     GetAdminAuthStateQuery,
     type GetAdminAuthStateResult,
@@ -22,11 +22,11 @@ import {
 @Injectable()
 export class AdminFacade {
     /**
-     * Initializes the admin facade with the query bus.
+     * Initializes the admin facade with the query pipeline.
      *
-     * @param queryBus The CQRS query bus
+     * @param queryPipeline The CQRS query pipeline (caching behavior applies to cacheable queries)
      */
-    constructor(private readonly queryBus: QueryBus) {}
+    constructor(private readonly queryPipeline: QueryPipeline) {}
 
     /**
      * Resolves the authentication identity for an admin by their email address.
@@ -35,9 +35,7 @@ export class AdminFacade {
      * @throws {ResourceNotFoundException} When no active admin exists with the given email.
      */
     async getCredentialsByEmail(email: string): Promise<GetAdminCredentialsByEmailResult> {
-        return this.queryBus.execute<GetAdminCredentialsByEmailQuery, GetAdminCredentialsByEmailResult>(
-            new GetAdminCredentialsByEmailQuery(email),
-        );
+        return this.queryPipeline.execute(new GetAdminCredentialsByEmailQuery(email));
     }
 
     /**
@@ -47,6 +45,6 @@ export class AdminFacade {
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
      */
     async getAuthState(id: string): Promise<GetAdminAuthStateResult> {
-        return this.queryBus.execute<GetAdminAuthStateQuery, GetAdminAuthStateResult>(new GetAdminAuthStateQuery(id));
+        return this.queryPipeline.execute(new GetAdminAuthStateQuery(id));
     }
 }

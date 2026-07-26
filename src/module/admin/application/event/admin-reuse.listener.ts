@@ -5,8 +5,8 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
 import { OnEvent } from '@nestjs/event-emitter';
+import { CommandPipeline } from 'src/core/cqrs';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
@@ -18,11 +18,11 @@ import { AdminIntegrationEvent } from 'src/shared/domain/admin';
 @Injectable()
 export class AdminReuseListener {
     /**
-     * Injects the command bus used to dispatch the revocation command.
+     * Injects the command pipeline used to dispatch the revocation command.
      *
-     * @param commandBus The CQRS command bus.
+     * @param commandPipeline The CQRS command pipeline.
      */
-    constructor(private readonly commandBus: CommandBus) {}
+    constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
      * Dispatches session revocation when auth reports refresh-token reuse for an admin. The unique event
@@ -36,6 +36,6 @@ export class AdminReuseListener {
      */
     @OnEvent(AdminIntegrationEvent.REFRESH_REUSE_DETECTED, { suppressErrors: false })
     async handleRefreshReuseDetected(event: DispatchedDomainEvent) {
-        await this.commandBus.execute(new RevokeAdminSessionsCommand(event.aggregateId, event.eventId));
+        await this.commandPipeline.execute(new RevokeAdminSessionsCommand(event.aggregateId, event.eventId));
     }
 }

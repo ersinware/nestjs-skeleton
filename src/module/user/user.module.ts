@@ -4,8 +4,8 @@
  */
 
 import { Module } from '@nestjs/common';
-import { CqrsModule } from '@nestjs/cqrs';
 import { CacheModule } from 'src/core/cache';
+import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
@@ -17,6 +17,7 @@ import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/co
 import { CreateUserCommandHandler } from 'src/module/user/application/command/create-user/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
+import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
@@ -51,7 +52,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         HashingModule,
         SessionModule,
         EmailModule,
-        CqrsModule,
+        CqrsPipelineModule,
     ],
     controllers: [UserController],
     providers: [
@@ -63,6 +64,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         BanUserCommandHandler,
         UnbanUserCommandHandler,
         RevokeUserSessionsCommandHandler,
+        ReconcileUserSessionCommandHandler,
         ListUsersQueryHandler,
         GetUserByIdQueryHandler,
         GetUserCredentialsByEmailQueryHandler,

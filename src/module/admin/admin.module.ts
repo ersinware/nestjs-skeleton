@@ -4,7 +4,8 @@
  */
 
 import { Module } from '@nestjs/common';
-import { CqrsModule } from '@nestjs/cqrs';
+import { CacheModule } from 'src/core/cache';
+import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
@@ -16,8 +17,11 @@ import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban
 import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
+import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
+import { SendAdminWelcomeEmailCommandHandler } from 'src/module/admin/application/command/send-admin-welcome-email/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
+import { AdminCacheListener } from 'src/module/admin/application/event/admin-cache.listener';
 import { AdminEmailListener } from 'src/module/admin/application/event/admin-email.listener';
 import { AdminReuseListener } from 'src/module/admin/application/event/admin-reuse.listener';
 import { AdminSessionListener } from 'src/module/admin/application/event/admin-session.listener';
@@ -39,7 +43,16 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
  * and exposes the AdminFacade for cross-domain usage.
  */
 @Module({
-    imports: [AuditModule, DatabaseModule, EventBusModule, HashingModule, SessionModule, EmailModule, CqrsModule],
+    imports: [
+        AuditModule,
+        CacheModule,
+        DatabaseModule,
+        EventBusModule,
+        HashingModule,
+        SessionModule,
+        EmailModule,
+        CqrsPipelineModule,
+    ],
     controllers: [AdminController],
     providers: [
         AdminFacade,
@@ -48,9 +61,12 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         BanAdminCommandHandler,
         UnbanAdminCommandHandler,
         RevokeAdminSessionsCommandHandler,
+        ReconcileAdminSessionCommandHandler,
+        SendAdminWelcomeEmailCommandHandler,
         ListAdminsQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,
+        AdminCacheListener,
         AdminEmailListener,
         AdminReuseListener,
         AdminSessionListener,

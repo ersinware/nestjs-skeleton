@@ -5,11 +5,14 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
+import { CacheKeys } from 'src/module/admin/application/admin-cache-key.util';
 
 /**
- * Command to revoke all of an admin's sessions after refresh-token reuse was detected.
+ * Command to revoke all of an admin's sessions after refresh-token reuse was detected. Invalidating:
+ * the revocation bumps the session version, so it evicts the auth-state read the guards consult.
  */
-export class RevokeAdminSessionsCommand extends Command<void> {
+export class RevokeAdminSessionsCommand extends Command<void> implements ICacheInvalidatingCommand {
     /**
      * Initializes the command payload.
      *
@@ -21,5 +24,14 @@ export class RevokeAdminSessionsCommand extends Command<void> {
         readonly integrationEventId: string,
     ) {
         super();
+    }
+
+    /**
+     * The cache key this revocation evicts: the admin's auth-state (session version bumped).
+     *
+     * @returns The cache keys to evict on success
+     */
+    invalidatedKeys(): string[] {
+        return [CacheKeys.adminAuthState(this.id)];
     }
 }

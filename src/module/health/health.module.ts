@@ -4,9 +4,9 @@
  */
 
 import { Module } from '@nestjs/common';
-import { CqrsModule } from '@nestjs/cqrs';
 import { TerminusModule } from '@nestjs/terminus';
 import { CacheModule } from 'src/core/cache';
+import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { GetHealthStatusQueryHandler } from 'src/module/health/application/query/get-health-status/handler';
 import { TOKEN_GET_HEALTH_STATUS_PORT } from 'src/module/health/application/query/get-health-status/port';
@@ -19,7 +19,7 @@ import { HealthController } from 'src/module/health/presentation/controller/heal
  */
 @Module({
     imports: [
-        CqrsModule,
+        CqrsPipelineModule,
         DatabaseModule,
         CacheModule,
         TerminusModule.forRoot({

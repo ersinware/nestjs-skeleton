@@ -4,7 +4,7 @@
  */
 
 import { Module } from '@nestjs/common';
-import { CqrsModule } from '@nestjs/cqrs';
+import { CqrsPipelineModule } from 'src/core/cqrs';
 import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
 import { HashingModule } from 'src/core/security/hashing';
@@ -36,7 +36,7 @@ import { UserModule } from 'src/module/user';
         SessionModule,
         UserModule,
         AdminModule,
-        CqrsModule,
+        CqrsPipelineModule,
     ],
     controllers: [AuthController],
     providers: [

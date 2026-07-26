@@ -1,47 +1,38 @@
 /**
  * @file admin-session.listener.ts
  * @description Event listener that pushes the admin's DB session version into Redis whenever an
- * admin's access-relevant state changes. Dispatched by the writer adapter after the admin row is
- * written, so revocation only happens once the record is persisted.
+ * admin's access-relevant state changes, by dispatching the reconcile command. Emitted by the writer
+ * adapter after the admin row is written, so revocation only happens once the record is persisted.
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import {
-    TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT,
-    type IGetAdminAccessProjectionPort,
-} from 'src/module/admin/application/query/get-admin-access-projection/port';
+import { CommandPipeline } from 'src/core/cqrs';
+import { ReconcileAdminSessionCommand } from 'src/module/admin/application/command/reconcile-admin-session/command';
 import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**
- * Reacts to admin status changes by pushing the current database session version into Redis. Reading
- * the version from the database (including soft-deleted rows) makes the outcome converge under
- * duplicate, out-of-order, and concurrent delivery regardless of the event verb. No inbox is used:
- * the write is monotonic-max and its input derives from the re-readable database (CLAUDE.md §8).
+ * Reacts to admin status changes by dispatching the reconcile command that pushes the current database
+ * session version into Redis. Kept thin: it only forwards the id; the read-and-push work and its
+ * idempotency live in the command handler.
  */
 @Injectable()
 export class AdminSessionListener {
     /**
-     * Injects the session port and the admin access-projection query port.
+     * Injects the command pipeline used to dispatch the reconcile command.
      *
-     * @param sessionPort The service managing the session version in Redis.
-     * @param accessProjectionPort The query port that reads the admin's session version, including soft-deleted rows.
+     * @param commandPipeline The CQRS command pipeline.
      */
-    constructor(
-        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT)
-        private readonly accessProjectionPort: IGetAdminAccessProjectionPort,
-    ) {}
+    constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Pushes the admin's current DB session version into Redis.
+     * Dispatches session reconciliation on every access-relevant admin event.
      *
      * `suppressErrors: false` is load-bearing: the library default is `true`, which catches a thrown
-     * error and only logs it, letting `emitAsync` resolve — a Redis outage here would then silently
-     * leave the revocation unapplied. With it set, the failure surfaces to the `save()` that emitted
-     * the event.
+     * error and only logs it, letting `emitAsync` resolve — a Redis outage in the handler would then
+     * silently leave the revocation unapplied. With it set, the failure surfaces to the `save()` that
+     * emitted the event.
      *
      * @param event The dispatched event message carrying the admin id.
      */
@@ -50,13 +41,6 @@ export class AdminSessionListener {
     @OnEvent(AdminEvent.DELETED, { suppressErrors: false })
     @OnEvent(AdminEvent.SESSION_REUSE_REVOKED, { suppressErrors: false })
     async reconcile(event: DispatchedDomainEvent) {
-        const projection = await this.accessProjectionPort.getAdminAccessProjection(event.aggregateId);
-
-        // Admins are only ever soft-deleted, so a missing row means there is nothing to reconcile.
-        if (!projection) {
-            return;
-        }
-
-        await this.sessionPort.setVersion(event.aggregateId, projection.version);
+        await this.commandPipeline.execute(new ReconcileAdminSessionCommand(event.aggregateId));
     }
 }

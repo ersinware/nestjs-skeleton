@@ -4,7 +4,6 @@
  */
 
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
-import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import {
     ApiBearerAuth,
     ApiCreatedResponse,
@@ -15,6 +14,7 @@ import {
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
+import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultAccessDeniedResponse,
     ApiDefaultInternalServerErrorResponse,
@@ -42,8 +42,8 @@ import { CreateUserCommand } from 'src/module/user/application/command/create-us
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
-import { GetUserByIdQuery, type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
-import { ListUsersQuery, type ListUsersResult } from 'src/module/user/application/query/list-users/query';
+import { GetUserByIdQuery } from 'src/module/user/application/query/get-user-by-id/query';
+import { ListUsersQuery } from 'src/module/user/application/query/list-users/query';
 import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
@@ -64,8 +64,8 @@ import { ResourceConflictMessage } from 'src/shared/exception';
 @ApiDefaultTooManyRequestsResponse()
 export class UserController {
     constructor(
-        private readonly commandBus: CommandBus,
-        private readonly queryBus: QueryBus,
+        private readonly commandPipeline: CommandPipeline,
+        private readonly queryPipeline: QueryPipeline,
     ) {}
 
     /**
@@ -86,14 +86,11 @@ export class UserController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
     async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto): Promise<ResponseUserDto> {
-        const id: string = await this.commandBus.execute(
+        const id: string = await this.commandPipeline.execute(
             new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
         );
 
-        return plainToInstance(
-            ResponseUserDto,
-            await this.queryBus.execute<GetUserByIdQuery, GetUserByIdResult>(new GetUserByIdQuery(id)),
-        );
+        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(id)));
     }
 
     /**
@@ -116,7 +113,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     async findAll(@Query() query: QuerySearchDto): Promise<ResponsePaginationDto<ResponseUserDto>> {
-        const { data, total } = await this.queryBus.execute<ListUsersQuery, ListUsersResult>(new ListUsersQuery(query));
+        const { data, total } = await this.queryPipeline.execute(new ListUsersQuery(query));
 
         return new ResponsePaginationDto<ResponseUserDto>(
             plainToInstance(ResponseUserDto, data),
@@ -143,10 +140,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async findMe(@AccessTokenPayloadDecorator() payload: AccessTokenPayload): Promise<ResponseUserDto> {
-        return plainToInstance(
-            ResponseUserDto,
-            await this.queryBus.execute<GetUserByIdQuery, GetUserByIdResult>(new GetUserByIdQuery(payload.sub)),
-        );
+        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(payload.sub)));
     }
 
     /**
@@ -170,10 +164,7 @@ export class UserController {
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async findById(@Param() params: ParamIdDto): Promise<ResponseUserDto> {
-        return plainToInstance(
-            ResponseUserDto,
-            await this.queryBus.execute<GetUserByIdQuery, GetUserByIdResult>(new GetUserByIdQuery(params.id)),
-        );
+        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(params.id)));
     }
 
     /**
@@ -199,12 +190,9 @@ export class UserController {
         @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
         @Body(NotEmptyBodyPipe) patchUserDto: PatchUserDto,
     ): Promise<ResponseUserDto> {
-        await this.commandBus.execute(new UpdateUserCommand(payload.sub, patchUserDto.email, patchUserDto.name));
+        await this.commandPipeline.execute(new UpdateUserCommand(payload.sub, patchUserDto.email, patchUserDto.name));
 
-        return plainToInstance(
-            ResponseUserDto,
-            await this.queryBus.execute<GetUserByIdQuery, GetUserByIdResult>(new GetUserByIdQuery(payload.sub)),
-        );
+        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(payload.sub)));
     }
 
     /**
@@ -230,7 +218,7 @@ export class UserController {
         @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
         @Body(NotEmptyBodyPipe) patchUserPasswordDto: PatchUserPasswordDto,
     ) {
-        await this.commandBus.execute<ChangeUserPasswordCommand, void>(
+        await this.commandPipeline.execute(
             new ChangeUserPasswordCommand(
                 payload.sub,
                 patchUserPasswordDto.currentPassword,
@@ -256,7 +244,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async deleteMe(@AccessTokenPayloadDecorator() payload: AccessTokenPayload) {
-        await this.commandBus.execute<DeleteUserCommand, void>(new DeleteUserCommand(payload.sub));
+        await this.commandPipeline.execute(new DeleteUserCommand(payload.sub));
     }
 
     /**
@@ -279,7 +267,7 @@ export class UserController {
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async ban(@Param() params: ParamIdDto) {
-        await this.commandBus.execute<BanUserCommand, void>(new BanUserCommand(params.id));
+        await this.commandPipeline.execute(new BanUserCommand(params.id));
     }
 
     /**
@@ -301,6 +289,6 @@ export class UserController {
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async unban(@Param() params: ParamIdDto) {
-        await this.commandBus.execute<UnbanUserCommand, void>(new UnbanUserCommand(params.id));
+        await this.commandPipeline.execute(new UnbanUserCommand(params.id));
     }
 }

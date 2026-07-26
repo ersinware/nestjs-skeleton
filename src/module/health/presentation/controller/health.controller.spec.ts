@@ -3,14 +3,14 @@
  * @description Unit tests for the HealthController. Verifies that health endpoints correctly invoke the underlying service and handle the returned results or exceptions appropriately.
  */
 
-import { QueryBus } from '@nestjs/cqrs';
 import { Test, TestingModule } from '@nestjs/testing';
+import { QueryPipeline } from 'src/core/cqrs';
 import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { HealthController } from 'src/module/health/presentation/controller/health.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('HealthController', () => {
-    const mockQueryBus = {
+    const mockQueryPipeline = {
         execute: vi.fn(),
     };
 
@@ -19,7 +19,7 @@ describe('HealthController', () => {
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             controllers: [HealthController],
-            providers: [{ provide: QueryBus, useValue: mockQueryBus }],
+            providers: [{ provide: QueryPipeline, useValue: mockQueryPipeline }],
         }).compile();
 
         controller = module.get<HealthController>(HealthController);
@@ -29,18 +29,18 @@ describe('HealthController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('should return the result of QueryBus.execute', async () => {
-        mockQueryBus.execute.mockResolvedValueOnce('mocked-result');
+    it('should return the result of QueryPipeline.execute', async () => {
+        mockQueryPipeline.execute.mockResolvedValueOnce('mocked-result');
 
         await expect(controller.getStatus()).resolves.toBe('mocked-result');
-        expect(mockQueryBus.execute).toHaveBeenCalledTimes(1);
-        expect(mockQueryBus.execute).toHaveBeenCalledWith(new GetHealthStatusQuery());
+        expect(mockQueryPipeline.execute).toHaveBeenCalledTimes(1);
+        expect(mockQueryPipeline.execute).toHaveBeenCalledWith(new GetHealthStatusQuery());
     });
 
-    it('should propagate service exception if query bus throws an error', async () => {
-        mockQueryBus.execute.mockRejectedValueOnce(new Error());
+    it('should propagate service exception if query pipeline throws an error', async () => {
+        mockQueryPipeline.execute.mockRejectedValueOnce(new Error());
 
         await expect(controller.getStatus()).rejects.toThrow(Error);
-        expect(mockQueryBus.execute).toHaveBeenCalledTimes(1);
+        expect(mockQueryPipeline.execute).toHaveBeenCalledTimes(1);
     });
 });

@@ -4,10 +4,10 @@
  */
 
 import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
-import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
+import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultAccessDeniedResponse,
     ApiDefaultInternalServerErrorResponse,
@@ -22,7 +22,7 @@ import { Roles } from 'src/core/security/auth';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
-import { ListAdminsQuery, type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
+import { ListAdminsQuery } from 'src/module/admin/application/query/list-admins/query';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { AdminRole } from 'src/shared/domain/admin';
 
@@ -43,14 +43,14 @@ import { AdminRole } from 'src/shared/domain/admin';
 @ApiDefaultTooManyRequestsResponse()
 export class AdminController {
     /**
-     * Initializes the controller with the command and query buses.
+     * Initializes the controller with the command and query pipelines.
      *
-     * @param commandBus The CQRS command bus
-     * @param queryBus The CQRS query bus
+     * @param commandPipeline The CQRS command pipeline (invalidation behavior applies)
+     * @param queryPipeline The CQRS query pipeline (caching behavior applies)
      */
     constructor(
-        private readonly commandBus: CommandBus,
-        private readonly queryBus: QueryBus,
+        private readonly commandPipeline: CommandPipeline,
+        private readonly queryPipeline: QueryPipeline,
     ) {}
 
     /**
@@ -69,9 +69,7 @@ export class AdminController {
     @ApiDefaultOkResponsePaginated({ description: 'Admins successfully retrieved.', type: ResponseAdminDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<ResponseAdminDto>> {
-        const { data, total } = await this.queryBus.execute<ListAdminsQuery, ListAdminsResult>(
-            new ListAdminsQuery(query),
-        );
+        const { data, total } = await this.queryPipeline.execute(new ListAdminsQuery(query));
 
         return new ResponsePaginationDto<ResponseAdminDto>(
             plainToInstance(ResponseAdminDto, data),
@@ -97,7 +95,7 @@ export class AdminController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
     async deleteAdmin(@Param() params: ParamIdDto) {
-        await this.commandBus.execute<DeleteAdminCommand, void>(new DeleteAdminCommand(params.id));
+        await this.commandPipeline.execute(new DeleteAdminCommand(params.id));
     }
 
     /**
@@ -117,7 +115,7 @@ export class AdminController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
     async ban(@Param() params: ParamIdDto) {
-        await this.commandBus.execute<BanAdminCommand, void>(new BanAdminCommand(params.id));
+        await this.commandPipeline.execute(new BanAdminCommand(params.id));
     }
 
     /**
@@ -136,6 +134,6 @@ export class AdminController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
     async unban(@Param() params: ParamIdDto) {
-        await this.commandBus.execute<UnbanAdminCommand, void>(new UnbanAdminCommand(params.id));
+        await this.commandPipeline.execute(new UnbanAdminCommand(params.id));
     }
 }

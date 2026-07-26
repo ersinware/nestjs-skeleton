@@ -4,7 +4,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { QueryBus } from '@nestjs/cqrs';
+import { QueryPipeline } from 'src/core/cqrs';
 import {
     GetUserAuthStateQuery,
     type GetUserAuthStateResult,
@@ -22,11 +22,11 @@ import {
 @Injectable()
 export class UserFacade {
     /**
-     * Initializes the user facade with the CQRS query bus.
+     * Initializes the user facade with the CQRS query pipeline.
      *
-     * @param queryBus The CQRS query bus instance
+     * @param queryPipeline The CQRS query pipeline (caching behavior applies to cacheable queries)
      */
-    constructor(private readonly queryBus: QueryBus) {}
+    constructor(private readonly queryPipeline: QueryPipeline) {}
 
     /**
      * Resolves the authentication identity for a user by their email address.
@@ -36,9 +36,7 @@ export class UserFacade {
      * @throws {ResourceNotFoundException} When no active user exists with the given email
      */
     async getCredentialsByEmail(email: string): Promise<GetUserCredentialsByEmailResult> {
-        return this.queryBus.execute<GetUserCredentialsByEmailQuery, GetUserCredentialsByEmailResult>(
-            new GetUserCredentialsByEmailQuery(email),
-        );
+        return this.queryPipeline.execute(new GetUserCredentialsByEmailQuery(email));
     }
 
     /**
@@ -49,6 +47,6 @@ export class UserFacade {
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      */
     async getAuthState(id: string): Promise<GetUserAuthStateResult> {
-        return this.queryBus.execute<GetUserAuthStateQuery, GetUserAuthStateResult>(new GetUserAuthStateQuery(id));
+        return this.queryPipeline.execute(new GetUserAuthStateQuery(id));
     }
 }

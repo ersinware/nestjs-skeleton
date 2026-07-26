@@ -25,24 +25,26 @@ Dependencies flow strictly inward. Every other import is ILLEGAL.
 
 **`eslint.config.mjs` is the authority, not this table** — enforced by `eslint-plugin-boundaries` (`boundaries/dependencies` with `default: 'disallow'`, plus `boundaries/no-unknown`). Never work around a boundary error; it means the design is wrong, not the config. If a rule genuinely must change, change `eslint.config.mjs` and mirror it here.
 
-| Element                               | May import from                                                                                                               |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `shared`                              | `shared`                                                                                                                      |
-| `core`                                | `shared`, `core`                                                                                                              |
-| `domain` (`module/*/domain`)          | `shared`, own module's `domain`                                                                                               |
-| `application`                         | `shared`, `core`, own module's `domain` + `application`                                                                       |
-| `infrastructure`                      | `shared`, `core`, own module's `domain` + `application` + `infrastructure`, any module `index.ts`                             |
-| `presentation`                        | `shared`, `core`, own module's `application` + `presentation`                                                                 |
-| `*.facade.ts`                         | own module's `application` ONLY                                                                                               |
-| `module/*/index.ts`                   | own `facade` + own `*.module.ts` ONLY                                                                                         |
-| `*.module.ts`                         | own module's `presentation` + `application` + `infrastructure` + own `facade`, plus any module `index.ts` / `core` / `shared` |
-| `src/instrument.ts`, `src/tracing.ts` | `shared`, `core` ONLY                                                                                                         |
+| Element                                         | May import from                                                                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `shared`                                        | `shared`                                                                                                                      |
+| `core`                                          | `shared`, `core` — NOT `coreCqrs`                                                                                             |
+| `coreCqrs` (`core/cqrs`)                        | `shared`, `core`                                                                                                              |
+| `domain` (`module/*/domain`)                    | `shared`, own `domain`                                                                                                        |
+| `application`                                   | `shared`, `core`, `coreCqrs`, own `domain` + `application`                                                                    |
+| `infrastructure`                                | `shared`, `core`, own `domain` + `application` + `infrastructure`, any module `index.ts`                                      |
+| `presentation`                                  | `shared`, `core`, `coreCqrs`, own `application` + `presentation`                                                              |
+| `*.facade.ts`                                   | `coreCqrs` + own `application` ONLY                                                                                           |
+| `module/*/index.ts`                             | own `facade` + own `*.module.ts` ONLY                                                                                         |
+| `*.module.ts`                                   | own `presentation` + `application` + `infrastructure` + `facade`, plus any module `index.ts` / `core` / `coreCqrs` / `shared` |
+| `bootstrap` (`src/instrument.ts`, `tracing.ts`) | `shared`, `core` ONLY                                                                                                         |
 
 What the table alone does not say:
 
 - **`domain` AND `shared` are pure TypeScript** — no npm package at all (Node builtins stay legal). `shared` is held to the same bar because `domain` imports it: a package admitted there reaches `domain` transitively. Lint denies both layers every `origin: 'external'` dependency, so a new package is refused by default.
 - **`{{from.captured.module}}` means "own module"**, so cross-module traffic is legal only into a module `index.ts`, and only from `infrastructure` or `*.module.ts`. A `*.module.ts` may also reach its OWN `facade` — wiring inside the context, not a crossing.
 - **`application/` depends on core's contract surface** (ports, exceptions, types, utils) — never on a core adapter; adapters arrive by DI (§6).
+- **The CQRS pipeline (`core/cqrs`) is carved out as its own element (`coreCqrs`) for ONE reason**: a `*.facade.ts`, otherwise confined to its own `application`, may open this single core door and no other. The edges that dispatch (§3) reach it like any core concern; the traffic is one-way — `coreCqrs` imports `core`, but `core` may NOT import `coreCqrs` (that would be a cycle) — and `domain`, `infrastructure`, `bootstrap` never reach it at all, because they use ports, not the pipeline.
 - **Every file must belong to an element** (`boundaries/no-unknown-files`) — this is what makes "no fourth pillar" enforceable: a file under no layer is rejected rather than living outside every rule.
 - **`src/main.ts` and `src/app.module.ts` are the only exempt files** (`boundaries/ignore`): composition roots must see everything, and `boundaries/no-ignored` bans importing them back. `src/instrument.ts`/`src/tracing.ts` are NOT exempt — a `bootstrap` element restricted to `shared` + `core`: starting Sentry/OTel never reads into a module.
 - **Relative imports are banned** (`no-restricted-imports`) — always absolute from `src/` or `test/`.
@@ -53,16 +55,22 @@ What the table alone does not say:
 ### 2. Module Isolation & the Facade
 
 - **The Facade is the single door into a bounded context, reached through `module/<ctx>/index.ts`** — never by importing `<ctx>.facade.ts` directly: a barrel that can be bypassed closes nothing (§ Barrels). Sole exception: the context's own `*.module.ts`, which provides and exports the facade.
-- A Facade exposes **READ/Query only**, or pre-transaction validation. Anything that must trigger a mutation elsewhere goes async (§5).
-- It MUST return the **query's own flat result type** — the `type` declared in that query's `query.ts` (e.g. `get-user-auth-state/query.ts` → `GetUserAuthStateResult`). Never a Drizzle object, an Aggregate Root, or a presentation `*.dto.ts` class.
+- A Facade exposes **READ/Query only**, or pre-transaction validation, dispatched as an edge (§3). Anything that must trigger a mutation elsewhere goes async (§5).
+- It MUST return the **query's own flat result type** (`get-user-auth-state/query.ts` → `GetUserAuthStateResult`) — never a Drizzle object, an Aggregate Root, or a presentation `*.dto.ts` class.
 - `forwardRef()` is **PROHIBITED** — resolve circular deps via EDA (§5).
 
 ### 3. CQRS Discipline
 
-- **Commands** mutate state and return only the affected entity's `id` (or `void`). The Aggregate mutates itself; hand the whole Aggregate to its port. **Exception**: auth token-generation commands (login, refresh) may return `{ accessToken; refreshToken }` — ephemeral tokens that cannot be re-queried.
-- **Queries** NEVER mutate. They read through the **query port** (reader adapter) into a **read-model** — the query's result `type`, co-located in its `query.ts`. A controller dispatching a query MUST annotate its return type with that type, imported from the query folder, never from `domain/`.
-- **Read transport — QueryBus vs. direct port**: use the **QueryBus** only when crossing _into_ the read side from outside — a **controller**, or a **Facade** exposing a cross-module read. Code already in the application layer (event subscriber, cron, command handler) MUST `@Inject(TOKEN)` the **query port directly**; a QueryBus hop there hides the dependency graph. **Folder consequence**: `handler.ts` present = QueryBus-dispatched, absent = port-invoked; the result type always stays in `query.ts`, the contract in `port.ts`.
+- **Commands** extend `Command<R>` — the typed base carries the result type — mutate state, and return only the affected entity's `id` (or `void`). The Aggregate mutates itself; hand the whole Aggregate to its port. **Exception**: auth token-generation commands (login, refresh) may return `{ accessToken; refreshToken }` — ephemeral tokens that cannot be re-queried.
+- **Queries** extend `Query<T>` and NEVER mutate. They read through the **query port** (reader adapter) into a **read-model** — the query's result `type`, co-located in its `query.ts`. The typed base carries that type, so any edge dispatching the query infers it: never re-import a result type at the call site, never annotate from `domain/`.
+- **Read/write transport — the pipeline, never the raw bus or a hand-run port.** Every EDGE crossing into the application core — **controller**, **Facade**, event **listener**, **cron** — dispatches through the **`QueryPipeline`/`CommandPipeline`** (`core/cqrs`), never the framework `QueryBus`/`CommandBus`: the pipeline is the one seam cross-cutting concerns (caching, invalidation, later tracing) hang off, and a use case invoked by hand would bypass them. A **handler** is the opposite — it `@Inject(TOKEN)`s its **port(s) directly** (a query handler reads on its own port; a command handler loads/saves and reads on its ports) and must NEVER touch the pipeline or a bus: a write decision must not run on cached/stale data, and a bus hop hides the dependency graph. **Folder consequence**: `handler.ts` present = pipeline-dispatched, absent = port-invoked; the result type always stays in `query.ts`, the contract in `port.ts`.
 - **Every query owns a thin outbound port (ISP).** The handler depends on **one purpose-specific port** exposing only its read — never a broad or foreign port (a health-summary handler must not inject the full cache/database ports for a liveness flag). A read **composed from other ports** is composed in the port's **adapter**, never the handler — true even for pure forwarding+merging, because the value is the narrowed contract. (Cardinality: § Adapters.)
+
+**The pipeline WRAPS, never replaces, the framework buses.** `QueryPipeline`/`CommandPipeline` compose an ordered behavior chain (middleware onion) around `QueryBus`/`CommandBus` — a token override can't work because the framework's `ExplorerService` binds handlers to the `CqrsModule`-scoped bus, so `CqrsPipelineModule` wraps the bus and re-exports `CqrsModule` (handler registration still needs it). Two behaviors ship, each keyed off an opt-in interface the query/command implements:
+
+- **`ICacheableQuery`** (`cacheKey()` + `cacheTtlSeconds`) → `QueryCachingBehavior` runs cache-aside. Caching is a property of the QUERY, never the caller: the same query caches wherever it is dispatched.
+- **`ICacheInvalidatingCommand`** (`invalidatedKeys()`) → `CacheInvalidationBehavior` evicts those keys after the command succeeds — path 1 of the dual-path invalidation model (§5).
+- **Fail-open lives in the cache adapter, NOT the behaviors.** The adapter swallows every Redis error (get→null, set/delete→no-op); its only throw is `SystemException` on an empty key — a bug that MUST surface as 500 + Sentry. Never wrap a behavior in try/catch.
 
 ### 4. Data & State Boundaries
 
@@ -83,6 +91,8 @@ Async Domain Events are required when a mutation must trigger reactions in other
 - **Where a listener lives is decided by where the event was EMITTED — never by what the listener does.**
     - **Emitted by our own application, handled in-process** → that module's `application/event/`; nothing crossed a process boundary.
     - **Emitted by another source, arriving over the network** (Postgres `LISTEN/NOTIFY`, a broker topic, an inbound webhook) → `presentation/listener/` — an inbound adapter exactly like a controller: it terminates a transport.
+- **A listener is an EDGE (§3): it dispatches a command, it does not run the use case inline.** A reaction that mutates state forwards only the `aggregateId` to a command (e.g. `ReconcileUserSessionCommand`); the read-and-write work and its idempotency live in that command's handler, on the handler's own ports. The lone exception is cache eviction — a pure cross-cutting infra reaction, not a domain use case — where the listener injects the cache port and calls `delete` directly.
+- **Same-module cache invalidation runs on TWO deliberate paths.** (1) The synchronous `CacheInvalidationBehavior` on the command pipeline (§3) — immediate, best-effort, fail-open via the adapter — closes the staleness window in the happy path. (2) A domain-event eviction listener, which becomes the RELIABLE guarantee once the outbox makes in-process delivery atomic + retried (`delete` is idempotent, so no inbox). Both derive their keys from ONE shared `CacheKeys` helper (`<module>-cache-key.util.ts`), so a rename can never make them address different entries. This listener stays **in-process** in `application/event/`: a module owns its own cache in every deployment, so same-module eviction never crosses a process boundary and never belongs on a broker.
 
 #### Reliable messaging — NOT YET IMPLEMENTED
 
@@ -91,7 +101,7 @@ Async Domain Events are required when a mutation must trigger reactions in other
 - **Do not pretend otherwise.** Never write code, comments, or docs implying at-least-once delivery, retries, or transactional atomicity between a DB write and an event.
 - **Do not invent the outbox piecemeal.** No ad-hoc `outbox` table, dedup ledger, relay cron, or queue module until the pattern is designed as a whole — a half-built outbox looks reliable and isn't.
 - **Weigh this when designing.** If a flow cannot tolerate a lost event, raise it rather than silently shipping it over `emitAsync`.
-- **Planned (not present):** transactional outbox — critical events INSERTed into `outbox` in the same SQL transaction as the entity write, drained by a relay worker onto a queue; consumers idempotent; status updated, never deleted; an inbox for effects harmful to repeat.
+- **Planned (not present):** transactional outbox — critical events INSERTed into `outbox` in the same SQL transaction as the entity write, drained by a relay worker that **re-emits them in-process via `emitAsync`** (the outbox buys atomicity + retry, NOT a new transport — the two are orthogonal), marking a row processed only once its listener succeeds; consumers idempotent; status updated, never deleted; an inbox for effects harmful to repeat. A message broker enters ONLY when a consumer is extracted to another process — an in-process reaction (e.g. same-module cache eviction) never needs one.
 
 ### 6. Dependency Injection
 
@@ -101,7 +111,7 @@ Always use NestJS Custom Providers (TS interfaces are erased at runtime):
 2. Inject with `@Inject(TOKEN_NAME)` in `application/`.
 3. Bind with `{ provide: TOKEN_NAME, useClass: SomeAdapter }` in the module — several tokens may bind to the same adapter class.
 
-**No module of ours is `@Global()`.** Every module explicitly imports each module whose exported provider it injects, so each `*.module.ts` is a complete manifest of its own dependencies — the visible extraction cost of a bounded context, which a global scope would hide. Injecting a token therefore has two obligations, not one: the `@Inject` AND the providing module in `imports`. This is enforced at boot (Nest throws on an unresolved provider) and at review, NOT by lint — `boundaries` constrains layer direction, not DI wiring. **Sole exceptions**, both deliberate: `ConfigModule` (NestJS's canonical `isGlobal: true` — config is universal) and `EventEmitterModule.forRoot()` (global by framework design).
+**No module of ours is `@Global()`.** Every module explicitly imports each module whose exported provider it injects, so each `*.module.ts` is a complete manifest of its own dependencies — the visible extraction cost of a bounded context, which a global scope would hide. Injecting a token therefore has two obligations: the `@Inject` AND the providing module in `imports`. Enforced at boot (Nest throws on an unresolved provider) and at review, NOT by lint — `boundaries` constrains layer direction, not DI wiring. **Sole exceptions**, both deliberate: `ConfigModule` (NestJS's canonical `isGlobal: true` — config is universal) and `EventEmitterModule.forRoot()` (global by framework design).
 
 ## Project Structure
 
@@ -110,8 +120,6 @@ Three top-level pillars, each with one job — and no fourth may be added:
 - **`src/shared/`** — pure, framework-free primitives any layer may use.
 - **`src/core/`** — the platform kernel: cross-cutting technical concerns as port + adapter + NestJS wiring. No business rules, no domain entities.
 - **`src/module/`** — the bounded contexts.
-
-**Adding a folder under `core/` or `shared/` is a two-file change: the folder AND a `boundaries/elements` entry in `eslint.config.mjs`.** Which form the entry takes is the shelf-vs-concern decision (§ Barrels).
 
 Group by bounded-context → hexagonal layer → role.
 
@@ -126,7 +134,7 @@ src/
     application/              # SHELF (no index.ts): event/
     exception/  pagination/  search/
   core/
-    cache/  config/  database/  doc/  email/
+    cache/  config/  cqrs/  database/  doc/  email/
     event-bus/  exception/  http/
     observability/            # SHELF (no index.ts): logger/  tracker/
     security/                 # SHELF (no index.ts): auth/  hashing/  session/  throttle/  token/
@@ -156,6 +164,8 @@ src/
         decorator/            # module-specific (e.g. auth)
 test/                         # E2E and integration tests
 ```
+
+**Adding a folder under `core/` or `shared/` is a two-file change: the folder AND a `boundaries/elements` entry in `eslint.config.mjs`** — which form the entry takes is the shelf-vs-concern decision (§ Barrels).
 
 **Core principle: things that change together live together. The grouping axis is the CONCEPT — never a TypeScript keyword.** Everything below follows from this.
 
@@ -190,18 +200,15 @@ The only test: _does an outsider import from here, and are the inner files off-l
 - **Yes → add the barrel, and then NOBODY may deep-import past it.** A barrel used alongside deep imports into the same folder closes nothing.
 - **No → do not add one.** A barrel nobody imports from is zero benefit and one more file to maintain.
 
-| Level                                                    | Barrel? | Why                                                                                                                   |
-| -------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
-| Bounded context (`module/<ctx>/`)                        | YES     | A real boundary. Exposes ONLY the Facade + Module.                                                                    |
-| Core/shared concern — the independently consumed one     | YES     | The concept's public API. Consumers enter only here.                                                                  |
-| A parent that merely SHELVES concerns (`core/security/`) | NO      | Not a concept — a bag of them, same mistake as a layer barrel.                                                        |
-| Hexagonal layer (`application/`, `presentation/`)        | NO      | Not a concept — a bag of them. Broad, cycle-prone surface.                                                            |
-| Role folder (`adapter/`, `port/`, `dto/`)                | NO      | Not a boundary, just an alias — the classic cause of circular deps in layered DDD, and it hides the dependency graph. |
-| Concept folder (`command/<name>/`)                       | NO      | Not a boundary — an alias.                                                                                            |
+| Level                                                                                                                                 | Barrel? | Why                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bounded context (`module/<ctx>/`)                                                                                                     | YES     | A real boundary. Exposes ONLY the Facade + Module.                                                                                                                                                                   |
+| A `core`/`shared` **concern** — the independently consumed one                                                                        | YES     | The concept's public API. Consumers enter only here.                                                                                                                                                                 |
+| Everything else: shelves (`core/security/`), hexagonal layers, role folders (`adapter/`, `dto/`), concept folders (`command/<name>/`) | NO      | Not a boundary. A shelf or a layer is a bag of concepts — a broad, cycle-prone surface, the classic cause of circular deps in layered DDD; a role or concept folder is a mere alias that hides the dependency graph. |
 
 **In `core/` AND `shared/`, "concern" is not a fixed depth — it is whatever outsiders consume as ONE thing.** The barrel goes on the **deepest node imported as a whole**; every folder above it is a shelf with no `index.ts`. `core/cache/` and `shared/pagination/` are each consumed as one capability → barrel on them. `core/security/` and `shared/domain/` shelve capabilities consumed separately by unrelated callers → the barrels sit on the capabilities, and **`core/security/index.ts` / `shared/domain/index.ts` must not exist**. So `index.ts` exists in exactly three kinds of place — `module/<ctx>/`, a core concern, a shared concern — and stacked nested barrels are impossible: if two levels both look right, the parent is a shelf.
 
-**Machine-enforced** by `boundaries/dependencies`: every `core`/`shared` concern is an element in `eslint.config.mjs`, and a trailing rule makes its `index.ts` the only legal entry point. Shelves are never declared — a shelf entry takes a trailing `/*`, a concern none; the config's own comments document the forms and rule ordering, and `test/architecture/boundaries-element.spec.ts` verifies each entry's form against whether `index.ts` exists on disk.
+**Machine-enforced** by `boundaries/dependencies`: every `core`/`shared` concern is an element in `eslint.config.mjs`, and one trailing rule makes its `index.ts` the only legal entry point. A shelf is never an element itself — it is declared with a trailing `/*` so its CHILDREN become the elements, while a concern is declared by its exact path with no `/*`. `test/architecture/boundaries-element.spec.ts` verifies each entry's form against whether `index.ts` exists on disk.
 
 **NEVER use a barrel as a design justification.** "It goes through `index.ts` anyway" would equally defend one 5000-line file; a barrel only flattens the CONSUMER's view, and organization is for the person opening the file to change it.
 
@@ -214,7 +221,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 - **Adapter count = data source × (read/write).** A module reading from a second source (e.g. cache) gets its own reader for THAT source — the axis is the source, not read/write. Never bolt a second data source onto an existing reader.
 - **One reader per data source implements every thin read-port of that source** (`AdminReaderAdapter` — one `*-reader.adapter.ts`, injecting the data source once), never one adapter per port; handlers still see only their thin port.
 - **Readers consolidate, writers are singular, and a module that never writes has no writer** — do not open an empty box.
-- **Writers own driver-error translation.** A constraint violation is meaningful only to the schema's owner, so the writer catches the driver error at the port boundary and rethrows the matching taxonomy exception with `{ cause }` (unique-violation on `email` → `ResourceConflictException(EMAIL_IN_USE)`). Classification predicates live in `core/database` (`isUniqueViolation`); a raw driver error never escapes infrastructure — anything unclassified surfaces as 500 + Sentry, correct for an unexpected constraint.
+- **Writers own driver-error translation.** A constraint violation is meaningful only to the schema's owner, so the writer catches the driver error at the port boundary and rethrows the matching taxonomy exception with `{ cause }` (unique-violation on `email` → `ResourceConflictException(EMAIL_IN_USE)`). Classification predicates live in `core/database` (`isUniqueViolation`); a raw driver error never escapes infrastructure.
 
 ## HTTP Layer
 
@@ -255,7 +262,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 ### Responses & Errors
 
 - `ResponseInterceptor` wraps all responses — do not wrap manually.
-- Throw the taxonomy classes from `src/shared/exception` (subclasses of `AppException`, e.g. `ResourceNotFoundException`) — never NestJS HTTP exceptions.
+- Throw the taxonomy classes from `src/shared/exception` — never NestJS HTTP exceptions (§ Exceptions).
 - Use `QueryPaginationDto` for pagination input, `ResponsePaginationDto` for output.
 
 ### API Documentation
@@ -269,21 +276,21 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 
 Never invent a per-endpoint message enum to enumerate causes — the client branches on the status code, and the body already carries the specific message at runtime.
 
-### Exception Responsibility
+## Exceptions
 
-Who owns what, from throw to HTTP response — each concern lives in exactly one place:
+Who owns what, from throw to HTTP response — each concern lives in exactly one place.
 
-- **`src/shared/exception` owns the taxonomy.** Abstract `AppException` (transport-neutral `ExceptionKind` + `AppExceptionOptions`) and its subclasses, each co-locating its `*Message` enum in the same file (§ Placement 1). The taxonomy knows no HTTP, no framework.
+- **`src/shared/exception` owns the taxonomy.** Abstract `AppException` (transport-neutral `ExceptionKind` + `AppExceptionOptions`) and its subclasses (e.g. `ResourceNotFoundException`), each co-locating its `*Message` enum in the same file (§ Placement 1). The taxonomy knows no HTTP, no framework.
 - **Message vocabulary follows the thrower.** A shared `*Message` enum holds only messages generic to the kind (`DEFAULT`, `EMAIL_IN_USE`); a use case's own rejection messages live in its `command.ts` (e.g. `RefreshTokensMessage.CONCURRENT_REFRESH`); a single-thrower message is inlined at the throw site (§ Variable Inlining); a core-owned thrower keeps its vocabulary in its own concern (`RateLimitMessage` in `core/security/throttle`). Never grow a shared enum for one module's need — every `ApiDefault*` doc decorator takes `message: string` defaulting to the shared `DEFAULT`, never an enum type, so core never learns a module's vocabulary. Rejection vocabulary shared by several commands of one module lives in one descriptively named file at that module's `application/command/` root.
 - **HTTP request-validation vocabulary is not taxonomy vocabulary.** `RequestValidationMessage` (`PAYLOAD` / `PARAM`) lives in `core/http` because the effective thrower is Nest's `ValidationPipe`, not `InvalidInputException`; `InvalidInputMessage` carries only the vocabulary of code that genuinely throws that exception. Follow the thrower, not the status code the two happen to share.
-- **Throwers throw; they do not log.** Raise `new ...Exception(message, { context })` and nothing else — whether and how the failure is logged is the filter's decision alone. `context` is `{ class: string; method: string; [key: string]: unknown }`: only the origin is typed, the rest free-form so `shared` never learns a module's vocabulary; `cause` is reserved for the underlying error. **`context` is a diagnostic field read only on the 5xx path: attach it to `SystemException` and unexpected faults, NEVER to a client-facing 4xx** — a deliberate refusal either writes its own audit record (login handlers, refresh reuse; § Audit) or stays silent. No key may come from a consumer of the log (e.g. a logger enum), and **audit vocabulary (`AuditAction`, a rejection-`reason` enum) never enters `context`** — audit is a separate port, not a log subtype.
+- **Throwers throw; they do not log** (§ Observability). Raise `new ...Exception(message, { context })` and nothing else. `context` is `{ class: string; method: string; [key: string]: unknown }`: only the origin is typed, the rest free-form so `shared` never learns a module's vocabulary; `cause` is reserved for the underlying error. **`context` is a diagnostic field read only on the 5xx path: attach it to `SystemException` and unexpected faults, NEVER to a client-facing 4xx** — a deliberate refusal either writes its own audit record (login handlers, refresh reuse; § Audit) or stays silent. No key may come from a consumer of the log (e.g. a logger enum), and **audit vocabulary (`AuditAction`, a rejection-`reason` enum) never enters `context`** — audit is a separate port, not a log subtype.
 - **Aggregates own their invariants; the throw-or-no-op test is the requested END STATE.** End state already holds (`ban()` on a banned account) → silent idempotent no-op, no event — re-emitting would lie. Transition would break an owned invariant → the aggregate throws the taxonomy exception itself (`domain` may import `shared`); never trust callers to pre-check. Pick the kind by who can trigger it: client-reachable rejection → matching client-facing kind (`InvalidInputException`, `ResourceConflictException`); state unreachable through normal flows → `SystemException`, because 500 + Sentry is the intended outcome for a broken code path. Current instance: **a soft-deleted aggregate is immutable** — `SoftDeletableAggregateRoot` (`shared/domain/aggregate-root`) owns it, and every mutator except `markAsDeleted` calls its `assertNotDeleted` (throws `SystemException` with `context`), since writers' `load()` filters `deletedAt IS NULL` and only a bug can hand a deleted aggregate to a mutator. **An invariant shared by several aggregates is hoisted to an opt-in base class, never onto `AggregateRoot`** — a universal base would force every future aggregate to be soft-deletable.
-- **The global filter (`src/core/exception`) is the only place the taxonomy meets HTTP.** It maps kind→status via the exhaustive `KIND_TO_STATUS` Record (a new kind without a status fails compilation), renders `ErrorDefaultDto`, and owns the operational-log and audit decisions in this order: `503` silent per request (outage detection is the health alarm's job, § Observability); `>=500` → error log + Sentry, checked FIRST so a `SystemException` cannot degrade to a lesser record — and the ONLY branch that reads `context`, carried verbatim into the log; then `403` → audit `ACCESS_DENIED` and `429` → audit `RATE_LIMITED`, the sole refusals the transport itself can attest to; everything else is silent. There is no `warn` branch: nothing below `500` carries `context`, because a client-facing rejection attaches none — the meaning of a refusal is recorded by the code that knows it (§ Audit), not guessed here from a status code.
 - **Infrastructure translates; nothing leaks** — writers rethrow driver errors as taxonomy exceptions at the port boundary (§ Adapters). An untranslated infrastructure error surfacing as a generic 500 + Sentry is the correct outcome for the unexpected, never a formatting gap to patch in the filter.
+- **The global filter (`src/core/exception`) is the only place the taxonomy meets HTTP.** It maps kind→status via the exhaustive `KIND_TO_STATUS` Record (a new kind without a status fails compilation), renders `ErrorDefaultDto`, and owns the operational-log and audit decisions in this order: `503` silent per request (outage detection is the health alarm's job, § Dependency outages); `>=500` → error log + Sentry, checked FIRST so a `SystemException` cannot degrade to a lesser record — and the ONLY branch that reads `context`, carried verbatim into the log; then `403` → audit `ACCESS_DENIED` and `429` → audit `RATE_LIMITED`, the sole refusals the transport itself can attest to; everything else is silent. There is no `warn` branch: nothing below `500` carries `context`, because a client-facing rejection attaches none — the meaning of a refusal is recorded by the code that knows it (§ Audit), not guessed here from a status code.
 
 ## Observability (Logging, Exception Tracking & Audit)
 
-Decide per catch/branch by asking **"who acts on this, and does the system fix itself?"** — never log or capture reflexively.
+Decide per catch/branch by asking **"who acts on this, and does the system fix itself?"** — never log or capture reflexively. Whether a raised exception is logged is the global filter's decision alone (§ Exceptions); command/query handlers never call `ILoggerPort`/`IExceptionTrackerPort` at all.
 
 - **Sentry (`IExceptionTrackerPort.captureException`) → only when a human must intervene and it will NOT self-heal.**
 - **`logger.warn` → self-healing failure whose _cause_ is a forensic breadcrumb.** It answers _why_, doesn't alert. Justified only when both hold: (1) something else — a metric or an existing Sentry alert — already detects the incident and brings someone to the logs, (2) the warn carries a root cause not available elsewhere.
@@ -295,7 +302,6 @@ Decide per catch/branch by asking **"who acts on this, and does the system fix i
 An audit record answers "who did what, when, from where" to an auditor; a log answers "why did this break" to an operator. They are **separate ports** (`IAuditPort` vs `ILoggerPort`) because a record is EVIDENCE: it cannot be lost, is not subject to the log level, and is written even under `NODE_ENV=test` where operational logs are silenced. The store is pino today — a given decision, not a `TODO`; only `IAuditPort`'s body changes the day it becomes a table.
 
 - **The code that establishes the fact writes the record — and nothing else does.** A state-mutating command writes its own `auditPort.record()` beside the entity write; the two are one act. The edge records only what it alone owns: the global filter writes `403`→`ACCESS_DENIED` / `429`→`RATE_LIMITED`, and `AuditInterceptor` writes `@Audited` READ/disclosure endpoints. **`@Audited` never goes on a mutating endpoint** — that record is the command's (machine-unenforceable, a review rule).
-- **Command/query handlers never call `ILoggerPort`/`IExceptionTrackerPort`** — logging a failure is the filter's call; audit is a distinct port that is part of the command's own delivery, not a log.
 - **Actor identity reaches the handler via AsyncLocalStorage, never the command payload** — `AuditContextInterceptor` seeds actor/IP/UA and the adapter fills them, so a command contract never learns HTTP. Outside an HTTP request (cron, listener) the actor is simply absent — the record is still written, only unattributed.
 - **An audit record is personal data.** Retention is policy-bound; the schema carries only ids and references — never a token, password, or full-PII payload.
 
