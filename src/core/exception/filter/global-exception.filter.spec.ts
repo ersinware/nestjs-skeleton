@@ -329,12 +329,6 @@ describe('GlobalExceptionFilter', () => {
                 expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
 
-            it('should leave a 429 to the throttler guard, which records the block once', () => {
-                filter.catch(new HttpException('Too many requests', HttpStatus.TOO_MANY_REQUESTS), createHost());
-
-                expect(mockAuditPort.record).not.toHaveBeenCalled();
-            });
-
             it('should not name the acting principal as the audit target', () => {
                 const accessTokenPayload = { sub: 'user-1', role: 'USER' };
 

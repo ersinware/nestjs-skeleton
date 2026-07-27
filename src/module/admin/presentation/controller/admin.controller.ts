@@ -14,7 +14,6 @@ import {
     ApiDefaultInvalidRequestResponse,
     ApiDefaultOkResponsePaginated,
     ApiDefaultResourceNotFoundResponse,
-    ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { ParamIdDto, QueryPaginationDto, RequestValidationMessage, ResponsePaginationDto } from 'src/core/http';
@@ -40,7 +39,6 @@ import { AdminRole } from 'src/shared/domain/admin';
 @ApiDefaultUnauthenticatedResponse()
 @ApiDefaultAccessDeniedResponse()
 @ApiDefaultInternalServerErrorResponse()
-@ApiDefaultTooManyRequestsResponse()
 export class AdminController {
     /**
      * Initializes the controller with the command and query pipelines.

@@ -19,10 +19,10 @@ const USER_AGENT_MAX_LENGTH = 256;
  * Establishes the audit context for the whole request and fills in what the transport already knows.
  *
  * This is a Fastify `onRequest` hook rather than a Nest interceptor, and the difference is the entire
- * point. Nest runs guards BEFORE interceptors, so a request refused by a guard — every `429` from the
- * throttler, every `403` from the roles guard — used to be recorded with no source IP, no user agent
- * and no actor: an audit trail saying that someone, somewhere, was refused. An `onRequest` hook runs
- * ahead of the entire Nest pipeline, so those refusals are now attributable to an address.
+ * point. Nest runs guards BEFORE interceptors, so a request refused by a guard — every `403` from the
+ * roles guard — used to be recorded with no source IP, no user agent and no actor: an audit trail
+ * saying that someone, somewhere, was refused. An `onRequest` hook runs ahead of the entire Nest
+ * pipeline, so those refusals are now attributable to an address.
  *
  * It opens the context and fills the transport half only. The actor is added later by `AuthGuard`,
  * which is where a verified identity first exists — see {@link AuditContext}.

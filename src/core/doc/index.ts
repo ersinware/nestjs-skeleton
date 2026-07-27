@@ -10,6 +10,5 @@ export * from 'src/core/doc/decorator/api-default-invalid-request-response.decor
 export * from 'src/core/doc/decorator/api-default-ok-response-paginated.decorator';
 export * from 'src/core/doc/decorator/api-default-resource-conflict-response.decorator';
 export * from 'src/core/doc/decorator/api-default-resource-not-found-response.decorator';
-export * from 'src/core/doc/decorator/api-default-too-many-requests-response.decorator';
 export * from 'src/core/doc/decorator/api-default-unauthenticated-response.decorator';
 export * from 'src/core/doc/doc.util';

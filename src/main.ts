@@ -27,7 +27,7 @@ async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(
             AppModule,
             // Not `true`: that believes every hop in `X-Forwarded-For`, which is client-written, so it
-            // would let a caller pick its own rate-limit bucket and audit `sourceIp` (see resolveTrustProxy).
+            // would let a caller choose the `sourceIp` recorded against it (see resolveTrustProxy).
             new FastifyAdapter({ trustProxy: resolveTrustProxy() }),
             { bufferLogs: true },
         ),

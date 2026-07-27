@@ -129,7 +129,8 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         //
         // This handler is also the only place that can tell a replayed refresh token apart from any
         // other 401: the distinction lives in RotateOutcome and never leaves this method. Left to the
-        // filter, which sees a status code, it would be filed alongside routine rate limiting.
+        // filter, which sees only a status code, the most serious signal here would be filed as one
+        // more expired token.
         this.auditPort.record({
             action: AuditAction.REFRESH_REUSE_DETECTED,
             reason: AuthRejectionReason.SESSION_REUSE,

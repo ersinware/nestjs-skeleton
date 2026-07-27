@@ -30,7 +30,6 @@ export enum AuditAction {
 
     // 2. Authorization refusals — the transport's own truth, recorded by the exception filter.
     ACCESS_DENIED = 'ACCESS_DENIED',
-    RATE_LIMITED = 'RATE_LIMITED',
 
     // 3. Privileged actions — always recorded together with their actor.
     /** A change to profile identity, chiefly the email — the login handle, so its change is an account-takeover vector worth an entry even when self-service. */

@@ -47,7 +47,6 @@
         "db:studio": "drizzle-kit studio"
     },
     "dependencies": {
-        "@nest-lab/throttler-storage-redis": "^1.2.0",
         "@nestjs/common": "^11.0.1",
         "@nestjs/config": "^4.0.4",
         "@nestjs/core": "^11.0.1",
@@ -57,7 +56,6 @@
         "@nestjs/platform-fastify": "^11.1.21",
         "@nestjs/swagger": "^11.4.3",
         "@nestjs/terminus": "^11.1.1",
-        "@nestjs/throttler": "^6.5.0",
         "@opentelemetry/api": "^1.9.1",
         "@opentelemetry/auto-instrumentations-node": "^0.78.0",
         "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",

@@ -111,7 +111,7 @@ Always use NestJS Custom Providers (TS interfaces are erased at runtime):
 2. Inject with `@Inject(TOKEN_NAME)` in `application/`.
 3. Bind with `{ provide: TOKEN_NAME, useClass: SomeAdapter }` in the module — several tokens may bind to the same adapter class.
 
-**Extending a framework class that injects its own constructor params (e.g. `ThrottlerGuard`): re-declare ITS `@Inject`s alongside yours.** Declaring any `@Inject` on the subclass writes that class's own dependency metadata, which SHADOWS the base class's rather than extending it — so adding one token silently makes the inherited ones unresolvable at boot.
+**Extending a framework class that injects its own constructor params (any library-provided guard, interceptor or service): re-declare ITS `@Inject`s alongside yours.** Declaring any `@Inject` on the subclass writes that class's own dependency metadata, which SHADOWS the base class's rather than extending it — so adding one token silently makes the inherited ones unresolvable at boot.
 
 **No module of ours is `@Global()`.** Every module explicitly imports each module whose exported provider it injects, so each `*.module.ts` is a complete manifest of its own dependencies — the visible extraction cost of a bounded context, which a global scope would hide. Injecting a token therefore has two obligations: the `@Inject` AND the providing module in `imports`. Enforced at boot (Nest throws on an unresolved provider) and at review, NOT by lint — `boundaries` constrains layer direction, not DI wiring. **Sole exceptions**, both deliberate: `ConfigModule` (NestJS's canonical `isGlobal: true` — config is universal) and `EventEmitterModule.forRoot()` (global by framework design).
 
@@ -139,7 +139,7 @@ src/
     cache/  config/  cqrs/  database/  doc/  email/
     event-bus/  exception/  http/
     observability/            # SHELF (no index.ts): audit/  logger/  tracker/
-    security/                 # SHELF (no index.ts): auth/  hashing/  session/  throttle/  token/
+    security/                 # SHELF (no index.ts): auth/  hashing/  session/  token/
   module/
     <module>/
       index.ts
@@ -259,7 +259,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 ### Guards & Auth
 
 - `AuthGuard` (JWT) and `AuthRolesGuard` (roles) are global. Mark public endpoints with `@Public()`.
-- Use `@UseThrottlePolicy(ThrottlePolicy.CRITICAL)` on endpoints that verify a GUESSABLE secret (login, password change) — a request budget is what makes guessing expensive. An endpoint presenting a SIGNED token (refresh) is not one: the budget buys nothing there, and the tracker is an IP shared by everyone behind one NAT, so it only costs legitimate sessions.
+- **There is NO rate limiting — deliberately, and it is still to be built.** The previous implementation was removed whole rather than left half-right; the target architecture, its decisions and the order to build them live in `docs/issue/rate-limiting.md`. Read that file before adding anything throttle-shaped, and do not reintroduce a piece of it ad hoc (a limiter here, an env var there): partial rate limiting reads as protection and isn't. Nothing else in the project depends on it.
 
 ### Responses & Errors
 
@@ -296,12 +296,12 @@ Two consequences look like defects and MUST NOT be "fixed":
 Who owns what, from throw to HTTP response — each concern lives in exactly one place.
 
 - **`src/shared/exception` owns the taxonomy.** Abstract `AppException` (transport-neutral `ExceptionKind` + `AppExceptionOptions`) and its subclasses (e.g. `ResourceNotFoundException`), each co-locating its `*Message` enum in the same file (§ Placement 1). The taxonomy knows no HTTP, no framework.
-- **Message vocabulary follows the thrower.** A shared `*Message` enum holds only messages generic to the kind (`DEFAULT`, `EMAIL_IN_USE`); a use case's own rejection messages live in its `command.ts` (e.g. `RefreshTokensMessage.CONCURRENT_REFRESH`); a single-thrower message is inlined at the throw site (§ Variable Inlining); a core-owned thrower keeps its vocabulary in its own concern (`RateLimitMessage` in `core/security/throttle`). Never grow a shared enum for one module's need — every `ApiDefault*` doc decorator takes `message: string` defaulting to the shared `DEFAULT`, never an enum type, so core never learns a module's vocabulary. Rejection vocabulary shared by several commands of one module lives in one descriptively named file at that module's `application/command/` root.
+- **Message vocabulary follows the thrower.** A shared `*Message` enum holds only messages generic to the kind (`DEFAULT`, `EMAIL_IN_USE`); a use case's own rejection messages live in its `command.ts` (e.g. `RefreshTokensMessage.CONCURRENT_REFRESH`); a single-thrower message is inlined at the throw site (§ Variable Inlining); a core-owned thrower keeps its vocabulary in its own concern. Never grow a shared enum for one module's need — every `ApiDefault*` doc decorator takes `message: string` defaulting to the shared `DEFAULT`, never an enum type, so core never learns a module's vocabulary. Rejection vocabulary shared by several commands of one module lives in one descriptively named file at that module's `application/command/` root.
 - **HTTP request-validation vocabulary is not taxonomy vocabulary.** `RequestValidationMessage` (`PAYLOAD` / `PARAM`) lives in `core/http` because the effective thrower is Nest's `ValidationPipe`, not `InvalidInputException`; `InvalidInputMessage` carries only the vocabulary of code that genuinely throws that exception. Follow the thrower, not the status code the two happen to share.
 - **Throwers throw; they do not log** (§ Observability). Raise `new ...Exception(message, { context })` and nothing else. `context` is `{ class: string; method: string; [key: string]: unknown }`: only the origin is typed, the rest free-form so `shared` never learns a module's vocabulary; `cause` is reserved for the underlying error. **`context` is a diagnostic field read only on the 5xx path: attach it to `SystemException` and unexpected faults, NEVER to a client-facing 4xx** — a deliberate refusal either writes its own audit record (login handlers, refresh reuse; § Audit) or stays silent. No key may come from a consumer of the log (e.g. a logger enum), and **audit vocabulary (`AuditAction`, a rejection-`reason` enum) never enters `context`** — audit is a separate port, not a log subtype.
 - **Aggregates own their invariants; the throw-or-no-op test is the requested END STATE.** End state already holds (`ban()` on a banned account) → silent idempotent no-op, no event — re-emitting would lie. Transition would break an owned invariant → the aggregate throws the taxonomy exception itself (`domain` may import `shared`); never trust callers to pre-check. Pick the kind by who can trigger it: client-reachable rejection → matching client-facing kind (`InvalidInputException`, `ResourceConflictException`); state unreachable through normal flows → `SystemException`, because 500 + Sentry is the intended outcome for a broken code path. Current instance: **a soft-deleted aggregate is immutable** — `SoftDeletableAggregateRoot` (`shared/domain/aggregate-root`) owns it, and every mutator except `markAsDeleted` calls its `assertNotDeleted` (throws `SystemException` with `context`), since writers' `load()` filters `deletedAt IS NULL` and only a bug can hand a deleted aggregate to a mutator. **An invariant shared by several aggregates is hoisted to an opt-in base class, never onto `AggregateRoot`** — a universal base would force every future aggregate to be soft-deletable.
 - **Infrastructure translates; nothing leaks** — writers rethrow driver errors as taxonomy exceptions at the port boundary (§ Adapters). An untranslated infrastructure error surfacing as a generic 500 + Sentry is the correct outcome for the unexpected, never a formatting gap to patch in the filter.
-- **The global filter (`src/core/exception`) is the only place the taxonomy meets HTTP.** It maps kind→status via the exhaustive `KIND_TO_STATUS` Record (a new kind without a status fails compilation), renders `ErrorDefaultDto`, and owns the operational-log and audit decisions in this order: `503` silent per request (outage detection is the health alarm's job, § Dependency outages); `>=500` → error log + Sentry, checked FIRST so a `SystemException` cannot degrade to a lesser record — and the ONLY branch that reads `context`, carried verbatim into the log; then `403` → audit `ACCESS_DENIED`, the one refusal the transport itself can attest to per request; everything else — the `429` included (§ Audit) — is silent. There is no `warn` branch: nothing below `500` carries `context`, because a client-facing rejection attaches none — the meaning of a refusal is recorded by the code that knows it (§ Audit), not guessed here from a status code.
+- **The global filter (`src/core/exception`) is the only place the taxonomy meets HTTP.** It maps kind→status via the exhaustive `KIND_TO_STATUS` Record (a new kind without a status fails compilation), renders `ErrorDefaultDto`, and owns the operational-log and audit decisions in this order: `503` silent per request (outage detection is the health alarm's job, § Dependency outages); `>=500` → error log + Sentry, checked FIRST so a `SystemException` cannot degrade to a lesser record — and the ONLY branch that reads `context`, carried verbatim into the log; then `403` → audit `ACCESS_DENIED`, the one refusal the transport itself can attest to per request; everything else is silent, including any status the filter sees once per REFUSED request but which was decided once for many (§ Audit). There is no `warn` branch: nothing below `500` carries `context`, because a client-facing rejection attaches none — the meaning of a refusal is recorded by the code that knows it (§ Audit), not guessed here from a status code.
 
 ## Observability (Logging, Exception Tracking & Audit)
 
@@ -316,8 +316,8 @@ Decide per catch/branch by asking **"who acts on this, and does the system fix i
 
 An audit record answers "who did what, when, from where" to an auditor; a log answers "why did this break" to an operator. They are **separate ports** (`IAuditPort` vs `ILoggerPort`) because a record is EVIDENCE: it cannot be lost, is not subject to the log level, and is written even under `NODE_ENV=test` where operational logs are silenced. The store is pino today — a given decision, not a `TODO`; only `IAuditPort`'s body changes the day it becomes a table.
 
-- **The code that establishes the fact writes the record — and nothing else does.** A state-mutating command writes its own `auditPort.record()` beside the entity write; the two are one act. The edge records only what it alone owns: the global filter writes `403`→`ACCESS_DENIED`, `AuditInterceptor` writes `@Audited` READ/disclosure endpoints, and the throttler guard writes `RATE_LIMITED`. **`@Audited` never goes on a mutating endpoint** — that record is the command's (machine-unenforceable, a review rule).
-- **An episode gets ONE record, never one per request it affects** — the § Dependency outages rule, applied to evidence. A rate-limit block refuses thousands of requests on a single decision, so `RATE_LIMITED` is written by the guard at the hit that CROSSES the limit, not by the filter on every `429`: only the guard can tell that request from the ones caught behind it. Flooding matters more here than in a log — audit is exempt from the log level, retained by policy, and becomes a table, where a per-request record is a write amplifier any anonymous caller can pull.
+- **The code that establishes the fact writes the record — and nothing else does.** A state-mutating command writes its own `auditPort.record()` beside the entity write; the two are one act. The edge records only what it alone owns: the global filter writes `403`→`ACCESS_DENIED`, and `AuditInterceptor` writes `@Audited` READ/disclosure endpoints. **`@Audited` never goes on a mutating endpoint** — that record is the command's (machine-unenforceable, a review rule).
+- **An episode gets ONE record, never one per request it affects** — the § Dependency outages rule, applied to evidence. When one decision refuses many requests (a rate-limit block, a tripped breaker), the record belongs to the component that can tell the request which CAUSED the decision from the ones merely caught behind it — never to the global filter, which sees every refusal alike. Flooding matters more here than in a log: audit is exempt from the log level, retained by policy, and becomes a table, where a per-request record is a write amplifier any anonymous caller can pull.
 - **The context is filled in two phases, each by whoever brings the fact into existence.** `auditContextHook` (a Fastify `onRequest` hook, registered in `main.ts`) seeds the TRANSPORT half on arrival — ahead of every guard, which is what makes a guard-thrown refusal attributable at all; `AuthGuard` publishes the IDENTITY half the moment it VERIFIES a token, so a `403` from the roles guard names the role it was about. Never publish a decoded-but-unverified payload: that is not an unattributed record but a forged one. An interceptor cannot do either job — it runs after every guard.
 - **Actor identity reaches the handler via AsyncLocalStorage, never the command payload**, so a command contract never learns HTTP. Outside an HTTP request (cron, listener) the actor is simply absent — the record is still written, only unattributed.
 - **A caller passes only what the ambient context does NOT already hold.** `targetId` is the SUBJECT of the action; on a self-scoped route it is the actor the context already names, so passing it makes one principal appear twice under two meanings. Pass it when the subject is genuinely distinct — an admin acting on someone, a `@Public()` route with no actor, or a subject derived from a different credential than the one the guard verified (`POST /auth/logout` reads the body's refresh token).
@@ -328,7 +328,7 @@ An audit record answers "who did what, when, from where" to an auditor; a log an
 A downed dependency (Redis, Postgres) fails every call until it recovers, so the choice is not _whether_ the cause is worth a breadcrumb but _where_ it is recorded. **The breadcrumb belongs at the CONNECTION level, gated on a state-transition flag; every per-call and per-request failure path stays silent.**
 
 - **The transition site logs** — a `warn` with the driver error and `ConnectionLogMessage.LOST` on the way down, a `log` with `RESTORED` on the way back — once per episode, guarded by an `isDown` flag. The site depends on the driver: ioredis exposes connection events (`core/cache/module.ts`); postgres.js does not, so the periodic health probe is the transition site (`core/database/adapter/database-health.adapter.ts`).
-- **Everything downstream is silent** — fail-open cache/throttle reads, best-effort session writes, the global filter's `503`. Detection is the health alarm's job and the cause is already named once; per-call records flood exactly when the logs matter most.
+- **Everything downstream is silent** — fail-open cache reads, best-effort session writes, the global filter's `503`. Detection is the health alarm's job and the cause is already named once; per-call records flood exactly when the logs matter most.
 - **`ConnectionLogMessage` is shared vocabulary on purpose** (`core/observability/logger`) — an outage reads identically across dependencies, so the two transitions are greppable as one thing.
 
 ## Coding Conventions
@@ -407,16 +407,17 @@ Used once → inline. Used more than once → extract to a named variable.
 
 ### Tech Stack
 
-| Concern            | Technology                                                    |
-| ------------------ | ------------------------------------------------------------- |
-| Framework          | NestJS v11+ with SWC builder                                  |
-| HTTP               | Fastify (`@nestjs/platform-fastify`)                          |
-| Database           | Drizzle ORM + PostgreSQL (`postgres` client)                  |
-| Cache / Rate Limit | Redis (`ioredis`, `@nest-lab/throttler-storage-redis`)        |
-| Events             | `@nestjs/event-emitter` — in-process, behind `IEventBusPort`  |
-| Queue              | none yet — see **Events & Messaging**                         |
-| Email              | Google APIs (Gmail)                                           |
-| Hashing            | Argon2                                                        |
-| Validation         | `class-validator` + `class-transformer`                       |
-| Observability      | Sentry, Pino, OpenTelemetry, Prometheus, Jaeger, Grafana Loki |
-| Testing            | Vitest, Supertest, Spectral, Schemathesis                     |
+| Concern       | Technology                                                    |
+| ------------- | ------------------------------------------------------------- |
+| Framework     | NestJS v11+ with SWC builder                                  |
+| HTTP          | Fastify (`@nestjs/platform-fastify`)                          |
+| Database      | Drizzle ORM + PostgreSQL (`postgres` client)                  |
+| Cache         | Redis (`ioredis`)                                             |
+| Events        | `@nestjs/event-emitter` — in-process, behind `IEventBusPort`  |
+| Queue         | none yet — see **Events & Messaging**                         |
+| Rate Limit    | none yet — see **Guards & Auth**                              |
+| Email         | Google APIs (Gmail)                                           |
+| Hashing       | Argon2                                                        |
+| Validation    | `class-validator` + `class-transformer`                       |
+| Observability | Sentry, Pino, OpenTelemetry, Prometheus, Jaeger, Grafana Loki |
+| Testing       | Vitest, Supertest, Spectral, Schemathesis                     |

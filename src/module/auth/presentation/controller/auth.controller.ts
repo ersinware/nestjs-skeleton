@@ -12,12 +12,10 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultResourceConflictResponse,
-    ApiDefaultTooManyRequestsResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { NotEmptyBodyPipe, RequestValidationMessage } from 'src/core/http';
 import { AccessTokenPayloadDecorator, Public } from 'src/core/security/auth';
-import { ThrottlePolicy, UseThrottlePolicy } from 'src/core/security/throttle';
 import type { AccessTokenPayload } from 'src/core/security/token';
 import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
@@ -39,7 +37,6 @@ import { UnauthenticatedMessage } from 'src/shared/exception';
 })
 @ApiTags('auth')
 @ApiDefaultInternalServerErrorResponse()
-@ApiDefaultTooManyRequestsResponse()
 export class AuthController {
     /**
      * Initializes the controller with the command pipeline to dispatch authentication commands.
@@ -58,7 +55,6 @@ export class AuthController {
      * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
      */
     @Public()
-    @UseThrottlePolicy(ThrottlePolicy.CRITICAL)
     @Post('user/login')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
@@ -85,7 +81,6 @@ export class AuthController {
      * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
      */
     @Public()
-    @UseThrottlePolicy(ThrottlePolicy.CRITICAL)
     @Post('admin/login')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
@@ -113,11 +108,6 @@ export class AuthController {
      * @throws {UnauthenticatedException} If the refresh token is invalid or expired
      * @throws {ResourceConflictException} If a concurrent refresh already rotated the session; retry with the latest token pair
      */
-    // Deliberately NOT @UseThrottlePolicy(ThrottlePolicy.CRITICAL): what is presented here is a signed token, not a guessable
-    // secret, so a request budget buys nothing — single-use rotation and the reuse detection below are
-    // the actual defence. Meanwhile this is the one endpoint the app calls without the user asking, so
-    // its traffic arrives in bursts (app launch, token expiry) and an IP budget shared by everyone
-    // behind one NAT would answer 429 to legitimate sessions, which clients read as "logged out".
     @Public()
     @Post('refresh')
     @HttpCode(HttpStatus.OK)

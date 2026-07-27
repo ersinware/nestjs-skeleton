@@ -19,7 +19,6 @@ import { LoggerModule } from 'src/core/observability/logger';
 import { TrackerModule } from 'src/core/observability/tracker';
 import { AuthGuard, AuthRolesGuard } from 'src/core/security/auth';
 import { SessionModule } from 'src/core/security/session';
-import { ThrottleModule } from 'src/core/security/throttle';
 import { TokenModule } from 'src/core/security/token';
 import { AdminModule } from 'src/module/admin';
 import { AuthModule } from 'src/module/auth';
@@ -43,7 +42,6 @@ import { UserModule } from 'src/module/user';
         TrackerModule,
         EventBusModule,
         CacheModule,
-        ThrottleModule,
         DatabaseModule,
         EmailModule,
         TokenModule,

@@ -1,6 +1,6 @@
 /**
  * @file health.controller.ts
- * @description Exposes the health surface as three endpoints with three different audiences: a dependency-free liveness probe, a dependency-checking readiness probe, and a detailed operator view. Standard rate-limiting is bypassed throughout so automated probes are never blocked under high traffic conditions.
+ * @description Exposes the health surface as three endpoints with three different audiences: a dependency-free liveness probe, a dependency-checking readiness probe, and a detailed operator view.
  */
 
 import { Controller, Get, HttpCode, HttpStatus, VERSION_NEUTRAL } from '@nestjs/common';
@@ -12,7 +12,6 @@ import {
     ApiServiceUnavailableResponse,
     ApiTags,
 } from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
 import { plainToInstance } from 'class-transformer';
 import { ROUTE_HEALTH, ROUTE_HEALTH_LIVE, ROUTE_HEALTH_READY } from 'src/core/config';
 import { QueryPipeline } from 'src/core/cqrs';
@@ -45,7 +44,6 @@ import { DependencyUnavailableMessage } from 'src/shared/exception';
     path: ROUTE_HEALTH,
     version: VERSION_NEUTRAL,
 })
-@SkipThrottle()
 @ApiTags('health')
 @ApiDefaultInternalServerErrorResponse()
 export class HealthController {
