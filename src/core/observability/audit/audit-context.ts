@@ -23,15 +23,16 @@ import type { AuthRole } from 'src/shared/domain/auth-role';
  *
  * - **Transport** — true the instant the request arrives, so `auditContextHook` seeds it on arrival,
  *   ahead of every guard. That is what makes a refusal raised by a guard attributable at all.
- *   `method` and `route` belong to this half because the generic refusals — `ACCESS_DENIED`,
- *   `RATE_LIMITED` — name no subject of their own: without them the record says someone was refused
- *   something, which is not evidence of anything.
+ *   `method` and `route` belong to this half because a generic refusal such as `ACCESS_DENIED` names
+ *   no subject of its own: without them the record says someone was refused something, which is not
+ *   evidence of anything.
  * - **Identity** — does not exist until a token has been VERIFIED, so `AuthGuard` writes it at the
  *   moment it establishes it. Doing this downstream, in an interceptor, would leave a `403` from the
  *   roles guard with no actor — a record of a refusal that is entirely about an identity, naming none.
  *
- * A field stays absent when it is genuinely unknown: a `@Public()` route has no actor, a `429` is
- * refused before any token is read, and a record written outside a request has no transport at all.
+ * A field stays absent when it is genuinely unknown: a `@Public()` route has no actor, a request
+ * refused before any token is read has none either, and a record written outside a request has no
+ * transport at all.
  */
 export type AuditContext = {
     actorId?: string | undefined;

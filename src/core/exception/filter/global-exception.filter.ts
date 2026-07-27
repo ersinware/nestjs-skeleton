@@ -252,10 +252,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * genuine security fact to record (the auth handlers) writes its own record and stays silent here.
      * There is deliberately no operational `warn` branch — nothing below 500 carries context to log.
      *
-     * The `429` is NOT recorded here, though the status is equally transport-established. A block is
-     * one episode refusing thousands of requests, and only the throttler guard can tell the request
-     * that caused it from the ones merely caught behind it, so the record is written there — once.
-     *
      * No identity is passed: the actor reaches the entry through the ambient context, published by
      * `AuthGuard` at the moment it verified the token. Naming the same principal again as `targetId`
      * would file the subject of the refusal as its object.
