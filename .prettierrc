@@ -6,5 +6,11 @@
     "tabWidth": 4,
     "bracketSpacing": true,
     "endOfLine": "lf",
-    "plugins": ["prettier-plugin-organize-imports"]
+    "plugins": ["prettier-plugin-organize-imports"],
+    "overrides": [
+        {
+            "files": "*.jsonc",
+            "options": { "trailingComma": "none" }
+        }
+    ]
 }

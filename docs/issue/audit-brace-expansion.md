@@ -25,7 +25,7 @@ Tek bir advisory, 21 farklı bağımlılık yolundan sayılıyor. Hepsinin dibin
 <dev aracı> → minimatch@3 / @5 / @9 → brace-expansion@1.x / @2.x
 ```
 
-Erişen dev araçları: `eslint`, `@eslint/eslintrc`, `eslint-plugin-import`, `@nestjs/cli`
+Erişen dev araçları: `eslint`, `@eslint/eslintrc`, `@nestjs/cli`
 (→ `fork-ts-checker-webpack-plugin`), `@swc/cli`, `@stoplight/spectral-*`, `openapi-typescript`
 (→ `@redocly/openapi-core`), `@rollup/plugin-commonjs`.
 

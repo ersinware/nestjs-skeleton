@@ -12,11 +12,11 @@
         // A global override to 5.0.8 is NOT possible: its CommonJS entry exports a namespace
         // object, while minimatch@3/5/9 call the module itself as a function.
         // Remove this entry once those minimatch versions move to brace-expansion@^5.
-        "GHSA-mh99-v99m-4gvg",
+        "GHSA-mh99-v99m-4gvg"
     ],
 
     // Surface allowlist drift: report entries that are still found, and entries that no
     // longer match anything (i.e. upstream fixed it and the allowlist can be pruned).
     "show-found": true,
-    "show-not-found": true,
+    "show-not-found": true
 }
