@@ -15,7 +15,7 @@ export interface ICacheHealthPort {
     /**
      * Sends a ping to verify connection to the cache instance.
      *
-     * @returns A promise that resolves on success, or rejects when the cache is unreachable.
+     * @throws {Error} The raw driver error when the cache is unreachable.
      */
     ping(): Promise<void>;
 }

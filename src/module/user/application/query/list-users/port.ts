@@ -9,6 +9,9 @@ import type { SearchParams } from 'src/shared/search';
 
 export const TOKEN_LIST_USERS_PORT = Symbol('TOKEN_LIST_USERS_PORT');
 
+/**
+ * Thin read contract for listing user read-models with pagination and search.
+ */
 export interface IListUsersPort {
     /**
      * Retrieves a paginated list of non-deleted user read-models.

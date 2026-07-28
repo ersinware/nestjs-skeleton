@@ -22,6 +22,7 @@ export interface ICachePort {
      * @param options.useJitter Adds random variation to the TTL, spreading expirations to avoid stampedes.
      * @param options.jitterMaxPercent Maximum percentage of the TTL to add as jitter.
      * @returns A promise resolving on execution success.
+     * @throws {SystemException} When the key is empty — a caller bug that must surface as 500.
      */
     set(
         key: string,
@@ -35,6 +36,7 @@ export interface ICachePort {
      *
      * @param key Cache key.
      * @returns A promise resolving to the typed value if found, otherwise null.
+     * @throws {SystemException} When the key is empty — a caller bug that must surface as 500.
      */
     get<T = string>(key: string): Promise<T | null>;
 
@@ -43,6 +45,7 @@ export interface ICachePort {
      *
      * @param key Cache key.
      * @returns A promise resolving on execution success.
+     * @throws {SystemException} When the key is empty — a caller bug that must surface as 500.
      */
     delete(key: string): Promise<void>;
 }

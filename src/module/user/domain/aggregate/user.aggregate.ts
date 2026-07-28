@@ -20,9 +20,20 @@ type UserProps = {
     updatedAt: Date;
 };
 
+/**
+ * The User aggregate root.
+ * Encapsulates the core rules, state, and behaviors of an end user.
+ */
 export class User extends SoftDeletableAggregateRoot {
     private props: UserProps;
 
+    /**
+     * Initializes a new instance of the User aggregate.
+     *
+     * @param id The unique identifier
+     * @param deletedAt The soft-deletion timestamp, or null while the account is live
+     * @param props The aggregate state properties
+     */
     private constructor(id: string, deletedAt: Date | null, props: UserProps) {
         super(id, deletedAt);
         this.props = props;
@@ -194,30 +205,37 @@ export class User extends SoftDeletableAggregateRoot {
         this.addDomainEvent(new DomainEvent(UserEvent.DELETED, this.id));
     }
 
+    /** The email address. */
     get email(): string {
         return this.props.email;
     }
 
+    /** The display name. */
     get name(): string {
         return this.props.name;
     }
 
+    /** The hashed password. */
     get password(): string {
         return this.props.password;
     }
 
+    /** Whether the account is banned. */
     get isBanned(): boolean {
         return this.props.isBanned;
     }
 
+    /** The monotonic session-version counter. */
     get version(): number {
         return this.props.version;
     }
 
+    /** The creation timestamp. */
     get createdAt(): Date {
         return this.props.createdAt;
     }
 
+    /** The last-update timestamp. */
     get updatedAt(): Date {
         return this.props.updatedAt;
     }

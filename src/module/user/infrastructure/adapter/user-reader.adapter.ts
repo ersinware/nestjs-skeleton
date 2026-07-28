@@ -21,6 +21,10 @@ import { user } from 'src/module/user/infrastructure/user.schema';
 import type { PaginationParams } from 'src/shared/pagination';
 import type { SearchParams } from 'src/shared/search';
 
+/**
+ * Implements query-specific reader ports with direct SQL projection queries.
+ * Never instantiates aggregate roots — maps rows straight to flat read-models.
+ */
 @Injectable()
 export class UserReaderAdapter
     implements
@@ -30,8 +34,19 @@ export class UserReaderAdapter
         IGetUserCredentialsByEmailPort,
         IListUsersPort
 {
+    /**
+     * Initializes the user query repository with the database connection.
+     *
+     * @param db The PostgresJs database instance
+     */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
 
+    /**
+     * Reads a user's active status and current session version by ID.
+     *
+     * @param id The unique identifier
+     * @returns The auth state, or null if not found
+     */
     async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
         const row = (
             await this.db
@@ -44,12 +59,26 @@ export class UserReaderAdapter
         return row ?? null;
     }
 
+    /**
+     * Retrieves the session-version projection by ID. Deliberately ignores soft deletion so a
+     * deleted user still resolves, letting session reconciliation converge instead of throwing and
+     * looping.
+     *
+     * @param id The unique identifier
+     * @returns The session-version projection, or null if no row exists
+     */
     async getAccessProjection(id: string): Promise<GetUserAccessProjectionResult | null> {
         const row = (await this.db.select({ version: user.version }).from(user).where(eq(user.id, id)).limit(1))[0];
 
         return row ?? null;
     }
 
+    /**
+     * Retrieves a non-deleted user's read-model by ID.
+     *
+     * @param id The unique identifier
+     * @returns The user read-model, or null if not found
+     */
     async getById(id: string): Promise<GetUserByIdResult | null> {
         const row = (
             await this.db
@@ -69,6 +98,12 @@ export class UserReaderAdapter
         return row ?? null;
     }
 
+    /**
+     * Retrieves credential fields for a non-deleted user by email.
+     *
+     * @param email The exact email address
+     * @returns The minimal credential projection or null if not found
+     */
     async getCredentialsByEmail(email: string): Promise<GetUserCredentialsByEmailResult | null> {
         const row = (
             await this.db
@@ -86,6 +121,13 @@ export class UserReaderAdapter
         return row ?? null;
     }
 
+    /**
+     * Retrieves a paginated list of non-deleted user read-models, optionally filtered by a
+     * case-insensitive name/email search.
+     *
+     * @param params The search filter and pagination limits
+     * @returns Paginated list of users
+     */
     async listUsers(params: SearchParams & PaginationParams): Promise<ListUsersResult> {
         let conditions = isNull(user.deletedAt);
 

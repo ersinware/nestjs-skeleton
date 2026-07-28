@@ -174,34 +174,42 @@ export class Admin extends SoftDeletableAggregateRoot {
         this.addDomainEvent(new DomainEvent(AdminEvent.DELETED, this.id));
     }
 
+    /** The email address. */
     get email(): string {
         return this.props.email;
     }
 
+    /** The display name. */
     get name(): string {
         return this.props.name;
     }
 
+    /** The hashed password. */
     get password(): string {
         return this.props.password;
     }
 
+    /** The administrative role. */
     get role(): AdminRole {
         return this.props.role;
     }
 
+    /** Whether the account is banned. */
     get isBanned(): boolean {
         return this.props.isBanned;
     }
 
+    /** The monotonic session-version counter. */
     get version(): number {
         return this.props.version;
     }
 
+    /** The creation timestamp. */
     get createdAt(): Date {
         return this.props.createdAt;
     }
 
+    /** The last-update timestamp. */
     get updatedAt(): Date {
         return this.props.updatedAt;
     }

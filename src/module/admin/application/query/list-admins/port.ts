@@ -8,6 +8,9 @@ import { PaginationParams } from 'src/shared/pagination';
 
 export const TOKEN_LIST_ADMINS_PORT = Symbol('TOKEN_LIST_ADMINS_PORT');
 
+/**
+ * Thin read contract for listing admin read-models with pagination and search.
+ */
 export interface IListAdminsPort {
     /**
      * Retrieves a paginated list of non-deleted admin read-models.

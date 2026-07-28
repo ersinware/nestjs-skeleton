@@ -7,6 +7,9 @@ import type { GetUserAccessProjectionResult } from 'src/module/user/application/
 
 export const TOKEN_GET_USER_ACCESS_PROJECTION_PORT = Symbol('TOKEN_GET_USER_ACCESS_PROJECTION_PORT');
 
+/**
+ * Thin read contract for fetching the access-control projection of a user.
+ */
 export interface IGetUserAccessProjectionPort {
     /**
      * Reads the access-control projection of a user by id without the soft-delete filter, so a

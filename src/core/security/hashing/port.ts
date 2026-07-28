@@ -5,6 +5,9 @@
 
 export const TOKEN_HASHING_PORT = Symbol('TOKEN_HASHING_PORT');
 
+/**
+ * Contract for hashing plain text and verifying it against stored hashes.
+ */
 export interface IHashingPort {
     /**
      * Hashes a plain text string.
@@ -20,6 +23,8 @@ export interface IHashingPort {
      * @param hash The hash string to verify against.
      * @param plainText The plain text string to verify.
      * @returns A promise resolving to a boolean indicating verification status.
+     * @throws {Error} The raw argon2 error when the stored hash is not a valid Argon2 encoding —
+     * a mismatch resolves to false, never throws.
      */
     verify(hash: string, plainText: string): Promise<boolean>;
 }

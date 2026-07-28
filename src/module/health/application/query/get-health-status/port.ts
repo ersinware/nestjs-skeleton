@@ -7,6 +7,9 @@ import type { GetHealthStatusResult } from 'src/module/health/application/query/
 
 export const TOKEN_GET_HEALTH_STATUS_PORT = Symbol('TOKEN_GET_HEALTH_STATUS_PORT');
 
+/**
+ * Thin read contract for fetching the per-indicator health report of every dependency.
+ */
 export interface IGetHealthStatusPort {
     /**
      * Executes the health checks.

@@ -21,6 +21,13 @@ import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exc
  */
 @CommandHandler(BanAdminCommand)
 export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param adminWriterPort The port used to load and persist the admin aggregate
+     * @param sessionPort The port used to revoke the banned admin's sessions
+     * @param auditPort The port used to record the ban
+     */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,

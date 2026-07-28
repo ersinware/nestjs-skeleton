@@ -7,6 +7,9 @@ import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 
 export const TOKEN_ADMIN_WRITER_PORT = Symbol('TOKEN_ADMIN_WRITER_PORT');
 
+/**
+ * Contract for loading and persisting the Admin aggregate on the write side.
+ */
 export interface IAdminWriterPort {
     /**
      * Loads a specific admin aggregate by its unique identifier for mutation.
@@ -21,6 +24,8 @@ export interface IAdminWriterPort {
      * This handles both insertion and updating, and should dispatch/store any domain events attached to the aggregate.
      *
      * @param admin The Admin aggregate root to save.
+     * @throws {ResourceConflictException} When the email is already in use — the unique violation
+     * translated at the port boundary.
      */
     save(admin: Admin, tx?: unknown): Promise<void>;
 }

@@ -15,6 +15,10 @@ import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
 import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
+/**
+ * Drizzle ORM implementation of the IUserWriterPort.
+ * Handles persistence and reconstitution of the User aggregate root.
+ */
 @Injectable()
 export class UserWriterAdapter implements IUserWriterPort {
     /**
@@ -43,6 +47,12 @@ export class UserWriterAdapter implements IUserWriterPort {
         });
     }
 
+    /**
+     * Loads a specific user aggregate by its unique identifier for mutation.
+     *
+     * @param id The unique identifier of the target user
+     * @returns The user aggregate root, or null if no active user is found
+     */
     async load(id: string): Promise<User | null> {
         const row = (
             await this.db

@@ -21,6 +21,12 @@ import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exc
  */
 @CommandHandler(UnbanAdminCommand)
 export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param adminWriterPort The port used to load and persist the admin aggregate
+     * @param auditPort The port used to record the unban
+     */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,

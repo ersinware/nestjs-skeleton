@@ -21,6 +21,11 @@ export enum RefreshTokensMessage {
  * Command to refresh access and refresh tokens.
  */
 export class RefreshTokensCommand extends Command<RefreshTokensResult> {
+    /**
+     * Initializes the command payload.
+     *
+     * @param refreshToken The refresh token being rotated away
+     */
     constructor(readonly refreshToken: string) {
         super();
     }

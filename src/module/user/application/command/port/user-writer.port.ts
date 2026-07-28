@@ -7,6 +7,9 @@ import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 
 export const TOKEN_USER_WRITER_PORT = Symbol('TOKEN_USER_WRITER_PORT');
 
+/**
+ * Contract for loading and persisting the User aggregate on the write side.
+ */
 export interface IUserWriterPort {
     /**
      * Loads a specific user aggregate by its unique identifier for mutation.
@@ -22,6 +25,8 @@ export interface IUserWriterPort {
      *
      * @param user The User aggregate root to save.
      * @param tx Optional transaction context
+     * @throws {ResourceConflictException} When the email is already in use — the unique violation
+     * translated at the port boundary.
      */
     save(user: User): Promise<void>;
 }

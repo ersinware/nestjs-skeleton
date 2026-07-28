@@ -16,6 +16,13 @@ import { LogoutCommand } from 'src/module/auth/application/command/logout/comman
  */
 @CommandHandler(LogoutCommand)
 export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param tokenPort The port used to verify the refresh token
+     * @param sessionPort The port used to close the refresh session
+     * @param auditPort The port used to record the logout
+     */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,

@@ -8,11 +8,14 @@
  */
 export const TOKEN_STATE_HEALTH_PORT = Symbol('TOKEN_STATE_HEALTH_PORT');
 
+/**
+ * Contract for probing the state (session store) Redis connection, consumed by the health indicators.
+ */
 export interface IStateHealthPort {
     /**
      * Sends a ping query to verify connection to the state Redis instance.
      *
-     * @returns A promise that resolves on query success, or rejects if query fails.
+     * @throws {Error} The raw driver error when the state store is unreachable.
      */
     ping(): Promise<void>;
 }
