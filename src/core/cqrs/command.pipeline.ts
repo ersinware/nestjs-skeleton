@@ -1,5 +1,5 @@
 /**
- * @file command-pipeline.ts
+ * @file command.pipeline.ts
  * @description Wraps the framework CommandBus in a behavior chain so cross-cutting write concerns
  * (cache invalidation today; transaction/outbox/metrics later) apply uniformly to every dispatched
  * command without a handler ever knowing they exist.
@@ -38,9 +38,7 @@ export interface ICommandBehavior {
 @Injectable()
 export class CommandPipeline {
     /**
-     * Injects the framework bus the chain ultimately delegates to and the ordered behavior list.
-     *
-     * @param commandBus The framework command bus that resolves the handler
+     * @param commandBus The framework bus the chain ultimately delegates to
      * @param behaviors The ordered behaviors wrapping each dispatch
      */
     constructor(

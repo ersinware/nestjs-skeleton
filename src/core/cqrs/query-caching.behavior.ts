@@ -8,7 +8,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { IQuery } from '@nestjs/cqrs';
 import type { ICachePort } from 'src/core/cache';
 import { TOKEN_CACHE_PORT } from 'src/core/cache';
-import type { IQueryBehavior } from 'src/core/cqrs/query-pipeline';
+import type { IQueryBehavior } from 'src/core/cqrs/query.pipeline';
 
 /**
  * A query that participates in the read cache. Caching is a property of the QUERY, never of the
@@ -40,14 +40,12 @@ function isCacheableQuery(query: IQuery): query is IQuery & ICacheableQuery {
 /**
  * Serves cacheable queries from the cache, populating it on a miss. Non-cacheable queries pass
  * straight through. The populate write is fire-and-forget with TTL jitter (anti-stampede); a miss
- * that throws (e.g. not-found) propagates and is never cached, matching the prior inline behavior.
+ * that throws (e.g. not-found) propagates and is never cached.
  */
 @Injectable()
 export class QueryCachingBehavior implements IQueryBehavior {
     /**
-     * Injects the cache port the behavior reads through and populates.
-     *
-     * @param cachePort The cache abstraction
+     * @param cachePort The cache the behavior reads and populates
      */
     constructor(@Inject(TOKEN_CACHE_PORT) private readonly cachePort: ICachePort) {}
 
