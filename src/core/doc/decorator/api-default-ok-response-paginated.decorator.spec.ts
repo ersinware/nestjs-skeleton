@@ -54,7 +54,7 @@ class TestController {
 /**
  * Internal Swagger response metadata structure for type validation.
  */
-interface SwaggerResponseMetadata {
+type SwaggerResponseMetadata = {
     /**
      * Swagger response description.
      */
@@ -63,12 +63,12 @@ interface SwaggerResponseMetadata {
      * Resolved type schema constructor.
      */
     type?: Type<unknown>;
-}
+};
 
 /**
  * Internal Swagger property schema metadata structure for type validation.
  */
-interface SwaggerPropertyMetadata {
+type SwaggerPropertyMetadata = {
     /**
      * The property type constructor or type identifier.
      */
@@ -89,7 +89,7 @@ interface SwaggerPropertyMetadata {
      * The property description text.
      */
     description?: string;
-}
+};
 
 describe('ApiDefaultOkResponsePaginated', () => {
     it('should generate the correct dynamic class name and strip the Dto suffix', () => {

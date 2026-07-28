@@ -8,7 +8,7 @@ import { Type } from '@nestjs/common';
 /**
  * Options for configuring the mock Fastify test application.
  */
-export interface OptionsTestApp {
+export type OptionsTestApp = {
     /**
      * Additional controllers to mount directly onto the root module.
      * Useful for isolated testing of global guards, filters, or interceptors.
@@ -29,4 +29,4 @@ export interface OptionsTestApp {
          */
         useValue: unknown;
     }[];
-}
+};

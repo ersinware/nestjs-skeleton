@@ -65,7 +65,7 @@ export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: 
 /**
  * Swagger model properties metadata structure.
  */
-interface SwaggerPropertyMetadata {
+type SwaggerPropertyMetadata = {
     /**
      * The resolved type definition (string constructor or function getter).
      */
@@ -82,7 +82,7 @@ interface SwaggerPropertyMetadata {
      * The raw example value registered on the property.
      */
     example?: unknown;
-}
+};
 
 /**
  * Extracts a mock example object from a DTO class using Reflect metadata.
