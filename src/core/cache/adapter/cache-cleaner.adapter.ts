@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import type { ICacheCleanerPort } from 'src/core/cache/port/cache-cleaner.port';
 
 /**
@@ -18,7 +18,7 @@ export class CacheCleanerAdapter implements ICacheCleanerPort {
      *
      * @param cacheRedis Configured cache Redis client instance.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly cacheRedis: Redis) {}
+    constructor(@Inject(TOKEN_CACHE_CONNECTION) private readonly cacheRedis: Redis) {}
 
     /**
      * Flushes all keys from the cache Redis instance.

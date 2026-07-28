@@ -9,7 +9,7 @@ import Redis from 'ioredis';
 import { ENV } from 'src/core/config';
 import type { ISessionPort } from 'src/core/security/session/port/session.port';
 import { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
-import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token';
+import { TOKEN_STATE_CONNECTION } from 'src/core/security/session/state-connection.token';
 import { SystemException } from 'src/shared/exception';
 
 /**
@@ -63,7 +63,7 @@ export class SessionAdapter implements ISessionPort {
      * @param configService Configuration reader service.
      */
     constructor(
-        @Inject(TOKEN_STATE_CLIENT) private readonly redis: Redis,
+        @Inject(TOKEN_STATE_CONNECTION) private readonly redis: Redis,
         private readonly configService: ConfigService,
     ) {}
 

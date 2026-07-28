@@ -1,6 +1,6 @@
 /**
  * @file index.ts
- * @description Public entry point of the config concern.
+ * @description Public entry point of the config concern. Nothing outside may import past this barrel.
  */
 
 export { ENV } from 'src/core/config/environment/env.constant';

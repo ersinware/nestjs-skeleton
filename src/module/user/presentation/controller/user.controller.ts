@@ -110,7 +110,7 @@ export class UserController {
         description:
             'Retrieves registered users with pagination and optional search query. Requires administrator-level authorization.',
     })
-    @ApiDefaultOkResponsePaginated({ message: 'Users successfully retrieved.', type: ResponseUserDto })
+    @ApiDefaultOkResponsePaginated({ message: 'Users successfully retrieved.', model: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()

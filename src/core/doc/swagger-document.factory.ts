@@ -1,28 +1,28 @@
 /**
- * @file doc.util.ts
- * @description Utilities for generating, customizing, and post-processing OpenAPI (Swagger) documents.
- * Automates response wrapping in standard success/error envelopes and configures Scalar UI options.
+ * @file swagger-document.factory.ts
+ * @description Builds the OpenAPI (Swagger) document for an API version: filters paths to that
+ * version, wraps payloads in the standard success/error envelopes, and aligns component schemas
+ * with runtime validation.
  */
 
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import { ACTIVE_VERSIONS, APIVersion } from 'src/core/config';
-import { VERSION_CONFIG } from 'src/core/doc/config/doc.config';
+import { DOC_CONTACT, DOC_LICENSE, DOC_SERVERS, VERSION_CONFIG } from 'src/core/doc/doc.config';
 
 /**
- * Generates and refines the Swagger OpenAPI document for a specific API version.
- * Applies routing path filters, wraps payloads in response envelopes, and post-processes component schemas.
+ * Generates the fully processed OpenAPI document for a specific API version.
  *
  * @param app The NestJS application instance.
- * @param version The targeted API version for generation.
- * @returns The fully processed OpenAPI document object.
+ * @param version The targeted API version.
+ * @returns The processed OpenAPI document.
  */
 export function createSwaggerDocument(app: INestApplication, version: APIVersion): OpenAPIObject {
     const document = SwaggerModule.createDocument(app, createSwaggerBuilder(version).build(), {
         ignoreGlobalPrefix: false,
         operationIdFactory: (controllerKey: string, methodKey: string) => {
-            // Formats the operation ID as [moduleName][FunctionName] (e.g., userCreate, authLogin)
-            // to prevent method collisions and ensure clean signatures in generated frontend SDK clients.
+            // Operation IDs read as [module][Method] (e.g. userCreate) so generated SDK clients
+            // get collision-free, clean signatures.
             const id = `${controllerKey.replace(/Controller$/, '').replace(/^\w/, (c) => c.toLowerCase())}${methodKey.replace(/^\w/, (c) => c.toUpperCase())}`;
 
             return version === '1' ? id : `${id}V${version as string}`;
@@ -38,20 +38,20 @@ export function createSwaggerDocument(app: INestApplication, version: APIVersion
 
     const componentsSchemas = (document.components?.schemas ?? {}) as Record<string, unknown>;
 
-    // 1. Programmatically wrap success and error responses in envelope schemas
+    // Wrap success and error responses in the standard envelopes
     wrapResponsePaths(document.paths, componentsSchemas);
 
-    // 2. Adjust and post-process component schemas (restrictions, validations)
+    // Align component schemas with runtime validation
     postProcessComponents(componentsSchemas);
 
     return document;
 }
 
 /**
- * Creates and configures a DocumentBuilder instance pre-populated with version-specific metadata.
+ * Creates a DocumentBuilder pre-populated with the version's metadata from the doc config.
  *
  * @param version The targeted API version.
- * @returns A configured Swagger DocumentBuilder.
+ * @returns The configured builder.
  */
 function createSwaggerBuilder(version: APIVersion): DocumentBuilder {
     const config = VERSION_CONFIG[version],
@@ -59,10 +59,13 @@ function createSwaggerBuilder(version: APIVersion): DocumentBuilder {
             .setTitle(config.title)
             .setDescription(config.description)
             .setVersion(`${version}.0.0`)
-            .addServer('http://localhost:3000', 'Development server')
-            .setContact('API Support', 'admin@digipact.co', 'admin@digipact.co')
-            .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+            .setContact(DOC_CONTACT.name, DOC_CONTACT.url, DOC_CONTACT.email)
+            .setLicense(DOC_LICENSE.name, DOC_LICENSE.url)
             .addBearerAuth();
+
+    DOC_SERVERS.forEach(({ url, description }) => {
+        builder.addServer(url, description);
+    });
 
     Object.entries(config.tags).forEach(([name, description]) => {
         builder.addTag(name, description);
@@ -72,10 +75,10 @@ function createSwaggerBuilder(version: APIVersion): DocumentBuilder {
 }
 
 /**
- * Walks through all routes and operations in the document to apply global success and error envelopes.
+ * Applies the success/error envelopes to every operation response in the document.
  *
  * @param paths OpenAPI paths dictionary.
- * @param componentsSchemas Dictionary containing all reusable component schemas.
+ * @param componentsSchemas Dictionary of reusable component schemas.
  */
 function wrapResponsePaths(paths: Record<string, unknown>, componentsSchemas: Record<string, unknown>) {
     if (!paths) return;
@@ -99,11 +102,12 @@ function wrapResponsePaths(paths: Record<string, unknown>, componentsSchemas: Re
 }
 
 /**
- * Formats a single HTTP response schema, wrapping it inside a 'data' (success) or 'error' (failure) envelope.
+ * Wraps one response's JSON schema in the 'data' (success) or 'error' (failure) envelope,
+ * matching what ResponseInterceptor and the exception filter emit at runtime.
  *
  * @param response The response configuration object.
  * @param statusCode The HTTP status code of the response.
- * @param componentsSchemas Dictionary of all component schemas.
+ * @param componentsSchemas Dictionary of component schemas.
  */
 function wrapSingleResponse(response: unknown, statusCode: string, componentsSchemas: Record<string, unknown>) {
     if (!response || typeof response !== 'object') return;
@@ -145,73 +149,44 @@ function wrapSingleResponse(response: unknown, statusCode: string, componentsSch
         return;
     }
 
-    const hasRef = typeof schemaVal === 'object' && schemaVal !== null && '$ref' in schemaVal,
-        schemaType = getSchemaType(schemaVal, componentsSchemas),
-        schemaExample = resolveExample(schemaVal, componentsSchemas);
-
     if (isSuccessToWrap) {
-        if (hasRef) {
-            jsonContent['schema'] = {
-                type: 'object',
-                properties: {
-                    data: {
-                        type: schemaType,
-                        description: 'The wrapped response data.',
-                        example: schemaExample,
-                        allOf: [schemaVal],
-                    },
-                },
-                required: ['data'],
-            };
-        } else {
-            jsonContent['schema'] = {
-                type: 'object',
-                properties: {
-                    data: {
-                        ...(schemaVal as Record<string, unknown>),
-                        description: 'The wrapped response data.',
-                        example: schemaExample,
-                    },
-                },
-                required: ['data'],
-            };
-        }
+        jsonContent['schema'] = buildEnvelope(schemaVal, 'data', componentsSchemas);
     } else if (jsonContent['schema']) {
-        if (hasRef) {
-            jsonContent['schema'] = {
-                type: 'object',
-                properties: {
-                    error: {
-                        type: schemaType,
-                        description: 'The wrapped error details.',
-                        example: schemaExample,
-                        allOf: [schemaVal],
-                    },
-                },
-                required: ['error'],
-            };
-        } else {
-            jsonContent['schema'] = {
-                type: 'object',
-                properties: {
-                    error: {
-                        ...(schemaVal as Record<string, unknown>),
-                        description: 'The wrapped error details.',
-                        example: schemaExample,
-                    },
-                },
-                required: ['error'],
-            };
-        }
+        jsonContent['schema'] = buildEnvelope(schemaVal, 'error', componentsSchemas);
     }
 }
 
 /**
- * Recursively resolves the underlying data type of a schema, following $ref pointers if necessary.
+ * Builds the standard envelope schema around a payload schema, under a 'data' (success) or
+ * 'error' (failure) key. A $ref payload is attached via allOf because sibling keys next to a
+ * $ref are ignored by OpenAPI tooling.
+ *
+ * @param schemaVal The original payload schema or schema reference.
+ * @param key The envelope property key.
+ * @param componentsSchemas Dictionary of component schemas.
+ * @returns The envelope schema object.
+ */
+function buildEnvelope(schemaVal: unknown, key: 'data' | 'error', componentsSchemas: Record<string, unknown>) {
+    const description = key === 'data' ? 'The wrapped response data.' : 'The wrapped error details.',
+        example = resolveExample(schemaVal, componentsSchemas),
+        hasRef = typeof schemaVal === 'object' && schemaVal !== null && '$ref' in schemaVal,
+        property = hasRef
+            ? { type: getSchemaType(schemaVal, componentsSchemas), description, example, allOf: [schemaVal] }
+            : { ...(schemaVal as Record<string, unknown>), description, example };
+
+    return {
+        type: 'object',
+        properties: { [key]: property },
+        required: [key],
+    };
+}
+
+/**
+ * Resolves a schema's underlying data type, following $ref pointers if necessary.
  *
  * @param schema The schema or schema reference to evaluate.
  * @param componentsSchemas Dictionary of component schemas.
- * @returns The resolved type name (e.g., 'object', 'string').
+ * @returns The resolved type name (e.g. 'object', 'string').
  */
 function getSchemaType(schema: unknown, componentsSchemas: Record<string, unknown>): string {
     if (!schema || typeof schema !== 'object') {
@@ -242,12 +217,12 @@ function getSchemaType(schema: unknown, componentsSchemas: Record<string, unknow
 }
 
 /**
- * Recursively extracts or builds an example payload matching the structure of a given schema.
- * Resolves properties and references to ensure validity.
+ * Builds an example payload for a schema, following $ref pointers and recursing into
+ * arrays and object properties.
  *
- * @param schema The schema object to inspect.
+ * @param schema The schema to inspect.
  * @param componentsSchemas Dictionary of component schemas.
- * @returns An example object representing the schema shape.
+ * @returns An example matching the schema shape, or null when none can be derived.
  */
 function resolveExample(schema: unknown, componentsSchemas: Record<string, unknown>): unknown {
     if (!schema || typeof schema !== 'object') {
@@ -297,10 +272,10 @@ function resolveExample(schema: unknown, componentsSchemas: Record<string, unkno
 }
 
 /**
- * Post-processes component schemas to align Swagger models with class-validator configurations.
- * Forbids extra properties for objects, extracts x-force-required tags, and forces min properties for PATCH models.
+ * Aligns component schemas with runtime validation: forbids extra properties on objects,
+ * promotes x-force-required tags, and forces minProperties on PATCH models.
  *
- * @param componentsSchemas Dictionary of component schemas to process in-place.
+ * @param componentsSchemas Dictionary of component schemas, processed in place.
  */
 function postProcessComponents(componentsSchemas: Record<string, unknown>) {
     Object.keys(componentsSchemas).forEach((schemaName) => {
@@ -324,27 +299,4 @@ function postProcessComponents(componentsSchemas: Record<string, unknown>) {
             schema['minProperties'] = 1;
         }
     });
-}
-
-/**
- * Generates a static HTML template string configured to load Scalar API reference pointing to a local JSON file.
- *
- * @param jsonFilename Name of the static JSON specification file.
- * @param title Title of the documentation webpage.
- * @returns HTML document template string.
- */
-export function generateStaticScalarHtml(jsonFilename: string, title: string): string {
-    return `<!doctype html>
-<html>
-  <head>
-    <title>${title}</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>body { margin: 0; }</style>
-  </head>
-  <body>
-    <script id="api-reference" data-url="./${jsonFilename}" data-configuration='{ "showOperationId": true, "operationsSorter": "method" }'></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  </body>
-</html>`;
 }

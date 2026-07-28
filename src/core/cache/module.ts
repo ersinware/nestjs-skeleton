@@ -10,7 +10,7 @@ import Redis from 'ioredis';
 import { CacheCleanerAdapter } from 'src/core/cache/adapter/cache-cleaner.adapter';
 import { CacheHealthAdapter } from 'src/core/cache/adapter/cache-health.adapter';
 import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port';
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
 import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
@@ -26,7 +26,7 @@ import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/obse
     providers: [
         {
             inject: [ConfigService, TOKEN_LOGGER_PORT],
-            provide: TOKEN_CACHE_CLIENT,
+            provide: TOKEN_CACHE_CONNECTION,
             useFactory: (config: ConfigService, logger: ILoggerPort) =>
                 createRedisClient(
                     config,
@@ -37,7 +37,7 @@ import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/obse
                         password: ENV.REDIS_CACHE_PASSWORD,
                         tls: ENV.REDIS_CACHE_TLS,
                     },
-                    TOKEN_CACHE_CLIENT,
+                    TOKEN_CACHE_CONNECTION,
                 ),
         },
         {
@@ -53,7 +53,7 @@ import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/obse
             useClass: CacheHealthAdapter,
         },
     ],
-    exports: [TOKEN_CACHE_CLIENT, TOKEN_CACHE_PORT, TOKEN_CACHE_CLEANER_PORT, TOKEN_CACHE_HEALTH_PORT],
+    exports: [TOKEN_CACHE_PORT, TOKEN_CACHE_CLEANER_PORT, TOKEN_CACHE_HEALTH_PORT],
 })
 export class CacheModule implements OnApplicationShutdown {
     /**
@@ -61,7 +61,7 @@ export class CacheModule implements OnApplicationShutdown {
      *
      * @param cacheRedis The injected cache Redis client instance.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly cacheRedis: Redis) {}
+    constructor(@Inject(TOKEN_CACHE_CONNECTION) private readonly cacheRedis: Redis) {}
 
     /**
      * NestJS lifecycle hook called when the application is shutting down.

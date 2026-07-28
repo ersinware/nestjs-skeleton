@@ -1,40 +1,39 @@
 /**
  * @file api-default-ok-response-paginated.decorator.ts
- * @description Custom Swagger decorator to document generic offset-paginated responses.
+ * @description Swagger decorator documenting offset-paginated list responses.
  */
 
 import { applyDecorators, Type } from '@nestjs/common';
 import { ApiExtraModels, ApiOkResponse, ApiProperty, getSchemaPath, IntersectionType, OmitType } from '@nestjs/swagger';
-import { IsArray } from 'class-validator';
 import { ResponsePaginationDto } from 'src/core/http';
 
 /**
- * Custom Swagger decorator that documents a paginated list of a specific DTO model.
- * Dynamically creates a subclass of ResponsePaginationDto to allow Swagger and Scalar
- * to automatically resolve model examples and schemas.
- * @param options The configuration options including description and DTO model type.
- * @returns A decorator combining ApiExtraModels and ApiOkResponse.
+ * Documents a 200 response carrying a paginated list of the given DTO model.
+ * Builds a named ResponsePaginationDto subclass per model so Swagger and Scalar resolve
+ * item schemas and examples instead of showing an untyped list.
+ *
+ * @param options The response description and the item DTO model.
+ * @returns A decorator applying the paginated response metadata to a controller or method.
  */
 export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: {
     message: string;
-    type: T;
+    model: T;
 }): MethodDecorator & ClassDecorator {
-    const { message, type: model } = options,
+    const { message, model } = options,
         modelExample = getModelExample(model);
 
     /**
-     * Dynamic pagination metadata class that omits the raw items list.
+     * Pagination metadata with the untyped items list omitted.
      */
     class PaginationMetadata extends OmitType(ResponsePaginationDto, ['items'] as const) {}
 
     /**
-     * Dynamic items wrapper class.
+     * Items list typed against the given model's schema.
      */
     class PaginatedItems {
         /**
          * The list of items on the current page.
          */
-        @IsArray({ message: 'Items must be an array.' })
         @ApiProperty({
             type: 'array',
             items: { $ref: getSchemaPath(model) },
@@ -45,7 +44,7 @@ export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: 
     }
 
     /**
-     * Combined dynamic paginated response intersection type.
+     * Complete paginated response: pagination metadata plus the typed items list.
      */
     class PaginatedResponse extends IntersectionType(PaginationMetadata, PaginatedItems) {}
 
@@ -63,21 +62,24 @@ export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: 
 }
 
 /**
- * Swagger model properties metadata structure.
+ * Shape of the Swagger property metadata read via Reflect.
  */
 type SwaggerPropertyMetadata = {
     /**
-     * The resolved type definition (string constructor or function getter).
+     * The property type: a constructor, or a lazy getter for forward references.
      */
     type?: unknown;
+
     /**
      * Indicates if the property has an array type.
      */
     isArray?: boolean;
+
     /**
      * Indicates if the property is a required field.
      */
     required?: boolean;
+
     /**
      * The raw example value registered on the property.
      */
@@ -85,11 +87,11 @@ type SwaggerPropertyMetadata = {
 };
 
 /**
- * Extracts a mock example object from a DTO class using Reflect metadata.
- * Resolves properties recursively if nested DTO classes are defined.
+ * Builds an example object for a DTO class from its Swagger property metadata,
+ * recursing into nested DTO classes.
  *
- * @param target The target DTO constructor.
- * @returns A mock object representing the class schema.
+ * @param target The DTO constructor to build the example from.
+ * @returns The example object, or null when no property yields a value.
  */
 function getModelExample(target: Type<unknown>): Record<string, unknown> | null {
     if (!target || !target.prototype) {
