@@ -78,7 +78,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 sub,
             );
         } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.NOT_FOUND)) {
+            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw new UnauthenticatedException();
             }
 

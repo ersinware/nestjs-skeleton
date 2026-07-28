@@ -1,12 +1,12 @@
 /**
  * @file user-integration-event.enum.ts
- * @description Cross-module integration events raised *about* a user by a bounded context other than the
- * user module (e.g. auth). Kept in `shared/domain` so both the publisher and the user-module subscriber
- * reference the same contract without an illegal module-to-module import.
+ * @description Cross-module integration events raised about a user by another bounded context.
  */
 
 /**
- * Integration events about a user, published by another bounded context and consumed by the user module.
+ * Integration events about a user, published by another bounded context (e.g. auth) and consumed
+ * by the user module. Kept in `shared/domain` so publisher and subscriber reference the same
+ * contract without an illegal module-to-module import.
  */
 export enum UserIntegrationEvent {
     /**

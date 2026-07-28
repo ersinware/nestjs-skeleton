@@ -25,7 +25,7 @@ export enum ResourceConflictMessage {
  * or a lost concurrency race.
  */
 export class ResourceConflictException extends AppException {
-    override readonly kind = ExceptionKind.CONFLICT;
+    override readonly kind = ExceptionKind.RESOURCE_CONFLICT;
 
     /**
      * Creates the exception.

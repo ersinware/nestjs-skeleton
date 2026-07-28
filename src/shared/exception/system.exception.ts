@@ -13,14 +13,14 @@ export enum SystemMessage {
     /**
      * Default internal failure message, deliberately generic so no internal detail leaks to clients.
      */
-    DEFAULT = 'An unexpected internal server error occurred.',
+    DEFAULT = 'An unexpected internal error occurred.',
 }
 
 /**
  * Signals an unexpected internal failure with no more specific category.
  */
 export class SystemException extends AppException {
-    override readonly kind = ExceptionKind.INTERNAL;
+    override readonly kind = ExceptionKind.SYSTEM;
 
     /**
      * Creates the exception.

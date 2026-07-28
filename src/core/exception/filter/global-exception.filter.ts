@@ -25,13 +25,13 @@ import {
  * falling through to a silent default at runtime.
  */
 const KIND_TO_STATUS: Record<ExceptionKind, HttpStatus> = {
-    [ExceptionKind.NOT_FOUND]: HttpStatus.NOT_FOUND,
-    [ExceptionKind.CONFLICT]: HttpStatus.CONFLICT,
+    [ExceptionKind.RESOURCE_NOT_FOUND]: HttpStatus.NOT_FOUND,
+    [ExceptionKind.RESOURCE_CONFLICT]: HttpStatus.CONFLICT,
     [ExceptionKind.UNAUTHENTICATED]: HttpStatus.UNAUTHORIZED,
     [ExceptionKind.ACCESS_DENIED]: HttpStatus.FORBIDDEN,
     [ExceptionKind.INVALID_INPUT]: HttpStatus.BAD_REQUEST,
     [ExceptionKind.DEPENDENCY_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
-    [ExceptionKind.INTERNAL]: HttpStatus.INTERNAL_SERVER_ERROR,
+    [ExceptionKind.SYSTEM]: HttpStatus.INTERNAL_SERVER_ERROR,
 };
 
 /**

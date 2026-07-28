@@ -4,13 +4,13 @@
  */
 
 /**
- * Payload every `@OnEvent` listener receives for a dispatched domain event. Distinct from the raised
- * `DomainEvent`: it omits `type` (the listener already knows it via `@OnEvent`) and adds `eventId` for
- * consumer-side idempotency. `aggregateId` is the id of the aggregate that raised the event (a re-fetch
- * key, per the minimal-payload rule); `eventId` is unique per dispatch and is used as the idempotency
- * key by consumers whose side effects are harmful to repeat.
+ * Payload every `@OnEvent` listener receives. Distinct from the raised `DomainEvent`: it omits
+ * `type` (the listener already knows it via `@OnEvent`) and adds `eventId`.
  */
 export type DispatchedDomainEvent = {
+    /** Id of the aggregate that raised the event — the re-fetch key, per the minimal-payload rule. */
     readonly aggregateId: string;
+
+    /** Unique per dispatch; the idempotency key for consumers whose side effects are harmful to repeat. */
     readonly eventId: string;
 };

@@ -7,14 +7,9 @@ import { AggregateRoot } from 'src/shared/domain/aggregate-root/aggregate-root';
 import { SystemException } from 'src/shared/exception';
 
 /**
- * Base class for Aggregate Roots that are soft-deleted rather than removed.
- *
- * Owns `deletedAt` the way `AggregateRoot` owns `id`: subclasses keep it out of their own props, so
- * the timestamp has exactly one home and a mutator cannot leave a stale copy behind.
- *
- * Opt-in on purpose: soft deletion is a domain decision, not a property of every aggregate, so it
- * sits here instead of on `AggregateRoot` — an aggregate that is genuinely deleted extends the plain
- * base and never learns about `deletedAt`.
+ * Base class for Aggregate Roots that are soft-deleted rather than removed. Owns `deletedAt` the way
+ * `AggregateRoot` owns `id`, so the timestamp has exactly one home. Opt-in on purpose: soft deletion
+ * is a domain decision, not a property of every aggregate, so it does not sit on `AggregateRoot`.
  */
 export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
     private _deletedAt: Date | null;
@@ -38,8 +33,8 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
     }
 
     /**
-     * Stamps the deletion timestamp. Subclasses call this from their own `markAsDeleted`, which
-     * stays theirs to own: the surrounding state changes and the emitted event differ per aggregate.
+     * Stamps the deletion timestamp. Subclasses call this from their own `markAsDeleted`, which stays
+     * theirs to own: the surrounding state changes and the emitted event differ per aggregate.
      *
      * @param deletedAt The moment the aggregate was deleted
      */

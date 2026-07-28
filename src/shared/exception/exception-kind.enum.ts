@@ -9,10 +9,10 @@
  */
 export enum ExceptionKind {
     /** The requested resource does not exist or is not visible to the caller. */
-    NOT_FOUND = 'NOT_FOUND',
+    RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
 
     /** The request conflicts with the current state of the resource (e.g. duplicate data, lost race). */
-    CONFLICT = 'CONFLICT',
+    RESOURCE_CONFLICT = 'RESOURCE_CONFLICT',
 
     /** The caller is not authenticated or presented invalid credentials. */
     UNAUTHENTICATED = 'UNAUTHENTICATED',
@@ -27,5 +27,5 @@ export enum ExceptionKind {
     DEPENDENCY_UNAVAILABLE = 'DEPENDENCY_UNAVAILABLE',
 
     /** An unexpected internal failure with no more specific category. */
-    INTERNAL = 'INTERNAL',
+    SYSTEM = 'SYSTEM',
 }

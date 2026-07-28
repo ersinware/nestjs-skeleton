@@ -50,7 +50,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
         try {
             user = await this.identityReaderPort.getCredentialsByEmail(IdentityRealm.USER, command.email);
         } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.NOT_FOUND)) {
+            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw this.denyLogin(AuthRejectionReason.ACCOUNT_NOT_FOUND);
             }
 
