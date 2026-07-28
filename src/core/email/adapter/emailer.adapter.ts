@@ -1,26 +1,26 @@
 /**
  * @file emailer.adapter.ts
- * @description Service wrapping the Google OAuth2 Gmail API email dispatch logic.
+ * @description Gmail API adapter dispatching email via Google OAuth2.
  */
 
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { google } from 'googleapis';
-import { ENV, Environment } from 'src/core/config';
-import type { EmailPayload } from 'src/core/email/email-payload.type';
-import type { IEmailerPort } from 'src/core/email/port/emailer.port';
+import { google, type gmail_v1 } from 'googleapis';
+import { ENV } from 'src/core/config';
+import type { EmailPayload, IEmailerPort } from 'src/core/email/port/emailer.port';
 
 /**
- * Service wrapper for interacting with the Google Gmail API using OAuth2 authentication.
+ * Emailer sending through the Google Gmail API, authenticated via an OAuth2 refresh token.
  */
 @Injectable()
 export class EmailerAdapter implements IEmailerPort {
-    private readonly gmail;
+    private readonly gmail: gmail_v1.Gmail;
 
     /**
-     * Creates an instance of EmailerAdapter.
+     * Builds the authenticated Gmail client once; credentials are read here so a missing
+     * variable fails at boot, not on the first send.
      *
-     * @param configService Configuration client to retrieve Google OAuth2 credentials.
+     * @param configService Source of the Google OAuth2 credentials.
      */
     constructor(private readonly configService: ConfigService) {
         const oauth2Client = new google.auth.OAuth2(
@@ -33,17 +33,11 @@ export class EmailerAdapter implements IEmailerPort {
     }
 
     /**
-     * Sends an HTML email via the Google Gmail API.
+     * Sends an HTML email via the Gmail API.
      *
-     * @param data The email job data containing recipient, subject, and body
+     * @param data The recipient, subject, and body of the email
      */
     async sendEmail(data: EmailPayload) {
-        if (this.configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST) {
-            // Bypass sending real emails in test/CI environments, E2E tests, and automated fuzzing (Schemathesis)
-            // to prevent Google Gmail API quota exhaustion and account rate-limiting/suspension.
-            return;
-        }
-
         await this.gmail.users.messages.send({
             userId: 'me',
             requestBody: {
@@ -53,10 +47,11 @@ export class EmailerAdapter implements IEmailerPort {
     }
 
     /**
-     * Formats email components into a base64url-encoded RFC 2822 raw message.
+     * Assembles the RFC 2822 raw message the Gmail API expects: headers and HTML body,
+     * base64url-encoded without padding.
      *
-     * @param data The email job data containing recipient, subject, and body
-     * @returns The base64url encoded RFC 2822 message string.
+     * @param data The recipient, subject, and body of the email
+     * @returns The base64url-encoded raw message.
      */
     private buildRawEmail(data: EmailPayload): string {
         return Buffer.from(
@@ -69,10 +64,6 @@ export class EmailerAdapter implements IEmailerPort {
                 '',
                 data.body,
             ].join('\r\n'),
-        )
-            .toString('base64')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
+        ).toString('base64url');
     }
 }

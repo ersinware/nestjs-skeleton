@@ -1,22 +1,35 @@
 /**
  * @file emailer.port.ts
- * @description Contract for the MailerService used to send emails.
+ * @description Outbound contract for sending transactional emails, with its payload shape.
  */
-import type { EmailPayload } from 'src/core/email/email-payload.type';
 
 /**
- * Dependency injection token representing the mailer service contract interface.
+ * Injection token binding {@link IEmailerPort} to its adapter.
  */
 export const TOKEN_EMAILER_PORT = Symbol('TOKEN_EMAILER_PORT');
 
 /**
- * Contract for sending transactional emails through the configured provider.
+ * Data required to send one email.
+ */
+export type EmailPayload = {
+    /** The target recipient email address. */
+    to: string;
+
+    /** The email subject. */
+    subject: string;
+
+    /** The HTML body of the email. */
+    body: string;
+};
+
+/**
+ * Contract for sending transactional emails, keeping the provider swappable behind the port.
  */
 export interface IEmailerPort {
     /**
      * Sends an email.
      *
-     * @param data The email job data containing recipient, subject, and body
+     * @param data The recipient, subject, and body of the email
      * @throws {Error} The raw provider error when the send fails.
      */
     sendEmail(data: EmailPayload): Promise<void>;
