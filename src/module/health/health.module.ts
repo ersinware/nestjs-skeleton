@@ -8,6 +8,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { CacheModule } from 'src/core/cache';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
+import { SessionModule } from 'src/core/security/session';
 import { GetHealthStatusQueryHandler } from 'src/module/health/application/query/get-health-status/handler';
 import { TOKEN_GET_HEALTH_STATUS_PORT } from 'src/module/health/application/query/get-health-status/port';
 import { HealthReaderAdapter } from 'src/module/health/infrastructure/adapter/health-reader.adapter';
@@ -22,6 +23,7 @@ import { HealthController } from 'src/module/health/presentation/controller/heal
         CqrsPipelineModule,
         DatabaseModule,
         CacheModule,
+        SessionModule,
         TerminusModule.forRoot({
             logger: false,
         }),

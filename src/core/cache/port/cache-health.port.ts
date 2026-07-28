@@ -1,6 +1,6 @@
 /**
- * @file cache-health-indicator.interface.ts
- * @description Interface defining the contract for verifying health check on cache databases.
+ * @file cache-health.port.ts
+ * @description Contract for verifying the health of the cache connection.
  */
 
 /**
@@ -8,11 +8,14 @@
  */
 export const TOKEN_CACHE_HEALTH_PORT = Symbol('TOKEN_CACHE_HEALTH_PORT');
 
+/**
+ * Contract for probing the cache connection, consumed by the health indicators.
+ */
 export interface ICacheHealthPort {
     /**
-     * Sends a ping query to verify connection to both cache and state instances.
+     * Sends a ping to verify connection to the cache instance.
      *
-     * @returns A promise that resolves on query success, or rejects if query fails.
+     * @returns A promise that resolves on success, or rejects when the cache is unreachable.
      */
     ping(): Promise<void>;
 }

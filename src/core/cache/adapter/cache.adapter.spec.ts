@@ -1,6 +1,6 @@
 /**
  * @file cache.adapter.spec.ts
- * @description Unit tests for the Redis cache service.
+ * @description Unit tests for the Redis cache adapter.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -13,8 +13,6 @@ describe('CacheAdapter', () => {
         get: vi.fn(),
         set: vi.fn(),
         del: vi.fn(),
-        scan: vi.fn(),
-        exists: vi.fn(),
     };
 
     let adapter: CacheAdapter;
@@ -199,96 +197,6 @@ describe('CacheAdapter', () => {
         it('should throw an error if key is empty', async () => {
             await expect(adapter.delete('')).rejects.toThrow(Error);
             expect(mockRedis.del).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('deletePattern', () => {
-        const cursorStart = '0';
-
-        it('should scan and delete matching keys in a single page', async () => {
-            const pattern = 'prefix:*',
-                keys = ['key1', 'key2'];
-
-            mockRedis.scan.mockResolvedValueOnce([cursorStart, keys]);
-            mockRedis.del.mockResolvedValueOnce(2);
-
-            await expect(adapter.deletePattern(pattern)).resolves.toBeUndefined();
-            expect(mockRedis.scan).toHaveBeenCalledWith(cursorStart, 'MATCH', pattern, 'COUNT', 100);
-            expect(mockRedis.del).toHaveBeenCalledWith(...keys);
-        });
-
-        it('should scan and delete matching keys across multiple pages', async () => {
-            const pattern = 'prefix:*',
-                key1 = 'key1',
-                key2 = 'key2',
-                nextCursor = '123';
-
-            mockRedis.scan.mockResolvedValueOnce([nextCursor, [key1]]).mockResolvedValueOnce([cursorStart, [key2]]);
-            mockRedis.del.mockResolvedValue(1);
-
-            await expect(adapter.deletePattern(pattern)).resolves.toBeUndefined();
-            expect(mockRedis.scan).toHaveBeenNthCalledWith(1, cursorStart, 'MATCH', pattern, 'COUNT', 100);
-            expect(mockRedis.scan).toHaveBeenNthCalledWith(2, nextCursor, 'MATCH', pattern, 'COUNT', 100);
-            expect(mockRedis.del).toHaveBeenNthCalledWith(1, key1);
-            expect(mockRedis.del).toHaveBeenNthCalledWith(2, key2);
-        });
-
-        it('should not call del when no keys are returned by scan', async () => {
-            const pattern = 'prefix:*';
-
-            mockRedis.scan.mockResolvedValueOnce([cursorStart, []]);
-
-            await expect(adapter.deletePattern(pattern)).resolves.toBeUndefined();
-            expect(mockRedis.scan).toHaveBeenCalledWith(cursorStart, 'MATCH', pattern, 'COUNT', 100);
-            expect(mockRedis.del).not.toHaveBeenCalled();
-        });
-
-        it('should swallow the error silently when Redis client throws (fail-open)', async () => {
-            const pattern = 'prefix:*';
-            const error = new Error('Redis scan failed');
-
-            mockRedis.scan.mockRejectedValueOnce(error);
-
-            await expect(adapter.deletePattern(pattern)).resolves.toBeUndefined();
-        });
-
-        it('should throw an error if pattern is empty', async () => {
-            await expect(adapter.deletePattern('')).rejects.toThrow(Error);
-            expect(mockRedis.scan).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('exists', () => {
-        it('should return true when exists call returns greater than 0', async () => {
-            const key = 'test_key';
-
-            mockRedis.exists.mockResolvedValueOnce(1);
-
-            expect(await adapter.exists(key)).toBe(true);
-            expect(mockRedis.exists).toHaveBeenCalledWith(key);
-        });
-
-        it('should return false when exists call returns 0', async () => {
-            const key = 'non_existent_key';
-
-            mockRedis.exists.mockResolvedValueOnce(0);
-
-            expect(await adapter.exists(key)).toBe(false);
-            expect(mockRedis.exists).toHaveBeenCalledWith(key);
-        });
-
-        it('should return false silently when Redis client throws an error (fail-open)', async () => {
-            const key = 'test_key';
-            const error = new Error('Redis exists failed');
-
-            mockRedis.exists.mockRejectedValueOnce(error);
-
-            expect(await adapter.exists(key)).toBe(false);
-        });
-
-        it('should throw an error if key is empty', async () => {
-            await expect(adapter.exists('')).rejects.toThrow(Error);
-            expect(mockRedis.exists).not.toHaveBeenCalled();
         });
     });
 });

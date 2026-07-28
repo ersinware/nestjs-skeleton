@@ -1,15 +1,15 @@
 /**
- * @file adapter.ts
+ * @file session.adapter.ts
  * @description Service responsible for managing user and admin sessions directly in Redis.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
-import type { ISessionPort } from 'src/core/security/session/port';
+import type { ISessionPort } from 'src/core/security/session/port/session.port';
 import { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
+import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token';
 import { SystemException } from 'src/shared/exception';
 
 /**
@@ -63,7 +63,7 @@ export class SessionAdapter implements ISessionPort {
      * @param configService Configuration reader service.
      */
     constructor(
-        @Inject(TOKEN_CACHE_STATE_CLIENT) private readonly redis: Redis,
+        @Inject(TOKEN_STATE_CLIENT) private readonly redis: Redis,
         private readonly configService: ConfigService,
     ) {}
 

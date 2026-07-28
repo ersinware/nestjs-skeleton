@@ -71,22 +71,24 @@ export class ResponseHealthyDto {
 function createHealthDetailsSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database', 'cache'],
+        required: ['memory_heap', 'memory_rss', 'database', 'cache', 'state'],
         properties: {
             memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
             database: createHealthyIndicator('Database connection indicator status.'),
             cache: createHealthyIndicator('Cache connection indicator status.'),
+            state: createHealthyIndicator('State store connection indicator status.'),
         },
         additionalProperties: false,
-        minProperties: 4,
-        maxProperties: 4,
+        minProperties: 5,
+        maxProperties: 5,
         description,
         example: {
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },
             database: { status: 'up' },
             cache: { status: 'up' },
+            state: { status: 'up' },
         },
     };
 }

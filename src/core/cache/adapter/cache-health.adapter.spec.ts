@@ -1,20 +1,17 @@
 /**
- * @file redis-health.indicator.spec.ts
- * @description Unit tests for the Redis cache health indicator service.
+ * @file cache-health.adapter.spec.ts
+ * @description Unit tests for the Redis cache health adapter.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheHealthAdapter } from 'src/core/cache/adapter/cache-health.adapter';
-import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('CacheHealthAdapter', () => {
     const mockCacheRedis = {
-            ping: vi.fn(),
-        },
-        mockStateRedis = {
-            ping: vi.fn(),
-        };
+        ping: vi.fn(),
+    };
 
     let adapter: CacheHealthAdapter;
 
@@ -25,10 +22,6 @@ describe('CacheHealthAdapter', () => {
                 {
                     provide: TOKEN_CACHE_CLIENT,
                     useValue: mockCacheRedis,
-                },
-                {
-                    provide: TOKEN_CACHE_STATE_CLIENT,
-                    useValue: mockStateRedis,
                 },
             ],
         }).compile();
@@ -41,29 +34,18 @@ describe('CacheHealthAdapter', () => {
     });
 
     describe('ping', () => {
-        it('should call ping on both Redis clients successfully', async () => {
+        it('should call ping on the cache Redis client successfully', async () => {
             mockCacheRedis.ping.mockResolvedValueOnce('PONG');
-            mockStateRedis.ping.mockResolvedValueOnce('PONG');
 
             await expect(adapter.ping()).resolves.toBeUndefined();
             expect(mockCacheRedis.ping).toHaveBeenCalledTimes(1);
-            expect(mockStateRedis.ping).toHaveBeenCalledTimes(1);
         });
 
-        it('should throw an error if Redis Cache ping rejects', async () => {
+        it('should throw an error if Redis ping rejects', async () => {
             mockCacheRedis.ping.mockRejectedValueOnce(new Error());
-            mockStateRedis.ping.mockResolvedValueOnce('PONG');
 
             await expect(adapter.ping()).rejects.toThrow(Error);
             expect(mockCacheRedis.ping).toHaveBeenCalledTimes(1);
-        });
-
-        it('should throw an error if Redis State ping rejects', async () => {
-            mockCacheRedis.ping.mockResolvedValueOnce('PONG');
-            mockStateRedis.ping.mockRejectedValueOnce(new Error());
-
-            await expect(adapter.ping()).rejects.toThrow(Error);
-            expect(mockStateRedis.ping).toHaveBeenCalledTimes(1);
         });
     });
 });

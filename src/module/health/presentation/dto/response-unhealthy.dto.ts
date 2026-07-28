@@ -71,9 +71,10 @@ function createUnhealthyInfoSchema(description: string): Record<string, unknown>
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
             database: createHealthyIndicator('Database connection indicator status.'),
             cache: createHealthyIndicator('Cache connection indicator status.'),
+            state: createHealthyIndicator('State store connection indicator status.'),
         },
         minProperties: 0,
-        maxProperties: 4,
+        maxProperties: 5,
         additionalProperties: false,
         description,
         example: {
@@ -108,6 +109,7 @@ function createUnhealthyErrorSchema(description: string): Record<string, unknown
             ),
             database: createErrorIndicator('Database connection indicator status.', 'Database connection failed.'),
             cache: createErrorIndicator('Cache connection indicator status.', 'Cache connection failed.'),
+            state: createErrorIndicator('State store connection indicator status.', 'State store connection failed.'),
         },
         additionalProperties: false,
         description,
@@ -168,7 +170,7 @@ function createErrorIndicator(description: string, exampleMessage: string): Reco
 function createUnhealthyDetailsSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database', 'cache'],
+        required: ['memory_heap', 'memory_rss', 'database', 'cache', 'state'],
         properties: {
             memory_heap: createDetailIndicator(
                 'Heap memory usage indicator status.',
@@ -186,10 +188,15 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
                 'Database connection failed.',
             ),
             cache: createDetailIndicator('Cache connection indicator status.', 'down', 'Cache connection failed.'),
+            state: createDetailIndicator(
+                'State store connection indicator status.',
+                'down',
+                'State store connection failed.',
+            ),
         },
         additionalProperties: false,
-        minProperties: 4,
-        maxProperties: 4,
+        minProperties: 5,
+        maxProperties: 5,
         description,
         example: {
             memory_heap: { status: 'up' },

@@ -1,6 +1,6 @@
 /**
  * @file cache-cleaner.port.ts
- * @description Interface defining the contract for cleaning cache databases.
+ * @description Contract for resetting the cache between E2E test cycles.
  */
 
 /**
@@ -8,9 +8,12 @@
  */
 export const TOKEN_CACHE_CLEANER_PORT = Symbol('TOKEN_CACHE_CLEANER_PORT');
 
+/**
+ * Contract for wiping the cache wholesale, so test cycles start from a clean slate.
+ */
 export interface ICacheCleanerPort {
     /**
-     * Flushes all keys from the cache and state.
+     * Flushes all keys from the cache.
      *
      * @returns A promise resolving on execution success.
      */
