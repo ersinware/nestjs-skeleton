@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import type { IStateHealthPort } from 'src/core/security/session/port/state-health.port';
-import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token';
+import { TOKEN_STATE_CONNECTION } from 'src/core/security/session/state-connection.token';
 
 /**
  * State health indicator implementation that queries the client via ping to verify connection.
@@ -18,7 +18,7 @@ export class StateHealthAdapter implements IStateHealthPort {
      *
      * @param stateRedis Configured state Redis client instance.
      */
-    constructor(@Inject(TOKEN_STATE_CLIENT) private readonly stateRedis: Redis) {}
+    constructor(@Inject(TOKEN_STATE_CONNECTION) private readonly stateRedis: Redis) {}
 
     /**
      * Sends a ping query to verify connection to the state Redis instance.

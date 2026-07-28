@@ -3,5 +3,9 @@
  * @description Public entry point of the pagination concern. Nothing outside may import past this barrel.
  */
 
-export * from 'src/shared/pagination/pagination-params.type';
-export * from 'src/shared/pagination/pagination.constant';
+export type { PaginationParams } from 'src/shared/pagination/pagination-params.type';
+export {
+    PAGINATION_DEFAULT_LIMIT,
+    PAGINATION_DEFAULT_PAGE,
+    PAGINATION_MAX_OFFSET,
+} from 'src/shared/pagination/pagination.constant';

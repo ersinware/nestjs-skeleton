@@ -64,7 +64,7 @@ export class AdminController {
         description:
             'Retrieves administrator accounts with pagination. Requires super administrator-level authorization.',
     })
-    @ApiDefaultOkResponsePaginated({ message: 'Admins successfully retrieved.', type: ResponseAdminDto })
+    @ApiDefaultOkResponsePaginated({ message: 'Admins successfully retrieved.', model: ResponseAdminDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     async findAll(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<ResponseAdminDto>> {
         const { data, total } = await this.queryPipeline.execute(new ListAdminsQuery(query));

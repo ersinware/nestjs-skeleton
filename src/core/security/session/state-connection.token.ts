@@ -1,5 +1,5 @@
 /**
- * @file state-client.token.ts
+ * @file state-connection.token.ts
  * @description Dependency injection token for the state (session store) Redis client.
  */
 
@@ -8,4 +8,4 @@
  * State is not a cache: it is the authoritative store for sessions, so it lives with the
  * session concern that owns it.
  */
-export const TOKEN_STATE_CLIENT = Symbol('TOKEN_STATE_CLIENT');
+export const TOKEN_STATE_CONNECTION = Symbol('TOKEN_STATE_CONNECTION');

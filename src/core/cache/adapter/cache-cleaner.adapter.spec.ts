@@ -5,7 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheCleanerAdapter } from 'src/core/cache/adapter/cache-cleaner.adapter';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('CacheCleanerAdapter', () => {
@@ -20,7 +20,7 @@ describe('CacheCleanerAdapter', () => {
             providers: [
                 CacheCleanerAdapter,
                 {
-                    provide: TOKEN_CACHE_CLIENT,
+                    provide: TOKEN_CACHE_CONNECTION,
                     useValue: mockCacheRedis,
                 },
             ],

@@ -47,7 +47,7 @@ class TestController {
      * Dummy endpoint method.
      */
     @Get()
-    @ApiDefaultOkResponsePaginated({ message: 'Test pagination description.', type: FlatTestDto })
+    @ApiDefaultOkResponsePaginated({ message: 'Test pagination description.', model: FlatTestDto })
     findAll() {}
 }
 
@@ -95,7 +95,7 @@ describe('ApiDefaultOkResponsePaginated', () => {
     it('should generate the correct dynamic class name and strip the Dto suffix', () => {
         const decorators = ApiDefaultOkResponsePaginated({
             message: 'Success description',
-            type: FlatTestDto,
+            model: FlatTestDto,
         });
         expect(decorators).toBeDefined();
 
@@ -117,7 +117,7 @@ describe('ApiDefaultOkResponsePaginated', () => {
     });
 
     it('should resolve metadata examples correctly for flat DTOs', () => {
-        const decorators = ApiDefaultOkResponsePaginated({ message: 'Success', type: FlatTestDto }),
+        const decorators = ApiDefaultOkResponsePaginated({ message: 'Success', model: FlatTestDto }),
             descriptorMock = { value: () => {} };
 
         decorators(TestController.prototype, 'findAll', descriptorMock);
@@ -147,7 +147,7 @@ describe('ApiDefaultOkResponsePaginated', () => {
     });
 
     it('should resolve metadata examples recursively for nested DTOs', () => {
-        const decorators = ApiDefaultOkResponsePaginated({ message: 'Success', type: NestedTestDto }),
+        const decorators = ApiDefaultOkResponsePaginated({ message: 'Success', model: NestedTestDto }),
             descriptorMock = { value: () => {} };
 
         decorators(TestController.prototype, 'findAll', descriptorMock);

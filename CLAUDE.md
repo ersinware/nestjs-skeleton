@@ -204,6 +204,7 @@ The only test: _does an outsider import from here, and are the inner files off-l
 
 - **Yes → add the barrel, and then NOBODY may deep-import past it.** A barrel used alongside deep imports into the same folder closes nothing.
 - **No → do not add one.** A barrel nobody imports from is one more file to maintain.
+- **A barrel exports by NAME, never `export *`, and lists only the consumed surface** — the export list IS the concern's public API, so it must be readable as one. Export what outsiders consume, plus what is deliberately designed for them to consume later; internal wiring (adapters, behavior classes, connection tokens) never crosses, even though its own file exports it.
 
 | Level                                                                                                                                 | Barrel? | Why                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -279,6 +280,8 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 - **Several causes** → pass nothing; the generic `DEFAULT` is correct — naming one of five reasons documents the endpoint as if the other four did not exist.
 
 Never invent a per-endpoint message enum to enumerate causes — the client branches on the status code, and the body already carries the specific message at runtime.
+
+**`core/doc` knowing the module tag names (`APITag` + per-version descriptions in `doc.config.ts`) is a deliberate, narrow concession** — like the health-route constants (§ Route & Prefix Literals): document composition sees the whole API by nature, and keying the config by tag and version makes a new module or version fail compilation until its description exists.
 
 ### Health Probes
 

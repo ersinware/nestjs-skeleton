@@ -20,7 +20,7 @@ import { LoggerModule } from 'src/core/observability/logger';
  * Dependency injection token for the raw postgres.js connection pool. Module-private: consumers see
  * only the Drizzle client; the raw pool exists solely to be wrapped and closed on shutdown.
  */
-const TOKEN_POSTGRES_CONNECTION = Symbol('TOKEN_POSTGRES_CONNECTION');
+const TOKEN_DATABASE_CONNECTION = Symbol('TOKEN_DATABASE_CONNECTION');
 
 /**
  * Provides the Drizzle database client and the database health port to other modules.
@@ -29,7 +29,7 @@ const TOKEN_POSTGRES_CONNECTION = Symbol('TOKEN_POSTGRES_CONNECTION');
     imports: [LoggerModule],
     providers: [
         {
-            provide: TOKEN_POSTGRES_CONNECTION,
+            provide: TOKEN_DATABASE_CONNECTION,
             useFactory: (configService: ConfigService) => {
                 return postgres(configService.getOrThrow<string>(ENV.DATABASE_URL), {
                     max: configService.getOrThrow<number>(ENV.DATABASE_POOL_SIZE),
@@ -41,7 +41,7 @@ const TOKEN_POSTGRES_CONNECTION = Symbol('TOKEN_POSTGRES_CONNECTION');
             inject: [ConfigService],
         },
         {
-            inject: [TOKEN_POSTGRES_CONNECTION],
+            inject: [TOKEN_DATABASE_CONNECTION],
             provide: TOKEN_DATABASE_CLIENT,
             useFactory: (pgConnection: postgres.Sql): PostgresJsDatabase => drizzle(pgConnection),
         },
@@ -60,7 +60,7 @@ export class DatabaseModule implements OnApplicationShutdown {
     /**
      * @param pg Raw connection pool.
      */
-    constructor(@Inject(TOKEN_POSTGRES_CONNECTION) private readonly pg: postgres.Sql) {}
+    constructor(@Inject(TOKEN_DATABASE_CONNECTION) private readonly pg: postgres.Sql) {}
 
     /**
      * Closes every pooled connection gracefully on application shutdown.

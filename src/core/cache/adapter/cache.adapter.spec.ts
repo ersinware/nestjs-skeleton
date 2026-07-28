@@ -5,7 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('CacheAdapter', () => {
@@ -22,7 +22,7 @@ describe('CacheAdapter', () => {
             providers: [
                 CacheAdapter,
                 {
-                    provide: TOKEN_CACHE_CLIENT,
+                    provide: TOKEN_CACHE_CONNECTION,
                     useValue: mockRedis,
                 },
             ],

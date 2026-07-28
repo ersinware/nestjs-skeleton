@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import type { IStateCleanerPort } from 'src/core/security/session/port/state-cleaner.port';
-import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token';
+import { TOKEN_STATE_CONNECTION } from 'src/core/security/session/state-connection.token';
 
 /**
  * State store cleaner utility flushing keys to reset sessions during test suites.
@@ -18,7 +18,7 @@ export class StateCleanerAdapter implements IStateCleanerPort {
      *
      * @param stateRedis Configured state Redis client instance.
      */
-    constructor(@Inject(TOKEN_STATE_CLIENT) private readonly stateRedis: Redis) {}
+    constructor(@Inject(TOKEN_STATE_CONNECTION) private readonly stateRedis: Redis) {}
 
     /**
      * Flushes all keys from the state Redis instance.

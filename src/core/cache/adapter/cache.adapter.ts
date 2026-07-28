@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import type { ICachePort } from 'src/core/cache/port/cache.port';
 import { SystemException } from 'src/shared/exception';
 
@@ -27,7 +27,7 @@ export class CacheAdapter implements ICachePort {
      *
      * @param redis The injected Redis client.
      */
-    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly redis: Redis) {}
+    constructor(@Inject(TOKEN_CACHE_CONNECTION) private readonly redis: Redis) {}
 
     /**
      * Gets a key's value from Redis, parsing JSON values automatically.

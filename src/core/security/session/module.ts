@@ -16,7 +16,7 @@ import { StateHealthAdapter } from 'src/core/security/session/adapter/state-heal
 import { TOKEN_SESSION_PORT } from 'src/core/security/session/port/session.port';
 import { TOKEN_STATE_CLEANER_PORT } from 'src/core/security/session/port/state-cleaner.port';
 import { TOKEN_STATE_HEALTH_PORT } from 'src/core/security/session/port/state-health.port';
-import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token';
+import { TOKEN_STATE_CONNECTION } from 'src/core/security/session/state-connection.token';
 
 /**
  * Module responsible for configuring and exposing session management capabilities on the state store.
@@ -26,7 +26,7 @@ import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token
     providers: [
         {
             inject: [ConfigService, TOKEN_LOGGER_PORT],
-            provide: TOKEN_STATE_CLIENT,
+            provide: TOKEN_STATE_CONNECTION,
             useFactory: (config: ConfigService, logger: ILoggerPort) =>
                 createRedisClient(
                     config,
@@ -37,7 +37,7 @@ import { TOKEN_STATE_CLIENT } from 'src/core/security/session/state-client.token
                         password: ENV.REDIS_STATE_PASSWORD,
                         tls: ENV.REDIS_STATE_TLS,
                     },
-                    TOKEN_STATE_CLIENT,
+                    TOKEN_STATE_CONNECTION,
                 ),
         },
         {
@@ -61,7 +61,7 @@ export class SessionModule implements OnApplicationShutdown {
      *
      * @param stateRedis The injected state Redis client instance.
      */
-    constructor(@Inject(TOKEN_STATE_CLIENT) private readonly stateRedis: Redis) {}
+    constructor(@Inject(TOKEN_STATE_CONNECTION) private readonly stateRedis: Redis) {}
 
     /**
      * NestJS lifecycle hook called when the application is shutting down.

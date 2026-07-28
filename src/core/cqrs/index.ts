@@ -1,9 +1,6 @@
 /**
  * @file index.ts
- * @description Public entry point of the cqrs pipeline concern. Nothing outside may import past this
- * barrel, and only the contract surface crosses it: the pipelines every edge dispatches through, the
- * wiring module, and the opt-in query/command interfaces. Behavior classes, behavior interfaces and
- * the composition tokens are internal wiring bound by the module via deep import.
+ * @description Public entry point of the cqrs concern. Nothing outside may import past this barrel.
  */
 
 export { type ICacheInvalidatingCommand } from 'src/core/cqrs/cache-invalidation.behavior';
