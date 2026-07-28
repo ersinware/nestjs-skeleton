@@ -1,21 +1,20 @@
 /**
  * @file database-cleaner.port.ts
- * @description Interface contract for database schema cleaning operations during testing.
+ * @description Outbound port for wiping database state between test runs.
  */
 
 /**
- * Dependency injection token representing the database cleaner utility.
+ * Dependency injection token for the database cleaner port.
  */
 export const TOKEN_DATABASE_CLEANER_PORT = Symbol('TOKEN_DATABASE_CLEANER_PORT');
 
 /**
- * Interface defining operations to truncate and reset database tables.
+ * Outbound port for resetting all application-owned database tables. Test-only: resolved from the
+ * container by the E2E suite, never injected by application code.
  */
 export interface IDatabaseCleanerPort {
     /**
-     * Resets database tables by truncating and restarting identity sequences.
-     *
-     * @returns A promise that resolves when the database has been successfully cleaned.
+     * Truncates every application-owned table so each test run starts from an empty database.
      */
     cleanup(): Promise<void>;
 }

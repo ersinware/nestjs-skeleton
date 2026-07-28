@@ -7,7 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE, isUniqueViolation } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, isUniqueViolation } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
@@ -24,7 +24,7 @@ export class UserWriterAdapter implements IUserWriterPort {
      * @param eventBusPort The in-process bus the aggregate's domain events are dispatched on
      */
     constructor(
-        @Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase,
         @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
     ) {}
 

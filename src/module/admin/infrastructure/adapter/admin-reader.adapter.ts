@@ -7,7 +7,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { type IGetAdminAccessProjectionPort } from 'src/module/admin/application/query/get-admin-access-projection/port';
 import { type GetAdminAccessProjectionResult } from 'src/module/admin/application/query/get-admin-access-projection/query';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
@@ -39,7 +39,7 @@ export class AdminReaderAdapter
      *
      * @param db The PostgresJs database instance
      */
-    constructor(@Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
 
     /**
      * Reads an admin's active status and current session version by ID.

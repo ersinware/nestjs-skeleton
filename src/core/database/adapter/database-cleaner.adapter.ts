@@ -1,39 +1,40 @@
 /**
  * @file database-cleaner.adapter.ts
- * @description Implementation of PostgreSQL database cleaning operations for end-to-end testing environments.
+ * @description PostgreSQL adapter of the database cleaner port, wiping table state between test runs.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
+import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import type { IDatabaseCleanerPort } from 'src/core/database/port/database-cleaner.port';
 
 /**
- * PostgreSQL database cleaner utility executing truncation queries to reset table states during test suites.
+ * PostgreSQL implementation of the database cleaner port, truncating all application tables.
  */
 @Injectable()
 export class DatabaseCleanerAdapter implements IDatabaseCleanerPort {
-    /**
-     * Creates an instance of PostgresCleanerAdapter.
-     *
-     * @param db Drizzle database client instance.
-     */
-    constructor(@Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
 
     /**
-     * Dynamically truncates all tables in the public schema and restarts their identity sequences.
-     * This ensures all database state is reset between tests without hardcoding table names.
+     * Truncates every table outside the PostgreSQL system schemas and Drizzle's migration
+     * bookkeeping. Discovering schemas at runtime keeps the cleaner correct as bounded contexts add
+     * their own logical schemas. No `CASCADE`/`RESTART IDENTITY`: modules link by plain UUID columns
+     * (no FK constraints) and keys are UUIDs (no identity sequences), so both clauses would be dead
+     * weight.
      *
-     * @throws {Error} If the database query execution fails.
+     * @throws {Error} If the truncation query fails.
      */
     async cleanup() {
         await this.db.execute(sql`
             DO $$ DECLARE
                 r RECORD;
             BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
+                FOR r IN (
+                    SELECT schemaname, tablename FROM pg_tables
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'drizzle')
+                ) LOOP
+                    EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename);
                 END LOOP;
             END $$;
         `);

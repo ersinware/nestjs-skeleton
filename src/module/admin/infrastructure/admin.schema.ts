@@ -4,20 +4,26 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { aggregateTimestamps } from 'src/core/database';
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**
+ * The PostgreSQL logical schema owned by the admin bounded context. Only this module may read or
+ * write objects inside it.
+ */
+export const adminSchema = pgSchema('admin');
+
+/**
  * Drizzle ORM enum for admin roles.
  */
-export const adminRoleEnum = pgEnum('admin_role', [AdminRole.ADMIN, AdminRole.SUPER_ADMIN]);
+export const adminRoleEnum = adminSchema.enum('admin_role', [AdminRole.ADMIN, AdminRole.SUPER_ADMIN]);
 
 /**
  * The Drizzle ORM table definition for the 'admins' table.
  */
-export const admin = pgTable(
-    'admin.admin',
+export const admin = adminSchema.table(
+    'admin',
     {
         /**
          * Primary key as UUID v7.

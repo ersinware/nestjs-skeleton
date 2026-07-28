@@ -7,7 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE, isUniqueViolation } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, isUniqueViolation } from 'src/core/database';
 import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
@@ -28,7 +28,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * @param eventBusPort The in-process bus the aggregate's domain events are dispatched on
      */
     constructor(
-        @Inject(TOKEN_DATABASE) readonly db: PostgresJsDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) readonly db: PostgresJsDatabase,
         @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
     ) {}
 
