@@ -8,6 +8,7 @@
         "resolveJsonModule": true,
         "baseUrl": "./",
         "ignoreDeprecations": "6.0",
+        "rootDir": "./",
         "outDir": "./dist",
         "declaration": true,
         "sourceMap": true,

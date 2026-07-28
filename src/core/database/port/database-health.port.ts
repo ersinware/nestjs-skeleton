@@ -1,21 +1,21 @@
 /**
  * @file database-health.port.ts
- * @description Interface defining the contract for verifying database connectivity status.
+ * @description Outbound port for verifying database connectivity.
  */
 
 /**
- * Dependency injection token representing the database health check validator.
+ * Dependency injection token for the database health port.
  */
 export const TOKEN_DATABASE_HEALTH_PORT = Symbol('TOKEN_DATABASE_HEALTH_PORT');
 
 /**
- * Outbound port for performing database health checks.
+ * Outbound port for verifying that the database accepts queries.
  */
 export interface IDatabaseHealthPort {
     /**
-     * Sends a ping query to verify connection to the database.
+     * Verifies connectivity with a trivial query.
      *
-     * @returns A promise that resolves on query success, or rejects if query fails.
+     * @throws {Error} The raw driver error when the database is unreachable.
      */
     ping(): Promise<void>;
 }

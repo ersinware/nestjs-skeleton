@@ -4,14 +4,20 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { aggregateTimestamps } from 'src/core/database';
+
+/**
+ * The PostgreSQL logical schema owned by the user bounded context. Only this module may read or
+ * write objects inside it.
+ */
+export const userSchema = pgSchema('user');
 
 /**
  * The Drizzle ORM table definition for the 'users' table.
  */
-export const user = pgTable(
-    'user.user',
+export const user = userSchema.table(
+    'user',
     {
         /**
          * Primary key as UUID v7.

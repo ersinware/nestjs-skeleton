@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { type IGetUserAccessProjectionPort } from 'src/module/user/application/query/get-user-access-projection/port';
 import { type GetUserAccessProjectionResult } from 'src/module/user/application/query/get-user-access-projection/query';
 import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
@@ -30,7 +30,7 @@ export class UserReaderAdapter
         IGetUserCredentialsByEmailPort,
         IListUsersPort
 {
-    constructor(@Inject(TOKEN_DATABASE) private readonly db: PostgresJsDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
 
     async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
         const row = (

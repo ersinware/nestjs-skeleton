@@ -1,11 +1,11 @@
 /**
- * @file postgres-cleaner.adapter.spec.ts
- * @description Unit tests for the PostgreSQL database cleaner service.
+ * @file database-cleaner.adapter.spec.ts
+ * @description Unit tests for the PostgreSQL database cleaner adapter.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { DatabaseCleanerAdapter } from 'src/core/database/adapter/database-cleaner.adapter';
-import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
+import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('PostgresCleanerAdapter', () => {
@@ -20,7 +20,7 @@ describe('PostgresCleanerAdapter', () => {
             providers: [
                 DatabaseCleanerAdapter,
                 {
-                    provide: TOKEN_DATABASE,
+                    provide: TOKEN_DATABASE_CLIENT,
                     useValue: mockDb,
                 },
             ],

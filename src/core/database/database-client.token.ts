@@ -1,11 +1,9 @@
 /**
  * @file database-client.token.ts
- * @description Database-related configuration constants and dependency injection tokens.
+ * @description Dependency injection token for the database client.
  */
 
 /**
- * Dependency injection token representing the configured Drizzle ORM database client.
+ * Dependency injection token for the configured Drizzle ORM database client.
  */
-export const TOKEN_DATABASE = Symbol('TOKEN_DATABASE');
-
-export const CLS_TRANSACTION_KEY = Symbol('CLS_TRANSACTION_KEY');
+export const TOKEN_DATABASE_CLIENT = Symbol('TOKEN_DATABASE_CLIENT');

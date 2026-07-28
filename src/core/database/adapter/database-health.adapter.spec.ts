@@ -1,11 +1,11 @@
 /**
  * @file database-health.adapter.spec.ts
- * @description Unit tests for the PostgreSQL database health indicator service.
+ * @description Unit tests for the PostgreSQL database health adapter.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health.adapter';
-import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
+import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import { ConnectionLogMessage, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,7 +27,7 @@ describe('PostgresHealthIndicatorAdapter', () => {
             providers: [
                 DatabaseHealthAdapter,
                 {
-                    provide: TOKEN_DATABASE,
+                    provide: TOKEN_DATABASE_CLIENT,
                     useValue: mockDb,
                 },
                 {

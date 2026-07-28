@@ -1,7 +1,7 @@
 /**
- * @file database.module.ts
- * @description NestJS module establishing database connections and configuring Drizzle ORM.
- * Connects to PostgreSQL using postgres.js and manages connections gracefully across the application lifecycle.
+ * @file module.ts
+ * @description NestJS module wiring the PostgreSQL connection pool, the Drizzle ORM client, and the
+ * database ports, and closing the pool on application shutdown.
  */
 
 import { Inject, Module, OnApplicationShutdown } from '@nestjs/common';
@@ -11,24 +11,25 @@ import postgres from 'postgres';
 import { ENV } from 'src/core/config';
 import { DatabaseCleanerAdapter } from 'src/core/database/adapter/database-cleaner.adapter';
 import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health.adapter';
-import { TOKEN_DATABASE } from 'src/core/database/database-client.token';
+import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import { TOKEN_DATABASE_CLEANER_PORT } from 'src/core/database/port/database-cleaner.port';
 import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database/port/database-health.port';
 import { LoggerModule } from 'src/core/observability/logger';
 
 /**
- * Dependency injection token representing the raw postgres.js client connection pool.
+ * Dependency injection token for the raw postgres.js connection pool. Module-private: consumers see
+ * only the Drizzle client; the raw pool exists solely to be wrapped and closed on shutdown.
  */
-const TOKEN_DATABASE_CLIENT = Symbol('TOKEN_DATABASE_CLIENT');
+const TOKEN_POSTGRES_CONNECTION = Symbol('TOKEN_POSTGRES_CONNECTION');
 
 /**
- * Database module providing database clients to other modules.
+ * Provides the Drizzle database client and the database health port to other modules.
  */
 @Module({
     imports: [LoggerModule],
     providers: [
         {
-            provide: TOKEN_DATABASE_CLIENT,
+            provide: TOKEN_POSTGRES_CONNECTION,
             useFactory: (configService: ConfigService) => {
                 return postgres(configService.getOrThrow<string>(ENV.DATABASE_URL), {
                     max: configService.getOrThrow<number>(ENV.DATABASE_POOL_SIZE),
@@ -40,14 +41,8 @@ const TOKEN_DATABASE_CLIENT = Symbol('TOKEN_DATABASE_CLIENT');
             inject: [ConfigService],
         },
         {
-            inject: [TOKEN_DATABASE_CLIENT],
-            provide: TOKEN_DATABASE,
-            /**
-             * Drizzle ORM client factory.
-             *
-             * @param pgConnection Raw PostgreSQL client connection pool.
-             * @returns A PostgresJsDatabase instance.
-             */
+            inject: [TOKEN_POSTGRES_CONNECTION],
+            provide: TOKEN_DATABASE_CLIENT,
             useFactory: (pgConnection: postgres.Sql): PostgresJsDatabase => drizzle(pgConnection),
         },
         {
@@ -59,19 +54,16 @@ const TOKEN_DATABASE_CLIENT = Symbol('TOKEN_DATABASE_CLIENT');
             useClass: DatabaseHealthAdapter,
         },
     ],
-    exports: [TOKEN_DATABASE, TOKEN_DATABASE_CLEANER_PORT, TOKEN_DATABASE_HEALTH_PORT],
+    exports: [TOKEN_DATABASE_CLIENT, TOKEN_DATABASE_HEALTH_PORT],
 })
 export class DatabaseModule implements OnApplicationShutdown {
     /**
-     * Creates an instance of DatabaseModule.
-     *
-     * @param pg Raw PostgreSQL client connection pool.
+     * @param pg Raw connection pool.
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly pg: postgres.Sql) {}
+    constructor(@Inject(TOKEN_POSTGRES_CONNECTION) private readonly pg: postgres.Sql) {}
 
     /**
-     * NestJS lifecycle hook called when the application is shutting down.
-     * Ensures all active connections in the PostgreSQL client pool are closed gracefully.
+     * Closes every pooled connection gracefully on application shutdown.
      */
     async onApplicationShutdown() {
         await this.pg.end();
