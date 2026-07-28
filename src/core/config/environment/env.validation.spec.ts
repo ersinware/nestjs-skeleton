@@ -1,11 +1,11 @@
 /**
- * @file env.validation.config.spec.ts
+ * @file env.validation.spec.ts
  * @description Unit tests for environment variable validation and type transformation.
  */
 
 import 'reflect-metadata';
-import { Environment } from 'src/core/config/environment/environment.enum';
-import { EnvironmentVariables, validateConfig } from 'src/core/config/environment/environment.validation';
+import { EnvironmentVariables, validateConfig } from 'src/core/config/environment/env.validation';
+import { Environment } from 'src/core/config/environment/node-env.enum';
 import { TrackerEnvironment } from 'src/core/observability/tracker';
 import { describe, expect, it } from 'vitest';
 
