@@ -3,6 +3,7 @@
 *.tsbuildinfo
 .act-artifacts
 .agents
+.claude
 .dockerignore
 .DS_Store
 .env
@@ -27,6 +28,7 @@
 .vscode
 build
 CHANGELOG.md
+CLAUDE.md
 coverage
 dist
 docker-compose.*.yml
@@ -41,8 +43,10 @@ node_modules
 npm-debug.log*
 pnpm-debug.log*
 README.md
-scripts
+script
 test
 Thumbs.db
+vitest.config.e2e.mts
+vitest.config.mts
 yarn-debug.log*
 yarn-error.log*

@@ -8,6 +8,7 @@
 .act-artifacts
 .c9/
 .cache
+.claude/settings.local.json
 .classpath
 .DS_Store
 .env
