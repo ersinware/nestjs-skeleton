@@ -39,7 +39,7 @@
         "build:ci": "npm run build && npm run build:client",
         "lint:contract": "spectral lint dist/docs/swagger-v1.json --ruleset .spectral.yml",
         "test:contract": "schemathesis run dist/docs/swagger-v1.json --url http://localhost:3000 --checks not_a_server_error --suppress-health-check=filter_too_much",
-        "audit": "audit-ci --high",
+        "audit": "audit-ci --config audit-ci.jsonc",
         "ci:local": "act --artifact-server-path ./.act-artifacts --env-file .env.test",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
@@ -114,6 +114,12 @@
     },
     "overrides": {
         "esbuild": "0.28.1",
-        "js-yaml": "^4.2.0"
+        "js-yaml": "^4.2.0",
+        "find-my-way": "^9.7.0",
+        "gaxios": "^7.3.0",
+        "postcss": "^8.5.23",
+        "minimatch@>=10": {
+            "brace-expansion": "^5.0.8"
+        }
     }
 }
