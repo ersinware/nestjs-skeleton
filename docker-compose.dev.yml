@@ -1,3 +1,9 @@
+# Development overrides for the API container.
+#
+# The source tree is bind-mounted and the container runs `nest start --watch`, so a CODE change needs
+# no image rebuild — which is why `docker:dev:up` deliberately does NOT pass `--build`. Only a
+# dependency change does, and that is what `docker:dev:build` (and the `develop.watch` rules below)
+# are for.
 services:
     api:
         build:
@@ -5,9 +11,6 @@ services:
 
         env_file:
             - .env
-
-        environment:
-            NODE_OPTIONS: '--max-old-space-size=4096'
 
         ports:
             - '127.0.0.1:3000:3000'
