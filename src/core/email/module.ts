@@ -1,20 +1,29 @@
 /**
- * @file email.module.ts
- * @description NestJS module wiring the Gmail API adapter behind the emailer port.
+ * @file module.ts
+ * @description NestJS module binding the emailer port to an adapter chosen by environment.
  */
 
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ENV, Environment } from 'src/core/config';
 import { EmailerAdapter } from 'src/core/email/adapter/emailer.adapter';
+import { NoopEmailerAdapter } from 'src/core/email/adapter/noop-emailer.adapter';
 import { TOKEN_EMAILER_PORT } from 'src/core/email/port/emailer.port';
 
 /**
- * Module responsible for exposing email delivery to the rest of the application.
+ * Exposes email delivery to the rest of the application. The environment decides the
+ * binding: test gets the no-op adapter (no Gmail credentials required, no quota spent),
+ * every other environment gets the Gmail adapter.
  */
 @Module({
     providers: [
         {
             provide: TOKEN_EMAILER_PORT,
-            useClass: EmailerAdapter,
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) =>
+                configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST
+                    ? new NoopEmailerAdapter()
+                    : new EmailerAdapter(configService),
         },
     ],
     exports: [TOKEN_EMAILER_PORT],
