@@ -7,6 +7,9 @@ import type { GetAdminEmailAndNameResult } from 'src/module/admin/application/qu
 
 export const TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT = Symbol('TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT');
 
+/**
+ * Thin read contract for fetching an admin's email and name read-model.
+ */
 export interface IGetAdminEmailAndNamePort {
     /**
      * Retrieves only the email and name of a non-deleted admin by ID.

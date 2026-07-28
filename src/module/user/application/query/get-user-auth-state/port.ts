@@ -7,6 +7,9 @@ import type { GetUserAuthStateResult } from 'src/module/user/application/query/g
 
 export const TOKEN_GET_USER_AUTH_STATE_PORT = Symbol('TOKEN_GET_USER_AUTH_STATE_PORT');
 
+/**
+ * Thin read contract for fetching a user's authentication-state read-model.
+ */
 export interface IGetUserAuthStatePort {
     /**
      * Reads a user's authentication state (active status + session version) by their unique identifier.

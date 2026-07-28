@@ -9,6 +9,12 @@ import { Command } from '@nestjs/cqrs';
  * Command to log in a user using email and password.
  */
 export class LoginUserCommand extends Command<LoginUserResult> {
+    /**
+     * Initializes the command payload.
+     *
+     * @param email The user's email address
+     * @param password The plain-text password to verify
+     */
     constructor(
         readonly email: string,
         readonly password: string,

@@ -15,7 +15,7 @@ export interface ICacheCleanerPort {
     /**
      * Flushes all keys from the cache.
      *
-     * @returns A promise resolving on execution success.
+     * @throws {Error} The raw driver error when the flush fails.
      */
     cleanup(): Promise<void>;
 }

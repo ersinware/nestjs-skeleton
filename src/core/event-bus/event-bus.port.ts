@@ -15,6 +15,8 @@ export interface IEventBusPort {
      *
      * @param event The name of the event to emit.
      * @param payload The data associated with the event.
+     * @throws {Error} Whatever a listener rejects with — awaiting delivery propagates listener
+     * failures to the emitter.
      */
     emitAsync(event: string, payload: unknown): Promise<void>;
 }

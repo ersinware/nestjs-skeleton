@@ -16,10 +16,10 @@ import { ResponsePaginationDto } from 'src/core/http';
  * @returns A decorator combining ApiExtraModels and ApiOkResponse.
  */
 export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: {
-    description: string;
+    message: string;
     type: T;
 }): MethodDecorator & ClassDecorator {
-    const { description, type: model } = options,
+    const { message, type: model } = options,
         modelExample = getModelExample(model);
 
     /**
@@ -56,7 +56,7 @@ export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: 
     return applyDecorators(
         ApiExtraModels(model, PaginatedResponse),
         ApiOkResponse({
-            description,
+            description: message,
             type: PaginatedResponse,
         }),
     );

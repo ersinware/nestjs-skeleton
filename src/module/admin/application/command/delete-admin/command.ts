@@ -12,6 +12,11 @@ import { CacheKeys } from 'src/module/admin/application/admin-cache-key.util';
  * removes the account from every read, so it evicts the auth-state read.
  */
 export class DeleteAdminCommand extends Command<void> implements ICacheInvalidatingCommand {
+    /**
+     * Initializes the command payload.
+     *
+     * @param id The unique identifier of the admin to delete
+     */
     constructor(readonly id: string) {
         super();
     }

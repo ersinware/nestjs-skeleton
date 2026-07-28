@@ -15,6 +15,8 @@ export const TOKEN_DATABASE_CLEANER_PORT = Symbol('TOKEN_DATABASE_CLEANER_PORT')
 export interface IDatabaseCleanerPort {
     /**
      * Truncates every application-owned table so each test run starts from an empty database.
+     *
+     * @throws {Error} The raw driver error when the truncation fails.
      */
     cleanup(): Promise<void>;
 }

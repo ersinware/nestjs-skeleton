@@ -7,6 +7,9 @@ import { GetAdminAccessProjectionResult } from 'src/module/admin/application/que
 
 export const TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT = Symbol('TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT');
 
+/**
+ * Thin read contract for fetching the access-control projection of an admin.
+ */
 export interface IGetAdminAccessProjectionPort {
     /**
      * Reads the access-control projection of an admin by id without the soft-delete filter, so a

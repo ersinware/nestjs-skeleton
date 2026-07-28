@@ -29,6 +29,15 @@ import {
  */
 @CommandHandler(LoginAdminCommand)
 export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param identityReaderPort The port used to read the admin's credentials
+     * @param hashingPort The port used to verify the password
+     * @param tokenPort The port used to generate the token pair
+     * @param sessionPort The port used to open the refresh session
+     * @param auditPort The port used to record the login decision
+     */
     constructor(
         @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,

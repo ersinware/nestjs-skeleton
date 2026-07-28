@@ -7,12 +7,17 @@ import type { RotateOutcome } from 'src/core/security/session/rotate-outcome.enu
 
 export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
+/**
+ * Contract for managing refresh sessions and session versions in the state store.
+ */
 export interface ISessionPort {
     /**
      * Registers a new refresh session for a principal in the cache.
      *
      * @param id The principal identifier.
      * @param jti The unique JWT ID of the refresh token.
+     * @throws {SystemException} When the configured session TTL format cannot be parsed — a
+     * configuration bug that must surface as 500.
      */
     openSession(id: string, jti: string): Promise<void>;
 
@@ -36,6 +41,8 @@ export interface ISessionPort {
      * @param oldJti The JWT ID of the refresh token being rotated away.
      * @param newJti The JWT ID of the newly issued refresh token.
      * @returns The rotation outcome the caller must react to.
+     * @throws {SystemException} When a configured TTL format cannot be parsed — a configuration
+     * bug that must surface as 500.
      */
     rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome>;
 
@@ -53,6 +60,8 @@ export interface ISessionPort {
      *
      * @param id The principal identifier.
      * @param version The candidate session version (the aggregate's monotonic version counter).
+     * @throws {SystemException} When the configured version TTL format cannot be parsed — a
+     * configuration bug that must surface as 500.
      */
     setVersion(id: string, version: number): Promise<void>;
 

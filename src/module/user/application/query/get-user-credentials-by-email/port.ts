@@ -7,6 +7,9 @@ import type { GetUserCredentialsByEmailResult } from 'src/module/user/applicatio
 
 export const TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT = Symbol('TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT');
 
+/**
+ * Thin read contract for fetching a user's credential read-model by email.
+ */
 export interface IGetUserCredentialsByEmailPort {
     /**
      * Retrieves credential fields for a user by their email address.

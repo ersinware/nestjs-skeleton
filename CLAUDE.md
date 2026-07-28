@@ -343,6 +343,7 @@ Every file MUST start with `@file` + `@description`, and `@file` MUST match the 
 - Comments state the present design rationale only — never project history or past refactors (that is git's job).
 - `@param` MUST NOT include TypeScript types.
 - `@throws {ExceptionType}` in curly braces.
+- **`@throws` lives on the INTERFACE method** — the contract, not the implementation, owns failure semantics — and documents only CONTRACT-level throws: deliberate taxonomy exceptions, reject-on-failure semantics (health/cleaner pings), library errors the caller must catch. Never tag the ubiquitous "an untranslated raw infra error may escape as 500 + Sentry" per method — that is every port's shared unexpected path, and tagging it is noise.
 - No `@returns` on `void`/`Promise<void>` methods.
 - Decorator functions returning a decorator: describe the value, not the raw type.
 

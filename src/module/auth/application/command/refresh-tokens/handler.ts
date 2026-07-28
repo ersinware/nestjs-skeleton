@@ -38,6 +38,15 @@ import { uuidv7 } from 'uuidv7';
  */
 @CommandHandler(RefreshTokensCommand)
 export class RefreshTokensCommandHandler implements ICommandHandler<RefreshTokensCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param tokenPort The port used to verify the old and generate the new token pair
+     * @param identityReaderPort The port used to read the principal's auth state
+     * @param sessionPort The port used to atomically rotate the refresh session
+     * @param eventBusPort The port used to publish the reuse-detection event
+     * @param auditPort The port used to record refresh-reuse decisions
+     */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,

@@ -22,6 +22,12 @@ import { uuidv7 } from 'uuidv7';
  */
 @CommandHandler(CreateAdminCommand)
 export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param adminWriterPort The port used to persist the admin aggregate
+     * @param hashingPort The port used to hash the generated password
+     */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,

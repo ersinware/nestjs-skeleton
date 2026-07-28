@@ -47,7 +47,7 @@ class TestController {
      * Dummy endpoint method.
      */
     @Get()
-    @ApiDefaultOkResponsePaginated({ description: 'Test pagination description.', type: FlatTestDto })
+    @ApiDefaultOkResponsePaginated({ message: 'Test pagination description.', type: FlatTestDto })
     findAll() {}
 }
 
@@ -94,7 +94,7 @@ type SwaggerPropertyMetadata = {
 describe('ApiDefaultOkResponsePaginated', () => {
     it('should generate the correct dynamic class name and strip the Dto suffix', () => {
         const decorators = ApiDefaultOkResponsePaginated({
-            description: 'Success description',
+            message: 'Success description',
             type: FlatTestDto,
         });
         expect(decorators).toBeDefined();
@@ -117,7 +117,7 @@ describe('ApiDefaultOkResponsePaginated', () => {
     });
 
     it('should resolve metadata examples correctly for flat DTOs', () => {
-        const decorators = ApiDefaultOkResponsePaginated({ description: 'Success', type: FlatTestDto }),
+        const decorators = ApiDefaultOkResponsePaginated({ message: 'Success', type: FlatTestDto }),
             descriptorMock = { value: () => {} };
 
         decorators(TestController.prototype, 'findAll', descriptorMock);
@@ -147,7 +147,7 @@ describe('ApiDefaultOkResponsePaginated', () => {
     });
 
     it('should resolve metadata examples recursively for nested DTOs', () => {
-        const decorators = ApiDefaultOkResponsePaginated({ description: 'Success', type: NestedTestDto }),
+        const decorators = ApiDefaultOkResponsePaginated({ message: 'Success', type: NestedTestDto }),
             descriptorMock = { value: () => {} };
 
         decorators(TestController.prototype, 'findAll', descriptorMock);

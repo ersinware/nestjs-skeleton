@@ -9,6 +9,9 @@ import type { AuthRole } from 'src/shared/domain/auth-role';
 
 export const TOKEN_TOKEN_PORT = Symbol('TOKEN_TOKEN_PORT');
 
+/**
+ * Contract for generating and verifying JWT access and refresh tokens.
+ */
 export interface ITokenPort {
     /**
      * Generates a signed JWT access token.
@@ -50,6 +53,8 @@ export interface ITokenPort {
      *
      * @param token The JWT access token string.
      * @returns The parsed access token payload.
+     * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
+     * `TokenExpiredError` (a subclass) when it is expired.
      */
     verifyAccessToken(token: string): Promise<AccessTokenPayload>;
 
@@ -58,6 +63,8 @@ export interface ITokenPort {
      *
      * @param token The JWT refresh token string.
      * @returns The parsed refresh token payload.
+     * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
+     * `TokenExpiredError` (a subclass) when it is expired.
      */
     verifyRefreshToken(token: string): Promise<RefreshTokenPayload>;
 }

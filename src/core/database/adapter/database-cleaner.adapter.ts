@@ -14,6 +14,11 @@ import type { IDatabaseCleanerPort } from 'src/core/database/port/database-clean
  */
 @Injectable()
 export class DatabaseCleanerAdapter implements IDatabaseCleanerPort {
+    /**
+     * Initializes the cleaner with the database connection.
+     *
+     * @param db The PostgresJs database instance
+     */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
 
     /**

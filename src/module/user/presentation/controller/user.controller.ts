@@ -60,6 +60,12 @@ import { ResourceConflictMessage } from 'src/shared/exception';
 @ApiTags('user')
 @ApiDefaultInternalServerErrorResponse()
 export class UserController {
+    /**
+     * Initializes the controller with the command and query pipelines.
+     *
+     * @param commandPipeline The CQRS command pipeline (invalidation behavior applies)
+     * @param queryPipeline The CQRS query pipeline (caching behavior applies)
+     */
     constructor(
         private readonly commandPipeline: CommandPipeline,
         private readonly queryPipeline: QueryPipeline,
@@ -104,7 +110,7 @@ export class UserController {
         description:
             'Retrieves registered users with pagination and optional search query. Requires administrator-level authorization.',
     })
-    @ApiDefaultOkResponsePaginated({ description: 'Users successfully retrieved.', type: ResponseUserDto })
+    @ApiDefaultOkResponsePaginated({ message: 'Users successfully retrieved.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()

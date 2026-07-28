@@ -15,6 +15,12 @@ import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all
  */
 @CommandHandler(LogoutAllCommand)
 export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand> {
+    /**
+     * Initializes the handler with the required ports.
+     *
+     * @param sessionPort The port used to close every refresh session
+     * @param auditPort The port used to record the logout
+     */
     constructor(
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,

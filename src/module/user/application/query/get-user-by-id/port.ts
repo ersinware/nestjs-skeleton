@@ -7,6 +7,9 @@ import type { GetUserByIdResult } from 'src/module/user/application/query/get-us
 
 export const TOKEN_GET_USER_BY_ID_PORT = Symbol('TOKEN_GET_USER_BY_ID_PORT');
 
+/**
+ * Thin read contract for fetching a single user's read-model by identifier.
+ */
 export interface IGetUserByIdPort {
     /**
      * Retrieves the public user read-model by their unique identifier.

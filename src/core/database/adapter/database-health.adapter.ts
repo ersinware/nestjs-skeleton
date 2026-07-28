@@ -23,6 +23,12 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
      */
     private isDown = false;
 
+    /**
+     * Initializes the probe with the database connection and the logger.
+     *
+     * @param db The PostgresJs database instance
+     * @param loggerPort The port the outage transitions are logged on
+     */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase,
         @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,

@@ -9,6 +9,12 @@ import { Command } from '@nestjs/cqrs';
  * Command payload to create a new administrator.
  */
 export class CreateAdminCommand extends Command<CreateAdminResult> {
+    /**
+     * Initializes the command payload.
+     *
+     * @param email The email address of the new admin
+     * @param name The name of the new admin
+     */
     constructor(
         readonly email: string,
         readonly name: string,

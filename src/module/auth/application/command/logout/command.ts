@@ -9,6 +9,11 @@ import { Command } from '@nestjs/cqrs';
  * Command to log out a user or admin from the current device.
  */
 export class LogoutCommand extends Command<void> {
+    /**
+     * Initializes the command payload.
+     *
+     * @param refreshToken The refresh token identifying the session to terminate
+     */
     constructor(readonly refreshToken: string) {
         super();
     }
