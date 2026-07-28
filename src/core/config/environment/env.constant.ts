@@ -1,14 +1,14 @@
 /**
  * @file env.constant.ts
- * @description Type-safe constant map of environment variable names derived from the EnvironmentVariables validation class.
- * Ensures compile-time safety by enforcing exact key parity with the validation schema.
+ * @description Constant map of environment variable names, kept in exact key parity with the
+ * `EnvironmentVariables` validation class at compile time.
  */
 
-import type { EnvironmentVariables } from 'src/core/config/environment/environment.validation';
+import type { EnvironmentVariables } from 'src/core/config/environment/env.validation';
 
 /**
- * Compile-time-safe mapping of every declared environment variable name to its string key.
- * Adding or removing a property in `EnvironmentVariables` without updating this object will cause a TypeScript compilation error.
+ * Every declared environment variable name as a string key, for `ConfigService` lookups. Adding or
+ * removing a property in `EnvironmentVariables` without updating this object fails compilation.
  */
 export const ENV = {
     PORT: 'PORT',

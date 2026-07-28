@@ -1,44 +1,37 @@
 /**
- * @file env.validation.config.ts
- * @description Configuration file that manages the validation, type conversion, and verification of environment variables used across the application.
- * It prevents the application from starting with invalid or missing environment variables.
+ * @file env.validation.ts
+ * @description Declares every environment variable's contract and validates the raw environment at
+ * boot, so the application never starts with a missing or invalid variable.
  */
 
+import { applyDecorators } from '@nestjs/common';
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsNumber, IsString, Matches, Max, Min, validateSync } from 'class-validator';
-import { Environment } from 'src/core/config/environment/environment.enum';
+import { Environment } from 'src/core/config/environment/node-env.enum';
 import { TrackerEnvironment } from 'src/core/observability/tracker';
-
-/**
- * The one `TRUST_PROXY` value that is well-formed and unsafe, given its own constraint so the failure
- * explains the danger instead of merely reporting a shape mismatch.
- */
-const TRUST_PROXY_FORBIDDEN = /^(?!true$)/;
 
 /**
  * The two shapes this application accepts: `false`, or a comma-separated list of IPv4/IPv6
  * addresses, CIDR ranges and the named presets (`loopback`, `linklocal`, `uniquelocal`).
  *
- * Fastify would also take a trusted-HOP COUNT, and that form is deliberately excluded. A count is
- * positional and silent: it says "believe the second-from-last entry" without saying whose entry
- * that is, so inserting a CDN or a service-mesh sidecar shifts the resolved client IP to a different
- * hop and NOTHING fails — the audit record's `sourceIp` quietly starts naming the wrong party. A list is declarative: it names the machines actually operated, and any hop not on it is
- * simply not believed, whatever position it arrives in.
+ * Fastify would also take a trusted-HOP COUNT; that form is deliberately excluded. A count is
+ * positional: inserting a CDN or a service-mesh sidecar shifts which hop is believed and nothing
+ * fails — the audit record's `sourceIp` quietly starts naming the wrong party. A list names the
+ * machines actually operated; a hop not on it is never believed, whatever position it arrives in.
  *
  * The pattern is otherwise shape-only — the exact address grammar is proxy-addr's to enforce, and
- * duplicating it here would be a second parser to keep in step. What it owes the application is that
- * nothing outside these shapes, `true` above all, ever reaches the adapter.
+ * duplicating it here would be a second parser to keep in step. It only guarantees that nothing
+ * outside these shapes, `true` above all, ever reaches the adapter.
  */
 export const TRUST_PROXY_PATTERN =
     /^(?:false|(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal)(?:\s*,\s*(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal))*)$/;
 
 /**
- * Transforms string values representing booleans ('true', 'false') to actual booleans.
- * Note: Must be paired with `@Type(() => Object)` on the class property to bypass
- * class-transformer's eager casting that converts all non-empty strings (including 'false') to true.
+ * Transforms the strings 'true'/'false' to actual booleans, leaving any other value untouched for
+ * `@IsBoolean` to reject.
  *
  * @param params The transform parameter object.
- * @returns The converted boolean value, or the original value if not matching.
+ * @returns The converted boolean, or the original value if it is not a recognized boolean string.
  */
 function transformToBoolean<T>({ value }: { value: T }): boolean | T {
     if (value === 'true' || value === true) {
@@ -53,8 +46,26 @@ function transformToBoolean<T>({ value }: { value: T }): boolean | T {
 }
 
 /**
- * Environment variables DTO class used for validating environment variables.
- * `class-validator` decorators are used to enforce types and constraints on each variable.
+ * Validates a boolean environment variable arriving as the string 'true'/'false'.
+ *
+ * Bundles the three decorators the conversion needs so no future boolean variable can forget one:
+ * `@Type(() => Object)` bypasses class-transformer's eager casting that would turn every non-empty
+ * string (including 'false') into `true`, `@Transform` then maps the two accepted strings to real
+ * booleans, and `@IsBoolean` rejects everything else.
+ *
+ * @returns The composed property decorator.
+ */
+function IsEnvBoolean(): PropertyDecorator {
+    return applyDecorators(
+        Type(() => Object),
+        Transform(transformToBoolean),
+        IsBoolean(),
+    );
+}
+
+/**
+ * The contract of every environment variable the application declares, enforced with
+ * `class-validator` constraints at boot.
  */
 export class EnvironmentVariables {
     /**
@@ -73,13 +84,13 @@ export class EnvironmentVariables {
      * Which reverse-proxy hops in front of the app may be believed when they claim a client's IP.
      *
      * Every downstream decision keyed on "who made this request" — today the audit record's
-     * `sourceIp`, and any IP-keyed control added later — resolves to `request.ip`, which is derived
-     * from the `X-Forwarded-For` header. That header is client-writable, so trusting it blindly hands the client its own
+     * `sourceIp`, and any IP-keyed control added later — resolves to `request.ip`, derived from the
+     * client-writable `X-Forwarded-For` header; trusting it blindly hands the client its own
      * identity. Accepted values are `false` (no proxy) or a comma-separated list of proxy
      * IPs/CIDRs; both `true` and a bare hop count are rejected — see {@link TRUST_PROXY_PATTERN}.
      */
     @IsString()
-    @Matches(TRUST_PROXY_FORBIDDEN, {
+    @Matches(/^(?!true$)/, {
         message:
             'TRUST_PROXY must not be "true": it would believe every hop in X-Forwarded-For, letting any client spoof its own IP and so choose the sourceIp recorded against it. List the trusted proxy IPs/CIDRs instead.',
     })
@@ -140,10 +151,7 @@ export class EnvironmentVariables {
     /**
      * Flag to enable TLS for Redis Cache connection.
      */
-    // @Type(() => Object) is required to prevent class-transformer from eagerly casting 'false' to true.
-    @Type(() => Object)
-    @Transform(transformToBoolean)
-    @IsBoolean()
+    @IsEnvBoolean()
     readonly REDIS_CACHE_TLS!: boolean;
 
     /**
@@ -167,10 +175,7 @@ export class EnvironmentVariables {
     /**
      * Flag to enable TLS for Redis State connection.
      */
-    // @Type(() => Object) is required to prevent class-transformer from eagerly casting 'false' to true.
-    @Type(() => Object)
-    @Transform(transformToBoolean)
-    @IsBoolean()
+    @IsEnvBoolean()
     readonly REDIS_STATE_TLS!: boolean;
 
     /**
