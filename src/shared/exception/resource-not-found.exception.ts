@@ -20,7 +20,7 @@ export enum ResourceNotFoundMessage {
  * Signals that the requested resource does not exist or is not visible to the caller.
  */
 export class ResourceNotFoundException extends AppException {
-    override readonly kind = ExceptionKind.NOT_FOUND;
+    override readonly kind = ExceptionKind.RESOURCE_NOT_FOUND;
 
     /**
      * Creates the exception.

@@ -339,6 +339,8 @@ A downed dependency (Redis, Postgres) fails every call until it recovers, so the
 
 Every file MUST start with `@file` + `@description`, and `@file` MUST match the filename — a stale `@file` makes the file lie about itself, misleading search and review. All classes, interfaces, methods, and functions need JSDoc explaining _why_ they exist.
 
+- Comments carry only what a reader of the code needs to know — no filler, no padding: as short as possible while still explanatory.
+- Comments state the present design rationale only — never project history or past refactors (that is git's job).
 - `@param` MUST NOT include TypeScript types.
 - `@throws {ExceptionType}` in curly braces.
 - No `@returns` on `void`/`Promise<void>` methods.

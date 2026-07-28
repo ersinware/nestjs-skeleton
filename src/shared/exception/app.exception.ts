@@ -1,22 +1,20 @@
 /**
  * @file app.exception.ts
- * @description Abstract base of the application's exception taxonomy, together with the forensic context an exception may carry and the predicate classifying a caught error by kind. Every domain, application, and infrastructure failure is expressed as a subclass carrying a transport-neutral kind.
+ * @description Abstract base of the exception taxonomy, the forensic context an exception may carry, and the predicate classifying a caught error by kind.
  */
 
 import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
 
 /**
- * Free-form detail a thrower attaches so whoever ends up recording the failure knows where it came
- * from and under what circumstances. Only the origin is fixed — `class` and `method` — because a
- * protocol adapter logging the exception is never the origin and cannot recover it. Everything else
- * is the thrower's to choose: no field here names a logging, auditing, or authentication concept, so
- * the taxonomy stays independent of whatever observability stack sits downstream.
+ * Forensic detail a thrower attaches for whoever records the failure. Only the origin is typed —
+ * the adapter logging the exception is never the origin and cannot recover it. The rest stays
+ * free-form so the taxonomy never learns a downstream observability concept.
  */
 export type ExceptionContext = {
-    /** Name of the class that threw, preserved because whoever records the failure is not the origin. */
+    /** Name of the class that threw. */
     class: string;
 
-    /** Name of the method that threw, preserved for the same reason as `class`. */
+    /** Name of the method that threw. */
     method: string;
 
     /** Any further detail the thrower considers useful when the failure is investigated. */
@@ -25,8 +23,7 @@ export type ExceptionContext = {
 
 /**
  * Options accepted by every application exception. Keeps `cause` faithful to its native ES2022
- * meaning — strictly the underlying error — and gives auxiliary forensic data its own `context`
- * field, so the two are never conflated in one slot.
+ * meaning — strictly the underlying error — and gives forensic data its own `context` field.
  */
 export type AppExceptionOptions = ErrorOptions & {
     /** Forensic metadata for observability adapters; never rendered to a client. */
@@ -62,22 +59,21 @@ export abstract class AppException extends Error {
 
 /**
  * Reports whether a caught error is a taxonomy failure of the given category, so a caller that
- * treats one category as an expected outcome can tell it apart from everything else it must rethrow.
+ * treats one category as an expected outcome can tell it apart from everything it must rethrow.
  *
- * Classifying by `kind` rather than by `instanceof ResourceNotFoundException` is what makes the
- * check mean what the caller intends: the caller reacts to the CATEGORY, so a category gaining a
- * second subclass — or a subclass being renamed — must not silently stop matching at a call site
- * that never named a class. Matching structurally on the field, in turn, is why the check keeps
- * holding where class identity does not: a duplicated module instance or an error rebuilt from a
- * serialized payload carries the same `kind` string but a different prototype.
- *
- * The predicate is a taxonomy concern and lives here, with the base class, so the shape of a
- * classification is defined once instead of being restated at every catch site.
+ * Classifies structurally by `kind`, not by `instanceof`: the caller reacts to the CATEGORY, so a
+ * renamed subclass, a duplicated module instance, or an error rebuilt from a serialized payload
+ * must not silently stop matching. The narrowed type is deliberately `Pick`, not `AppException` —
+ * the check only proves `kind` (and `message`, which every matching value carries), so claiming the
+ * full class would type-safely expose fields a structural match never had.
  *
  * @param error The caught value, of unknown type as every `catch` binding is
  * @param kind The failure category the caller is prepared to handle
  * @returns True when the error is a taxonomy failure of that category
  */
-export function isExceptionOfKind(error: unknown, kind: ExceptionKind): error is AppException {
+export function isExceptionOfKind(
+    error: unknown,
+    kind: ExceptionKind,
+): error is Pick<AppException, 'kind' | 'message'> {
     return error !== null && typeof error === 'object' && (error as { kind?: unknown }).kind === kind;
 }

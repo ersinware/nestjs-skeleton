@@ -101,7 +101,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Dispatches the aggregate's accumulated domain events on the in-process bus and then clears them.
+     * Pulls the aggregate's accumulated domain events and dispatches them on the in-process bus.
      * Emitted after the row is written so a listener that re-reads the admin observes the new state.
      *
      * Dispatch is fire-and-forget: the write is the caller's contract, so a failing listener must not
@@ -111,13 +111,11 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * @param admin The aggregate whose domain events are dispatched
      */
     private publishDomainEvents(admin: Admin) {
-        for (const event of admin.domainEvents) {
+        for (const event of admin.pullDomainEvents()) {
             // The catch only stops an unhandled rejection from crashing the process.
             this.eventBusPort
                 .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
                 .catch(() => {});
         }
-
-        admin.clearDomainEvents();
     }
 }
