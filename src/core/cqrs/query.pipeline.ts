@@ -1,5 +1,5 @@
 /**
- * @file query-pipeline.ts
+ * @file query.pipeline.ts
  * @description Wraps the framework QueryBus in a behavior chain so cross-cutting read concerns
  * (caching today; metrics/tracing later) apply uniformly to every dispatched query without a
  * handler ever knowing they exist.
@@ -38,9 +38,7 @@ export interface IQueryBehavior {
 @Injectable()
 export class QueryPipeline {
     /**
-     * Injects the framework bus the chain ultimately delegates to and the ordered behavior list.
-     *
-     * @param queryBus The framework query bus that resolves the handler
+     * @param queryBus The framework bus the chain ultimately delegates to
      * @param behaviors The ordered behaviors wrapping each dispatch
      */
     constructor(

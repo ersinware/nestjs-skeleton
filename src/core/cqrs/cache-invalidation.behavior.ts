@@ -8,7 +8,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { ICommand } from '@nestjs/cqrs';
 import type { ICachePort } from 'src/core/cache';
 import { TOKEN_CACHE_PORT } from 'src/core/cache';
-import type { ICommandBehavior } from 'src/core/cqrs/command-pipeline';
+import type { ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 
 /**
  * A command that dirties one or more cache keys. Eviction is coarser than event-driven invalidation
@@ -42,9 +42,7 @@ function isCacheInvalidatingCommand(command: ICommand): command is ICommand & IC
 @Injectable()
 export class CacheInvalidationBehavior implements ICommandBehavior {
     /**
-     * Injects the cache port the behavior evicts through.
-     *
-     * @param cachePort The cache abstraction
+     * @param cachePort The cache the behavior evicts through
      */
     constructor(@Inject(TOKEN_CACHE_PORT) private readonly cachePort: ICachePort) {}
 

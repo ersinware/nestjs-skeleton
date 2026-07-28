@@ -9,9 +9,9 @@ import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { CacheModule } from 'src/core/cache';
 import { CacheInvalidationBehavior } from 'src/core/cqrs/cache-invalidation.behavior';
-import { CommandPipeline, TOKEN_COMMAND_BEHAVIORS, type ICommandBehavior } from 'src/core/cqrs/command-pipeline';
+import { CommandPipeline, TOKEN_COMMAND_BEHAVIORS, type ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 import { QueryCachingBehavior } from 'src/core/cqrs/query-caching.behavior';
-import { QueryPipeline, TOKEN_QUERY_BEHAVIORS, type IQueryBehavior } from 'src/core/cqrs/query-pipeline';
+import { QueryPipeline, TOKEN_QUERY_BEHAVIORS, type IQueryBehavior } from 'src/core/cqrs/query.pipeline';
 
 /**
  * The composition point for the CQRS pipelines. The behavior order lives here and nowhere else: a
