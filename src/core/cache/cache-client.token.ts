@@ -1,14 +1,9 @@
 /**
  * @file cache-client.token.ts
- * @description Configuration constants and dependency injection tokens for the cache connection client and services.
+ * @description Dependency injection token for the cache connection client.
  */
 
 /**
  * Dependency injection token representing the configured cache client instance.
  */
 export const TOKEN_CACHE_CLIENT = Symbol('TOKEN_CACHE_CLIENT');
-
-/**
- * Dependency injection token representing the configured state client instance.
- */
-export const TOKEN_CACHE_STATE_CLIENT = Symbol('TOKEN_CACHE_STATE_CLIENT');

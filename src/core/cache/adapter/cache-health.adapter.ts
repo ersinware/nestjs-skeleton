@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { TOKEN_CACHE_CLIENT, TOKEN_CACHE_STATE_CLIENT } from 'src/core/cache/cache-client.token';
+import { TOKEN_CACHE_CLIENT } from 'src/core/cache/cache-client.token';
 import type { ICacheHealthPort } from 'src/core/cache/port/cache-health.port';
 
 /**
@@ -16,19 +16,14 @@ export class CacheHealthAdapter implements ICacheHealthPort {
     /**
      * Creates an instance of CacheHealthAdapter.
      *
-     * @param cacheRedis Configured Cache Redis client instance.
-     * @param stateRedis Configured State Redis client instance.
+     * @param cacheRedis Configured cache Redis client instance.
      */
-    constructor(
-        @Inject(TOKEN_CACHE_CLIENT) private readonly cacheRedis: Redis,
-        @Inject(TOKEN_CACHE_STATE_CLIENT) private readonly stateRedis: Redis,
-    ) {}
+    constructor(@Inject(TOKEN_CACHE_CLIENT) private readonly cacheRedis: Redis) {}
 
     /**
-     * Sends a ping query to verify connection to both Redis instances.
-     *
+     * Sends a ping query to verify connection to the cache Redis instance.
      */
     async ping() {
-        await Promise.all([this.cacheRedis.ping(), this.stateRedis.ping()]);
+        await this.cacheRedis.ping();
     }
 }

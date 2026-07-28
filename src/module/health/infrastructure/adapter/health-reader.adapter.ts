@@ -16,6 +16,8 @@ import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import type { IDatabaseHealthPort } from 'src/core/database';
 import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
+import type { IStateHealthPort } from 'src/core/security/session';
+import { TOKEN_STATE_HEALTH_PORT } from 'src/core/security/session';
 import type { IGetHealthStatusPort } from 'src/module/health/application/query/get-health-status/port';
 import type { GetHealthStatusResult } from 'src/module/health/application/query/get-health-status/query';
 
@@ -33,6 +35,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
      * @param configService Application configuration service.
      * @param databaseHealthIndicatorPort Port for database health check.
      * @param cacheHealthIndicatorPort Port for cache health check.
+     * @param stateHealthIndicatorPort Port for state store health check.
      */
     constructor(
         private readonly health: HealthCheckService,
@@ -42,6 +45,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
         @Inject(TOKEN_DATABASE_HEALTH_PORT)
         private readonly databaseHealthIndicatorPort: IDatabaseHealthPort,
         @Inject(TOKEN_CACHE_HEALTH_PORT) private readonly cacheHealthIndicatorPort: ICacheHealthPort,
+        @Inject(TOKEN_STATE_HEALTH_PORT) private readonly stateHealthIndicatorPort: IStateHealthPort,
     ) {}
 
     /**
@@ -70,6 +74,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
                 ),
             () => this.checkDatabase(),
             () => this.checkCache(),
+            () => this.checkState(),
         ]);
 
         return {
@@ -111,6 +116,23 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
             return indicator.up();
         } catch {
             return indicator.down({ message: 'Cache connection failed.' });
+        }
+    }
+
+    /**
+     * Checks the state store (session Redis) connection health.
+     *
+     * @returns The state store health indicator result.
+     */
+    private async checkState(): Promise<HealthIndicatorResult> {
+        const indicator = this.healthIndicatorService.check('state');
+
+        try {
+            await this.stateHealthIndicatorPort.ping();
+
+            return indicator.up();
+        } catch {
+            return indicator.down({ message: 'State store connection failed.' });
         }
     }
 }

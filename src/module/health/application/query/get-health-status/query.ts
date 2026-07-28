@@ -27,6 +27,7 @@ type HealthyReadModel = {
         memory_rss: HealthyIndicatorState;
         database: HealthyIndicatorState;
         cache: HealthyIndicatorState;
+        state: HealthyIndicatorState;
     };
     error: Record<string, never>;
     details: {
@@ -34,6 +35,7 @@ type HealthyReadModel = {
         memory_rss: HealthyIndicatorState;
         database: HealthyIndicatorState;
         cache: HealthyIndicatorState;
+        state: HealthyIndicatorState;
     };
 };
 
@@ -63,18 +65,21 @@ type UnhealthyReadModel = {
         memory_rss: HealthyIndicatorState;
         database: HealthyIndicatorState;
         cache: HealthyIndicatorState;
+        state: HealthyIndicatorState;
     }>;
     error: Partial<{
         memory_heap: UnhealthyIndicatorState;
         memory_rss: UnhealthyIndicatorState;
         database: UnhealthyIndicatorState;
         cache: UnhealthyIndicatorState;
+        state: UnhealthyIndicatorState;
     }>;
     details: {
         memory_heap: DetailIndicatorState;
         memory_rss: DetailIndicatorState;
         database: DetailIndicatorState;
         cache: DetailIndicatorState;
+        state: DetailIndicatorState;
     };
 };
 
