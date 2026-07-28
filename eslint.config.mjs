@@ -1,6 +1,7 @@
 import eslint from '@eslint/js';
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
 import boundaries from 'eslint-plugin-boundaries';
-import importPlugin from 'eslint-plugin-import';
+import importX from 'eslint-plugin-import-x';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -63,7 +64,7 @@ export default tseslint.config(
         files: ['src/**/*.ts'],
         plugins: {
             boundaries,
-            import: importPlugin,
+            'import-x': importX,
         },
         settings: {
             /**
@@ -106,8 +107,31 @@ export default tseslint.config(
             ],
             'boundaries/ignore': ['src/main.ts', 'src/app.module.ts'],
             /**
-             * Without this mapping `eslint-plugin-import` cannot parse `.ts` dependency files: the
-             * graph it builds is EMPTY and every graph rule — `no-cycle` above all — passes silently.
+             * Without this mapping the graph rules cannot parse `.ts` dependency files: the graph
+             * they build is EMPTY and every one of them — `no-cycle` above all — passes silently.
+             * A green run is therefore NOT evidence the graph exists; only a deliberate cycle is.
+             */
+            'import-x/parsers': {
+                '@typescript-eslint/parser': ['.ts', '.mts', '.cts'],
+            },
+            /**
+             * `resolver-next` is the v3 resolver interface: one `ResolverFactory` built once and
+             * reused, instead of v2's per-edge resolution. `no-cycle` resolves every edge of the
+             * graph for every file, so this is the difference between a ~72s and a ~24s cold run.
+             */
+            'import-x/resolver-next': [
+                createTypeScriptImportResolver({
+                    alwaysTryTypes: true,
+                    project: './tsconfig.json',
+                }),
+            ],
+            /**
+             * NOT dead settings, and NOT a duplicate of the two above: `eslint-plugin-boundaries`
+             * carries its own `eslint-module-utils` and requires `eslint-module-utils/resolve`
+             * directly, which reads ONLY the legacy `import/*` keys. Delete these and every
+             * `boundaries/*` rule silently stops resolving — the failure mode is a passing lint,
+             * not an error. They stay on the v2 interface because each boundaries rule resolves a
+             * file's own imports once; the per-edge cost that made v2 expensive is `no-cycle`'s.
              */
             'import/parsers': {
                 '@typescript-eslint/parser': ['.ts', '.mts', '.cts'],
@@ -284,7 +308,7 @@ export default tseslint.config(
              * invisible to all of them rather than a violation. This makes an unresolvable path an
              * error in its own right, so nothing reaches the boundary rules unclassified.
              */
-            'import/no-unresolved': 'error',
+            'import-x/no-unresolved': 'error',
             /**
              * `boundaries` only constrains direction BETWEEN layers; a cycle inside one layer is
              * invisible to it, and `forwardRef()` is prohibited, so nothing else would catch this.
@@ -292,17 +316,20 @@ export default tseslint.config(
              * cycle through our files never leaves `src/` — and skips parsing thousands of
              * dependency files.
              */
-            'import/no-cycle': ['error', { maxDepth: Infinity, ignoreExternal: true }],
+            'import-x/no-cycle': ['error', { maxDepth: Infinity, ignoreExternal: true }],
             /**
              * A devDependency imported from `src/` works everywhere except `npm ci --omit=dev` in the
              * production image, where it dies at container start with MODULE_NOT_FOUND. This moves
              * that failure to the moment the import is written. Co-located `*.spec.ts` files are
              * exempt — the one legitimately dev-only part of `src/`.
              */
-            'import/no-extraneous-dependencies': ['error', { devDependencies: ['**/*.spec.ts'] }],
-            /** Hygiene: neither can break the architecture, both keep import paths honest. */
-            'import/no-self-import': 'error',
-            'import/no-useless-path-segments': ['error', { noUselessIndex: true }],
+            'import-x/no-extraneous-dependencies': ['error', { devDependencies: ['**/*.spec.ts'] }],
+            /**
+             * The degenerate cycle, and the one `no-cycle` deliberately does NOT cover: it bails on
+             * a self-import (`imported.path === filename`) and delegates the case here, so dropping
+             * this rule would leave a file importing itself entirely unreported.
+             */
+            'import-x/no-self-import': 'error',
         },
     },
     {
