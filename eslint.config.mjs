@@ -348,7 +348,7 @@ export default tseslint.config(
                             name: '@nestjs/event-emitter',
                             importNames: ['EventEmitter2'],
                             message:
-                                'Publish through IEventBusPort (TOKEN_EVENT_BUS_PORT) so the transport stays swappable (CLAUDE.md § Architecture 5).',
+                                'Publish through IEventPublisherPort (TOKEN_EVENT_PUBLISHER_PORT) so the transport stays swappable (CLAUDE.md § Architecture 5).',
                         },
                     ],
                 },

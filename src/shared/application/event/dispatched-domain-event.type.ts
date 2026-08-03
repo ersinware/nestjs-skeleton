@@ -4,8 +4,10 @@
  */
 
 /**
- * Payload every `@OnEvent` listener receives. Distinct from the raised `DomainEvent`: it omits
- * `type` (the listener already knows it via `@OnEvent`) and adds `eventId`.
+ * Payload carried on the in-process bus — what `IEventPublisherPort` accepts and every
+ * `@OnEvent` listener receives, so publish and subscribe share one contract that enforces
+ * the minimal-metadata rule. Distinct from the raised `DomainEvent`: it omits `type`
+ * (the listener already knows it via `@OnEvent`) and adds `eventId`.
  */
 export type DispatchedDomainEvent = {
     /** Id of the aggregate that raised the event — the re-fetch key, per the minimal-payload rule. */

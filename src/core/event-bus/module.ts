@@ -1,23 +1,22 @@
 /**
  * @file module.ts
- * @description The EventBus module that provides the global messaging infrastructure.
+ * @description Wires the event publisher port to its in-process adapter.
  */
 
 import { Module } from '@nestjs/common';
-import { EventBusAdapter } from 'src/core/event-bus/event-bus.adapter';
-import { TOKEN_EVENT_BUS_PORT } from 'src/core/event-bus/event-bus.port';
+import { EventPublisherAdapter } from 'src/core/event-bus/adapter/event-publisher.adapter';
+import { TOKEN_EVENT_PUBLISHER_PORT } from 'src/core/event-bus/port/event-publisher.port';
 
 /**
- * Module that registers and exports the Event Bus infrastructure.
- * Each module that publishes domain events imports it explicitly.
+ * Provides the event publisher. Each module that publishes events imports it explicitly.
  */
 @Module({
     providers: [
         {
-            provide: TOKEN_EVENT_BUS_PORT,
-            useClass: EventBusAdapter,
+            provide: TOKEN_EVENT_PUBLISHER_PORT,
+            useClass: EventPublisherAdapter,
         },
     ],
-    exports: [TOKEN_EVENT_BUS_PORT],
+    exports: [TOKEN_EVENT_PUBLISHER_PORT],
 })
 export class EventBusModule {}

@@ -8,7 +8,7 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation } from 'src/core/database';
-import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
+import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
@@ -25,11 +25,11 @@ export class UserWriterAdapter implements IUserWriterPort {
      * Initializes the user repository with the database connection.
      *
      * @param db The PostgresJs database instance
-     * @param eventBusPort The in-process bus the aggregate's domain events are dispatched on
+     * @param eventPublisherPort The in-process bus the aggregate's domain events are dispatched on
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase,
-        @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
+        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
     ) {}
 
     /**
@@ -112,7 +112,7 @@ export class UserWriterAdapter implements IUserWriterPort {
     private publishDomainEvents(user: User) {
         for (const event of user.pullDomainEvents()) {
             // The catch only stops an unhandled rejection from crashing the process.
-            this.eventBusPort
+            this.eventPublisherPort
                 .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
                 .catch(() => {});
         }

@@ -7,7 +7,7 @@
         "isolatedModules": true,
         "resolveJsonModule": true,
         "baseUrl": "./",
-        "ignoreDeprecations": "6.0",
+        "ignoreDeprecations": "5.0",
         "rootDir": "./",
         "outDir": "./dist",
         "declaration": true,

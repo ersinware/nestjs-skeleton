@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
+import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -44,14 +44,14 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @param tokenPort The port used to verify the old and generate the new token pair
      * @param identityReaderPort The port used to read the principal's auth state
      * @param sessionPort The port used to atomically rotate the refresh session
-     * @param eventBusPort The port used to publish the reuse-detection event
+     * @param eventPublisherPort The port used to publish the reuse-detection event
      * @param auditPort The port used to record refresh-reuse decisions
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
+        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
@@ -162,7 +162,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // sessions are already evicted and the caller must still get the 401 below, so a failing listener
         // must not turn this into a 503. A rejected dispatch is swallowed — the family is already
         // revoked above; the catch only stops an unhandled rejection.
-        this.eventBusPort
+        this.eventPublisherPort
             .emitAsync(
                 role === UserRole.USER
                     ? UserIntegrationEvent.REFRESH_REUSE_DETECTED
