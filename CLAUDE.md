@@ -91,8 +91,8 @@ What the table alone does not say:
 
 Async Domain Events are required when a mutation must trigger reactions in other modules.
 
-- **Publish through `IEventBusPort`** (`TOKEN_EVENT_BUS_PORT`) — never inject `EventEmitter2` directly; the port keeps the transport swappable when the outbox lands. Lint bans the `EventEmitter2` import everywhere except `src/core/event-bus/`; `@OnEvent` and `EventEmitterModule` stay legal — the subscribe and wiring sides have no port to route through.
-- **Events carry ONLY minimal metadata** — typically `type` + `aggregateId`, never the full payload — and are **never trusted as current**: the listener re-reads from DB or Facade when it runs. **Listeners stay idempotent**, because at-least-once delivery is the destination.
+- **Publish through `IEventPublisherPort`** (`TOKEN_EVENT_PUBLISHER_PORT`) — never inject `EventEmitter2` directly; the port keeps the transport swappable when the outbox lands. Lint bans the `EventEmitter2` import everywhere except `src/core/event-bus/`; `@OnEvent` and `EventEmitterModule` stay legal — the subscribe and wiring sides have no port to route through.
+- **Events carry ONLY minimal metadata** — the on-bus contract is `DispatchedDomainEvent` (`shared/application/event`), typed on both the publisher port and every listener, so a fuller payload fails compilation — and are **never trusted as current**: the listener re-reads from DB or Facade when it runs. **Listeners stay idempotent**, because at-least-once delivery is the destination. `eventId` (the idempotency key) is generated at the emit site, never in the adapter — a future outbox retry must re-deliver the SAME id.
 - **Where a listener lives is decided by where the event was EMITTED — never by what the listener does.**
     - **Emitted by our own application, handled in-process** → that module's `application/event/`; nothing crossed a process boundary.
     - **Emitted by another source, arriving over the network** (Postgres `LISTEN/NOTIFY`, a broker topic, an inbound webhook) → `presentation/listener/` — an inbound adapter exactly like a controller: it terminates a transport.
@@ -101,7 +101,7 @@ Async Domain Events are required when a mutation must trigger reactions in other
 
 #### Reliable messaging — NOT YET IMPLEMENTED
 
-**Delivery is UNRELIABLE — a known, accepted gap.** Events are emitted in-process via `IEventBusPort.emitAsync` (`@nestjs/event-emitter`). There is no outbox table, relay, queue, or broker — an event is lost if the process dies after the DB commit, and a listener failure never retries.
+**Delivery is UNRELIABLE — a known, accepted gap.** Events are emitted in-process via `IEventPublisherPort.emitAsync` (`@nestjs/event-emitter`). There is no outbox table, relay, queue, or broker — an event is lost if the process dies after the DB commit, and a listener failure never retries.
 
 - **Do not pretend otherwise.** Never write code, comments, or docs implying at-least-once delivery, retries, or transactional atomicity between a DB write and an event.
 - **Do not invent the outbox piecemeal.** No ad-hoc `outbox` table, dedup ledger, relay cron, or queue module until the pattern is designed as a whole — a half-built outbox looks reliable and isn't.
@@ -389,17 +389,17 @@ Used once → inline. Used more than once → extract to a named variable.
 
 ### Tech Stack
 
-| Concern       | Technology                                                    |
-| ------------- | ------------------------------------------------------------- |
-| Framework     | NestJS v11+ with SWC builder                                  |
-| HTTP          | Fastify (`@nestjs/platform-fastify`)                          |
-| Database      | Drizzle ORM + PostgreSQL (`postgres` client)                  |
-| Cache         | Redis (`ioredis`)                                             |
-| Events        | `@nestjs/event-emitter` — in-process, behind `IEventBusPort`  |
-| Queue         | none yet — see **Events & Messaging**                         |
-| Rate Limit    | none yet — see **Guards & Auth**                              |
-| Email         | Google APIs (Gmail)                                           |
-| Hashing       | Argon2                                                        |
-| Validation    | `class-validator` + `class-transformer`                       |
-| Observability | Sentry, Pino, OpenTelemetry, Prometheus, Jaeger, Grafana Loki |
-| Testing       | Vitest, Supertest, Spectral, Schemathesis                     |
+| Concern       | Technology                                                         |
+| ------------- | ------------------------------------------------------------------ |
+| Framework     | NestJS v11+ with SWC builder                                       |
+| HTTP          | Fastify (`@nestjs/platform-fastify`)                               |
+| Database      | Drizzle ORM + PostgreSQL (`postgres` client)                       |
+| Cache         | Redis (`ioredis`)                                                  |
+| Events        | `@nestjs/event-emitter` — in-process, behind `IEventPublisherPort` |
+| Queue         | none yet — see **Events & Messaging**                              |
+| Rate Limit    | none yet — see **Guards & Auth**                                   |
+| Email         | Google APIs (Gmail)                                                |
+| Hashing       | Argon2                                                             |
+| Validation    | `class-validator` + `class-transformer`                            |
+| Observability | Sentry, Pino, OpenTelemetry, Prometheus, Jaeger, Grafana Loki      |
+| Testing       | Vitest, Supertest, Spectral, Schemathesis                          |

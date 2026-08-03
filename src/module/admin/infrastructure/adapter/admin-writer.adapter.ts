@@ -8,7 +8,7 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation } from 'src/core/database';
-import { TOKEN_EVENT_BUS_PORT, type IEventBusPort } from 'src/core/event-bus';
+import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { admin as adminSchema } from 'src/module/admin/infrastructure/admin.schema';
@@ -25,11 +25,11 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * Initializes the admin repository with the database connection.
      *
      * @param db The PostgresJs database instance
-     * @param eventBusPort The in-process bus the aggregate's domain events are dispatched on
+     * @param eventPublisherPort The in-process bus the aggregate's domain events are dispatched on
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) readonly db: PostgresJsDatabase,
-        @Inject(TOKEN_EVENT_BUS_PORT) private readonly eventBusPort: IEventBusPort,
+        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
     ) {}
 
     /**
@@ -113,7 +113,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     private publishDomainEvents(admin: Admin) {
         for (const event of admin.pullDomainEvents()) {
             // The catch only stops an unhandled rejection from crashing the process.
-            this.eventBusPort
+            this.eventPublisherPort
                 .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
                 .catch(() => {});
         }
