@@ -290,7 +290,6 @@ describe('GlobalExceptionFilter', () => {
                         method: 'catch',
                         message: 'boom',
                         error: thrown,
-                        data: { context: undefined },
                     }),
                 );
                 expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);

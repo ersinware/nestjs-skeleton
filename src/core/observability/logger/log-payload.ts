@@ -20,7 +20,7 @@ export class LogPayload {
     readonly method: string;
     readonly message: string;
     readonly error?: unknown;
-    readonly data?: Record<string, unknown> | undefined;
+    readonly data?: Record<string, unknown>;
 
     /**
      * Creates an instance of LogPayload.
@@ -32,12 +32,13 @@ export class LogPayload {
         method: string;
         message: string;
         error?: unknown;
-        data?: Record<string, unknown> | undefined;
+        data?: Record<string, unknown>;
     }) {
         this.class = payload.class;
         this.method = payload.method;
         this.message = payload.message;
         this.error = payload.error;
-        this.data = payload.data;
+
+        if (payload.data) this.data = payload.data;
     }
 }

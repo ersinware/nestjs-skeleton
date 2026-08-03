@@ -31,7 +31,13 @@ async function bootstrap() {
         error?: unknown;
         data?: Record<string, unknown>;
     }) {
-        return new LogPayload({ class: 'build-doc.ts', method: bootstrap.name, message, error, data });
+        return new LogPayload({
+            class: 'build-doc.ts',
+            method: bootstrap.name,
+            message,
+            error,
+            ...(data ? { data } : undefined),
+        });
     }
 
     try {

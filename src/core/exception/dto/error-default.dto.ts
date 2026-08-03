@@ -1,7 +1,6 @@
 /**
  * @file error-default.dto.ts
- * @description Data Transfer Object defining the structure of standard error responses.
- * Used to ensure uniform error presentation across all API endpoints in compliance with OpenAPI/Swagger.
+ * @description Standard error response DTO keeping error presentation uniform across all endpoints.
  */
 
 import { HttpStatus } from '@nestjs/common';
@@ -9,8 +8,7 @@ import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 
 /**
- * Standard error response schema that represents details of a failed HTTP request.
- * Implements a strict whitelist approach (Exclude/Expose) to guarantee no internal fields leak.
+ * Standard error response schema for a failed HTTP request.
  */
 @Exclude()
 @ApiSchema({ name: 'ErrorDefault', description: 'Standard error response schema' })
@@ -26,7 +24,7 @@ export class ErrorDefaultDto {
         description: 'HTTP Status Code',
         example: 400,
     })
-    readonly statusCode!: HttpStatus;
+    readonly statusCode: HttpStatus;
 
     /**
      * A list of human-readable error messages detailing what went wrong.
@@ -39,7 +37,7 @@ export class ErrorDefaultDto {
         description: 'List of error messages detailing what went wrong',
         example: ['This is an error message.', 'This is another error message.'],
     })
-    readonly message!: string[];
+    readonly message: string[];
 
     /**
      * A short, standard text description of the HTTP error status.
@@ -52,11 +50,11 @@ export class ErrorDefaultDto {
         description: 'Short description of the error status',
         example: 'Bad Request',
     })
-    readonly statusText!: string;
+    readonly statusText: string;
 
     /**
-     * Creates the error response, so the global exception filter always emits a real instance of
-     * this class rather than a structurally similar object literal.
+     * Constructs a real class instance — serialization keys off the class metadata, which a
+     * structurally similar object literal would not carry.
      *
      * @param fields The status code, messages, and status text of the failed request
      */
