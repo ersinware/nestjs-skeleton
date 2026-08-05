@@ -1,10 +1,10 @@
 /**
- * @file password.decorator.spec.ts
+ * @file strong-password.decorator.spec.ts
  * @description Unit tests for the custom strength-validating password decorator.
  */
 
 import { validateSync } from 'class-validator';
-import { IsStrongPassword } from 'src/core/http/validation/decorator/password.decorator';
+import { IsStrongPassword } from 'src/core/http/validation/decorator/strong-password.decorator';
 import { describe, expect, it } from 'vitest';
 
 class TestPasswordDto {

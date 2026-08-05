@@ -4,25 +4,29 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { IsStrongPassword, IsUserEmail } from 'src/core/http';
+import { Exclude, Expose } from 'class-transformer';
+import { IsEmailAddress, IsStrongPassword } from 'src/core/http';
 
 /**
  * DTO for validating user or admin credentials during authentication login.
  * Ensures the payload matches strict email and password complexity requirements to thwart basic injection or malformed requests.
  */
+@Exclude()
 @ApiSchema({ name: 'PostLogin', description: 'Input validation schema for user or admin login credentials' })
 export class PostLoginDto {
     /**
      * Unique email address associated with the user or admin account.
      * Serves as the primary identifier during authentication.
      */
-    @IsUserEmail('The email address')
+    @Expose()
+    @IsEmailAddress()
     readonly email!: string;
 
     /**
      * Cleartext password associated with the account.
      * Must pass strict complexity checks before being evaluated against the stored hash.
      */
-    @IsStrongPassword('The password')
+    @Expose()
+    @IsStrongPassword()
     readonly password!: string;
 }

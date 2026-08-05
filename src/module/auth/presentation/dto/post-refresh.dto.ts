@@ -4,18 +4,21 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
+import { Exclude, Expose } from 'class-transformer';
 import { IsRefreshToken } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
 
 /**
  * DTO for validating token refresh requests.
  * Accepts exactly one property (the refresh token) to execute a session rotation.
  */
+@Exclude()
 @ApiSchema({ name: 'PostRefresh', description: 'Input validation schema for token refresh requests' })
 export class PostRefreshDto {
     /**
      * The refresh token string used to obtain a new access and refresh token pair.
      * Evaluated against the cache to ensure the session is still active and valid.
      */
-    @IsRefreshToken('The active refresh token.')
+    @Expose()
+    @IsRefreshToken('The active refresh token')
     readonly refreshToken!: string;
 }

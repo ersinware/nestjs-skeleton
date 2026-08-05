@@ -249,14 +249,15 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 
 - `@ApiSchema({ name, description })` on EVERY DTO. `name` is the class name without `Dto` (`PostUserDto` → `'PostUser'`); `description` is a real sentence explaining what the schema is for — never a restatement of the name.
 - JSDoc above the class explaining _why_ it exists (what it enforces or guarantees).
-- **Response DTOs**: `@Exclude()` at class level + `@Expose()` on every property. This is a whitelist — anything not `@Expose()`d must never reach a client.
+- **EVERY DTO carries the whitelist**: `@Exclude()` at class level + `@Expose()` on every property. On a response DTO this is the guarantee that anything not `@Expose()`d never reaches a client; on a request DTO it costs nothing and survives the day someone repurposes the class as a response. A mapped-type DTO (`PartialType`/`OmitType`) re-declares only the class-level `@Exclude()` — property metadata is copied from the source class.
 
 **Per property — all three, always:**
 
 1. **JSDoc** describing the field's meaning.
 2. **Validation + documentation, in this order of preference:**
-    - **A composed decorator from `src/core/http/validation/decorator/` if one fits** (`IsUserEmail`, `IsStrongPassword`, `IsEntityId`, …) — checking that folder first is MANDATORY: the decorator bundles `class-validator` rules AND `@ApiProperty` in one call, keeping each limit in exactly one place. Pass the field-label prefix (`@IsUserEmail('The email address')`) — it feeds both the Swagger description and the error messages.
+    - **A composed decorator from `src/core/http/validation/decorator/` if one fits** (`IsEmailAddress`, `IsStrongPassword`, `IsEntityId`, …) — checking that folder first is MANDATORY: the decorator bundles `class-validator` rules AND `@ApiProperty` in one call, keeping each limit in exactly one place. The field-label prefix feeds both the Swagger description and the error messages — pass it ONLY when it must deviate from the decorator's default (`@IsStrongPassword('The current password')`); restating the default at the call site duplicates the value and silently goes stale.
     - **Otherwise, raw `class-validator` rules + an explicit `@ApiProperty`** — the correct outcome for a genuinely one-off field.
+    - **Every rule carries a custom `message` built from the field label** — a class-validator default never reaches a client: it leaks code identifiers (camelCase property names, `Matches` even embeds the regex source) and mixes styles within one error response. Applies to composed decorators and raw stacks alike; boot-time validation (`env.validation.ts`) is exempt — it talks to an operator, where the property name IS the needed message.
     - **Exception — response DTOs never carry raw `class-validator` rules.** Nothing validates an outgoing body at runtime, so a validator there is dead code posing as a guarantee; `@ApiProperty` alone must express every constraint (`minimum`/`maximum`, `minLength`/`maxLength`, `minItems`, `enum`) the field's contract implies. A composed decorator on a response DTO stays — it is the single source of that field's `@ApiProperty` metadata.
 3. **`readonly`** — always. **Required** field: definite assignment, `readonly email!: string`. **Optional** field: `?` plus `@IsOptional()`, `readonly search?: string`. `!` and `?` are mutually exclusive in TypeScript, so an optional property NEVER carries `!`.
 

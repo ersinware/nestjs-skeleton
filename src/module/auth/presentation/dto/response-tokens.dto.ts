@@ -38,6 +38,6 @@ export class ResponseTokensDto {
      * Used exclusively to obtain a fresh access token pair when the current access token expires.
      */
     @Expose()
-    @IsRefreshToken('JWT Refresh Token.')
+    @IsRefreshToken('The newly issued refresh token')
     readonly refreshToken!: string;
 }

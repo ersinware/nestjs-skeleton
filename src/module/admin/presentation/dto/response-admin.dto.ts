@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEntityId, IsUserEmail, IsUserName } from 'src/core/http';
+import { IsEmailAddress, IsEntityId, IsPersonName } from 'src/core/http';
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**
@@ -28,7 +28,7 @@ export class ResponseAdminDto {
      * Exposed for display and identification purposes in the user interface.
      */
     @Expose()
-    @IsUserEmail('The email address')
+    @IsEmailAddress()
     readonly email!: string;
 
     /**
@@ -36,7 +36,7 @@ export class ResponseAdminDto {
      * Exposed for personalization and display in the administrative dashboard.
      */
     @Expose()
-    @IsUserName('The full name')
+    @IsPersonName()
     readonly name!: string;
 
     /**

@@ -1,6 +1,6 @@
 /**
- * @file password.decorator.ts
- * @description Custom composite decorator to enforce strength validation and documentation for password fields.
+ * @file strong-password.decorator.ts
+ * @description Composed decorator bundling strength validation and OpenAPI metadata for password fields.
  */
 
 import { applyDecorators } from '@nestjs/common';
@@ -12,16 +12,16 @@ const PASSWORD_MIN_LENGTH = 8,
     PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
 /**
- * Combined decorator to validate that a property contains a strong password.
- * Enforces length constraints and demands at least one uppercase letter, one lowercase letter, and one number.
+ * Single source of the password-strength policy: length bounds plus at least one
+ * uppercase letter, one lowercase letter, and one digit.
  *
- * @param descriptionPrefix The prefix description used in Swagger documentation and validation error messages.
- * @returns A decorator that validates and documents password properties.
+ * @param descriptionPrefix The field label used in the Swagger description and validation error messages.
+ * @returns A decorator that validates and documents a password property.
  */
 export function IsStrongPassword(descriptionPrefix: string = 'The password') {
     return applyDecorators(
-        IsString(),
-        IsNotEmpty(),
+        IsString({ message: `${descriptionPrefix} must be a string.` }),
+        IsNotEmpty({ message: `${descriptionPrefix} cannot be empty.` }),
         MinLength(PASSWORD_MIN_LENGTH, {
             message: `${descriptionPrefix} must be at least ${PASSWORD_MIN_LENGTH} characters long.`,
         }),

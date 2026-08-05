@@ -1,21 +1,22 @@
 /**
  * @file response-pagination.dto.ts
- * @description Standardized data transfer object for paginated responses.
+ * @description Response envelope every paginated list endpoint returns.
  */
 
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/shared/pagination';
 
 /**
- * Standardized response envelope structure for paginated lists.
+ * Carries a page of items with the metadata a client needs to render paging controls,
+ * so every list endpoint answers in the same shape.
  */
 @Exclude()
+@ApiSchema({ name: 'ResponsePagination', description: 'Standard envelope for paginated list responses.' })
 export class ResponsePaginationDto<T> {
     /**
-     * The list of items on the current page.
-     * Note: This property is dynamically overridden in ApiDefaultOkResponsePaginated
-     * to support proper Swagger/Scalar schema and example generation.
+     * The list of items on the current page. The generic item schema here is a placeholder:
+     * `ApiDefaultOkResponsePaginated` overrides it per endpoint with the concrete item type.
      */
     @Expose()
     @ApiProperty({
@@ -75,12 +76,12 @@ export class ResponsePaginationDto<T> {
     readonly totalPages!: number;
 
     /**
-     * Creates an instance of ResponsePaginationDto.
+     * Builds the envelope and derives `totalPages`, so callers cannot supply an inconsistent page count.
      *
-     * @param items List of items.
-     * @param total Total items count.
-     * @param page Current page.
-     * @param limit Items per page.
+     * @param items The items on the current page.
+     * @param total The total number of matching items.
+     * @param page The current page number.
+     * @param limit The number of items per page.
      */
     constructor(items: T[], total: number, page: number, limit: number) {
         this.items = items;

@@ -1,6 +1,6 @@
 /**
  * @file query-pagination.dto.ts
- * @description Data Transfer Object defining query parameters for offset-based pagination.
+ * @description Query parameters for offset-based pagination, shared by every paginated list endpoint.
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
@@ -15,13 +15,17 @@ import {
     type ValidationArguments,
     type ValidatorConstraintInterface,
 } from 'class-validator';
-import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE, PAGINATION_MAX_OFFSET } from 'src/shared/pagination';
+import {
+    PAGINATION_DEFAULT_LIMIT,
+    PAGINATION_DEFAULT_PAGE,
+    PAGINATION_MAX_LIMIT,
+    PAGINATION_MAX_OFFSET,
+} from 'src/shared/pagination';
 
 /**
  * Rejects a page/limit combination whose resulting offset exceeds the maximum window.
  * The bound is a property of the pair, not of either field, so it cannot be expressed as a plain
  * `@Max` on `page`: at `limit=100` the tenth page is cheap while the ten-thousandth is a full scan.
- * It constrains exactly one DTO, so it stays in this file rather than in the shared decorator folder.
  */
 @ValidatorConstraint({ name: 'paginationWindow' })
 class PaginationWindowConstraint implements ValidatorConstraintInterface {
@@ -54,10 +58,11 @@ class PaginationWindowConstraint implements ValidatorConstraintInterface {
 }
 
 /**
- * Common query parameters for pagination.
+ * Shared input contract for offset-paginated list endpoints; both fields fall back
+ * to their defaults when the client omits them.
  */
-@ApiSchema({ name: 'QueryPagination', description: 'Query parameters for pagination' })
 @Exclude()
+@ApiSchema({ name: 'QueryPagination', description: 'Query parameters for pagination' })
 export class QueryPaginationDto {
     /**
      * The page number to retrieve.
@@ -87,11 +92,11 @@ export class QueryPaginationDto {
     @Transform(({ value }) => (value ?? PAGINATION_DEFAULT_LIMIT) as number)
     @IsInt({ message: 'Limit must be an integer.' })
     @Min(1, { message: 'Limit cannot be less than 1.' })
-    @Max(100, { message: 'Limit cannot be greater than 100.' })
+    @Max(PAGINATION_MAX_LIMIT, { message: `Limit cannot be greater than ${PAGINATION_MAX_LIMIT}.` })
     @ApiProperty({
         type: 'integer',
         minimum: 1,
-        maximum: 100,
+        maximum: PAGINATION_MAX_LIMIT,
         default: PAGINATION_DEFAULT_LIMIT,
         required: false,
         description: 'The number of items to retrieve per page.',
