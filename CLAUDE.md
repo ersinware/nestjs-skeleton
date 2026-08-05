@@ -356,6 +356,7 @@ Every file MUST start with `@file` + `@description`, and `@file` MUST match the 
 - **`interface`** — a **contract or behavior** a class will `implement`: Ports, Repositories, Service contracts.
 - **`type`** — a pure **data shape** with no behavior: Command/Query payloads, results, read-models, unions/intersections, utility compositions (`Pick`, `Omit`, `Partial`), tuples.
 - The test: "What does it **do**?" → `interface`. "What does it **contain**?" → `type`.
+- **`?: X | undefined` is banned; `exactOptionalPropertyTypes` stays ON** — an optional field is absent or holds a real value, never a transported `undefined`. A call site omits the key via conditional spread (`...(targetId && { targetId })`), never `key: cond ? value : undefined`. An `unknown`-typed source needs an explicit boolean check (`...(x !== undefined && { ... })`) — TS cannot spread a truthiness-narrowed `unknown`. Sole exemption: Drizzle's `set: { id: undefined }`, the driver's documented column-exclusion mechanism.
 - **Return types**: on an interface, always annotate explicitly (including `void`/`Promise<void>`); on a class implementation, do NOT annotate `void`/`Promise<void>` but DO annotate every non-void return.
 
 ### Environment Variables
