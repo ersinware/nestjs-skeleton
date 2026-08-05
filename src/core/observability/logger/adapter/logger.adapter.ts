@@ -1,22 +1,21 @@
 /**
- * @file adapter.ts
+ * @file logger.adapter.ts
  * @description Pino-backed implementation of the logger port; the only place the LogPayload
  * envelope is translated into pino's own call shape.
  */
 
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
-import { LogPayload } from 'src/core/observability/logger/log-payload';
-import { ILoggerPort } from 'src/core/observability/logger/port';
+import type { LogPayload } from 'src/core/observability/logger/log-payload';
+import { ILoggerPort } from 'src/core/observability/logger/port/logger.port';
 
 /**
  * Translates the closed log envelope into pino's `(mergingObject, message)` signature.
  *
- * Keeping the translation here — rather than binding the port straight onto a pino logger — is what
- * makes {@link LogPayload}'s guarantees hold: `message` reaches pino as `msg` (so it is greppable as
- * a message rather than as data), and the caller's free-form keys are spread from `data` at the
- * merging object's root without ever being able to originate a reserved key. Writing through
- * `PinoLogger` also keeps `instrumentation-pino` in the path, so `traceId`/`spanId` stay injected.
+ * The translation lives here so {@link LogPayload}'s guarantees hold: `message` reaches pino as
+ * `msg`, and free-form keys are spread from `data` where they cannot originate a reserved key.
+ * Writing through `PinoLogger` keeps `instrumentation-pino` in the path, so `traceId`/`spanId`
+ * stay injected.
  */
 @Injectable()
 export class LoggerAdapter implements ILoggerPort {
@@ -49,9 +48,8 @@ export class LoggerAdapter implements ILoggerPort {
     }
 
     /**
-     * Flattens the envelope into the object pino merges into the record. `error` is kept under its
-     * own key so the configured error serializer picks it up, and is omitted entirely when absent so
-     * a level without a cause does not emit a null field.
+     * Flattens the envelope into the object pino merges into the record. `error` keeps its own key
+     * so the configured error serializer picks it up; when absent, pino drops the undefined value.
      *
      * @param payload The envelope to flatten.
      * @returns The object pino merges into the log record.

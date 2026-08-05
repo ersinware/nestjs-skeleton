@@ -6,7 +6,7 @@
 import 'reflect-metadata';
 import { EnvironmentVariables, validateConfig } from 'src/core/config/environment/env.validation';
 import { Environment } from 'src/core/config/environment/node-env.enum';
-import { TrackerEnvironment } from 'src/core/observability/tracker';
+import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 import { describe, expect, it } from 'vitest';
 
 describe('env.validation.config', () => {
@@ -50,7 +50,7 @@ describe('env.validation.config', () => {
         GMAIL_USER_EMAIL: 'user@gmail.com',
 
         SENTRY_DSN: 'https://sentry-dsn.com',
-        SENTRY_ENVIRONMENT: TrackerEnvironment.TEST,
+        SENTRY_ENVIRONMENT: ExceptionTrackerEnvironment.TEST,
 
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://localhost:4318/v1/traces',
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://localhost:4318/v1/metrics',
@@ -68,7 +68,7 @@ describe('env.validation.config', () => {
         expect(result.DATABASE_URL).toBe('postgres://localhost:5432/db');
         expect(result.JWT_ACCESS_TTL).toBe('15m');
         expect(result.JWT_REFRESH_TTL).toBe('7d');
-        expect(result.SENTRY_ENVIRONMENT).toBe(TrackerEnvironment.TEST);
+        expect(result.SENTRY_ENVIRONMENT).toBe(ExceptionTrackerEnvironment.TEST);
     });
 
     it('should perform implicit type conversions (e.g. string numbers to numbers, string booleans to booleans)', () => {

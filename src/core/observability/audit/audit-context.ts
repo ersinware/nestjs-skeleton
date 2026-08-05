@@ -7,50 +7,60 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
 /**
- * Who is acting and over which transport, carried alongside the call rather than through it.
+ * Who is acting and over which transport — request facts kept out of command payloads.
  *
- * These are facts about the REQUEST, not about the use case. Threading them through command
- * payloads would teach `BanUserCommand` about user agents and IP addresses — the exact inversion
- * the hexagonal boundary exists to prevent — and would have to be repeated by hand on every new
- * command. Ambient storage keeps the handler's contract about meaning alone: it supplies the
- * action, the adapter supplies the actor.
- *
- * Every field is optional because none is knowable on every path: a `@Public()` login route has no
- * authenticated actor yet, and a record written outside a request has no transport at all.
- *
- * The two halves are filled at different moments, which is why the identity half is mutable, and each
- * is written by whoever brings that fact into existence:
- *
- * - **Transport** — true the instant the request arrives, so `auditContextHook` seeds it on arrival,
- *   ahead of every guard. That is what makes a refusal raised by a guard attributable at all.
- *   `method` and `route` belong to this half because a generic refusal such as `ACCESS_DENIED` names
- *   no subject of its own: without them the record says someone was refused something, which is not
- *   evidence of anything.
- * - **Identity** — does not exist until a token has been VERIFIED, so `AuthGuard` writes it at the
- *   moment it establishes it. Doing this downstream, in an interceptor, would leave a `403` from the
- *   roles guard with no actor — a record of a refusal that is entirely about an identity, naming none.
- *
- * A field stays absent when it is genuinely unknown: a `@Public()` route has no actor, a request
- * refused before any token is read has none either, and a record written outside a request has no
- * transport at all.
+ * The transport half is seeded by `auditContextHook` on arrival, ahead of every guard; the
+ * identity half is mutable because it is published later, via {@link publishAuditActor}, once
+ * `AuthGuard` verifies a token. Identity is optional: a `@Public()` route has no actor.
  */
 export type AuditContext = {
-    actorId?: string | undefined;
-    actorRole?: AuthRole | undefined;
-    readonly sourceIp?: string | undefined;
-    readonly userAgent?: string | undefined;
-    readonly method?: string | undefined;
-    readonly route?: string | undefined;
+    readonly remoteAddress: string;
+    readonly route: string;
+    readonly method: string;
+    readonly userAgent?: string;
+    actorId?: string;
+    actorRole?: AuthRole;
 };
 
 /**
  * Ambient storage for the current request's {@link AuditContext}.
- *
- * Only an HTTP request populates it today, because every action currently worth auditing is
- * HTTP-triggered. That is an assumption, not a guarantee: a cron job or a listener resumed outside
- * the request's async chain finds an empty store, and its record is written WITHOUT an actor. The
- * record itself is never lost — the handler writes it either way — so the failure mode is a known
- * gap in attribution, not a missing entry. A future non-HTTP caller closes it by seeding its own
- * context with `run()` under a system identity.
  */
-export const auditContextStorage = new AsyncLocalStorage<AuditContext>();
+const auditContextStorage = new AsyncLocalStorage<AuditContext>();
+
+/**
+ * Publishes a verified principal into the ambient context — the only way the identity half is
+ * written. Only a VERIFIED identity may be published: a decoded-but-unverified token would forge
+ * the trail. No-op outside an HTTP request.
+ *
+ * @param actorId The verified principal's identifier.
+ * @param actorRole The verified principal's role.
+ */
+export function publishAuditActor(actorId: string, actorRole: AuthRole) {
+    const context = auditContextStorage.getStore();
+
+    if (!context) return;
+
+    context.actorId = actorId;
+    context.actorRole = actorRole;
+}
+
+/**
+ * Runs a callback inside its own audit context — used by `auditContextHook` to scope a request,
+ * and by non-HTTP callers (cron, listener) to attribute records to a system identity.
+ *
+ * @param context The context records written inside the callback are completed from.
+ * @param callback The work to run inside the context.
+ * @returns Whatever the callback returns.
+ */
+export function runWithAuditContext<T>(context: AuditContext, callback: () => T): T {
+    return auditContextStorage.run(context, callback);
+}
+
+/**
+ * Reads the current context for completing an audit entry.
+ *
+ * @returns The ambient context, or undefined when none was opened.
+ */
+export function getAuditContext(): Readonly<AuditContext> | undefined {
+    return auditContextStorage.getStore();
+}

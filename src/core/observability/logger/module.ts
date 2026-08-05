@@ -1,18 +1,19 @@
 /**
- * @file logger.module.ts
- * @description NestJS module configuring the Pino logger.
+ * @file module.ts
+ * @description NestJS module configuring pino and providing the logger port.
  */
 
 import { Module, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IncomingMessage } from 'http';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
-import { ENV, Environment } from 'src/core/config';
-import { LoggerAdapter } from 'src/core/observability/logger/adapter';
-import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
+import { ENV, Environment, ROUTE_DOCS, ROUTE_HEALTH } from 'src/core/config';
+import { LoggerAdapter } from 'src/core/observability/logger/adapter/logger.adapter';
+import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.port';
 
 /**
- * LoggerModule wrapper encapsulating pino configurations.
+ * Configures pino — level per environment, whitelist serializers, route exclusions — and provides
+ * the logger port.
  */
 @Module({
     imports: [
@@ -30,13 +31,10 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
                                   ? 'debug'
                                   : 'silent',
                         serializers: {
-                            // Whitelist, not denylist — the same philosophy as the response DTOs'
-                            // `@Exclude()` + `@Expose()`. A denylist of sensitive headers protects only
-                            // the headers someone thought of, and silently leaks every one added later;
-                            // here a new header is private by default and must be named to be logged.
-                            // The request BODY is never logged at all, at any level: it is the one place
-                            // credentials, tokens and full PII payloads reliably appear, and no
-                            // operational question is worth keeping that standing risk.
+                            // Whitelist, not denylist: a denylist protects only the headers someone
+                            // thought of and silently leaks every one added later — here a new header
+                            // is private until named. The request BODY is never logged at any level:
+                            // it is where credentials, tokens and PII reliably appear.
                             req: (req: IncomingMessage & { id: unknown; remoteAddress: string }) => ({
                                 id: req.id,
                                 method: req.method,
@@ -44,10 +42,9 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
                                 remoteAddress: req.remoteAddress,
                                 userAgent: req.headers['user-agent'],
                             }),
-                            // Response headers are dropped wholesale rather than filtered: they answer
-                            // no diagnostic question a log line is asked, while Set-Cookie and any
-                            // future token-bearing header would land there by default. The status code
-                            // is the only part worth keeping.
+                            // Response headers are dropped wholesale: they answer no diagnostic
+                            // question, while Set-Cookie and any future token-bearing header would
+                            // land there by default. Only the status code is worth keeping.
                             res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
                             error: function serialize(error: unknown): unknown {
                                 if (error instanceof Error) {
@@ -66,10 +63,13 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port';
                             level: (label: string) => ({ level: label }),
                         },
                     },
+                    // These routes answer no diagnostic question per request. The `*splat` wildcard
+                    // (path-to-regexp v8) covers the /live and /ready probes — the app's
+                    // highest-frequency traffic.
                     exclude: [
-                        { method: RequestMethod.ALL, path: 'health' },
-                        { method: RequestMethod.ALL, path: 'metrics' },
-                        { method: RequestMethod.ALL, path: 'v:version/docs' },
+                        { method: RequestMethod.ALL, path: ROUTE_HEALTH },
+                        { method: RequestMethod.ALL, path: `${ROUTE_HEALTH}/*splat` },
+                        { method: RequestMethod.ALL, path: `v:version/${ROUTE_DOCS}` },
                     ],
                 };
             },

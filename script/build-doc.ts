@@ -13,7 +13,7 @@ import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, VERSION_1 } from 'src/core/config';
 import { createSwaggerDocument, generateStaticScalarHtml, VERSION_CONFIG } from 'src/core/doc';
-import { LogPayload } from 'src/core/observability/logger';
+import type { LogPayload } from 'src/core/observability/logger';
 
 /**
  * Scaffolds a minimal application context to inspect NestJS metadata,
@@ -21,24 +21,6 @@ import { LogPayload } from 'src/core/observability/logger';
  */
 async function bootstrap() {
     let app: NestFastifyApplication | undefined;
-
-    function createLogPayload({
-        message,
-        error,
-        data,
-    }: {
-        message: string;
-        error?: unknown;
-        data?: Record<string, unknown>;
-    }) {
-        return new LogPayload({
-            class: 'build-doc.ts',
-            method: bootstrap.name,
-            message,
-            error,
-            ...(data ? { data } : undefined),
-        });
-    }
 
     try {
         app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
@@ -94,6 +76,24 @@ async function bootstrap() {
         }
 
         process.exit(1);
+    }
+
+    function createLogPayload({
+        message,
+        error,
+        data,
+    }: {
+        message: string;
+        error?: unknown;
+        data?: Record<string, unknown>;
+    }): LogPayload {
+        return {
+            class: 'build-doc.ts',
+            method: bootstrap.name,
+            message,
+            error,
+            ...(data ? { data } : undefined),
+        };
     }
 }
 

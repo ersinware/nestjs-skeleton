@@ -143,7 +143,7 @@ src/
   core/
     cache/  config/  cqrs/  database/  doc/  email/
     event-bus/  exception/  http/
-    observability/            # SHELF (no index.ts): audit/  logger/  tracker/
+    observability/            # SHELF (no index.ts): audit/  exception-tracker/  logger/
     security/                 # SHELF (no index.ts): auth/  hashing/  session/  token/
   module/
     <module>/
@@ -185,7 +185,7 @@ test/                         # E2E and integration tests
 
 The test is NOT "how many files exist now" but **"can this role ever have more than one member?"** If yes, build the plural structure from the first file — no path ever churns.
 
-- **Plural roles — own folder from the first file**: `adapter`, `port`, `command`, `query`, `listener`, `cron`, `event`, `controller`, `dto`, `decorator`, `guard`, `filter`, `interceptor`, `pipe`.
+- **Plural roles — own folder from the first file**: `adapter`, `port`, `command`, `query`, `listener`, `cron`, `event`, `controller`, `dto`, `decorator`, `guard`, `filter`, `hook`, `interceptor`, `pipe`.
 - **Singular roles — stay flat, never get a folder**: `module`, `facade`, `schema`. One per concept by definition; a folder here is an empty box. **No wrapper folder either** — the schema is `infrastructure/<module>.schema.ts`, never `infrastructure/database/<module>.schema.ts`: a data source is an axis carried by the **filename** (`user-cache-reader.adapter.ts`), never by a folder.
 - **Growth axis is the sub-concept, never the kind.** A concept accreting a large type family must split into sub-concepts (`email/` → `sending/`, `ledger/`, `queue/`, each carrying its own types/enums/ports) — the swelling means the concept does too much. If you cannot name the result, either the split isn't needed or the result is a bag with no identity.
 
@@ -370,7 +370,7 @@ configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
 
 ### Route & Prefix Literals
 
-Any route fragment visible from more than one place is a constant in `core/config` — `GLOBAL_PREFIX`, `ROUTE_HEALTH`/`ROUTE_HEALTH_LIVE`/`ROUTE_HEALTH_READY`, and the `PATH_HEALTH*` derived from them — never a string literal repeated at each site.
+Any route fragment visible from more than one place is a constant, never a string literal repeated at each site. App-level mount points live in `core/config` (`GLOBAL_PREFIX`, `ROUTE_HEALTH`/`ROUTE_HEALTH_LIVE`/`ROUTE_HEALTH_READY`, `ROUTE_DOCS`, and the `PATH_HEALTH*` derived from them); a fragment with a more specific owner lives with that owner — `PARAM_ID`/`ROUTE_PARAM_ID` sit beside `ParamIdDto` in `core/http`, tied to the DTO by `satisfies` so the parameter name cannot drift from the class that validates it.
 
 A module's route segment living in `core/` is a deliberate, narrow concession: the global filter must recognize the exact health paths to let their intentional `503` through unnormalized (§ Health Probes), and `core` may not import a module. The constant stops the filter and the controller drifting apart on a rename.
 

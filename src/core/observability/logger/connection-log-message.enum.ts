@@ -1,13 +1,12 @@
 /**
  * @file connection-log-message.enum.ts
- * @description Shared vocabulary of the per-outage connection transition logs. A dependency's
- * connection lifecycle is recorded as exactly one LOST and one RESTORED entry per episode, so the
- * two messages are fixed here once instead of drifting apart across the concerns that emit them.
+ * @description Shared vocabulary of the connection outage-transition logs, fixed here once so
+ * outages read — and grep — identically across dependencies.
  */
 
 /**
- * Marks which side of a connection outage a transition log records, so an entry is identifiable as
- * the start or the end of an episode without inspecting its other fields.
+ * Marks which side of a connection outage a transition log records: exactly one LOST and one
+ * RESTORED entry per episode.
  */
 export enum ConnectionLogMessage {
     LOST = 'Connection lost.',

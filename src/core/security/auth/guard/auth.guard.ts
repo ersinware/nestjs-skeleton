@@ -5,7 +5,7 @@
 
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { auditContextStorage } from 'src/core/observability/audit';
+import { publishAuditActor } from 'src/core/observability/audit';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -93,33 +93,8 @@ export class AuthGuard implements CanActivate {
         }
 
         request.accessTokenPayload = payload;
-        this.publishActor(payload);
+        publishAuditActor(payload.sub, payload.role);
 
         return true;
-    }
-
-    /**
-     * Publishes the verified principal into the ambient audit context.
-     *
-     * This guard is where the fact "this identity is established" comes into existence, so by the
-     * project's audit rule it is also where that fact is published — not somewhere downstream that
-     * merely observes the result. The distinction is load-bearing rather than stylistic: an
-     * interceptor doing this would run AFTER every guard, so a `403` raised by the roles guard — a
-     * refusal that is entirely ABOUT this identity's role — would be recorded with no actor at all.
-     *
-     * Only a VERIFIED payload is published. A decoded-but-unverified token would let a caller name
-     * itself in the audit trail, which does not produce an unattributed record but a forged one.
-     *
-     * The store is absent only outside an HTTP request, where no actor exists to attribute either.
-     *
-     * @param payload The access-token payload this guard has just verified.
-     */
-    private publishActor(payload: AccessTokenPayload) {
-        const auditContext = auditContextStorage.getStore();
-
-        if (auditContext) {
-            auditContext.actorId = payload.sub;
-            auditContext.actorRole = payload.role;
-        }
     }
 }

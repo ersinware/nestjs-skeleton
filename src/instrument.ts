@@ -5,10 +5,10 @@
 
 import * as Sentry from '@sentry/nestjs';
 import { ENV } from 'src/core/config';
-import { TrackerEnvironment } from 'src/core/observability/tracker';
+import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 
 const SENTRY_DSN = process.env[ENV.SENTRY_DSN],
-    SENTRY_ENVIRONMENT = process.env[ENV.SENTRY_ENVIRONMENT] as TrackerEnvironment;
+    SENTRY_ENVIRONMENT = process.env[ENV.SENTRY_ENVIRONMENT] as ExceptionTrackerEnvironment;
 
 if (!SENTRY_DSN) {
     throw new Error(`${ENV.SENTRY_DSN} environment variable is required.`);
@@ -18,9 +18,9 @@ if (!SENTRY_ENVIRONMENT) {
     throw new Error(`${ENV.SENTRY_ENVIRONMENT} environment variable is required.`);
 }
 
-if (!Object.values(TrackerEnvironment).includes(SENTRY_ENVIRONMENT)) {
+if (!Object.values(ExceptionTrackerEnvironment).includes(SENTRY_ENVIRONMENT)) {
     throw new Error(
-        `Invalid ${ENV.SENTRY_ENVIRONMENT}: "${SENTRY_ENVIRONMENT}". Must be one of: ${Object.values(TrackerEnvironment).join(', ')}`,
+        `Invalid ${ENV.SENTRY_ENVIRONMENT}: "${SENTRY_ENVIRONMENT}". Must be one of: ${Object.values(ExceptionTrackerEnvironment).join(', ')}`,
     );
 }
 

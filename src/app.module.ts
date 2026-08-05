@@ -15,8 +15,8 @@ import { EventBusModule } from 'src/core/event-bus';
 import { GlobalExceptionFilter } from 'src/core/exception';
 import { NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
 import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
+import { ExceptionTrackerModule } from 'src/core/observability/exception-tracker';
 import { LoggerModule } from 'src/core/observability/logger';
-import { TrackerModule } from 'src/core/observability/tracker';
 import { AuthGuard, AuthRolesGuard } from 'src/core/security/auth';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -39,7 +39,7 @@ import { UserModule } from 'src/module/user';
         EventEmitterModule.forRoot(),
         LoggerModule,
         AuditModule,
-        TrackerModule,
+        ExceptionTrackerModule,
         EventBusModule,
         CacheModule,
         DatabaseModule,

@@ -8,7 +8,7 @@
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { ENV } from 'src/core/config';
-import { ConnectionLogMessage, LogPayload, type ILoggerPort } from 'src/core/observability/logger';
+import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
  * Creates a configured Redis client instance.
@@ -48,14 +48,12 @@ export function createRedisClient(
         }
 
         isDown = true;
-        logger.warn(
-            new LogPayload({
-                class: createRedisClient.name,
-                method: `${clientName}.on(error)`,
-                message: ConnectionLogMessage.LOST,
-                error,
-            }),
-        );
+        logger.warn({
+            class: createRedisClient.name,
+            method: `${clientName}.on(error)`,
+            message: ConnectionLogMessage.LOST,
+            error,
+        });
     });
 
     redis.on('ready', () => {
@@ -64,13 +62,11 @@ export function createRedisClient(
         }
 
         isDown = false;
-        logger.log(
-            new LogPayload({
-                class: createRedisClient.name,
-                method: `${clientName}.on(ready)`,
-                message: ConnectionLogMessage.RESTORED,
-            }),
-        );
+        logger.log({
+            class: createRedisClient.name,
+            method: `${clientName}.on(ready)`,
+            message: ConnectionLogMessage.RESTORED,
+        });
     });
 
     return redis;

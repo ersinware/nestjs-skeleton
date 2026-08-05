@@ -1,18 +1,16 @@
 /**
- * @file port.ts
- * @description Contract for logging services injected into the application domain.
+ * @file logger.port.ts
+ * @description Structured-only logging contract and its injection token.
  */
 
-import { LogPayload } from 'src/core/observability/logger/log-payload';
+import type { LogPayload } from 'src/core/observability/logger/log-payload';
 
 export const TOKEN_LOGGER_PORT = Symbol('TOKEN_LOGGER_PORT');
 
 /**
- * Structured-only logging contract. Every level takes the closed {@link LogPayload} envelope and
- * nothing else: a free-form signature would let an unstructured string through, and a single such
- * call makes the log stream unqueryable for the field the rest of the codebase guarantees.
- * The surface is deliberately three levels — `debug` and `fatal` have no caller and would only
- * invite level drift.
+ * Structured-only logging contract: every level takes the closed {@link LogPayload} envelope, so
+ * an unstructured string can never enter the stream. Deliberately three levels — `debug` and
+ * `fatal` have no caller and would only invite level drift.
  */
 export interface ILoggerPort {
     /**

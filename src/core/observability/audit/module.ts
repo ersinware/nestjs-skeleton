@@ -4,17 +4,17 @@
  */
 
 import { Module } from '@nestjs/common';
-import { AuditAdapter } from 'src/core/observability/audit/adapter';
-import { TOKEN_AUDIT_PORT } from 'src/core/observability/audit/port';
+import { AuditAdapter } from 'src/core/observability/audit/adapter/audit.adapter';
+import { TOKEN_AUDIT_PORT } from 'src/core/observability/audit/port/audit.port';
+import { LoggerModule } from 'src/core/observability/logger';
 
 /**
- * Module providing the audit port.
- *
- * Every consumer that establishes an auditable fact — command handlers, the global exception filter,
- * and later a read-side interceptor — imports this module explicitly, so the dependency is visible in
- * that consumer's own manifest rather than resolved from an ambient global scope.
+ * Provides the audit port backed by the pino adapter.
  */
 @Module({
+    // The adapter injects `PinoLogger`, whose configured instance `LoggerModule` provides; the
+    // manifest names the dependency even though nestjs-pino is global.
+    imports: [LoggerModule],
     providers: [
         {
             provide: TOKEN_AUDIT_PORT,

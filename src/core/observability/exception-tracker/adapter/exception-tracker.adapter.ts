@@ -1,14 +1,14 @@
 /**
- * @file sentry.adapter.ts
+ * @file exception-tracker.adapter.ts
  * @description Sentry implementation of the exception tracker port.
  */
 
 import { Injectable } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { IExceptionTrackerPort } from 'src/core/observability/tracker/port';
+import { IExceptionTrackerPort } from 'src/core/observability/exception-tracker/port/exception-tracker.port';
 
 /**
- * Adapter that uses @sentry/nestjs to capture exceptions and forward them to Sentry.
+ * Forwards captured exceptions to Sentry via `@sentry/nestjs`.
  */
 @Injectable()
 export class ExceptionTrackerAdapter implements IExceptionTrackerPort {

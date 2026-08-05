@@ -16,7 +16,13 @@ import {
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { ParamIdDto, QueryPaginationDto, RequestValidationMessage, ResponsePaginationDto } from 'src/core/http';
+import {
+    ParamIdDto,
+    QueryPaginationDto,
+    RequestValidationMessage,
+    ResponsePaginationDto,
+    ROUTE_PARAM_ID,
+} from 'src/core/http';
 import { Roles } from 'src/core/security/auth';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
@@ -83,7 +89,7 @@ export class AdminController {
      *
      * @param params The URL path parameters containing the target admin ID
      */
-    @Delete(':id')
+    @Delete(ROUTE_PARAM_ID)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Delete admin',
@@ -102,7 +108,7 @@ export class AdminController {
      *
      * @param params The URL path parameters containing the target admin ID
      */
-    @Post(':id/ban')
+    @Post(`${ROUTE_PARAM_ID}/ban`)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Ban admin',
@@ -122,7 +128,7 @@ export class AdminController {
      *
      * @param params The URL path parameters containing the target admin ID
      */
-    @Post(':id/unban')
+    @Post(`${ROUTE_PARAM_ID}/unban`)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Unban admin',

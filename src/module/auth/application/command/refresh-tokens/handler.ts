@@ -9,7 +9,6 @@ import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/e
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { AuthRejectionReason } from 'src/module/auth/application/command/auth-rejection-reason.enum';
 import {
     IdentityRealm,
     TOKEN_IDENTITY_READER_PORT,
@@ -142,7 +141,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // more expired token.
         this.auditPort.record({
             action: AuditAction.REFRESH_REUSE_DETECTED,
-            reason: AuthRejectionReason.SESSION_REUSE,
             targetId: sub,
         });
 
