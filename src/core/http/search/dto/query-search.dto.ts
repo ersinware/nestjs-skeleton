@@ -1,6 +1,6 @@
 /**
  * @file query-search.dto.ts
- * @description Defines generic query parameters acceptable when fetching lists of items, extending base pagination with a generic search filter.
+ * @description Query parameters for searchable list endpoints: pagination plus a free-text search term.
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
@@ -8,26 +8,33 @@ import { Exclude, Expose } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { QueryPaginationDto } from 'src/core/http/pagination/dto/query-pagination.dto';
 
+const SEARCH_MIN_LENGTH = 1,
+    SEARCH_MAX_LENGTH = 100;
+
 /**
- * Generic query parameters for list endpoints.
- * Inherits standard pagination controls and adds a unified search term.
+ * Extends pagination with an optional search term, so searchable list endpoints
+ * share one input contract instead of redefining the field per module.
  */
-@ApiSchema({ name: 'QuerySearch', description: 'Generic query parameters for pagination and search.' })
 @Exclude()
+@ApiSchema({ name: 'QuerySearch', description: 'Generic query parameters for pagination and search.' })
 export class QuerySearchDto extends QueryPaginationDto {
     /**
-     * The optional generic search text used to perform pattern matching against entity fields.
+     * The free-text term the endpoint matches against its searchable fields.
      */
     @Expose()
     @IsOptional()
     @IsString({ message: 'Search term must be a string.' })
-    @MinLength(1, { message: 'Search term must be at least 1 character long.' })
-    @MaxLength(100, { message: 'Search term cannot be longer than 100 characters.' })
+    @MinLength(SEARCH_MIN_LENGTH, {
+        message: `Search term must be at least ${SEARCH_MIN_LENGTH} character long.`,
+    })
+    @MaxLength(SEARCH_MAX_LENGTH, {
+        message: `Search term cannot be longer than ${SEARCH_MAX_LENGTH} characters.`,
+    })
     @ApiProperty({
         type: 'string',
         required: false,
-        minLength: 1,
-        maxLength: 100,
+        minLength: SEARCH_MIN_LENGTH,
+        maxLength: SEARCH_MAX_LENGTH,
         example: 'search keyword',
         description: 'The search term to filter results.',
     })

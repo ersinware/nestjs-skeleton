@@ -1,12 +1,12 @@
 /**
  * @file request-validation-message.enum.ts
- * @description Client-safe messages describing HTTP request-validation rejections. Owned by the HTTP validation concern because the effective thrower is the request-validation pipeline, not the shared exception taxonomy.
+ * @description Client-safe messages for HTTP request-validation rejections. Lives here because the
+ * effective thrower is the request-validation pipeline, not the shared exception taxonomy.
  */
 
 /**
- * Enum defining the client-safe messages of HTTP request-validation failures, consumed by the
- * `ApiDefaultInvalidRequestResponse` documentation decorator to describe which part of the request
- * failed validation.
+ * Names which part of the request failed validation, consumed by the
+ * `ApiDefaultInvalidRequestResponse` documentation decorator.
  */
 export enum RequestValidationMessage {
     /**

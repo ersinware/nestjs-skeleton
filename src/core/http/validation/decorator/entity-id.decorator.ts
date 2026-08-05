@@ -1,6 +1,6 @@
 /**
  * @file entity-id.decorator.ts
- * @description Custom composite decorator to enforce validation and documentation for database identifiers (IDs).
+ * @description Composed decorator bundling validation and OpenAPI metadata for entity identifier fields.
  */
 
 import { applyDecorators } from '@nestjs/common';
@@ -8,10 +8,11 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsUUID } from 'class-validator';
 
 /**
- * Combined decorator to validate that a property contains a valid UUID v7.
+ * Single source of the entity-identifier contract: every id in the system is a UUID v7,
+ * and this decorator is where that decision is enforced and documented.
  *
- * @param descriptionPrefix The prefix description used in Swagger documentation and validation error messages.
- * @returns A decorator that validates and documents the entity identifier property.
+ * @param descriptionPrefix The field label used in the Swagger description and validation error messages.
+ * @returns A decorator that validates and documents an entity identifier property.
  */
 export function IsEntityId(descriptionPrefix: string = 'The unique identifier') {
     return applyDecorators(

@@ -14,6 +14,13 @@ export const PAGINATION_DEFAULT_PAGE = 1;
 export const PAGINATION_DEFAULT_LIMIT = 20;
 
 /**
+ * The highest item limit a client may request per page.
+ * The other half of the paging policy alongside {@link PAGINATION_MAX_OFFSET}: together they bound
+ * the cost of a single paginated read.
+ */
+export const PAGINATION_MAX_LIMIT = 100;
+
+/**
  * The highest offset a client may reach through the page/limit combination.
  * An offset-based read makes the database walk and discard every skipped row, so an unbounded
  * page number turns a single request into a full scan; this ceiling keeps that cost constant.

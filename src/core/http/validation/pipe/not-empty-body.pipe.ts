@@ -1,23 +1,25 @@
 /**
  * @file not-empty-body.pipe.ts
- * @description Pipe to enforce non-empty request bodies.
+ * @description Pipe rejecting requests whose body is missing, empty, or not a plain object.
  */
 
 import { ArgumentMetadata, Injectable, PipeTransform } from '@nestjs/common';
 import { InvalidInputException } from 'src/shared/exception';
 
 /**
- * Validates that incoming payload is a non-empty object.
+ * Rejects a missing or empty body before field validation runs. `ValidationPipe` alone would
+ * accept `{}` against an all-optional DTO, and for required fields would answer an absent body
+ * with a list of per-field errors instead of one clear message.
  */
 @Injectable()
 export class NotEmptyBodyPipe implements PipeTransform {
     /**
-     * Validates the request payload.
+     * Passes non-body arguments through and requires a body to be a non-empty plain object.
      *
-     * @param value Incoming payload.
-     * @param metadata Metadata of the validated argument.
-     * @returns The validated payload.
-     * @throws {InvalidInputException} if payload is invalid or empty.
+     * @param value The incoming argument value.
+     * @param metadata The metadata identifying which argument kind is being transformed.
+     * @returns The value, unchanged.
+     * @throws {InvalidInputException} When a body is missing, empty, or not a plain object.
      */
     transform(value: unknown, metadata: ArgumentMetadata): unknown {
         if (metadata.type !== 'body') {

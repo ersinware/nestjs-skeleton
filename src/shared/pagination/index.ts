@@ -7,5 +7,6 @@ export type { PaginationParams } from 'src/shared/pagination/pagination-params.t
 export {
     PAGINATION_DEFAULT_LIMIT,
     PAGINATION_DEFAULT_PAGE,
+    PAGINATION_MAX_LIMIT,
     PAGINATION_MAX_OFFSET,
 } from 'src/shared/pagination/pagination.constant';

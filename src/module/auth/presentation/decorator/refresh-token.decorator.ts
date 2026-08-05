@@ -11,20 +11,22 @@ import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.cons
 /**
  * Applies strict JWT formatting and length validations alongside standardized Swagger documentation for a refresh token property.
  *
- * @param description The description override used in the Swagger OpenAPI specification
+ * @param descriptionPrefix The prefix description used in Swagger documentation and validation error messages
  * @returns A decorator that validates and documents refresh token properties
  */
-export function IsRefreshToken(description: string = 'The active refresh token.') {
+export function IsRefreshToken(descriptionPrefix: string = 'The refresh token') {
     return applyDecorators(
-        IsString(),
-        IsNotEmpty(),
-        IsJWT(),
-        MaxLength(TOKEN_MAX_LENGTH),
+        IsString({ message: `${descriptionPrefix} must be a string.` }),
+        IsNotEmpty({ message: `${descriptionPrefix} cannot be empty.` }),
+        IsJWT({ message: `${descriptionPrefix} must be a valid JWT.` }),
+        MaxLength(TOKEN_MAX_LENGTH, {
+            message: `${descriptionPrefix} cannot exceed ${TOKEN_MAX_LENGTH} characters.`,
+        }),
         ApiProperty({
             type: 'string',
             format: 'jwt',
             maxLength: TOKEN_MAX_LENGTH,
-            description,
+            description: `${descriptionPrefix}.`,
             example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         }),
     );

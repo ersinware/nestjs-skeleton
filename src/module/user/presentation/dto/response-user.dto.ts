@@ -5,7 +5,7 @@
 
 import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEntityId, IsUserEmail, IsUserName } from 'src/core/http';
+import { IsEmailAddress, IsEntityId, IsPersonName } from 'src/core/http';
 
 /**
  * The secure serialization schema for a user profile.
@@ -25,13 +25,13 @@ export class ResponseUserDto {
      * The verified email address of the user.
      */
     @Expose()
-    @IsUserEmail('The email address')
+    @IsEmailAddress()
     readonly email!: string;
 
     /**
      * The display name of the user.
      */
     @Expose()
-    @IsUserName('The full name')
+    @IsPersonName()
     readonly name!: string;
 }

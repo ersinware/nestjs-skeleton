@@ -1,7 +1,6 @@
 /**
  * @file response.interceptor.ts
- * @description Global response interceptor that standardizes successful API responses
- * by wrapping the returned data in a uniform structure ({ data: ... }).
+ * @description Global interceptor wrapping every successful response body in the uniform `{ data }` envelope.
  */
 
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
@@ -10,18 +9,19 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 /**
- * Interceptor that formats successful outgoing HTTP responses to ensure a consistent response structure.
+ * Gives every endpoint the same `{ data }` response shape, so clients parse one
+ * envelope and handlers never wrap their return values manually.
  */
 @Injectable()
 export class ResponseInterceptor implements NestInterceptor {
     /**
-     * Intercepts the response flow of the request.
-     * Bypasses modification for status codes that do not return content (e.g., 204 No Content, 304 Not Modified).
-     * Maps all other successful responses to a standardized format wrapping the payload.
+     * Wraps the handler's output in `{ data }`, with a missing payload rendered as `data: null`.
+     * Bodyless statuses (204 No Content, 304 Not Modified) pass through untouched — an envelope
+     * would put a body on a response that must not carry one.
      *
-     * @param context The current execution context of the request.
-     * @param handler The call handler facilitating the continuation of the request lifecycle.
-     * @returns An observable mapping the output to a structured response object containing the data.
+     * @param context The execution context of the current request.
+     * @param handler The handler continuing the request pipeline.
+     * @returns An observable emitting the enveloped response body.
      */
     intercept(context: ExecutionContext, handler: CallHandler): Observable<unknown> {
         const response = context.switchToHttp().getResponse<FastifyReply>();
