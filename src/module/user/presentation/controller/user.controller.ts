@@ -30,6 +30,7 @@ import {
     QuerySearchDto,
     RequestValidationMessage,
     ResponsePaginationDto,
+    ROUTE_PARAM_ID,
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { AccessTokenPayloadDecorator, Public, Roles } from 'src/core/security/auth';
@@ -152,9 +153,9 @@ export class UserController {
      * @param params The path parameters containing the target user ID
      * @returns The serialized profile of the requested user
      */
-    @Get(':id')
+    @Get(ROUTE_PARAM_ID)
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
-    @Audited(AuditAction.PERSONAL_DATA_EXPORTED)
+    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get user by ID',
@@ -255,7 +256,7 @@ export class UserController {
      *
      * @param params The path parameters containing the target user ID
      */
-    @Post(':id/ban')
+    @Post(`${ROUTE_PARAM_ID}/ban`)
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
@@ -277,7 +278,7 @@ export class UserController {
      *
      * @param params The path parameters containing the target user ID
      */
-    @Post(':id/unban')
+    @Post(`${ROUTE_PARAM_ID}/unban`)
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)

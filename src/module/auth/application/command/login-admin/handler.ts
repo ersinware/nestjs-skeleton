@@ -98,11 +98,11 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
      * leaving it attached would duplicate the same event into the operational log as a `warn`.
      *
      * @param reason Why the attempt was rejected — the audit record's own vocabulary
-     * @param sub The rejected account's id, absent when no account matched the email
+     * @param targetId The rejected account's id, absent when no account matched the email
      * @returns The exception the caller throws
      */
-    private denyLogin(reason: AuthRejectionReason, sub?: string): UnauthenticatedException {
-        this.auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, targetId: sub });
+    private denyLogin(reason: AuthRejectionReason, targetId?: string): UnauthenticatedException {
+        this.auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, ...(targetId && { targetId }) });
 
         return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
     }

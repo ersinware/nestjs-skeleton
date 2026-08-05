@@ -8,7 +8,7 @@ import { applyDecorators } from '@nestjs/common';
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsNumber, IsString, Matches, Max, Min, validateSync } from 'class-validator';
 import { Environment } from 'src/core/config/environment/node-env.enum';
-import { TrackerEnvironment } from 'src/core/observability/tracker';
+import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 
 /**
  * The two shapes this application accepts: `false`, or a comma-separated list of IPv4/IPv6
@@ -16,7 +16,7 @@ import { TrackerEnvironment } from 'src/core/observability/tracker';
  *
  * Fastify would also take a trusted-HOP COUNT; that form is deliberately excluded. A count is
  * positional: inserting a CDN or a service-mesh sidecar shifts which hop is believed and nothing
- * fails — the audit record's `sourceIp` quietly starts naming the wrong party. A list names the
+ * fails — the audit record's `remoteAddress` quietly starts naming the wrong party. A list names the
  * machines actually operated; a hop not on it is never believed, whatever position it arrives in.
  *
  * The pattern is otherwise shape-only — the exact address grammar is proxy-addr's to enforce, and
@@ -84,7 +84,7 @@ export class EnvironmentVariables {
      * Which reverse-proxy hops in front of the app may be believed when they claim a client's IP.
      *
      * Every downstream decision keyed on "who made this request" — today the audit record's
-     * `sourceIp`, and any IP-keyed control added later — resolves to `request.ip`, derived from the
+     * `remoteAddress`, and any IP-keyed control added later — resolves to `request.ip`, derived from the
      * client-writable `X-Forwarded-For` header; trusting it blindly hands the client its own
      * identity. Accepted values are `false` (no proxy) or a comma-separated list of proxy
      * IPs/CIDRs; both `true` and a bare hop count are rejected — see {@link TRUST_PROXY_PATTERN}.
@@ -92,7 +92,7 @@ export class EnvironmentVariables {
     @IsString()
     @Matches(/^(?!true$)/, {
         message:
-            'TRUST_PROXY must not be "true": it would believe every hop in X-Forwarded-For, letting any client spoof its own IP and so choose the sourceIp recorded against it. List the trusted proxy IPs/CIDRs instead.',
+            'TRUST_PROXY must not be "true": it would believe every hop in X-Forwarded-For, letting any client spoof its own IP and so choose the remoteAddress recorded against it. List the trusted proxy IPs/CIDRs instead.',
     })
     @Matches(TRUST_PROXY_PATTERN, {
         message:
@@ -277,8 +277,8 @@ export class EnvironmentVariables {
     /**
      * Sentry environment (e.g. production, staging, development).
      */
-    @IsEnum(TrackerEnvironment)
-    readonly SENTRY_ENVIRONMENT!: TrackerEnvironment;
+    @IsEnum(ExceptionTrackerEnvironment)
+    readonly SENTRY_ENVIRONMENT!: ExceptionTrackerEnvironment;
 
     /**
      * OpenTelemetry traces exporter endpoint.

@@ -1,13 +1,13 @@
 /**
- * @file port.ts
- * @description Defines the port for tracking application exceptions and errors.
+ * @file exception-tracker.port.ts
+ * @description Contract for reporting exceptions to an external tracking service.
  */
 
-/** Token for the exception tracker port */
 export const TOKEN_EXCEPTION_TRACKER_PORT = Symbol('TOKEN_EXCEPTION_TRACKER_PORT');
 
 /**
- * Interface representing the capability to capture and track exceptions.
+ * Contract for reporting an exception, used only when a human must intervene and the failure will
+ * not self-heal. Pairs with the logger's `error`, never replaces it.
  */
 export interface IExceptionTrackerPort {
     /**

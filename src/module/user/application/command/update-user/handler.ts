@@ -54,7 +54,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
         // fact to audit, so both are skipped — saving here would rewrite identical values, and an
         // entry for a change that changed nothing would be a fabricated fact (the same truth the
         // domain event follows).
-        if (!user.updateProfile({ name, email })) {
+        if (!user.updateProfile({ ...(name && { name }), ...(email && { email }) })) {
             return;
         }
 

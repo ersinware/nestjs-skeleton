@@ -9,8 +9,8 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { PATH_HEALTH, PATH_HEALTH_READY } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/tracker';
+import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/exception-tracker';
+import { TOKEN_LOGGER_PORT, type ILoggerPort, type LogPayload } from 'src/core/observability/logger';
 import {
     AppException,
     DependencyUnavailableMessage,
@@ -258,12 +258,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const error = exception instanceof Error ? exception : new Error(String(exception)),
             context = exception instanceof AppException ? exception.context : undefined;
 
-        return new LogPayload({
+        return {
             class: this.constructor.name,
             method: this.catch.name,
             message: error.message,
             error,
             ...(context ? { data: { context } } : undefined),
-        });
+        };
     }
 }

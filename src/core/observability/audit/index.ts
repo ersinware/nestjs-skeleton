@@ -3,11 +3,12 @@
  * @description Public entry point of the audit concern. Nothing outside may import past this barrel.
  */
 
-export * from 'src/core/observability/audit/audit-action.enum';
-export * from 'src/core/observability/audit/audit-context';
-export * from 'src/core/observability/audit/audit-context.hook';
-export * from 'src/core/observability/audit/audit-entry';
-export * from 'src/core/observability/audit/decorator/audited.decorator';
-export * from 'src/core/observability/audit/interceptor/audit.interceptor';
-export * from 'src/core/observability/audit/module';
-export * from 'src/core/observability/audit/port';
+export { AuditAction } from 'src/core/observability/audit/audit-action.enum';
+export { publishAuditActor } from 'src/core/observability/audit/audit-context';
+export type { AuditContext } from 'src/core/observability/audit/audit-context';
+export { Audited } from 'src/core/observability/audit/decorator/audited.decorator';
+export { auditContextHook } from 'src/core/observability/audit/hook/audit-context.hook';
+export { AuditInterceptor } from 'src/core/observability/audit/interceptor/audit.interceptor';
+export { AuditModule } from 'src/core/observability/audit/module';
+export { TOKEN_AUDIT_PORT } from 'src/core/observability/audit/port/audit.port';
+export type { AuditRecordInput, IAuditPort } from 'src/core/observability/audit/port/audit.port';

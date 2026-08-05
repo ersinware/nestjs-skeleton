@@ -83,7 +83,7 @@ export class User extends SoftDeletableAggregateRoot {
      * transition, so a request that matched the current state leaves no fabricated trail.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    updateProfile(payload: { name?: string | undefined; email?: string | undefined }): boolean {
+    updateProfile(payload: { name?: string; email?: string }): boolean {
         this.assertNotDeleted(this.updateProfile.name);
 
         let isUpdated = false;

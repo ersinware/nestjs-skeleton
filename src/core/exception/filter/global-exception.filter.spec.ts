@@ -11,8 +11,8 @@ import { PATH_HEALTH } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { GlobalExceptionFilter } from 'src/core/exception/filter/global-exception.filter';
 import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
-import { LogPayload, TOKEN_LOGGER_PORT } from 'src/core/observability/logger';
-import { TOKEN_EXCEPTION_TRACKER_PORT } from 'src/core/observability/tracker';
+import { TOKEN_EXCEPTION_TRACKER_PORT } from 'src/core/observability/exception-tracker';
+import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
 import {
     AccessDeniedException,
@@ -284,14 +284,12 @@ describe('GlobalExceptionFilter', () => {
 
                 filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.error).toHaveBeenCalledWith(
-                    new LogPayload({
-                        class: GlobalExceptionFilter.name,
-                        method: 'catch',
-                        message: 'boom',
-                        error: thrown,
-                    }),
-                );
+                expect(mockLoggerPort.error).toHaveBeenCalledWith({
+                    class: GlobalExceptionFilter.name,
+                    method: 'catch',
+                    message: 'boom',
+                    error: thrown,
+                });
                 expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
             });

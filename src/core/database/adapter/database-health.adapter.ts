@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import type { IDatabaseHealthPort } from 'src/core/database/port/database-health.port';
-import { ConnectionLogMessage, LogPayload, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { ConnectionLogMessage, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
  * PostgreSQL implementation of the database health port, verifying connectivity via Drizzle.
@@ -47,14 +47,12 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
         } catch (error) {
             if (!this.isDown) {
                 this.isDown = true;
-                this.loggerPort.warn(
-                    new LogPayload({
-                        class: this.constructor.name,
-                        method: this.ping.name,
-                        message: ConnectionLogMessage.LOST,
-                        error,
-                    }),
-                );
+                this.loggerPort.warn({
+                    class: this.constructor.name,
+                    method: this.ping.name,
+                    message: ConnectionLogMessage.LOST,
+                    error,
+                });
             }
 
             throw error;
@@ -62,13 +60,11 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
 
         if (this.isDown) {
             this.isDown = false;
-            this.loggerPort.log(
-                new LogPayload({
-                    class: this.constructor.name,
-                    method: this.ping.name,
-                    message: ConnectionLogMessage.RESTORED,
-                }),
-            );
+            this.loggerPort.log({
+                class: this.constructor.name,
+                method: this.ping.name,
+                message: ConnectionLogMessage.RESTORED,
+            });
         }
     }
 }

@@ -15,7 +15,7 @@ import { apiReference } from '@scalar/nestjs-api-reference';
 import { IncomingMessage, ServerResponse } from 'http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from 'src/app.module';
-import { ACTIVE_VERSIONS, ENV, GLOBAL_PREFIX, resolveTrustProxy, VERSION_1 } from 'src/core/config';
+import { ACTIVE_VERSIONS, ENV, GLOBAL_PREFIX, resolveTrustProxy, ROUTE_DOCS, VERSION_1 } from 'src/core/config';
 import { createSwaggerDocument } from 'src/core/doc';
 import { auditContextHook } from 'src/core/observability/audit';
 
@@ -27,7 +27,7 @@ async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(
             AppModule,
             // Not `true`: that believes every hop in `X-Forwarded-For`, which is client-written, so it
-            // would let a caller choose the `sourceIp` recorded against it (see resolveTrustProxy).
+            // would let a caller choose the `remoteAddress` recorded against it (see resolveTrustProxy).
             new FastifyAdapter({ trustProxy: resolveTrustProxy() }),
             { bufferLogs: true },
         ),
@@ -55,7 +55,7 @@ async function bootstrap() {
  */
 function setupDocumentation(app: NestFastifyApplication) {
     ACTIVE_VERSIONS.forEach((version) => {
-        const path = `/${GLOBAL_PREFIX}/v${version}/docs`;
+        const path = `/${GLOBAL_PREFIX}/v${version}/${ROUTE_DOCS}`;
 
         app.use(
             path,
