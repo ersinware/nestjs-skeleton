@@ -86,7 +86,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      *
      * @returns The body to reply with, or null when this is not a health-probe 503.
      */
-    private resolveHealthProbePassthrough(exception: unknown, request: { url?: string }): { body: unknown } | null {
+    private resolveHealthProbePassthrough(exception: unknown, request: { url?: string }): { body?: unknown } | null {
         if (!(exception instanceof HttpException)) {
             return null;
         }
@@ -99,7 +99,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const path = request.url?.split('?')[0];
 
         if (path === PATH_HEALTH_READY) {
-            return { body: undefined };
+            return {};
         }
 
         if (path === PATH_HEALTH) {
@@ -263,7 +263,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             method: this.catch.name,
             message: error.message,
             error,
-            ...(context ? { data: { context } } : undefined),
+            ...(context && { data: { context } }),
         };
     }
 }

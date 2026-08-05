@@ -52,7 +52,7 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.por
                                         type: error.name,
                                         message: error.message,
                                         stack: error.stack,
-                                        cause: error.cause ? serialize(error.cause) : undefined,
+                                        ...(error.cause !== undefined && { cause: serialize(error.cause) }),
                                     };
                                 }
 
