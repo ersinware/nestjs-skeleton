@@ -7,7 +7,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { generateSecurePassword } from 'src/core/security/util';
+import { generateSecurePassword } from 'src/core/security/password';
 import { CreateAdminCommand } from 'src/module/admin/application/command/create-admin/command';
 import {
     TOKEN_ADMIN_WRITER_PORT,

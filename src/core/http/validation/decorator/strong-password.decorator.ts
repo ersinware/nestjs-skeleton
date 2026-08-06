@@ -6,14 +6,12 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-
-const PASSWORD_MIN_LENGTH = 8,
-    PASSWORD_MAX_LENGTH = 128,
-    PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_REGEX } from 'src/core/security/password';
 
 /**
- * Single source of the password-strength policy: length bounds plus at least one
- * uppercase letter, one lowercase letter, and one digit.
+ * Validates and documents a password field against the password policy
+ * (`core/security/password`): length bounds plus at least one uppercase letter,
+ * one lowercase letter, and one digit.
  *
  * @param descriptionPrefix The field label used in the Swagger description and validation error messages.
  * @returns A decorator that validates and documents a password property.

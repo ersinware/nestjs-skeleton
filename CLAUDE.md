@@ -144,7 +144,7 @@ src/
     cache/  config/  cqrs/  database/  doc/  email/
     event-bus/  exception/  http/
     observability/            # SHELF (no index.ts): audit/  exception-tracker/  logger/
-    security/                 # SHELF (no index.ts): auth/  hashing/  session/  token/
+    security/                 # SHELF (no index.ts): auth/  hashing/  password/  session/  token/
   module/
     <module>/
       index.ts
