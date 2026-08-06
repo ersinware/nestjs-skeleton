@@ -24,10 +24,10 @@ describe('env.validation.config', () => {
         REDIS_CACHE_PORT: 6379,
         REDIS_CACHE_PASSWORD: 'redis-password',
         REDIS_CACHE_TLS: false,
-        REDIS_STATE_HOST: 'localhost',
-        REDIS_STATE_PORT: 6380,
-        REDIS_STATE_PASSWORD: 'redis-password',
-        REDIS_STATE_TLS: false,
+        REDIS_SESSION_HOST: 'localhost',
+        REDIS_SESSION_PORT: 6380,
+        REDIS_SESSION_PASSWORD: 'redis-password',
+        REDIS_SESSION_TLS: false,
         REDIS_MAX_RETRIES_PER_REQUEST: 3,
         REDIS_COMMAND_TIMEOUT: 2000,
 
@@ -77,13 +77,13 @@ describe('env.validation.config', () => {
             PORT: '4000',
             DATABASE_POOL_SIZE: '15',
             REDIS_CACHE_TLS: 'true',
-            REDIS_STATE_TLS: 'false',
+            REDIS_SESSION_TLS: 'false',
         });
 
         expect(result.PORT).toBe(4000);
         expect(result.DATABASE_POOL_SIZE).toBe(15);
         expect(result.REDIS_CACHE_TLS).toBe(true);
-        expect(result.REDIS_STATE_TLS).toBe(false);
+        expect(result.REDIS_SESSION_TLS).toBe(false);
     });
 
     it('should throw an error if a required field is missing', () => {

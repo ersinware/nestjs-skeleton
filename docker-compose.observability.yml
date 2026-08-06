@@ -102,11 +102,11 @@ services:
         networks:
             - api-network
 
-    redis-state-exporter:
+    redis-session-exporter:
         image: oliver006/redis_exporter:v1.67.0@sha256:120f7ec77293459ccfdad66bb1db75ab72e8bfeab99f58b1cc2564cadcd7a9e7
-        container_name: redis-state-exporter
+        container_name: redis-session-exporter
         environment:
-            - REDIS_ADDR=redis://redis-state:6379
+            - REDIS_ADDR=redis://redis-session:6379
             - REDIS_PASSWORD=password
         networks:
             - api-network

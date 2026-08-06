@@ -71,13 +71,13 @@ export class ResponseHealthyDto {
 function createHealthDetailsSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database', 'cache', 'state'],
+        required: ['memory_heap', 'memory_rss', 'database', 'cache', 'session'],
         properties: {
             memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
             memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
             database: createHealthyIndicator('Database connection indicator status.'),
             cache: createHealthyIndicator('Cache connection indicator status.'),
-            state: createHealthyIndicator('State store connection indicator status.'),
+            session: createHealthyIndicator('Session store connection indicator status.'),
         },
         additionalProperties: false,
         minProperties: 5,
@@ -88,7 +88,7 @@ function createHealthDetailsSchema(description: string): Record<string, unknown>
             memory_rss: { status: 'up' },
             database: { status: 'up' },
             cache: { status: 'up' },
-            state: { status: 'up' },
+            session: { status: 'up' },
         },
     };
 }

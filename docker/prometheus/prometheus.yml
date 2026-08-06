@@ -21,6 +21,6 @@ scrape_configs:
           - targets: ['redis-cache-exporter:9121']
 
     # Monitors stateful Redis metrics including session tracking and queue statuses
-    - job_name: 'redis-state'
+    - job_name: 'redis-session'
       static_configs:
-          - targets: ['redis-state-exporter:9121']
+          - targets: ['redis-session-exporter:9121']
