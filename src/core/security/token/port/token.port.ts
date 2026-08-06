@@ -1,6 +1,6 @@
 /**
- * @file token.service.interface.ts
- * @description Contract for the TokenService.
+ * @file token.port.ts
+ * @description Port contract for generating and verifying JWT access and refresh tokens.
  */
 
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
@@ -8,7 +8,7 @@ import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
 /**
- * Dependency injection token representing the {@link ITokenPort} contract.
+ * Dependency injection token for the {@link ITokenPort} contract.
  */
 export const TOKEN_TOKEN_PORT = Symbol('TOKEN_TOKEN_PORT');
 
@@ -17,33 +17,12 @@ export const TOKEN_TOKEN_PORT = Symbol('TOKEN_TOKEN_PORT');
  */
 export interface ITokenPort {
     /**
-     * Generates a signed JWT access token.
+     * Generates a signed access/refresh token pair sharing one freshly minted JTI.
      *
-     * @param role The role designation.
-     * @param id The principal identifier.
-     * @param version The session version to stamp into the token.
-     * @returns A promise resolving to the generated access token.
-     */
-    generateAccessToken(role: AuthRole, id: string, version: number): Promise<string>;
-
-    /**
-     * Generates a signed JWT refresh token.
-     *
-     * @param role The role designation.
-     * @param id The principal identifier.
-     * @param jti The unique refresh token identifier.
-     * @param version The session version to stamp into the token.
-     * @returns A promise resolving to the generated refresh token.
-     */
-    generateRefreshToken(role: AuthRole, id: string, jti: string, version: number): Promise<string>;
-
-    /**
-     * Generates a pair of JWT access and refresh tokens.
-     *
-     * @param role The role designation.
+     * @param role The principal's authentication role.
      * @param id The principal identifier.
      * @param version The session version to stamp into both tokens.
-     * @returns Object containing the generated access token, refresh token, and JTI.
+     * @returns The signed token pair and its JTI.
      */
     generateTokens(
         role: AuthRole,
@@ -52,20 +31,20 @@ export interface ITokenPort {
     ): Promise<{ accessToken: string; refreshToken: string; jti: string }>;
 
     /**
-     * Verifies an access token.
+     * Verifies an access token's signature and expiry.
      *
      * @param token The JWT access token string.
-     * @returns The parsed access token payload.
+     * @returns The decoded access token payload.
      * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
      * `TokenExpiredError` (a subclass) when it is expired.
      */
     verifyAccessToken(token: string): Promise<AccessTokenPayload>;
 
     /**
-     * Verifies a refresh token.
+     * Verifies a refresh token's signature and expiry.
      *
      * @param token The JWT refresh token string.
-     * @returns The parsed refresh token payload.
+     * @returns The decoded refresh token payload.
      * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
      * `TokenExpiredError` (a subclass) when it is expired.
      */

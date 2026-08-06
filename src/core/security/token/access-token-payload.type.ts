@@ -1,24 +1,24 @@
 /**
  * @file access-token-payload.type.ts
- * @description Type defining the JWT access token payload structure.
+ * @description Decoded JWT access token payload shape.
  */
 
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
 /**
- * Structure of a decoded JWT access token payload.
+ * Decoded JWT access token payload.
  */
 export type AccessTokenPayload = {
-    /** Target subject identifier. */
+    /** Principal identifier. */
     sub: string;
 
-    /** Subject authentication role level. */
+    /** Principal's authentication role. */
     role: AuthRole;
 
     /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
     version: number;
 
-    /** Classification of the token payload. */
+    /** Discriminator rejecting a refresh token presented as an access token. */
     type: AuthTokenType.ACCESS;
 };
