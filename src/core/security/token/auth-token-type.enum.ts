@@ -1,10 +1,10 @@
 /**
  * @file auth-token-type.enum.ts
- * @description Enumeration representing valid JWT token classification types.
+ * @description Discriminator distinguishing access from refresh token payloads.
  */
 
 /**
- * Valid JWT token classification types.
+ * Payload discriminator preventing one token type from being accepted as the other.
  */
 export enum AuthTokenType {
     ACCESS = 'access',
