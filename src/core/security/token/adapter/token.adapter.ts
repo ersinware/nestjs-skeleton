@@ -26,16 +26,24 @@ export class TokenAdapter implements ITokenPort {
     /** Refresh token lifetime, read once at boot — config is immutable after validation. */
     private readonly refreshTtl: NonNullable<JwtSignOptions['expiresIn']>;
 
+    /** Access token signing secret, read once at boot — config is immutable after validation. */
+    private readonly accessSecret: string;
+
+    /** Refresh token signing secret, read once at boot — config is immutable after validation. */
+    private readonly refreshSecret: string;
+
     /**
      * @param jwtService Signs and verifies JWTs.
-     * @param configService Provides the per-type secrets.
+     * @param configService Provides the per-type secrets and lifetimes.
      */
     constructor(
         private readonly jwtService: JwtService,
-        private readonly configService: ConfigService,
+        configService: ConfigService,
     ) {
-        this.accessTtl = this.configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_ACCESS_TTL);
-        this.refreshTtl = this.configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_REFRESH_TTL);
+        this.accessTtl = configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_ACCESS_TTL);
+        this.refreshTtl = configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_REFRESH_TTL);
+        this.accessSecret = configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
+        this.refreshSecret = configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET);
     }
 
     /**
@@ -59,7 +67,7 @@ export class TokenAdapter implements ITokenPort {
      */
     async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
         return this.jwtService.verifyAsync<AccessTokenPayload>(token, {
-            secret: this.configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET),
+            secret: this.accessSecret,
         });
     }
 
@@ -68,7 +76,7 @@ export class TokenAdapter implements ITokenPort {
      */
     async verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
         return this.jwtService.verifyAsync<RefreshTokenPayload>(token, {
-            secret: this.configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET),
+            secret: this.refreshSecret,
         });
     }
 
@@ -79,7 +87,7 @@ export class TokenAdapter implements ITokenPort {
         return this.jwtService.signAsync(
             { sub: id, role, version, type: AuthTokenType.ACCESS },
             {
-                secret: this.configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET),
+                secret: this.accessSecret,
                 expiresIn: this.accessTtl,
             },
         );
@@ -93,7 +101,7 @@ export class TokenAdapter implements ITokenPort {
         return this.jwtService.signAsync(
             { sub: id, role, jti, version, type: AuthTokenType.REFRESH },
             {
-                secret: this.configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET),
+                secret: this.refreshSecret,
                 expiresIn: this.refreshTtl,
             },
         );
