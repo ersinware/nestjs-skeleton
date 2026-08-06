@@ -33,7 +33,7 @@ import {
     ROUTE_PARAM_ID,
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
-import { AccessTokenPayloadDecorator, Public, Roles } from 'src/core/security/auth';
+import { CurrentAccessTokenPayload, Public, Roles } from 'src/core/security/auth';
 import type { AccessTokenPayload } from 'src/core/security/token';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
@@ -130,7 +130,7 @@ export class UserController {
      * Retrieves the profile details of the currently authenticated user.
      * Relies on the decoded JWT payload to infer the target user ID safely.
      *
-     * @param payload The decoded access token payload of the requester
+     * @param accessTokenPayload The decoded access token payload of the requester
      * @returns The serialized profile of the current user
      */
     @Get('me')
@@ -142,8 +142,11 @@ export class UserController {
     @ApiOkResponse({ description: 'User details successfully retrieved.', type: ResponseUserDto })
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    async findMe(@AccessTokenPayloadDecorator() payload: AccessTokenPayload): Promise<ResponseUserDto> {
-        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(payload.sub)));
+    async findMe(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload): Promise<ResponseUserDto> {
+        return plainToInstance(
+            ResponseUserDto,
+            await this.queryPipeline.execute(new GetUserByIdQuery(accessTokenPayload.sub)),
+        );
     }
 
     /**
@@ -174,7 +177,7 @@ export class UserController {
      * Updates the profile details of the currently authenticated user.
      * Allows users to modify their own non-sensitive information like names.
      *
-     * @param payload The decoded access token payload of the requester
+     * @param accessTokenPayload The decoded access token payload of the requester
      * @param patchUserDto The sparse payload containing the fields to update
      * @returns The updated and serialized profile of the current user
      */
@@ -190,19 +193,24 @@ export class UserController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
     async updateMe(
-        @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
+        @CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload,
         @Body(NotEmptyBodyPipe) patchUserDto: PatchUserDto,
     ): Promise<ResponseUserDto> {
-        await this.commandPipeline.execute(new UpdateUserCommand(payload.sub, patchUserDto.email, patchUserDto.name));
+        await this.commandPipeline.execute(
+            new UpdateUserCommand(accessTokenPayload.sub, patchUserDto.email, patchUserDto.name),
+        );
 
-        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(payload.sub)));
+        return plainToInstance(
+            ResponseUserDto,
+            await this.queryPipeline.execute(new GetUserByIdQuery(accessTokenPayload.sub)),
+        );
     }
 
     /**
      * Changes the password of the currently authenticated user.
      * Requires the current password to be verified to prevent unauthorized account takeovers.
      *
-     * @param payload The decoded access token payload of the requester
+     * @param accessTokenPayload The decoded access token payload of the requester
      * @param patchUserPasswordDto The payload containing the current and new passwords
      */
     @Patch('me/password')
@@ -218,12 +226,12 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async changePasswordMe(
-        @AccessTokenPayloadDecorator() payload: AccessTokenPayload,
+        @CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload,
         @Body(NotEmptyBodyPipe) patchUserPasswordDto: PatchUserPasswordDto,
     ) {
         await this.commandPipeline.execute(
             new ChangeUserPasswordCommand(
-                payload.sub,
+                accessTokenPayload.sub,
                 patchUserPasswordDto.currentPassword,
                 patchUserPasswordDto.newPassword,
             ),
@@ -234,7 +242,7 @@ export class UserController {
      * Permanently deletes or deactivates the currently authenticated user's account.
      * A destructive action initiated by the user to leave the platform.
      *
-     * @param payload The decoded access token payload of the requester
+     * @param accessTokenPayload The decoded access token payload of the requester
      */
     @Delete('me')
     @ApiBearerAuth()
@@ -246,8 +254,8 @@ export class UserController {
     @ApiNoContentResponse({ description: 'User account successfully deleted.' })
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    async deleteMe(@AccessTokenPayloadDecorator() payload: AccessTokenPayload) {
-        await this.commandPipeline.execute(new DeleteUserCommand(payload.sub));
+    async deleteMe(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload) {
+        await this.commandPipeline.execute(new DeleteUserCommand(accessTokenPayload.sub));
     }
 
     /**

@@ -1,20 +1,17 @@
 /**
  * @file roles.decorator.ts
- * @description Decorator to declare required RBAC roles for specific routes.
+ * @description Decorator declaring the roles required to access a route.
  */
 
 import { SetMetadata } from '@nestjs/common';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
-/**
- * Metadata key used to store required roles for authorization.
- */
+/** Metadata key holding a route's required roles. */
 export const KEY_DECORATOR_ROLES = 'KEY_DECORATOR_ROLES';
 
 /**
- * Decorator function to declare role requirements on controller actions.
+ * Declares the roles permitted to access a route or controller, enforced by `AuthRolesGuard`.
  *
- * @param roles List of roles permitted to access the route.
- * @returns A decorator that assigns the permitted roles to the route.
+ * @param roles Roles permitted to access the route.
  */
 export const Roles = (...roles: AuthRole[]) => SetMetadata(KEY_DECORATOR_ROLES, roles);

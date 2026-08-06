@@ -15,7 +15,7 @@ import {
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { NotEmptyBodyPipe, RequestValidationMessage } from 'src/core/http';
-import { AccessTokenPayloadDecorator, Public } from 'src/core/security/auth';
+import { CurrentAccessTokenPayload, Public } from 'src/core/security/auth';
 import type { AccessTokenPayload } from 'src/core/security/token';
 import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
@@ -164,7 +164,7 @@ export class AuthController {
     })
     @ApiNoContentResponse({ description: 'Successfully logged out from all devices.' })
     @ApiDefaultUnauthenticatedResponse()
-    async logoutAll(@AccessTokenPayloadDecorator() accessTokenPayload: AccessTokenPayload) {
+    async logoutAll(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload) {
         await this.commandPipeline.execute(new LogoutAllCommand(accessTokenPayload.sub));
     }
 }

@@ -5,29 +5,27 @@
 
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
+import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { KEY_DECORATOR_ROLES } from 'src/core/security/auth/decorator/roles.decorator';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 import { AccessDeniedException } from 'src/shared/exception';
 
 /**
- * Authorization guard matching user role claims against route role requirements.
+ * Global authorization guard matching the token's role claim against `@Roles()` requirements.
  */
 @Injectable()
 export class AuthRolesGuard implements CanActivate {
     /**
-     * Creates an instance of AuthRolesGuard.
-     *
-     * @param reflector NestJS Reflector to read roles metadata.
+     * @param reflector Reads the `@Roles()` metadata.
      */
     constructor(private readonly reflector: Reflector) {}
 
     /**
-     * Evaluates authorization criteria for the route based on roles.
+     * Admits routes without `@Roles()`, otherwise requires the token's role to be among the required ones.
      *
      * @param context Execution context of the request.
-     * @returns True if the user role matches route requirements.
-     * @throws {AccessDeniedException} if user role does not match route requirements.
+     * @returns True if authorized.
+     * @throws {AccessDeniedException} if the token's role does not satisfy the route's requirements.
      */
     canActivate(context: ExecutionContext): boolean {
         const requiredRoles = this.reflector.getAllAndOverride<AuthRole[]>(KEY_DECORATOR_ROLES, [
