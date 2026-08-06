@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token representing the cache cleaner port.
+ * Dependency injection token representing the {@link ICacheCleanerPort} contract.
  */
 export const TOKEN_CACHE_CLEANER_PORT = Symbol('TOKEN_CACHE_CLEANER_PORT');
 

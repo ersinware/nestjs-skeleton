@@ -5,6 +5,9 @@
 
 import type { GetAdminEmailAndNameResult } from 'src/module/admin/application/query/get-admin-email-and-name/query';
 
+/**
+ * Dependency injection token representing the {@link IGetAdminEmailAndNamePort} contract.
+ */
 export const TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT = Symbol('TOKEN_GET_ADMIN_EMAIL_AND_NAME_PORT');
 
 /**

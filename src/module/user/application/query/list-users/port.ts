@@ -7,6 +7,9 @@ import type { ListUsersResult } from 'src/module/user/application/query/list-use
 import type { PaginationParams } from 'src/shared/pagination';
 import type { SearchParams } from 'src/shared/search';
 
+/**
+ * Dependency injection token representing the {@link IListUsersPort} contract.
+ */
 export const TOKEN_LIST_USERS_PORT = Symbol('TOKEN_LIST_USERS_PORT');
 
 /**

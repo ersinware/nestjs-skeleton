@@ -10,8 +10,7 @@ import type { Command, ICommand } from '@nestjs/cqrs';
 import { CommandBus } from '@nestjs/cqrs';
 
 /**
- * DI token for the ordered list of command behaviors composed around the bus. Bound in the pipeline
- * module so the composition (which behaviors, in what order) lives in exactly one place.
+ * Dependency injection token representing the ordered {@link ICommandBehavior} chain.
  */
 export const TOKEN_COMMAND_BEHAVIORS = Symbol('TOKEN_COMMAND_BEHAVIORS');
 

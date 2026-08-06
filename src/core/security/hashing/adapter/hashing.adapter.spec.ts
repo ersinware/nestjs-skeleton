@@ -1,46 +1,43 @@
 /**
- * @file hashing.service.spec.ts
- * @description Unit tests for the password hashing service.
+ * @file hashing.adapter.spec.ts
+ * @description Unit tests for the Argon2 hashing adapter.
  */
 
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import { Environment } from 'src/core/config';
-import { HashingPort } from 'src/core/security/hashing/adapter';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HashingAdapter } from 'src/core/security/hashing/adapter/hashing.adapter';
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('argon2', () => ({
     hash: vi.fn(),
     verify: vi.fn(),
 }));
 
-describe('HashingService', () => {
+describe('HashingAdapter', () => {
     const mockedHash = vi.mocked(argon2.hash),
-        mockedVerify = vi.mocked(argon2.verify),
-        mockConfigService = {
-            getOrThrow: vi.fn(),
-        };
+        mockedVerify = vi.mocked(argon2.verify);
 
-    let adapter: HashingPort, configService: ConfigService;
-
-    beforeEach(async () => {
+    // The adapter reads NODE_ENV once at construction, so each test builds it for the environment it exercises.
+    async function createAdapter(environment: Environment): Promise<HashingAdapter> {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                HashingPort,
+                HashingAdapter,
                 {
                     provide: ConfigService,
-                    useValue: mockConfigService,
+                    useValue: {
+                        getOrThrow: vi.fn().mockReturnValue(environment),
+                    },
                 },
             ],
         }).compile();
 
-        adapter = module.get<HashingPort>(HashingPort);
-        configService = module.get<ConfigService>(ConfigService);
-    });
+        return module.get<HashingAdapter>(HashingAdapter);
+    }
 
-    it('should be defined', () => {
-        expect(adapter).toBeDefined();
+    it('should be defined', async () => {
+        await expect(createAdapter(Environment.PRODUCTION)).resolves.toBeDefined();
     });
 
     describe('hash', () => {
@@ -48,7 +45,7 @@ describe('HashingService', () => {
             expectedHash = '$argon2id$v=19$m=65536,t=3,p=4$somehashedstring';
 
         it('should successfully hash plain text using default argon2 config in non-test env', async () => {
-            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
+            const adapter = await createAdapter(Environment.PRODUCTION);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(adapter.hash(plainText)).resolves.toBe(expectedHash);
@@ -56,7 +53,7 @@ describe('HashingService', () => {
         });
 
         it('should use weak argon2 settings in test env to optimize performance', async () => {
-            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.TEST);
+            const adapter = await createAdapter(Environment.TEST);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(adapter.hash(plainText)).resolves.toBe(expectedHash);
@@ -68,7 +65,7 @@ describe('HashingService', () => {
         });
 
         it('should propagate argon2 error during hashing', async () => {
-            vi.spyOn(configService, 'getOrThrow').mockReturnValueOnce(Environment.PRODUCTION);
+            const adapter = await createAdapter(Environment.PRODUCTION);
             mockedHash.mockRejectedValueOnce(new Error());
 
             await expect(adapter.hash(plainText)).rejects.toThrow(Error);
@@ -81,6 +78,7 @@ describe('HashingService', () => {
             plainText = 'my-secure-password';
 
         it('should return true when argon2 verification succeeds', async () => {
+            const adapter = await createAdapter(Environment.PRODUCTION);
             mockedVerify.mockResolvedValueOnce(true);
 
             await expect(adapter.verify(hash, plainText)).resolves.toBe(true);
@@ -88,6 +86,7 @@ describe('HashingService', () => {
         });
 
         it('should return false when argon2 verification fails', async () => {
+            const adapter = await createAdapter(Environment.PRODUCTION);
             mockedVerify.mockResolvedValueOnce(false);
 
             await expect(adapter.verify(hash, plainText)).resolves.toBe(false);
@@ -95,6 +94,7 @@ describe('HashingService', () => {
         });
 
         it('should propagate argon2 error during verification', async () => {
+            const adapter = await createAdapter(Environment.PRODUCTION);
             mockedVerify.mockRejectedValueOnce(new Error());
 
             await expect(adapter.verify(hash, plainText)).rejects.toThrow(Error);

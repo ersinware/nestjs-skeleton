@@ -5,6 +5,9 @@
 
 import { GetAdminAccessProjectionResult } from 'src/module/admin/application/query/get-admin-access-projection/query';
 
+/**
+ * Dependency injection token representing the {@link IGetAdminAccessProjectionPort} contract.
+ */
 export const TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT = Symbol('TOKEN_GET_ADMIN_ACCESS_PROJECTION_PORT');
 
 /**

@@ -5,6 +5,9 @@
 
 import type { GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 
+/**
+ * Dependency injection token representing the {@link IGetUserByIdPort} contract.
+ */
 export const TOKEN_GET_USER_BY_ID_PORT = Symbol('TOKEN_GET_USER_BY_ID_PORT');
 
 /**

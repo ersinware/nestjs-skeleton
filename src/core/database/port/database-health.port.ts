@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token for the database health port.
+ * Dependency injection token representing the {@link IDatabaseHealthPort} contract.
  */
 export const TOKEN_DATABASE_HEALTH_PORT = Symbol('TOKEN_DATABASE_HEALTH_PORT');
 

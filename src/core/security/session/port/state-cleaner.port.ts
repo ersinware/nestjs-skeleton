@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token representing the state cleaner port.
+ * Dependency injection token representing the {@link IStateCleanerPort} contract.
  */
 export const TOKEN_STATE_CLEANER_PORT = Symbol('TOKEN_STATE_CLEANER_PORT');
 

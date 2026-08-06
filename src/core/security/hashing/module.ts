@@ -1,20 +1,20 @@
 /**
- * @file hashing.module.ts
- * @description Module providing password hashing and verification utilities.
+ * @file module.ts
+ * @description Wiring of the hashing concern.
  */
 
 import { Module } from '@nestjs/common';
-import { HashingPort } from 'src/core/security/hashing/adapter';
-import { TOKEN_HASHING_PORT } from 'src/core/security/hashing/port';
+import { HashingAdapter } from 'src/core/security/hashing/adapter/hashing.adapter';
+import { TOKEN_HASHING_PORT } from 'src/core/security/hashing/port/hashing.port';
 
 /**
- * Module responsible for configuring and exposing hashing utilities.
+ * Binds the hashing port to its Argon2 adapter and exports the token.
  */
 @Module({
     providers: [
         {
             provide: TOKEN_HASHING_PORT,
-            useClass: HashingPort,
+            useClass: HashingAdapter,
         },
     ],
     exports: [TOKEN_HASHING_PORT],

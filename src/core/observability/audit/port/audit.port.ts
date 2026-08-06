@@ -5,6 +5,9 @@
 
 import { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 
+/**
+ * Dependency injection token representing the {@link IAuditPort} contract.
+ */
 export const TOKEN_AUDIT_PORT = Symbol('TOKEN_AUDIT_PORT');
 
 /**

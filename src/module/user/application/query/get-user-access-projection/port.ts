@@ -5,6 +5,9 @@
 
 import type { GetUserAccessProjectionResult } from 'src/module/user/application/query/get-user-access-projection/query';
 
+/**
+ * Dependency injection token representing the {@link IGetUserAccessProjectionPort} contract.
+ */
 export const TOKEN_GET_USER_ACCESS_PROJECTION_PORT = Symbol('TOKEN_GET_USER_ACCESS_PROJECTION_PORT');
 
 /**

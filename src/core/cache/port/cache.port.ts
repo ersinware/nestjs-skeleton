@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token representing the cache operations port.
+ * Dependency injection token representing the {@link ICachePort} contract.
  */
 export const TOKEN_CACHE_PORT = Symbol('TOKEN_CACHE_PORT');
 

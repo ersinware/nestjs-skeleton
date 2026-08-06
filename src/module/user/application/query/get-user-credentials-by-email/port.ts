@@ -5,6 +5,9 @@
 
 import type { GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
 
+/**
+ * Dependency injection token representing the {@link IGetUserCredentialsByEmailPort} contract.
+ */
 export const TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT = Symbol('TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT');
 
 /**

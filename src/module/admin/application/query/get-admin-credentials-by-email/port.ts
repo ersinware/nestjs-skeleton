@@ -5,6 +5,9 @@
 
 import type { GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 
+/**
+ * Dependency injection token representing the {@link IGetAdminCredentialsByEmailPort} contract.
+ */
 export const TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT = Symbol('TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT');
 
 /**
