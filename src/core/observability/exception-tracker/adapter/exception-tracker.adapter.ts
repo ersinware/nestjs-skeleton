@@ -8,14 +8,14 @@ import * as Sentry from '@sentry/nestjs';
 import { IExceptionTrackerPort } from 'src/core/observability/exception-tracker/port/exception-tracker.port';
 
 /**
- * Forwards captured exceptions to Sentry via `@sentry/nestjs`.
+ * Forwards exceptions to Sentry.
  */
 @Injectable()
 export class ExceptionTrackerAdapter implements IExceptionTrackerPort {
     /**
-     * Captures an exception and sends it to Sentry.
+     * Sends an exception to Sentry.
      *
-     * @param exception The exception or error to track.
+     * @param exception The exception to report.
      */
     captureException(exception: unknown) {
         Sentry.captureException(exception);

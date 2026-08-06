@@ -1,6 +1,6 @@
 /**
  * @file index.ts
- * @description Public entry point of the exception-tracker concern. Nothing outside may import past this barrel.
+ * @description Public API of the exception-tracker concern.
  */
 
 export { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker/exception-tracker-environment.enum';
