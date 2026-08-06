@@ -15,7 +15,15 @@ import { apiReference } from '@scalar/nestjs-api-reference';
 import { IncomingMessage, ServerResponse } from 'http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from 'src/app.module';
-import { ACTIVE_VERSIONS, ENV, GLOBAL_PREFIX, resolveTrustProxy, ROUTE_DOCS, VERSION_1 } from 'src/core/config';
+import {
+    ACTIVE_VERSIONS,
+    ENV,
+    GLOBAL_PREFIX,
+    resolveTrustProxy,
+    ROUTE_DOCS,
+    VERSION_1,
+    VERSION_PREFIX,
+} from 'src/core/config';
 import { createSwaggerDocument } from 'src/core/doc';
 import { auditContextHook } from 'src/core/observability/audit';
 
@@ -38,7 +46,7 @@ async function bootstrap() {
     app.getHttpAdapter().getInstance().addHook('onRequest', auditContextHook);
 
     app.enableShutdownHooks()
-        .enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1 })
+        .enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1, prefix: VERSION_PREFIX })
         .setGlobalPrefix(GLOBAL_PREFIX)
         .useLogger(app.get(Logger));
 
@@ -55,7 +63,7 @@ async function bootstrap() {
  */
 function setupDocumentation(app: NestFastifyApplication) {
     ACTIVE_VERSIONS.forEach((version) => {
-        const path = `/${GLOBAL_PREFIX}/v${version}/${ROUTE_DOCS}`;
+        const path = `/${GLOBAL_PREFIX}/${VERSION_PREFIX}${version}/${ROUTE_DOCS}`;
 
         app.use(
             path,

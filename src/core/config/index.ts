@@ -17,5 +17,5 @@ export {
     ROUTE_HEALTH_LIVE,
     ROUTE_HEALTH_READY,
 } from 'src/core/config/path.constant';
-export { ACTIVE_VERSIONS, VERSION_1 } from 'src/core/config/version.constant';
+export { ACTIVE_VERSIONS, VERSION_1, VERSION_PREFIX } from 'src/core/config/version.constant';
 export type { APIVersion } from 'src/core/config/version.constant';

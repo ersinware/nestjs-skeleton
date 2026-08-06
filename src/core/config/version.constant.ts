@@ -4,6 +4,13 @@
  */
 
 /**
+ * The URI-versioning route prefix (`v1`, `v2`, …). Owned here because the composition root
+ * (`enableVersioning`), the documentation mount and the logger's request-log exclusion must all
+ * name the same fragment, so the three can never drift apart.
+ */
+export const VERSION_PREFIX = 'v';
+
+/**
  * Route segment of API version 1, consumed by controllers' `@Version` and the Swagger documents.
  */
 export const VERSION_1 = '1';

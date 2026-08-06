@@ -315,7 +315,7 @@ Decide per catch/branch by asking **"who acts on this, and does the system fix i
 
 - **Sentry (`IExceptionTrackerPort.captureException`) → only when a human must intervene and it will NOT self-heal.**
 - **`logger.warn` → self-healing failure whose _cause_ is a forensic breadcrumb.** It answers _why_, doesn't alert. Justified only when both hold: (1) something else — a metric or an existing Sentry alert — already detects the incident and brings someone to the logs, (2) the warn carries a root cause not available elsewhere.
-- **`logger.log` → operationally significant state transitions**, not routine chatter: what an operator may want after the fact, short of a failure (e.g. a dependency recovering, `ConnectionLogMessage.RESTORED`). Auditable facts are NOT logged here — they go to the audit port.
+- **`logger.info` → operationally significant state transitions**, not routine chatter: what an operator may want after the fact, short of a failure (e.g. a dependency recovering, `ConnectionLogMessage.RESTORED`). Auditable facts are NOT logged here — they go to the audit port.
 - **Silent `catch` → fully self-healing failure nobody will investigate.** Swallow with an explanatory comment; no log, no Sentry (e.g. shutdown-cleanup errors — the OS reclaims the socket). The `catch` only stops an unhandled rejection, and **must not throw**.
 
 ### Audit — evidence, not operational logs
@@ -333,7 +333,7 @@ An audit record answers "who did what, when, from where" to an auditor; a log an
 
 A downed dependency (Redis, Postgres) fails every call until it recovers, so the question is not _whether_ the cause is worth a breadcrumb but _where_ it is recorded. **The breadcrumb belongs at the CONNECTION level, gated on a state-transition flag; every per-call and per-request failure path stays silent.**
 
-- **The transition site logs** — a `warn` with the driver error and `ConnectionLogMessage.LOST` on the way down, a `log` with `RESTORED` on the way back — once per episode, guarded by an `isDown` flag. The site depends on the driver: ioredis exposes connection events (`core/cache/redis-client.factory.ts`, shared by every Redis-owning concern); postgres.js does not, so the periodic health probe is the transition site (`core/database/adapter/database-health.adapter.ts`).
+- **The transition site logs** — a `warn` with the driver error and `ConnectionLogMessage.LOST` on the way down, an `info` with `RESTORED` on the way back — once per episode, guarded by an `isDown` flag. The site depends on the driver: ioredis exposes connection events (`core/cache/redis-client.factory.ts`, shared by every Redis-owning concern); postgres.js does not, so the periodic health probe is the transition site (`core/database/adapter/database-health.adapter.ts`).
 - **Everything downstream is silent** — fail-open cache reads, best-effort session writes, the global filter's `503`. Detection is the health alarm's job and the cause is already named once; per-call records flood exactly when the logs matter most.
 - **`ConnectionLogMessage` is shared vocabulary on purpose** (`core/observability/logger`) — an outage reads identically across dependencies, so the two transitions are greppable as one thing.
 
@@ -371,7 +371,7 @@ configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
 
 ### Route & Prefix Literals
 
-Any route fragment visible from more than one place is a constant, never a string literal repeated at each site. App-level mount points live in `core/config` (`GLOBAL_PREFIX`, `ROUTE_HEALTH`/`ROUTE_HEALTH_LIVE`/`ROUTE_HEALTH_READY`, `ROUTE_DOCS`, and the `PATH_HEALTH*` derived from them); a fragment with a more specific owner lives with that owner — `PARAM_ID`/`ROUTE_PARAM_ID` sit beside `ParamIdDto` in `core/http`, tied to the DTO by `satisfies` so the parameter name cannot drift from the class that validates it.
+Any route fragment visible from more than one place is a constant, never a string literal repeated at each site. App-level mount points live in `core/config` (`GLOBAL_PREFIX`, `VERSION_PREFIX`, `ROUTE_HEALTH`/`ROUTE_HEALTH_LIVE`/`ROUTE_HEALTH_READY`, `ROUTE_DOCS`, and the `PATH_HEALTH*` derived from them); a fragment with a more specific owner lives with that owner — `PARAM_ID`/`ROUTE_PARAM_ID` sit beside `ParamIdDto` in `core/http`, tied to the DTO by `satisfies` so the parameter name cannot drift from the class that validates it.
 
 A module's route segment living in `core/` is a deliberate, narrow concession: the global filter must recognize the exact health paths to let their intentional `503` through unnormalized (§ Health Probes), and `core` may not import a module. The constant stops the filter and the controller drifting apart on a rename.
 
