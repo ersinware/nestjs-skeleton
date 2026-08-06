@@ -367,6 +367,8 @@ Never use `process.env` directly — always `ConfigService` with the `ENV` const
 configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
 ```
 
+**A variable read more than once in a class goes into a `private readonly` field assigned in the constructor** (§ Variable Inlining projected onto env reads) — one place holds the key + generic, and `getOrThrow` fails at boot instead of first use; a single read stays inline.
+
 **The sole exception is code that runs before the DI container exists**: `src/instrument.ts`, `src/tracing.ts`, and the HTTP adapter's `trustProxy` (an argument to `NestFactory.create`, so it precedes `ConfigService`). Structural, not a shortcut — it changes only WHERE the value is read, never where its contract lives: the variable is still declared on `EnvironmentVariables` with its constraints, so boot validation covers it. Such a reader validates nothing itself; it INTERPRETS, and fails SAFE on anything it cannot interpret, because it runs before validation would have rejected it.
 
 ### Route & Prefix Literals
