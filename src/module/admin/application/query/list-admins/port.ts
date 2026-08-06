@@ -6,6 +6,9 @@
 import type { ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 import { PaginationParams } from 'src/shared/pagination';
 
+/**
+ * Dependency injection token representing the {@link IListAdminsPort} contract.
+ */
 export const TOKEN_LIST_ADMINS_PORT = Symbol('TOKEN_LIST_ADMINS_PORT');
 
 /**

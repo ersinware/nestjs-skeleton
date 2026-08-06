@@ -5,6 +5,9 @@
 
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 
+/**
+ * Dependency injection token representing the {@link IAdminWriterPort} contract.
+ */
 export const TOKEN_ADMIN_WRITER_PORT = Symbol('TOKEN_ADMIN_WRITER_PORT');
 
 /**

@@ -5,7 +5,9 @@
 
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
-/** Injection token for the event publisher port. */
+/**
+ * Dependency injection token representing the {@link IEventPublisherPort} contract.
+ */
 export const TOKEN_EVENT_PUBLISHER_PORT = Symbol('TOKEN_EVENT_PUBLISHER_PORT');
 
 /**

@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token for the database cleaner port.
+ * Dependency injection token representing the {@link IDatabaseCleanerPort} contract.
  */
 export const TOKEN_DATABASE_CLEANER_PORT = Symbol('TOKEN_DATABASE_CLEANER_PORT');
 

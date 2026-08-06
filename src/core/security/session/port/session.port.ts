@@ -5,6 +5,9 @@
 
 import type { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
 
+/**
+ * Dependency injection token representing the {@link ISessionPort} contract.
+ */
 export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
 /**

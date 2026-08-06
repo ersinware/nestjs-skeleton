@@ -7,6 +7,9 @@ import type { AccessTokenPayload } from 'src/core/security/token/access-token-pa
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
+/**
+ * Dependency injection token representing the {@link ITokenPort} contract.
+ */
 export const TOKEN_TOKEN_PORT = Symbol('TOKEN_TOKEN_PORT');
 
 /**

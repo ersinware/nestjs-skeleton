@@ -4,7 +4,7 @@
  */
 
 /**
- * Injection token binding {@link IEmailerPort} to its adapter.
+ * Dependency injection token representing the {@link IEmailerPort} contract.
  */
 export const TOKEN_EMAILER_PORT = Symbol('TOKEN_EMAILER_PORT');
 

@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token representing the state health check indicator port.
+ * Dependency injection token representing the {@link IStateHealthPort} contract.
  */
 export const TOKEN_STATE_HEALTH_PORT = Symbol('TOKEN_STATE_HEALTH_PORT');
 

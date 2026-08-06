@@ -5,6 +5,9 @@
 
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 
+/**
+ * Dependency injection token representing the {@link IUserWriterPort} contract.
+ */
 export const TOKEN_USER_WRITER_PORT = Symbol('TOKEN_USER_WRITER_PORT');
 
 /**

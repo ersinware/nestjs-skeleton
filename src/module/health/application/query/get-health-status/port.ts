@@ -5,6 +5,9 @@
 
 import type { GetHealthStatusResult } from 'src/module/health/application/query/get-health-status/query';
 
+/**
+ * Dependency injection token representing the {@link IGetHealthStatusPort} contract.
+ */
 export const TOKEN_GET_HEALTH_STATUS_PORT = Symbol('TOKEN_GET_HEALTH_STATUS_PORT');
 
 /**

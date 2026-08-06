@@ -5,6 +5,9 @@
 
 import type { GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
 
+/**
+ * Dependency injection token representing the {@link IGetUserAuthStatePort} contract.
+ */
 export const TOKEN_GET_USER_AUTH_STATE_PORT = Symbol('TOKEN_GET_USER_AUTH_STATE_PORT');
 
 /**

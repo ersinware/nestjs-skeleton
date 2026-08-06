@@ -5,6 +5,9 @@
 
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
+/**
+ * Dependency injection token representing the {@link IIdentityReaderPort} contract.
+ */
 export const TOKEN_IDENTITY_READER_PORT = Symbol('TOKEN_IDENTITY_READER_PORT');
 
 /**

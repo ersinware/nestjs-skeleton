@@ -3,6 +3,9 @@
  * @description Contract for reporting exceptions to an external tracking service.
  */
 
+/**
+ * Dependency injection token representing the {@link IExceptionTrackerPort} contract.
+ */
 export const TOKEN_EXCEPTION_TRACKER_PORT = Symbol('TOKEN_EXCEPTION_TRACKER_PORT');
 
 /**

@@ -10,8 +10,7 @@ import type { IQuery, Query } from '@nestjs/cqrs';
 import { QueryBus } from '@nestjs/cqrs';
 
 /**
- * DI token for the ordered list of query behaviors composed around the bus. Bound in the pipeline
- * module so the composition (which behaviors, in what order) lives in exactly one place.
+ * Dependency injection token representing the ordered {@link IQueryBehavior} chain.
  */
 export const TOKEN_QUERY_BEHAVIORS = Symbol('TOKEN_QUERY_BEHAVIORS');
 
