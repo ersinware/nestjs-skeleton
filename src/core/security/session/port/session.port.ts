@@ -1,70 +1,78 @@
 /**
- * @file session.service.interface.ts
- * @description Contract for the SessionService.
+ * @file session.port.ts
+ * @description Contract for managing refresh sessions and session versions in the session store.
  */
 
-import type { RotateOutcome } from 'src/core/security/session/rotate-outcome.enum';
-
 /**
- * Dependency injection token representing the {@link ISessionPort} contract.
+ * Dependency injection token for the {@link ISessionPort} contract.
  */
 export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
 /**
- * Contract for managing refresh sessions and session versions in the state store.
+ * The three mutually exclusive outcomes of an atomic refresh-session rotation. Exists so the caller
+ * can react to each case: a lost concurrent-refresh race is benign (reject only that request),
+ * whereas a post-grace replay is the RFC 9700 reuse signal that must revoke the whole session family.
+ */
+export enum RotateOutcome {
+    /** The old session existed and was atomically swapped for the new one. */
+    ROTATED = 'ROTATED',
+
+    /** The old session was already consumed but its tombstone is still within the grace window — a benign concurrent/duplicate refresh. */
+    CONCURRENT_REPLAY = 'CONCURRENT_REPLAY',
+
+    /** The old session was gone with no tombstone — a replay after the grace window, i.e. refresh-token reuse. */
+    REUSE_DETECTED = 'REUSE_DETECTED',
+}
+
+/**
+ * Contract for managing refresh sessions and session versions in the session store.
  */
 export interface ISessionPort {
     /**
-     * Registers a new refresh session for a principal in the cache.
+     * Registers a new refresh session for a principal.
      *
      * @param id The principal identifier.
-     * @param jti The unique JWT ID of the refresh token.
-     * @throws {SystemException} When the configured session TTL format cannot be parsed — a
-     * configuration bug that must surface as 500.
+     * @param jti The JWT ID of the refresh token.
      */
     openSession(id: string, jti: string): Promise<void>;
 
     /**
-     * Removes a specific refresh session for a principal from the cache.
-     *
-     * @param id The principal identifier.
-     * @param jti The unique JWT ID of the refresh token.
-     */
-    closeSession(id: string, jti: string): Promise<void>;
-
-    /**
-     * Atomically rotates a refresh session: closes the current session and opens the next one in a
-     * single Redis round trip, so no state in between can be observed or interleaved by a concurrent
-     * refresh. Acts as the single-use gate and, in the same script, writes a short-lived tombstone for
-     * the old jti so the outcome can be classified three ways instead of a bare success/fail: a real
-     * rotation, a benign concurrent/duplicate replay still inside the grace window, or genuine
-     * post-grace reuse that must revoke the whole family.
+     * Atomically closes the current session and opens the next one in a single round trip, so no
+     * intermediate state can be observed by a concurrent refresh — the old session doubles as the
+     * single-use gate. A short-lived tombstone written in the same step classifies the outcome as a
+     * real rotation, a benign replay inside the grace window, or genuine post-grace reuse.
      *
      * @param id The principal identifier.
      * @param oldJti The JWT ID of the refresh token being rotated away.
      * @param newJti The JWT ID of the newly issued refresh token.
      * @returns The rotation outcome the caller must react to.
-     * @throws {SystemException} When a configured TTL format cannot be parsed — a configuration
-     * bug that must surface as 500.
      */
     rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome>;
 
     /**
-     * Removes every refresh session for a principal, logging them out of all devices.
+     * Removes a specific refresh session for a principal.
+     *
+     * @param id The principal identifier.
+     * @param jti The JWT ID of the refresh token.
+     */
+    closeSession(id: string, jti: string): Promise<void>;
+
+    /**
+     * Removes every refresh session for a principal, logging them out of all devices. Rotation
+     * tombstones go too: a survivor would let a token of the revoked family classify as a benign
+     * replay instead of reuse.
      *
      * @param id The principal identifier.
      */
     closeAllSessions(id: string): Promise<void>;
 
     /**
-     * Advances the cached session version using a monotonic-max write: the stored value moves forward
-     * only when `version` is strictly greater, so it never regresses regardless of source or delivery
-     * order. The DB is the authority; this only mirrors it for the guard's hot path.
+     * Advances the cached session version with a monotonic-max write: the stored value moves only
+     * when `version` is strictly greater, so it never regresses regardless of delivery order. The DB
+     * is the authority; this mirrors it for the guard's hot path.
      *
      * @param id The principal identifier.
-     * @param version The candidate session version (the aggregate's monotonic version counter).
-     * @throws {SystemException} When the configured version TTL format cannot be parsed — a
-     * configuration bug that must surface as 500.
+     * @param version The candidate session version (the aggregate's monotonic counter).
      */
     setVersion(id: string, version: number): Promise<void>;
 

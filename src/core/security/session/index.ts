@@ -3,8 +3,10 @@
  * @description Public entry point of the session concern. Nothing outside may import past this barrel.
  */
 
-export * from 'src/core/security/session/module';
-export * from 'src/core/security/session/port/session.port';
-export * from 'src/core/security/session/port/state-cleaner.port';
-export * from 'src/core/security/session/port/state-health.port';
-export * from 'src/core/security/session/rotate-outcome.enum';
+export { SessionModule } from 'src/core/security/session/module';
+export {
+    TOKEN_SESSION_CLEANER_PORT,
+    type ISessionCleanerPort,
+} from 'src/core/security/session/port/session-cleaner.port';
+export { TOKEN_SESSION_HEALTH_PORT, type ISessionHealthPort } from 'src/core/security/session/port/session-health.port';
+export { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session/port/session.port';

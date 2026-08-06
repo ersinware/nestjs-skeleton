@@ -46,7 +46,7 @@ describe('HealthController', () => {
                             memory_rss: { status: 'up' },
                             database: { status: 'up' },
                             cache: { status: 'up' },
-                            state: { status: 'up' },
+                            session: { status: 'up' },
                         },
                         error: {},
                         details: {
@@ -54,7 +54,7 @@ describe('HealthController', () => {
                             memory_rss: { status: 'up' },
                             database: { status: 'up' },
                             cache: { status: 'up' },
-                            state: { status: 'up' },
+                            session: { status: 'up' },
                         },
                     },
                 });
@@ -83,7 +83,7 @@ describe('HealthController', () => {
                         info: {
                             memory_heap: { status: 'up' },
                             memory_rss: { status: 'up' },
-                            state: { status: 'up' },
+                            session: { status: 'up' },
                         },
                         error: {
                             database: {
@@ -106,7 +106,7 @@ describe('HealthController', () => {
                                 status: 'down',
                                 message: 'Cache connection failed.',
                             },
-                            state: { status: 'up' },
+                            session: { status: 'up' },
                         },
                     },
                 });

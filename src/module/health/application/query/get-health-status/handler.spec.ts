@@ -39,7 +39,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 memory_rss: { status: 'up' },
                 database: { status: 'up' },
                 cache: { status: 'up' },
-                state: { status: 'up' },
+                session: { status: 'up' },
             },
             error: {},
             details: {
@@ -47,7 +47,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 memory_rss: { status: 'up' },
                 database: { status: 'up' },
                 cache: { status: 'up' },
-                state: { status: 'up' },
+                session: { status: 'up' },
             },
         };
         const checkSpy = vi.spyOn(healthCheckPort, 'getStatus').mockResolvedValue(mockResult);
@@ -66,7 +66,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 memory_heap: { status: 'up' },
                 memory_rss: { status: 'up' },
                 cache: { status: 'up' },
-                state: { status: 'up' },
+                session: { status: 'up' },
             },
             error: {
                 database: { status: 'down', message: 'Connection timeout' },
@@ -76,7 +76,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 memory_rss: { status: 'up' },
                 database: { status: 'down', message: 'Connection timeout' },
                 cache: { status: 'up' },
-                state: { status: 'up' },
+                session: { status: 'up' },
             },
         };
         const checkSpy = vi.spyOn(healthCheckPort, 'getStatus').mockResolvedValue(mockResult);

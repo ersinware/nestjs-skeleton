@@ -155,28 +155,28 @@ export class EnvironmentVariables {
     readonly REDIS_CACHE_TLS!: boolean;
 
     /**
-     * Hostname or IP address of the Redis State server.
+     * Hostname or IP address of the Redis session store server.
      */
     @IsString()
-    readonly REDIS_STATE_HOST!: string;
+    readonly REDIS_SESSION_HOST!: string;
 
     /**
-     * Port number on which the Redis State server is listening.
+     * Port number on which the Redis session store server is listening.
      */
     @IsNumber()
-    readonly REDIS_STATE_PORT!: number;
+    readonly REDIS_SESSION_PORT!: number;
 
     /**
-     * Password for Redis State authentication.
+     * Password for Redis session store authentication.
      */
     @IsString()
-    readonly REDIS_STATE_PASSWORD!: string;
+    readonly REDIS_SESSION_PASSWORD!: string;
 
     /**
-     * Flag to enable TLS for Redis State connection.
+     * Flag to enable TLS for Redis session store connection.
      */
     @IsEnvBoolean()
-    readonly REDIS_STATE_TLS!: boolean;
+    readonly REDIS_SESSION_TLS!: boolean;
 
     /**
      * Maximum number of Redis reconnection retries per request.
