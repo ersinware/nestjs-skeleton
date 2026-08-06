@@ -1,12 +1,12 @@
 /**
  * @file auth.guard.ts
- * @description Authentication guard using JWT access tokens. Checks the cached session version for instant session eviction.
+ * @description Global authentication guard verifying JWT access tokens and the cached session version.
  */
 
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { publishAuditActor } from 'src/core/observability/audit';
-import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.interface';
+import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
@@ -18,16 +18,15 @@ import {
 } from 'src/shared/exception';
 
 /**
- * Authentication guard enforcing global JWT check with automatic instant eviction via the cached session version.
+ * Global authentication guard: verifies the JWT access token and enforces the cached session
+ * version, so a session bump evicts already-issued tokens instantly.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
     /**
-     * Creates an instance of AuthGuard.
-     *
-     * @param tokenPort Access and Refresh Token security operations helper service.
-     * @param sessionPort Session operations helper service.
-     * @param reflector NestJS metadata utility helper class.
+     * @param tokenPort Verifies access tokens.
+     * @param sessionPort Reads the current session version.
+     * @param reflector Reads the `@Public()` metadata.
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
@@ -36,13 +35,12 @@ export class AuthGuard implements CanActivate {
     ) {}
 
     /**
-     * Determines whether the current request is authorized to proceed.
-     * Checks for `@Public()` routes, verifies token signature/expiration, and enforces the session version.
+     * Admits `@Public()` routes, otherwise verifies the Bearer token and the session version.
      *
      * @param context Execution context of the request.
-     * @returns A promise resolving to true if authorized.
-     * @throws {UnauthenticatedException} if token validation or the session-version check fails.
-     * @throws {DependencyUnavailableException} if the cache is unreachable — the guard fails closed rather than skipping the session-version check.
+     * @returns A promise resolving to true if authenticated.
+     * @throws {UnauthenticatedException} if the token or the session-version check fails.
+     * @throws {DependencyUnavailableException} if the cache is unreachable — fails closed rather than skipping the session-version check.
      */
     async canActivate(context: ExecutionContext): Promise<boolean> {
         if (
@@ -71,8 +69,8 @@ export class AuthGuard implements CanActivate {
             throw new UnauthenticatedException();
         }
 
-        // Separate secrets already prevent verifying a refresh token here, but assert the claimed type
-        // explicitly so a token minted for any other purpose can never satisfy the access-token check.
+        // Separate secrets already reject refresh tokens; the explicit type assert ensures a token
+        // minted for any other purpose can never pass as an access token.
         if (payload.type !== AuthTokenType.ACCESS) {
             throw new UnauthenticatedException();
         }
@@ -80,12 +78,11 @@ export class AuthGuard implements CanActivate {
         let currentVersion: number;
         try {
             currentVersion = await this.sessionPort.getVersion(payload.sub);
-        } catch (error) {
-            // Fail closed: without the cached version we cannot honour instant session eviction, so we
-            // reject rather than admit a possibly-revoked token. 503 (not 500) marks this as a transient
-            // dependency outage the client may retry; the global filter keeps 503s out of the logs and
-            // Sentry — detection is the health-endpoint alarm's job.
-            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
+        } catch {
+            // Fail closed: without the cached version, instant session eviction cannot be honoured, so
+            // reject rather than admit a possibly-revoked token. 503 marks a retryable dependency
+            // outage; the global filter keeps 503s out of the logs and Sentry.
+            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT);
         }
 
         if (payload.version < currentVersion) {
