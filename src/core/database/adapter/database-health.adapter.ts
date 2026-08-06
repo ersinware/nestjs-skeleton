@@ -60,7 +60,7 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
 
         if (this.isDown) {
             this.isDown = false;
-            this.loggerPort.log({
+            this.loggerPort.info({
                 class: this.constructor.name,
                 method: this.ping.name,
                 message: ConnectionLogMessage.RESTORED,

@@ -34,7 +34,7 @@ describe('GlobalExceptionFilter', () => {
         mockLoggerPort = {
             error: vi.fn(),
             warn: vi.fn(),
-            log: vi.fn(),
+            info: vi.fn(),
         },
         mockAuditPort = {
             record: vi.fn(),

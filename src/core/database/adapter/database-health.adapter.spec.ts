@@ -15,7 +15,7 @@ describe('PostgresHealthIndicatorAdapter', () => {
     };
 
     const mockLoggerPort = {
-        log: vi.fn(),
+        info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
     } satisfies ILoggerPort;
@@ -81,14 +81,14 @@ describe('PostgresHealthIndicatorAdapter', () => {
             mockDb.execute.mockResolvedValue({});
             await expect(adapter.ping()).resolves.toBeUndefined();
 
-            expect(mockLoggerPort.log).toHaveBeenCalledTimes(1);
-            expect(mockLoggerPort.log).toHaveBeenCalledWith(
+            expect(mockLoggerPort.info).toHaveBeenCalledTimes(1);
+            expect(mockLoggerPort.info).toHaveBeenCalledWith(
                 expect.objectContaining({ message: ConnectionLogMessage.RESTORED }),
             );
 
             await expect(adapter.ping()).resolves.toBeUndefined();
 
-            expect(mockLoggerPort.log).toHaveBeenCalledTimes(1);
+            expect(mockLoggerPort.info).toHaveBeenCalledTimes(1);
         });
     });
 });

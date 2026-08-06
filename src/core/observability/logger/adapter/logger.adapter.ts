@@ -1,35 +1,29 @@
 /**
  * @file logger.adapter.ts
- * @description Pino-backed implementation of the logger port; the only place the LogPayload
- * envelope is translated into pino's own call shape.
+ * @description Pino-backed implementation of the logger port.
  */
 
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
-import type { LogPayload } from 'src/core/observability/logger/log-payload';
+import type { LogPayload } from 'src/core/observability/logger/port/logger.port';
 import { ILoggerPort } from 'src/core/observability/logger/port/logger.port';
 
 /**
- * Translates the closed log envelope into pino's `(mergingObject, message)` signature.
- *
- * The translation lives here so {@link LogPayload}'s guarantees hold: `message` reaches pino as
- * `msg`, and free-form keys are spread from `data` where they cannot originate a reserved key.
- * Writing through `PinoLogger` keeps `instrumentation-pino` in the path, so `traceId`/`spanId`
- * stay injected.
+ * Translates the {@link LogPayload} envelope into pino's `(mergingObject, message)` signature —
+ * the only place the two shapes meet.
  */
 @Injectable()
 export class LoggerAdapter implements ILoggerPort {
     /**
-     * Creates an instance of LoggerAdapter.
-     *
-     * @param pino The request-scoped-aware pino logger provided by nestjs-pino.
+     * @param pino The configured pino logger. Writing through it keeps `instrumentation-pino` in
+     * the path, so `traceId`/`spanId` stay injected.
      */
     constructor(private readonly pino: PinoLogger) {}
 
     /**
      * Writes the payload at pino's `info` level.
      */
-    log(payload: LogPayload) {
+    info(payload: LogPayload) {
         this.pino.info(this.toMergingObject(payload), payload.message);
     }
 
@@ -48,18 +42,18 @@ export class LoggerAdapter implements ILoggerPort {
     }
 
     /**
-     * Flattens the envelope into the object pino merges into the record. `error` keeps its own key
-     * so the configured error serializer picks it up; when absent, pino drops the undefined value.
+     * Flattens the envelope for pino. `data` is spread first so the envelope's own keys win over a
+     * colliding free-form key; `error` keeps its key so the configured error serializer picks it up.
      *
      * @param payload The envelope to flatten.
      * @returns The object pino merges into the log record.
      */
     private toMergingObject(payload: LogPayload): Record<string, unknown> {
         return {
+            ...payload.data,
             class: payload.class,
             method: payload.method,
-            error: payload.error,
-            ...payload.data,
+            ...(payload.error !== undefined && { error: payload.error }),
         };
     }
 }

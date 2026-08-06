@@ -62,7 +62,7 @@ export function createRedisClient(
         }
 
         isDown = false;
-        logger.log({
+        logger.info({
             class: createRedisClient.name,
             method: `${clientName}.on(ready)`,
             message: ConnectionLogMessage.RESTORED,

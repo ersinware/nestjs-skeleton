@@ -7,9 +7,19 @@ import { Module, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IncomingMessage } from 'http';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
-import { ENV, Environment, ROUTE_DOCS, ROUTE_HEALTH } from 'src/core/config';
+import { ENV, Environment, ROUTE_DOCS, ROUTE_HEALTH, VERSION_PREFIX } from 'src/core/config';
 import { LoggerAdapter } from 'src/core/observability/logger/adapter/logger.adapter';
 import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.port';
+
+/**
+ * Log level per environment. Exhaustive, so a new {@link Environment} member fails compilation
+ * here instead of silently falling through to a silenced logger.
+ */
+const ENVIRONMENT_TO_LEVEL: Record<Environment, string> = {
+    [Environment.PRODUCTION]: 'info',
+    [Environment.DEVELOPMENT]: 'debug',
+    [Environment.TEST]: 'silent',
+};
 
 /**
  * Configures pino — level per environment, whitelist serializers, route exclusions — and provides
@@ -20,31 +30,22 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.por
         PinoLoggerModule.forRootAsync({
             inject: [ConfigService],
             useFactory: (config: ConfigService) => {
-                const NODE_ENV = config.getOrThrow<Environment>(ENV.NODE_ENV);
-
                 return {
                     pinoHttp: {
-                        level:
-                            NODE_ENV === Environment.PRODUCTION
-                                ? 'info'
-                                : NODE_ENV === Environment.DEVELOPMENT
-                                  ? 'debug'
-                                  : 'silent',
+                        level: ENVIRONMENT_TO_LEVEL[config.getOrThrow<Environment>(ENV.NODE_ENV)],
                         serializers: {
-                            // Whitelist, not denylist: a denylist protects only the headers someone
-                            // thought of and silently leaks every one added later — here a new header
-                            // is private until named. The request BODY is never logged at any level:
-                            // it is where credentials, tokens and PII reliably appear.
+                            // Whitelist, not denylist: a new header stays private until named here.
+                            // The body is never logged (credentials, tokens, PII) and the URL drops
+                            // its query string for the same reason — a query can carry a token.
                             req: (req: IncomingMessage & { id: unknown; remoteAddress: string }) => ({
                                 id: req.id,
                                 method: req.method,
-                                url: req.url,
+                                url: req.url?.split('?')[0],
                                 remoteAddress: req.remoteAddress,
                                 userAgent: req.headers['user-agent'],
                             }),
-                            // Response headers are dropped wholesale: they answer no diagnostic
-                            // question, while Set-Cookie and any future token-bearing header would
-                            // land there by default. Only the status code is worth keeping.
+                            // Response headers are dropped wholesale: Set-Cookie and any future
+                            // token-bearing header would land there by default.
                             res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
                             error: function serialize(error: unknown): unknown {
                                 if (error instanceof Error) {
@@ -63,13 +64,12 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.por
                             level: (label: string) => ({ level: label }),
                         },
                     },
-                    // These routes answer no diagnostic question per request. The `*splat` wildcard
-                    // (path-to-regexp v8) covers the /live and /ready probes — the app's
-                    // highest-frequency traffic.
+                    // These routes answer no diagnostic question per request; `*splat`
+                    // (path-to-regexp v8) covers the probes — the app's highest-frequency traffic.
                     exclude: [
                         { method: RequestMethod.ALL, path: ROUTE_HEALTH },
                         { method: RequestMethod.ALL, path: `${ROUTE_HEALTH}/*splat` },
-                        { method: RequestMethod.ALL, path: `v:version/${ROUTE_DOCS}` },
+                        { method: RequestMethod.ALL, path: `${VERSION_PREFIX}:version/${ROUTE_DOCS}` },
                     ],
                 };
             },
@@ -81,6 +81,9 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.por
             useClass: LoggerAdapter,
         },
     ],
+    // PinoLoggerModule is re-exported for exactly one consumer: the audit concern, whose store is
+    // pino today. Drop the re-export when audit moves to a database table — every other module
+    // sees only the port.
     exports: [PinoLoggerModule, TOKEN_LOGGER_PORT],
 })
 export class LoggerModule {}
