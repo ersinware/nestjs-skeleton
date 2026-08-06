@@ -6,14 +6,13 @@
 export const TOKEN_EXCEPTION_TRACKER_PORT = Symbol('TOKEN_EXCEPTION_TRACKER_PORT');
 
 /**
- * Contract for reporting an exception, used only when a human must intervene and the failure will
- * not self-heal. Pairs with the logger's `error`, never replaces it.
+ * Reports exceptions that require human intervention and will not self-heal.
  */
 export interface IExceptionTrackerPort {
     /**
-     * Captures an exception and sends it to the configured monitoring service.
+     * Sends an exception to the tracking service.
      *
-     * @param exception The exception object or raw error to track.
+     * @param exception The exception to report.
      */
     captureException(exception: unknown): void;
 }

@@ -1,6 +1,6 @@
 /**
  * @file module.ts
- * @description NestJS module wiring the exception tracker port to its Sentry-backed adapter.
+ * @description Wiring of the exception-tracker concern.
  */
 
 import { Module } from '@nestjs/common';
@@ -8,7 +8,7 @@ import { ExceptionTrackerAdapter } from 'src/core/observability/exception-tracke
 import { TOKEN_EXCEPTION_TRACKER_PORT } from 'src/core/observability/exception-tracker/port/exception-tracker.port';
 
 /**
- * Provides the exception tracker port backed by the Sentry adapter.
+ * Binds the exception tracker port to its Sentry adapter.
  */
 @Module({
     providers: [
