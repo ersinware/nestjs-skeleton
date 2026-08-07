@@ -1,87 +1,80 @@
 /**
  * @file response-healthy.dto.ts
- * @description Defines the exact data structure returned when the system passes all health checks. It provides strict typing and Swagger documentation for HTTP 200 health responses, ensuring consumers understand the expected payload format.
+ * @description Response body of a fully passed health check (HTTP 200).
  */
 
 import { ApiExtension, ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { createHealthyIndicator } from 'src/module/health/presentation/dto/dto.util';
+import {
+    HEALTH_INDICATOR_KEYS,
+    HealthIndicatorKey,
+    HealthyIndicatorState,
+} from 'src/module/health/application/query/get-health-status/query';
+import { createHealthyIndicatorProperties } from 'src/module/health/presentation/dto/health-indicator-schema.util';
 
 /**
- * Data transfer object representing a healthy application status response.
- * Used to explicitly map out the response body of a successful health check.
+ * Response body of a fully passed health check, mirroring the Terminus report shape.
  */
 @Exclude()
 @ApiSchema({
     name: 'ResponseHealthy',
-    description: 'Successful health check response status',
+    description: 'Report returned when every health indicator passes.',
 })
 @ApiExtension('x-force-required', ['status', 'info', 'error', 'details'])
 export class ResponseHealthyDto {
     /**
-     * The overall status indicating the app is healthy.
-     * Always set to "ok" to allow quick string matching by external health monitors.
+     * Overall status; always "ok" on this response.
      */
     @Expose()
     @ApiProperty({
         type: 'string',
         enum: ['ok'],
-        description: 'The overall health status indicating success.',
+        description: 'Overall status; always "ok".',
         example: 'ok',
     })
-    readonly status!: string;
+    readonly status!: 'ok';
 
     /**
-     * Contains detailed information about healthy indicator components (memory, database, Cache).
-     * Useful for diagnosing which components are currently active and performing well.
+     * Per-indicator state of the healthy components — all of them on this response.
      */
     @Expose()
-    @ApiProperty(createHealthDetailsSchema('Information about healthy indicators.'))
-    readonly info!: Record<string, unknown>;
+    @ApiProperty(createHealthyDetailsSchema('States of the healthy indicators.'))
+    readonly info!: Record<HealthIndicatorKey, unknown>;
 
     /**
-     * An empty error object indicating no errors occurred.
-     * Required by the schema to maintain a consistent shape even when everything is healthy.
+     * Always empty here; present so both health responses share one shape.
      */
     @Expose()
     @ApiProperty({
         type: 'object',
         additionalProperties: false,
-        description: 'No errors present for a healthy status.',
-        example: {},
+        description: 'Always empty on a healthy response.',
+        example: {} satisfies Record<string, never>,
     })
     readonly error!: Record<string, never>;
 
     /**
-     * Combined map of all indicators and their healthy status.
-     * Provides a consolidated view of all tested systems in one object.
+     * Combined per-indicator state; identical to `info` on a healthy response.
      */
     @Expose()
-    @ApiProperty(createHealthDetailsSchema('Combined details of healthy indicators.'))
-    readonly details!: Record<string, unknown>;
+    @ApiProperty(createHealthyDetailsSchema('Combined states of all indicators.'))
+    readonly details!: Record<HealthIndicatorKey, unknown>;
 }
 
 /**
- * Creates Swagger schema definition metadata for healthy system components (heap, RSS, database, Cache).
- * Abstracts the verbose schema generation logic to keep the DTO class clean and readable.
+ * Builds the schema of a block holding every indicator in its healthy state.
  *
- * @param description The detailed description to be attached to the schema object
- * @returns A Swagger-compliant property details schema configuration
+ * @param description The block's description
+ * @returns The block schema
  */
-function createHealthDetailsSchema(description: string): Record<string, unknown> {
+function createHealthyDetailsSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database', 'cache', 'session'],
-        properties: {
-            memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
-            memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
-            database: createHealthyIndicator('Database connection indicator status.'),
-            cache: createHealthyIndicator('Cache connection indicator status.'),
-            session: createHealthyIndicator('Session store connection indicator status.'),
-        },
+        required: [...HEALTH_INDICATOR_KEYS],
+        properties: createHealthyIndicatorProperties(),
         additionalProperties: false,
-        minProperties: 5,
-        maxProperties: 5,
+        minProperties: HEALTH_INDICATOR_KEYS.length,
+        maxProperties: HEALTH_INDICATOR_KEYS.length,
         description,
         example: {
             memory_heap: { status: 'up' },
@@ -89,6 +82,6 @@ function createHealthDetailsSchema(description: string): Record<string, unknown>
             database: { status: 'up' },
             cache: { status: 'up' },
             session: { status: 'up' },
-        },
+        } satisfies Record<HealthIndicatorKey, HealthyIndicatorState>,
     };
 }

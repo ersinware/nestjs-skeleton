@@ -63,7 +63,7 @@ export class AdminController {
 
     /**
      * Retrieves all admins with pagination capabilities.
-     * Useful for displaying a list of administrative users in a back-office dashboard. Requires super administrator-level authorization.
+     * Useful for displaying a list of administrative users in a back-office dashboard. Requires super-administrator authorization.
      *
      * @param query The query string parameters used for pagination
      * @returns A paginated response containing a list of administrator profiles
@@ -71,8 +71,7 @@ export class AdminController {
     @Get()
     @ApiOperation({
         summary: 'List all admins',
-        description:
-            'Retrieves administrator accounts with pagination. Requires super administrator-level authorization.',
+        description: 'Retrieves administrator accounts with pagination. Requires super-administrator authorization.',
     })
     @ApiDefaultOkResponsePaginated({ message: 'Admins successfully retrieved.', model: ResponseAdminDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -89,7 +88,7 @@ export class AdminController {
 
     /**
      * Deletes an admin account from the system.
-     * Hard deletion is not performed; instead, it soft deletes the record. Super admins cannot be deleted to prevent locking out the system. Requires super administrator-level authorization.
+     * Hard deletion is not performed; instead, it soft deletes the record. Super admins cannot be deleted to prevent locking out the system. Requires super-administrator authorization.
      *
      * @param params The URL path parameters containing the target admin ID
      */
@@ -97,7 +96,7 @@ export class AdminController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Delete admin',
-        description: 'Soft deletes an admin account. Requires super administrator-level authorization.',
+        description: 'Soft deletes an admin account. Requires super-administrator authorization.',
     })
     @ApiNoContentResponse({ description: 'Admin account successfully deleted.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -108,7 +107,7 @@ export class AdminController {
 
     /**
      * Bans an admin account.
-     * All current sessions belonging to the admin are immediately revoked. Super admins cannot be banned. Requires super administrator-level authorization.
+     * All current sessions belonging to the admin are immediately revoked. Super admins cannot be banned. Requires super-administrator authorization.
      *
      * @param params The URL path parameters containing the target admin ID
      */
@@ -117,7 +116,7 @@ export class AdminController {
     @ApiOperation({
         summary: 'Ban admin',
         description:
-            'Bans the account and revokes all active sessions. Super admins cannot be banned. Requires super administrator-level authorization.',
+            'Bans the account and revokes all active sessions. Super admins cannot be banned. Requires super-administrator authorization.',
     })
     @ApiNoContentResponse({ description: 'Admin successfully banned.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -128,7 +127,7 @@ export class AdminController {
 
     /**
      * Unbans an admin account.
-     * Super admins cannot be modified. Requires super administrator-level authorization.
+     * Super admins cannot be modified. Requires super-administrator authorization.
      *
      * @param params The URL path parameters containing the target admin ID
      */
@@ -136,7 +135,7 @@ export class AdminController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Unban admin',
-        description: 'Lifts the ban on the account. Requires super administrator-level authorization.',
+        description: 'Lifts the ban on the account. Requires super-administrator authorization.',
     })
     @ApiNoContentResponse({ description: 'Admin successfully unbanned.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)

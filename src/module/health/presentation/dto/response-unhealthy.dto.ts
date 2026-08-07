@@ -1,80 +1,79 @@
 /**
  * @file response-unhealthy.dto.ts
- * @description Defines the exact data structure returned when one or more system health checks fail. It provides strict typing and Swagger documentation for HTTP 503 Service Unavailable health responses, helping operators quickly identify the failing component.
+ * @description Response body of a failed health check (HTTP 503), naming the failing indicators.
  */
 
 import { ApiExtension, ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { createHealthyIndicator } from 'src/module/health/presentation/dto/dto.util';
+import {
+    HEALTH_INDICATOR_KEYS,
+    HealthIndicatorKey,
+    HealthyIndicatorState,
+    HealthyOrUnhealthyIndicatorState,
+    UnhealthyIndicatorMessage,
+    UnhealthyIndicatorState,
+} from 'src/module/health/application/query/get-health-status/query';
+import {
+    createHealthyIndicatorProperties,
+    HealthIndicatorDescription,
+} from 'src/module/health/presentation/dto/health-indicator-schema.util';
 
 /**
- * Data transfer object representing an unhealthy application status response.
- * Maps out the exact payload so external monitors can parse what went wrong.
+ * Response body of a failed health check, mirroring the Terminus report shape.
  */
 @Exclude()
 @ApiSchema({
     name: 'ResponseUnhealthy',
-    description: 'Unhealthy health check response status',
+    description: 'Report returned when at least one health indicator fails.',
 })
 @ApiExtension('x-force-required', ['status', 'info', 'error', 'details'])
 export class ResponseUnhealthyDto {
     /**
-     * The overall status indicating the app is unhealthy.
-     * Always set to "error" to allow external systems to immediately recognize a failure state.
+     * Overall status; always "error" on this response.
      */
     @Expose()
     @ApiProperty({
         type: 'string',
         enum: ['error'],
-        description: 'The overall health status indicating failure.',
+        description: 'Overall status; always "error".',
         example: 'error',
     })
-    readonly status!: string;
+    readonly status!: 'error';
 
     /**
-     * Contains detailed information about indicators that are currently healthy.
-     * Useful for understanding which parts of the system are still functioning despite the overall failure.
+     * Per-indicator state of the components still healthy despite the overall failure.
      */
     @Expose()
-    @ApiProperty(createUnhealthyInfoSchema('Information about healthy indicators.'))
-    readonly info!: Record<string, unknown>;
+    @ApiProperty(createUnhealthyInfoSchema('States of the indicators still healthy.'))
+    readonly info!: Partial<Record<HealthIndicatorKey, unknown>>;
 
     /**
-     * Contains detailed failure information about indicators that are currently down.
-     * Essential for debugging and identifying exactly which dependency triggered the unhealthy status.
+     * Per-indicator failure of the components that are down, each with its message.
      */
     @Expose()
-    @ApiProperty(createUnhealthyErrorSchema('Information about indicators that failed.'))
-    readonly error!: Record<string, unknown>;
+    @ApiProperty(createUnhealthyErrorSchema('Failures of the indicators that are down.'))
+    readonly error!: Partial<Record<HealthIndicatorKey, unknown>>;
 
     /**
-     * Combined map of all indicators containing their current status and error messages if down.
-     * Provides a consolidated view of all tested systems in one object for comprehensive monitoring.
+     * Combined per-indicator state — the union of `info` and `error`.
      */
     @Expose()
-    @ApiProperty(createUnhealthyDetailsSchema('Combined details of all health indicators.'))
-    readonly details!: Record<string, unknown>;
+    @ApiProperty(createUnhealthyDetailsSchema('Combined states of all indicators.'))
+    readonly details!: Record<HealthIndicatorKey, unknown>;
 }
 
 /**
- * Generates the Swagger schema definition for the 'info' block under unhealthy responses.
- * Contains only properties that are currently healthy. Abstracts schema definition logic to improve readability.
+ * Builds the schema of the `info` block: the indicators that are still healthy.
  *
- * @param description The detailed description to be attached to the schema block
- * @returns A Swagger schema definition object mapping healthy properties
+ * @param description The block's description
+ * @returns The block schema
  */
 function createUnhealthyInfoSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        properties: {
-            memory_heap: createHealthyIndicator('Heap memory usage indicator status.'),
-            memory_rss: createHealthyIndicator('Resident set size memory usage indicator status.'),
-            database: createHealthyIndicator('Database connection indicator status.'),
-            cache: createHealthyIndicator('Cache connection indicator status.'),
-            session: createHealthyIndicator('Session store connection indicator status.'),
-        },
+        properties: createHealthyIndicatorProperties(),
         minProperties: 0,
-        maxProperties: 5,
+        maxProperties: HEALTH_INDICATOR_KEYS.length,
         additionalProperties: false,
         description,
         example: {
@@ -84,60 +83,47 @@ function createUnhealthyInfoSchema(description: string): Record<string, unknown>
             memory_rss: {
                 status: 'up',
             },
-        },
+            session: {
+                status: 'up',
+            },
+        } satisfies Partial<Record<HealthIndicatorKey, HealthyIndicatorState>>,
     };
 }
 
 /**
- * Generates the Swagger schema definition for the 'error' block under unhealthy responses.
- * Contains indicator errors for down components to pinpoint the source of failure.
+ * Builds the schema of the `error` block: the indicators that are down.
  *
- * @param description The detailed description to be attached to the schema block
- * @returns A Swagger schema definition object outlining potential errors
+ * @param description The block's description
+ * @returns The block schema
  */
 function createUnhealthyErrorSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        properties: {
-            memory_heap: createErrorIndicator(
-                'Heap memory usage indicator status.',
-                'Heap memory usage exceeded the limit.',
-            ),
-            memory_rss: createErrorIndicator(
-                'Resident set size memory usage indicator status.',
-                'RSS memory usage exceeded the limit.',
-            ),
-            database: createErrorIndicator('Database connection indicator status.', 'Database connection failed.'),
-            cache: createErrorIndicator('Cache connection indicator status.', 'Cache connection failed.'),
-            session: createErrorIndicator(
-                'Session store connection indicator status.',
-                'Session store connection failed.',
-            ),
-        },
+        properties: Object.fromEntries(HEALTH_INDICATOR_KEYS.map((key) => [key, createUnhealthyIndicator(key)])),
         additionalProperties: false,
         description,
         example: {
             database: {
                 status: 'down',
-                message: 'Database connection failed.',
+                message: UnhealthyIndicatorMessage.database,
             },
             cache: {
                 status: 'down',
-                message: 'Cache connection failed.',
+                message: UnhealthyIndicatorMessage.cache,
             },
-        },
+        } satisfies Partial<Record<HealthIndicatorKey, UnhealthyIndicatorState>>,
     };
 }
 
 /**
- * Generates schema metadata for a failed health indicator.
- * Standardizes how individual component failures are documented in Swagger.
+ * Builds the schema of one down indicator.
  *
- * @param description The detailed description of the failing indicator
- * @param exampleMessage A sample error message illustrating the potential failure reason
- * @returns A Swagger schema definition documenting a single down indicator
+ * @param key The indicator being documented
+ * @returns The down-indicator schema
  */
-function createErrorIndicator(description: string, exampleMessage: string): Record<string, unknown> {
+function createUnhealthyIndicator(key: HealthIndicatorKey): Record<string, unknown> {
+    const exampleMessage = UnhealthyIndicatorMessage[key];
+
     return {
         type: 'object',
         required: ['status', 'message'],
@@ -158,78 +144,61 @@ function createErrorIndicator(description: string, exampleMessage: string): Reco
             },
         },
         additionalProperties: false,
-        description,
-        example: { status: 'down', message: exampleMessage },
+        description: HealthIndicatorDescription[key],
+        example: { status: 'down', message: exampleMessage } satisfies UnhealthyIndicatorState,
     };
 }
 
 /**
- * Generates the Swagger schema definition for the 'details' block under unhealthy responses.
- * Integrates status and error descriptions for all registered indicators.
+ * Builds the schema of the `details` block: every indicator in either state.
  *
- * @param description The detailed description of the unified details block
- * @returns A Swagger schema definition object containing all component statuses
+ * @param description The block's description
+ * @returns The block schema
  */
 function createUnhealthyDetailsSchema(description: string): Record<string, unknown> {
     return {
         type: 'object',
-        required: ['memory_heap', 'memory_rss', 'database', 'cache', 'session'],
+        required: [...HEALTH_INDICATOR_KEYS],
         properties: {
-            memory_heap: createDetailIndicator(
-                'Heap memory usage indicator status.',
-                'up',
-                'Heap memory usage exceeded the limit.',
-            ),
-            memory_rss: createDetailIndicator(
-                'Resident set size memory usage indicator status.',
-                'up',
-                'RSS memory usage exceeded the limit.',
-            ),
-            database: createDetailIndicator(
-                'Database connection indicator status.',
-                'down',
-                'Database connection failed.',
-            ),
-            cache: createDetailIndicator('Cache connection indicator status.', 'down', 'Cache connection failed.'),
-            session: createDetailIndicator(
-                'Session store connection indicator status.',
-                'down',
-                'Session store connection failed.',
-            ),
+            memory_heap: createHealthyOrUnhealthyIndicator('memory_heap', 'up'),
+            memory_rss: createHealthyOrUnhealthyIndicator('memory_rss', 'up'),
+            database: createHealthyOrUnhealthyIndicator('database', 'down'),
+            cache: createHealthyOrUnhealthyIndicator('cache', 'down'),
+            session: createHealthyOrUnhealthyIndicator('session', 'up'),
         },
         additionalProperties: false,
-        minProperties: 5,
-        maxProperties: 5,
+        minProperties: HEALTH_INDICATOR_KEYS.length,
+        maxProperties: HEALTH_INDICATOR_KEYS.length,
         description,
         example: {
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },
+            session: { status: 'up' },
             database: {
                 status: 'down',
-                message: 'Database connection failed.',
+                message: UnhealthyIndicatorMessage.database,
             },
             cache: {
                 status: 'down',
-                message: 'Cache connection failed.',
+                message: UnhealthyIndicatorMessage.cache,
             },
-        },
+        } satisfies Record<HealthIndicatorKey, HealthyOrUnhealthyIndicatorState>,
     };
 }
 
 /**
- * Generates schema metadata for a detail indicator block.
- * Ensures uniformity when displaying both healthy and unhealthy states in the details object.
+ * Builds the schema of one indicator that may be up or down.
  *
- * @param description The detailed description of the indicator
- * @param exampleStatus The status string representing health ('up' or 'down')
- * @param exampleMessage A descriptive message shown when the indicator is down or up
- * @returns A Swagger schema definition representing the unified indicator detail
+ * @param key The indicator being documented
+ * @param exampleStatus The status shown in the example
+ * @returns The indicator schema
  */
-function createDetailIndicator(
-    description: string,
-    exampleStatus: string,
-    exampleMessage: string,
+function createHealthyOrUnhealthyIndicator(
+    key: HealthIndicatorKey,
+    exampleStatus: 'up' | 'down',
 ): Record<string, unknown> {
+    const exampleMessage = UnhealthyIndicatorMessage[key];
+
     return {
         type: 'object',
         required: ['status'],
@@ -250,7 +219,7 @@ function createDetailIndicator(
             },
         },
         additionalProperties: false,
-        description,
-        example: { status: exampleStatus, message: exampleMessage },
+        description: HealthIndicatorDescription[key],
+        example: { status: exampleStatus, message: exampleMessage } satisfies HealthyOrUnhealthyIndicatorState,
     };
 }

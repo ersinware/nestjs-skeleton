@@ -6,6 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+    HealthCheckResult,
     HealthCheckService,
     HealthIndicatorResult,
     HealthIndicatorService,
@@ -19,23 +20,28 @@ import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
 import type { ISessionHealthPort } from 'src/core/security/session';
 import { TOKEN_SESSION_HEALTH_PORT } from 'src/core/security/session';
 import type { IGetHealthStatusPort } from 'src/module/health/application/query/get-health-status/port';
-import type { GetHealthStatusResult } from 'src/module/health/application/query/get-health-status/query';
+import {
+    GetHealthStatusResult,
+    HealthIndicatorKey,
+    UnhealthyIndicatorMessage,
+} from 'src/module/health/application/query/get-health-status/query';
+import { SystemException } from 'src/shared/exception';
 
 /**
- * Adapter that implements the IGetHealthStatusPort using NestJS Terminus.
+ * Implements the health read port with Terminus, composing the core health ports into one report.
  */
 @Injectable()
 export class HealthReaderAdapter implements IGetHealthStatusPort {
     /**
-     * Creates an instance of HealthReaderAdapter.
+     * Creates the adapter.
      *
-     * @param health Terminus health check service.
-     * @param memory Terminus memory health indicator.
-     * @param healthIndicatorService Terminus custom health indicator service.
-     * @param configService Application configuration service.
-     * @param databaseHealthIndicatorPort Port for database health check.
-     * @param cacheHealthIndicatorPort Port for cache health check.
-     * @param sessionHealthIndicatorPort Port for session store health check.
+     * @param health Terminus check runner.
+     * @param memory Terminus memory indicator.
+     * @param healthIndicatorService Terminus factory for custom indicators.
+     * @param configService Source of the memory limits.
+     * @param databaseHealthIndicatorPort Database ping.
+     * @param cacheHealthIndicatorPort Cache ping.
+     * @param sessionHealthIndicatorPort Session store ping.
      */
     constructor(
         private readonly health: HealthCheckService,
@@ -49,90 +55,100 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
     ) {}
 
     /**
-     * Executes the combined health check for memory, database, and cache.
+     * Runs every indicator through one Terminus check.
      *
-     * On failure Terminus throws its own `ServiceUnavailableException` carrying the indicator report,
-     * and that raw framework exception is deliberately NOT translated into a taxonomy one — the sole
-     * exemption to "infrastructure translates, nothing leaks". The global filter recognizes it by
-     * `instanceof HttpException` to decide what each health path may disclose, so translating it here
-     * would silently put a normalized error body back onto the anonymous readiness probe.
-     *
-     * @returns A promise resolving to the health check result.
-     * @throws {ServiceUnavailableException} If one or more health indicators fail.
+     * On failure Terminus throws its raw `ServiceUnavailableException` — deliberately untranslated,
+     * the sole exemption to "infrastructure translates". The global filter keys on
+     * `instanceof HttpException` to decide what each health path discloses; translating here would
+     * put a normalized error body back onto the anonymous readiness probe.
      */
     async getStatus(): Promise<GetHealthStatusResult> {
-        const result = await this.health.check([
-            () =>
-                this.memory.checkHeap(
-                    'memory_heap',
-                    this.configService.getOrThrow<number>(ENV.HEALTH_HEAP_LIMIT_MB) * 1024 * 1024,
-                ),
-            () =>
-                this.memory.checkRSS(
-                    'memory_rss',
-                    this.configService.getOrThrow<number>(ENV.HEALTH_RSS_LIMIT_MB) * 1024 * 1024,
-                ),
-            () => this.checkDatabase(),
-            () => this.checkCache(),
-            () => this.checkSession(),
-        ]);
+        return this.toHealthyReadModel(
+            await this.health.check([
+                () =>
+                    this.memory.checkHeap(
+                        'memory_heap',
+                        this.configService.getOrThrow<number>(ENV.HEALTH_HEAP_LIMIT_MB) * 1024 * 1024,
+                    ),
+                () =>
+                    this.memory.checkRSS(
+                        'memory_rss',
+                        this.configService.getOrThrow<number>(ENV.HEALTH_RSS_LIMIT_MB) * 1024 * 1024,
+                    ),
+                () => this.checkDependency('database', this.databaseHealthIndicatorPort),
+                () => this.checkDependency('cache', this.cacheHealthIndicatorPort),
+                () => this.checkDependency('session', this.sessionHealthIndicatorPort),
+            ]),
+        );
+    }
+
+    /**
+     * Checks one pingable dependency; a rejected ping marks its indicator down.
+     *
+     * @param key The indicator the result is reported under.
+     * @param port The dependency's health port.
+     * @returns The indicator result.
+     */
+    private async checkDependency(
+        key: HealthIndicatorKey,
+        port: { ping(): Promise<void> },
+    ): Promise<HealthIndicatorResult> {
+        const indicator = this.healthIndicatorService.check(key);
+
+        try {
+            await port.ping();
+
+            return indicator.up();
+        } catch {
+            return indicator.down({ message: UnhealthyIndicatorMessage[key] });
+        }
+    }
+
+    /**
+     * Narrows Terminus's wide report into the healthy read model without a type assertion.
+     * `check()` throws on any failing indicator, so only a fully-up report can reach this point —
+     * anything else is a broken code path and surfaces as 500 + Sentry.
+     *
+     * @param result The report of a passed check.
+     * @returns The healthy read model.
+     */
+    private toHealthyReadModel(result: HealthCheckResult): GetHealthStatusResult {
+        if (result.status !== 'ok') {
+            throw new SystemException(`Non-throwing unhealthy Terminus report: "${result.status}".`, {
+                context: { class: this.constructor.name, method: this.toHealthyReadModel.name },
+            });
+        }
+
+        const indicators = {
+            memory_heap: this.assertHealthy(result, 'memory_heap'),
+            memory_rss: this.assertHealthy(result, 'memory_rss'),
+            database: this.assertHealthy(result, 'database'),
+            cache: this.assertHealthy(result, 'cache'),
+            session: this.assertHealthy(result, 'session'),
+        };
 
         return {
-            status: result.status,
-            info: result.info,
-            error: result.error,
-            details: result.details,
-        } as GetHealthStatusResult;
+            status: 'ok',
+            info: indicators,
+            error: {},
+            details: indicators,
+        };
     }
 
     /**
-     * Checks the database connection health.
+     * Narrows one indicator of a passed report to the healthy state.
      *
-     * @returns The database health indicator result.
+     * @param result The report of a passed check.
+     * @param key The indicator to narrow.
+     * @returns The healthy indicator state.
      */
-    private async checkDatabase(): Promise<HealthIndicatorResult> {
-        const indicator = this.healthIndicatorService.check('database');
-
-        try {
-            await this.databaseHealthIndicatorPort.ping();
-
-            return indicator.up();
-        } catch {
-            return indicator.down({ message: 'Database connection failed.' });
+    private assertHealthy(result: HealthCheckResult, key: HealthIndicatorKey): { status: 'up' } {
+        if (result.details[key]?.status !== 'up') {
+            throw new SystemException(`Indicator "${key}" missing or not up in a passed health check.`, {
+                context: { class: this.constructor.name, method: this.assertHealthy.name, key },
+            });
         }
-    }
 
-    /**
-     * Checks the cache connection health.
-     *
-     * @returns The cache health indicator result.
-     */
-    private async checkCache(): Promise<HealthIndicatorResult> {
-        const indicator = this.healthIndicatorService.check('cache');
-
-        try {
-            await this.cacheHealthIndicatorPort.ping();
-
-            return indicator.up();
-        } catch {
-            return indicator.down({ message: 'Cache connection failed.' });
-        }
-    }
-
-    /**
-     * Checks the session store connection health.
-     *
-     * @returns The session store health indicator result.
-     */
-    private async checkSession(): Promise<HealthIndicatorResult> {
-        const indicator = this.healthIndicatorService.check('session');
-
-        try {
-            await this.sessionHealthIndicatorPort.ping();
-
-            return indicator.up();
-        } catch {
-            return indicator.down({ message: 'Session store connection failed.' });
-        }
+        return { status: 'up' };
     }
 }

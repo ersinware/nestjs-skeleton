@@ -113,7 +113,7 @@ export class UserController {
     @ApiOperation({
         summary: 'Get all users',
         description:
-            'Retrieves registered users with pagination and optional search query. Requires administrator-level authorization.',
+            'Retrieves registered users with pagination and optional search query. Requires administrator authorization.',
     })
     @ApiDefaultOkResponsePaginated({ message: 'Users successfully retrieved.', model: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -166,7 +166,7 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get user by ID',
-        description: 'Retrieves details of a specific user. Requires administrator-level authorization.',
+        description: 'Retrieves details of a specific user. Requires administrator authorization.',
     })
     @ApiOkResponse({ description: 'User details successfully retrieved.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -274,7 +274,7 @@ export class UserController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Ban user',
-        description: 'Bans the account and revokes all active sessions. Requires administrator-level authorization.',
+        description: 'Bans the account and revokes all active sessions. Requires administrator authorization.',
     })
     @ApiNoContentResponse({ description: 'User successfully banned.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -296,7 +296,7 @@ export class UserController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Unban user',
-        description: 'Lifts the ban on the account. Requires administrator-level authorization.',
+        description: 'Lifts the ban on the account. Requires administrator authorization.',
     })
     @ApiNoContentResponse({ description: 'User successfully unbanned.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)

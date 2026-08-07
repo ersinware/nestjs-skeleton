@@ -11,14 +11,14 @@ import type { GetHealthStatusResult } from 'src/module/health/application/query/
 export const TOKEN_GET_HEALTH_STATUS_PORT = Symbol('TOKEN_GET_HEALTH_STATUS_PORT');
 
 /**
- * Thin read contract for fetching the per-indicator health report of every dependency.
+ * Thin read contract for the per-indicator health report of every dependency.
  */
 export interface IGetHealthStatusPort {
     /**
-     * Executes the health checks.
+     * Runs every health check and returns the combined report.
      *
-     * @returns A promise resolving to the health check result.
-     * @throws {ServiceUnavailableException} If one or more health indicators fail; the raw framework exception is deliberately left untranslated (see the adapter).
+     * @returns The health report; resolves only when all indicators pass.
+     * @throws {ServiceUnavailableException} When any indicator fails — Terminus's raw exception, deliberately untranslated (see the adapter).
      */
     getStatus(): Promise<GetHealthStatusResult>;
 }
