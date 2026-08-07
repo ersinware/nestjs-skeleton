@@ -17,6 +17,7 @@ import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultAccessDeniedResponse,
+    ApiDefaultDependencyUnavailableResponse,
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultOkResponsePaginated,
@@ -60,6 +61,9 @@ import { ResourceConflictMessage } from 'src/shared/exception';
 })
 @ApiTags('user')
 @ApiDefaultInternalServerErrorResponse()
+// Class-level like the 500: the global AuthGuard reads the session store on every guarded route,
+// so any of them can answer 503 when it is unreachable.
+@ApiDefaultDependencyUnavailableResponse()
 export class UserController {
     /**
      * Initializes the controller with the command and query pipelines.

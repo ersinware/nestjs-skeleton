@@ -3,4 +3,4 @@
  * @description Public entry point of the auth module. Nothing outside may import past this barrel.
  */
 
-export * from 'src/module/auth/auth.module';
+export { AuthModule } from 'src/module/auth/auth.module';

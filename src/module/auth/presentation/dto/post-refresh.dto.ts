@@ -1,6 +1,6 @@
 /**
  * @file post-refresh.dto.ts
- * @description Defines the input validation schema for token refresh requests, ensuring the provided refresh token meets JWT format requirements before attempting rotation.
+ * @description Request DTO carrying the refresh token a session operation acts on.
  */
 
 import { ApiSchema } from '@nestjs/swagger';
@@ -8,15 +8,14 @@ import { Exclude, Expose } from 'class-transformer';
 import { IsRefreshToken } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
 
 /**
- * DTO for validating token refresh requests.
- * Accepts exactly one property (the refresh token) to execute a session rotation.
+ * Validates the refresh token at the transport boundary; shared by the refresh and logout routes,
+ * which act on the same single-token payload.
  */
 @Exclude()
 @ApiSchema({ name: 'PostRefresh', description: 'Input validation schema for token refresh requests' })
 export class PostRefreshDto {
     /**
-     * The refresh token string used to obtain a new access and refresh token pair.
-     * Evaluated against the cache to ensure the session is still active and valid.
+     * The refresh token to rotate or revoke.
      */
     @Expose()
     @IsRefreshToken('The active refresh token')

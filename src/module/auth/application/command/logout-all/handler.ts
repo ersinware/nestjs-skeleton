@@ -14,7 +14,7 @@ import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all
  * Revokes all refresh sessions belonging to the user/admin.
  */
 @CommandHandler(LogoutAllCommand)
-export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand> {
+export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *

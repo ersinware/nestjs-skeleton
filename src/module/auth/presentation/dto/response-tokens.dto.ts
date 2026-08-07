@@ -1,16 +1,15 @@
 /**
  * @file response-tokens.dto.ts
- * @description Defines the output schema for authentication credentials, standardizing how JWT pairs are returned to the client upon successful login or refresh.
+ * @description Response DTO returning a freshly issued JWT token pair.
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsRefreshToken } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
-import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.constraint';
+import { IsRefreshToken, TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
 
 /**
- * Output DTO returning access and refresh JWT tokens.
- * Utilizes class-transformer to guarantee that only the explicitly exposed tokens are returned in the HTTP response body.
+ * Returns the issued token pair; the class-level whitelist guarantees nothing else ever reaches
+ * the response body.
  */
 @Exclude()
 @ApiSchema({
@@ -19,8 +18,7 @@ import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.cons
 })
 export class ResponseTokensDto {
     /**
-     * Short-lived JWT access token.
-     * Contains the principal's claims and is used as a Bearer token in the Authorization header for protected routes.
+     * The short-lived access token, sent as a Bearer token on protected routes.
      */
     @Expose()
     @ApiProperty({
@@ -34,8 +32,7 @@ export class ResponseTokensDto {
     readonly accessToken!: string;
 
     /**
-     * Long-lived JWT refresh token.
-     * Used exclusively to obtain a fresh access token pair when the current access token expires.
+     * The long-lived refresh token, exchanged for a new token pair when the access token expires.
      */
     @Expose()
     @IsRefreshToken('The newly issued refresh token')

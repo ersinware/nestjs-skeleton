@@ -4,6 +4,7 @@
  */
 
 export { ApiDefaultAccessDeniedResponse } from 'src/core/doc/decorator/api-default-access-denied-response.decorator';
+export { ApiDefaultDependencyUnavailableResponse } from 'src/core/doc/decorator/api-default-dependency-unavailable-response.decorator';
 export { ApiDefaultInternalServerErrorResponse } from 'src/core/doc/decorator/api-default-internal-server-error-response.decorator';
 export { ApiDefaultInvalidRequestResponse } from 'src/core/doc/decorator/api-default-invalid-request-response.decorator';
 export { ApiDefaultOkResponsePaginated } from 'src/core/doc/decorator/api-default-ok-response-paginated.decorator';

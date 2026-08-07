@@ -10,7 +10,7 @@ import { ENV } from 'src/core/config';
 import type { ISessionPort } from 'src/core/security/session/port/session.port';
 import { RotateOutcome } from 'src/core/security/session/port/session.port';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
-import { SystemException } from 'src/shared/exception';
+import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
 /**
  * Seconds per TTL unit, keyed exactly by the units the TTL regex admits — parsing needs no
@@ -108,13 +108,30 @@ export class SessionAdapter implements ISessionPort {
     }
 
     /**
+     * Runs a session store operation, translating any driver error at the port boundary. The session
+     * store is authoritative — nothing here may fail open — so an unreachable store is a retryable
+     * dependency outage for every caller, never a raw ioredis error escaping infrastructure.
+     *
+     * @param operation The Redis operation to execute
+     * @returns The operation's result
+     * @throws {DependencyUnavailableException} When the session store operation fails
+     */
+    private async run<T>(operation: () => Promise<T>): Promise<T> {
+        try {
+            return await operation();
+        } catch (error) {
+            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
+        }
+    }
+
+    /**
      * Registers a new refresh session for a principal.
      *
      * @param id The principal identifier.
      * @param jti The JWT ID of the refresh token.
      */
     async openSession(id: string, jti: string) {
-        await this.redis.set(SessionKeys.session(id, jti), '1', 'EX', this.refreshTtlSeconds);
+        await this.run(() => this.redis.set(SessionKeys.session(id, jti), '1', 'EX', this.refreshTtlSeconds));
     }
 
     /**
@@ -127,14 +144,16 @@ export class SessionAdapter implements ISessionPort {
      * @returns The rotation outcome.
      */
     async rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome> {
-        const result = await this.redis.eval(
-            ROTATE_SESSION_LUA,
-            3,
-            SessionKeys.session(id, oldJti),
-            SessionKeys.session(id, newJti),
-            SessionKeys.tombstone(id, oldJti),
-            this.refreshTtlSeconds,
-            this.rotationGraceTtlSeconds,
+        const result = await this.run(() =>
+            this.redis.eval(
+                ROTATE_SESSION_LUA,
+                3,
+                SessionKeys.session(id, oldJti),
+                SessionKeys.session(id, newJti),
+                SessionKeys.tombstone(id, oldJti),
+                this.refreshTtlSeconds,
+                this.rotationGraceTtlSeconds,
+            ),
         );
 
         if (result === 1) {
@@ -155,7 +174,7 @@ export class SessionAdapter implements ISessionPort {
      * @param jti The JWT ID of the refresh token.
      */
     async closeSession(id: string, jti: string) {
-        await this.redis.del(SessionKeys.session(id, jti));
+        await this.run(() => this.redis.del(SessionKeys.session(id, jti)));
     }
 
     /**
@@ -179,7 +198,7 @@ export class SessionAdapter implements ISessionPort {
      * @param version The candidate session version.
      */
     async setVersion(id: string, version: number) {
-        await this.redis.eval(VERSION_LUA, 1, SessionKeys.version(id), version, this.refreshTtlSeconds);
+        await this.run(() => this.redis.eval(VERSION_LUA, 1, SessionKeys.version(id), version, this.refreshTtlSeconds));
     }
 
     /**
@@ -189,7 +208,7 @@ export class SessionAdapter implements ISessionPort {
      * @returns The version, or 0 when none is set.
      */
     async getVersion(id: string): Promise<number> {
-        const version = await this.redis.get(SessionKeys.version(id));
+        const version = await this.run(() => this.redis.get(SessionKeys.version(id)));
 
         return version ? Number(version) : 0;
     }
@@ -200,16 +219,18 @@ export class SessionAdapter implements ISessionPort {
      * @param pattern The Redis key pattern to sweep.
      */
     private async deleteByPattern(pattern: string) {
-        let cursor = '0';
+        await this.run(async () => {
+            let cursor = '0';
 
-        do {
-            const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-            cursor = nextCursor;
+            do {
+                const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+                cursor = nextCursor;
 
-            if (keys.length > 0) {
-                await this.redis.del(...keys);
-            }
-        } while (cursor !== '0');
+                if (keys.length > 0) {
+                    await this.redis.del(...keys);
+                }
+            } while (cursor !== '0');
+        });
     }
 
     /**

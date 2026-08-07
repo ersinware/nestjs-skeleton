@@ -1,18 +1,24 @@
 /**
  * @file refresh-token.decorator.ts
- * @description Provides a custom composite decorator to DRY up validation and OpenAPI documentation for JWT refresh tokens across multiple DTOs.
+ * @description Composed validation and Swagger decorator for refresh-token DTO properties, with the shared token length limit.
  */
 
 import { applyDecorators } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsJWT, IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/token-length.constraint';
 
 /**
- * Applies strict JWT formatting and length validations alongside standardized Swagger documentation for a refresh token property.
+ * Maximum accepted JWT length — bounds the payload before any parsing so an oversized token cannot
+ * be used as a denial-of-service vector.
+ */
+export const TOKEN_MAX_LENGTH = 2048;
+
+/**
+ * Bundles the JWT validation rules and the ApiProperty metadata of a refresh-token property, so
+ * every limit lives in one place.
  *
- * @param descriptionPrefix The prefix description used in Swagger documentation and validation error messages
- * @returns A decorator that validates and documents refresh token properties
+ * @param descriptionPrefix The field label feeding the Swagger description and the error messages
+ * @returns A decorator validating and documenting a refresh-token property
  */
 export function IsRefreshToken(descriptionPrefix: string = 'The refresh token') {
     return applyDecorators(
@@ -25,6 +31,7 @@ export function IsRefreshToken(descriptionPrefix: string = 'The refresh token') 
         ApiProperty({
             type: 'string',
             format: 'jwt',
+            minLength: 1,
             maxLength: TOKEN_MAX_LENGTH,
             description: `${descriptionPrefix}.`,
             example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',

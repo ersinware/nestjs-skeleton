@@ -358,6 +358,7 @@ Every file MUST start with `@file` + `@description`, and `@file` MUST match the 
 - The test: "What does it **do**?" → `interface`. "What does it **contain**?" → `type`.
 - **`?: X | undefined` is banned; `exactOptionalPropertyTypes` stays ON** — an optional field is absent or holds a real value, never a transported `undefined`. A call site omits the key via conditional spread (`...(targetId && { targetId })`), never `key: cond ? value : undefined`. An `unknown`-typed source needs an explicit boolean check (`...(x !== undefined && { ... })`) — TS cannot spread a truthiness-narrowed `unknown`. Sole exemption: Drizzle's `set: { id: undefined }`, the driver's documented column-exclusion mechanism.
 - **Return types**: on an interface, always annotate explicitly (including `void`/`Promise<void>`); on a class implementation, do NOT annotate `void`/`Promise<void>` but DO annotate every non-void return.
+- **A branch keyed on a finite enum/union must be compile-time exhaustive** — a new member must fail compilation at every decision site, never route silently. A `switch` funnels its `default` into a `never`-typed guard throwing `SystemException` (the guard lives beside the switch it protects); a value map is checked with `satisfies Record<Enum, T>` (`KIND_TO_STATUS`). A ternary over an enum is therefore banned outside two-member unions the type system already closes.
 
 ### Environment Variables
 

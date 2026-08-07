@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the RefreshTokenCommand by validating the existing refresh token, checking account active status, managing session lifecycle, and generating a new token pair.
+ * @description Handles the RefreshTokensCommand: atomic session rotation with reuse detection and remediation.
  */
 
 import { Inject } from '@nestjs/common';
@@ -12,6 +12,7 @@ import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/secur
 import {
     IdentityRealm,
     TOKEN_IDENTITY_READER_PORT,
+    realmOfRole,
     type IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import {
@@ -20,10 +21,8 @@ import {
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
-import { UserIntegrationEvent, UserRole } from 'src/shared/domain/user';
+import { UserIntegrationEvent } from 'src/shared/domain/user';
 import {
-    DependencyUnavailableException,
-    DependencyUnavailableMessage,
     ExceptionKind,
     ResourceConflictException,
     UnauthenticatedException,
@@ -32,11 +31,22 @@ import {
 import { uuidv7 } from 'uuidv7';
 
 /**
- * Handles the RefreshTokenCommand.
- * Verifies the refresh token, revokes the old session to prevent reuse, and issues a new session pair.
+ * The reuse integration event each realm's owning module listens for. Exhaustive over
+ * {@link IdentityRealm} (a new realm fails compilation here) so the remediation cannot silently
+ * route to the wrong module.
+ */
+const REFRESH_REUSE_EVENT_BY_REALM = {
+    [IdentityRealm.USER]: UserIntegrationEvent.REFRESH_REUSE_DETECTED,
+    [IdentityRealm.ADMIN]: AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
+} as const satisfies Record<IdentityRealm, string>;
+
+/**
+ * Handler for the RefreshTokensCommand.
+ * Verifies the token and the account's auth state, atomically rotates the session, and reacts to
+ * the rotation outcome — including full-family revocation on detected reuse.
  */
 @CommandHandler(RefreshTokensCommand)
-export class RefreshTokensCommandHandler implements ICommandHandler<RefreshTokensCommand> {
+export class RefreshTokensCommandHandler implements ICommandHandler<RefreshTokensCommand, RefreshTokensResult> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -77,14 +87,12 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         }
 
         const role = payload.role,
-            sub = payload.sub;
+            sub = payload.sub,
+            realm = realmOfRole(role);
 
         let identity;
         try {
-            identity = await this.identityReaderPort.getAuthState(
-                role === UserRole.USER ? IdentityRealm.USER : IdentityRealm.ADMIN,
-                sub,
-            );
+            identity = await this.identityReaderPort.getAuthState(realm, sub);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw new UnauthenticatedException();
@@ -107,18 +115,12 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new UnauthenticatedException();
         }
 
-        const tokens = await this.tokenPort.generateTokens(role, sub, identity.version);
-
-        // Single atomic rotation is both the single-use gate and the classifier (see RotateOutcome). The
-        // old session's grace tombstone lets a lost concurrent-refresh race be told apart from a token
-        // replayed after that window — the refresh-token reuse signal (RFC 9700) — so no separate pre-read
-        // of the session is needed.
-        let outcome: RotateOutcome;
-        try {
-            outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.jti);
-        } catch (error) {
-            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
-        }
+        const tokens = await this.tokenPort.generateTokens(role, sub, identity.version),
+            // Single atomic rotation is both the single-use gate and the classifier (see RotateOutcome). The
+            // old session's grace tombstone lets a lost concurrent-refresh race be told apart from a token
+            // replayed after that window — the refresh-token reuse signal (RFC 9700) — so no separate pre-read
+            // of the session is needed.
+            outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.refreshTokenJti);
 
         if (outcome === RotateOutcome.ROTATED) {
             return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
@@ -148,11 +150,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // cannot keep minting sessions. This immediate Redis eviction is the fast path; the follow-up
         // (a cross-module session-version bump that also kills outstanding access tokens, plus a security
         // email) is driven by the reuse integration event emitted below.
-        try {
-            await this.sessionPort.closeAllSessions(sub);
-        } catch (error) {
-            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
-        }
+        await this.sessionPort.closeAllSessions(sub);
 
         // The owning module (user or admin) can only be reached asynchronously (§5 forbids cross-module
         // transactions), so the trigger is emitted on the in-process bus. Auth raises no aggregate of its
@@ -161,12 +159,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // must not turn this into a 503. A rejected dispatch is swallowed — the family is already
         // revoked above; the catch only stops an unhandled rejection.
         this.eventPublisherPort
-            .emitAsync(
-                role === UserRole.USER
-                    ? UserIntegrationEvent.REFRESH_REUSE_DETECTED
-                    : AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
-                { aggregateId: sub, eventId: uuidv7() },
-            )
+            .emitAsync(REFRESH_REUSE_EVENT_BY_REALM[realm], { aggregateId: sub, eventId: uuidv7() })
             .catch(() => {});
 
         // No context: the event has an audit record of its own, and the response must stay

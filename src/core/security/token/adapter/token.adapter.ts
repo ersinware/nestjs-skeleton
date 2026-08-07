@@ -10,7 +10,7 @@ import * as crypto from 'crypto';
 import { ENV } from 'src/core/config';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
-import type { ITokenPort } from 'src/core/security/token/port/token.port';
+import type { GeneratedTokens, ITokenPort } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
@@ -47,19 +47,15 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Generates a signed access/refresh token pair sharing one freshly minted JTI.
+     * Generates a signed access/refresh token pair, minting the refresh token's JTI.
      */
-    async generateTokens(
-        role: AuthRole,
-        id: string,
-        version: number,
-    ): Promise<{ accessToken: string; refreshToken: string; jti: string }> {
-        const jti = crypto.randomUUID();
+    async generateTokens(role: AuthRole, id: string, version: number): Promise<GeneratedTokens> {
+        const refreshTokenJti = crypto.randomUUID();
 
         return Promise.all([
             this.generateAccessToken(role, id, version),
-            this.generateRefreshToken(role, id, jti, version),
-        ]).then(([accessToken, refreshToken]) => ({ accessToken, refreshToken, jti }));
+            this.generateRefreshToken(role, id, refreshTokenJti, version),
+        ]).then(([accessToken, refreshToken]) => ({ accessToken, refreshToken, refreshTokenJti }));
     }
 
     /**

@@ -8,10 +8,12 @@ import { AdminFacade } from 'src/module/admin';
 import {
     IdentityRealm,
     type AuthIdentity,
+    type AuthState,
     type IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import { UserFacade } from 'src/module/user';
 import { UserRole } from 'src/shared/domain/user';
+import { SystemException } from 'src/shared/exception';
 
 /**
  * Adapter that gives the Auth module a single read surface over both identity realms.
@@ -42,13 +44,18 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
      * @throws {ResourceNotFoundException} If no identity is found
      */
     async getCredentialsByEmail(realm: IdentityRealm, email: string): Promise<AuthIdentity> {
-        if (realm === IdentityRealm.ADMIN) {
-            return this.adminFacade.getCredentialsByEmail(email);
+        // Exhaustive on purpose: a realm added to the enum without a routing arm here must fail
+        // compilation, never silently fall through to another context's facade.
+        switch (realm) {
+            case IdentityRealm.ADMIN:
+                return this.adminFacade.getCredentialsByEmail(email);
+            case IdentityRealm.USER:
+                // The user context has no role column — every one of its identities holds the single
+                // USER role, so the realm supplies what the read model cannot.
+                return { ...(await this.userFacade.getCredentialsByEmail(email)), role: UserRole.USER };
+            default:
+                return assertRealmExhausted(realm);
         }
-
-        // The user context has no role column — every one of its identities holds the single USER
-        // role, so the realm supplies what the read model cannot.
-        return { ...(await this.userFacade.getCredentialsByEmail(email)), role: UserRole.USER };
     }
 
     /**
@@ -59,7 +66,29 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
      * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    async getAuthState(realm: IdentityRealm, id: string): Promise<{ isBanned: boolean; version: number }> {
-        return realm === IdentityRealm.ADMIN ? this.adminFacade.getAuthState(id) : this.userFacade.getAuthState(id);
+    async getAuthState(realm: IdentityRealm, id: string): Promise<AuthState> {
+        switch (realm) {
+            case IdentityRealm.ADMIN:
+                return this.adminFacade.getAuthState(id);
+            case IdentityRealm.USER:
+                return this.userFacade.getAuthState(id);
+            default:
+                return assertRealmExhausted(realm);
+        }
     }
+}
+
+/**
+ * Compile-time exhaustiveness gate for realm routing: adding a member to {@link IdentityRealm}
+ * without a routing arm makes the `default` branch pass a non-`never` value here and fail
+ * compilation. The runtime throw is unreachable through typed callers — hence a SystemException,
+ * because a broken code path must surface as 500 + Sentry.
+ *
+ * @param realm The realm no routing arm claimed
+ * @throws {SystemException} Always — reaching it at runtime is a bug.
+ */
+function assertRealmExhausted(realm: never): never {
+    throw new SystemException(`Unroutable identity realm: ${String(realm)}`, {
+        context: { class: IdentityReaderAdapter.name, method: assertRealmExhausted.name },
+    });
 }

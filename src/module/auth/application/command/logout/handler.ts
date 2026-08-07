@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the LogoutCommand by closing the caller's refresh session on a best-effort basis.
+ * @description Handles the LogoutCommand by closing the session bound to the verified refresh token.
  */
 
 import { Inject } from '@nestjs/common';
@@ -12,10 +12,11 @@ import { LogoutCommand } from 'src/module/auth/application/command/logout/comman
 
 /**
  * Handler for the LogoutCommand.
- * Revokes the specific JWT session.
+ * Closes the single session the verified refresh token names; an unverifiable token is a silent
+ * no-op, because the end state — no such session — already holds.
  */
 @CommandHandler(LogoutCommand)
-export class LogoutCommandHandler implements ICommandHandler<LogoutCommand> {
+export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
