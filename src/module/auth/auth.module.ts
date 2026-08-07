@@ -1,6 +1,6 @@
 /**
  * @file auth.module.ts
- * @description Configures the authentication domain of the application. It bundles the controllers, services, and security dependencies required for authenticating users and managing sessions.
+ * @description Wires the auth bounded context: session lifecycle use cases, the identity-reader binding, and the controller.
  */
 
 import { Module } from '@nestjs/common';
@@ -22,8 +22,8 @@ import { AuthController } from 'src/module/auth/presentation/controller/auth.con
 import { UserModule } from 'src/module/user';
 
 /**
- * The module responsible for configuring authentication services, controller routing, and dependencies.
- * It encapsulates the business logic for login, token refresh, and session management, exposing the `AuthService` for internal cross-module usage.
+ * The auth bounded context: login, token refresh, and logout use cases, with the identity-reader
+ * adapter routing credential reads into the user and admin contexts.
  */
 @Module({
     imports: [
@@ -38,15 +38,15 @@ import { UserModule } from 'src/module/user';
     ],
     controllers: [AuthController],
     providers: [
+        {
+            provide: TOKEN_IDENTITY_READER_PORT,
+            useClass: IdentityReaderAdapter,
+        },
         LoginAdminCommandHandler,
         LoginUserCommandHandler,
         LogoutCommandHandler,
         LogoutAllCommandHandler,
         RefreshTokensCommandHandler,
-        {
-            provide: TOKEN_IDENTITY_READER_PORT,
-            useClass: IdentityReaderAdapter,
-        },
     ],
 })
 export class AuthModule {}

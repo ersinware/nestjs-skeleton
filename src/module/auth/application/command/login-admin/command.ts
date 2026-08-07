@@ -24,7 +24,7 @@ export class LoginAdminCommand extends Command<LoginAdminResult> {
 }
 
 /**
- * The expected result of the LoginAdminCommand, containing the generated token pair.
+ * Result of the LoginAdminCommand: the freshly issued token pair.
  */
 export type LoginAdminResult = {
     accessToken: string;

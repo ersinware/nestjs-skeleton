@@ -32,7 +32,7 @@ export class RefreshTokensCommand extends Command<RefreshTokensResult> {
 }
 
 /**
- * The expected result of the RefreshTokenCommand, containing the new token pair.
+ * Result of the RefreshTokensCommand: the freshly issued token pair.
  */
 export type RefreshTokensResult = {
     accessToken: string;

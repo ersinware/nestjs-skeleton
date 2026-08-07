@@ -33,6 +33,7 @@ export interface ISessionPort {
      *
      * @param id The principal identifier.
      * @param jti The JWT ID of the refresh token.
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
     openSession(id: string, jti: string): Promise<void>;
 
@@ -46,6 +47,7 @@ export interface ISessionPort {
      * @param oldJti The JWT ID of the refresh token being rotated away.
      * @param newJti The JWT ID of the newly issued refresh token.
      * @returns The rotation outcome the caller must react to.
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
     rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome>;
 
@@ -54,6 +56,7 @@ export interface ISessionPort {
      *
      * @param id The principal identifier.
      * @param jti The JWT ID of the refresh token.
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
     closeSession(id: string, jti: string): Promise<void>;
 
@@ -63,6 +66,7 @@ export interface ISessionPort {
      * replay instead of reuse.
      *
      * @param id The principal identifier.
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
     closeAllSessions(id: string): Promise<void>;
 
@@ -73,6 +77,7 @@ export interface ISessionPort {
      *
      * @param id The principal identifier.
      * @param version The candidate session version (the aggregate's monotonic counter).
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
     setVersion(id: string, version: number): Promise<void>;
 
@@ -81,6 +86,7 @@ export interface ISessionPort {
      *
      * @param id The principal identifier.
      * @returns The version, or 0 when none is set.
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
     getVersion(id: string): Promise<number>;
 }

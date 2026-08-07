@@ -1,18 +1,18 @@
 /**
  * @file command.ts
- * @description Defines the command to terminate a specific session for a given user or admin.
+ * @description Defines the command to revoke the session bound to a refresh token.
  */
 
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Command to log out a user or admin from the current device.
+ * Command to revoke the single session a refresh token is bound to.
  */
 export class LogoutCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
-     * @param refreshToken The refresh token identifying the session to terminate
+     * @param refreshToken The refresh token identifying the session to revoke
      */
     constructor(readonly refreshToken: string) {
         super();

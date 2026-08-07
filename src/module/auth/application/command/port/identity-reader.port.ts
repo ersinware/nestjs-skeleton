@@ -3,7 +3,10 @@
  * @description Contract for looking up an authenticatable identity, from whichever bounded context owns it.
  */
 
+import { AdminRole } from 'src/shared/domain/admin';
 import type { AuthRole } from 'src/shared/domain/auth-role';
+import { UserRole } from 'src/shared/domain/user';
+import { SystemException } from 'src/shared/exception';
 
 /**
  * Dependency injection token representing the {@link IIdentityReaderPort} contract.
@@ -23,6 +26,38 @@ export enum IdentityRealm {
 }
 
 /**
+ * Maps an authorization role back to the realm that owns its credentials — the inverse of what the
+ * realm reports. Exhaustive over {@link AuthRole} so a newly added role fails compilation here
+ * instead of silently routing to the wrong realm.
+ *
+ * @throws {SystemException} When the role is unroutable — a token minted with a role the enum no
+ * longer (or never) carried, reachable only through a broken code path.
+ */
+export function realmOfRole(role: AuthRole): IdentityRealm {
+    switch (role) {
+        case UserRole.USER:
+            return IdentityRealm.USER;
+        case AdminRole.ADMIN:
+        case AdminRole.SUPER_ADMIN:
+            return IdentityRealm.ADMIN;
+        default:
+            return assertRoleExhausted(role);
+    }
+}
+
+/**
+ * Compile-time exhaustiveness guard for {@link realmOfRole}: reachable at runtime only through a
+ * token minted with a role the enum no longer (or never) carried.
+ *
+ * @throws {SystemException} Always — an unroutable role is a broken code path, not a client fault.
+ */
+function assertRoleExhausted(role: never): never {
+    throw new SystemException(`Unroutable authorization role: ${String(role)}`, {
+        context: { class: realmOfRole.name, method: assertRoleExhausted.name },
+    });
+}
+
+/**
  * The identity contract required by the AuthModule.
  * Decouples authentication logic from specific domain entities.
  */
@@ -33,15 +68,22 @@ export type AuthIdentity = {
     /** The hashed password of the identity */
     password: string;
 
-    /** The ban status of the identity */
-    isBanned: boolean;
-
     /** The authorization role the owning realm reports, embedded into freshly minted tokens */
     role: AuthRole;
+
+    /** The ban status of the identity */
+    isBanned: boolean;
 
     /** The current session version, embedded into freshly minted tokens */
     version: number;
 };
+
+/**
+ * The slice of an identity the refresh flow re-reads on every rotation: just enough to reject a
+ * banned account or a token carrying a stale version. Derived from {@link AuthIdentity} so the two
+ * contracts cannot drift apart.
+ */
+export type AuthState = Pick<AuthIdentity, 'isBanned' | 'version'>;
 
 /**
  * The single read surface authentication needs over every identity realm.
@@ -69,5 +111,5 @@ export interface IIdentityReaderPort {
      * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    getAuthState(realm: IdentityRealm, id: string): Promise<{ isBanned: boolean; version: number }>;
+    getAuthState(realm: IdentityRealm, id: string): Promise<AuthState>;
 }

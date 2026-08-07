@@ -1,6 +1,6 @@
 /**
  * @file auth.controller.ts
- * @description Exposes HTTP endpoints for handling authentication workflows including login, token rotation, and logout. Most routes here are public or rely on specific security decorators to manage their own access control.
+ * @description Exposes the session lifecycle endpoints: login, token refresh, and logout.
  */
 
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
@@ -9,6 +9,7 @@ import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline } from 'src/core/cqrs';
 import {
+    ApiDefaultDependencyUnavailableResponse,
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultResourceConflictResponse,
@@ -28,8 +29,7 @@ import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tok
 import { UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
- * The controller handling session lifecycle endpoints.
- * Provides routes for issuing, refreshing, and revoking JWT-based access and refresh tokens.
+ * Controller for the session lifecycle: issuing, rotating, and revoking JWT token pairs.
  */
 @Controller({
     path: 'auth',
@@ -37,6 +37,7 @@ import { UnauthenticatedMessage } from 'src/shared/exception';
 })
 @ApiTags('auth')
 @ApiDefaultInternalServerErrorResponse()
+@ApiDefaultDependencyUnavailableResponse()
 export class AuthController {
     /**
      * Initializes the controller with the command pipeline to dispatch authentication commands.
@@ -46,10 +47,9 @@ export class AuthController {
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Authenticates standard user credentials and initializes a secure session.
-     * If successful, it issues a pair of JWT tokens (access and refresh) to maintain statefulness on the client.
+     * Authenticates a user's credentials and opens a session.
      *
-     * @param dto The payload containing the user's email and password
+     * @param dto The user's email and password
      * @returns The generated access and refresh token pair
      * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
@@ -59,7 +59,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate user',
-        description: 'Validates credentials and issues a JWT access and refresh token pair for a user.',
+        description: 'Validates user credentials and issues a JWT access and refresh token pair.',
     })
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
@@ -72,10 +72,9 @@ export class AuthController {
     }
 
     /**
-     * Authenticates administrative credentials and initializes a secure high-privilege session.
-     * Identical in flow to user login but accesses the admin domain to verify roles and permissions.
+     * Authenticates an admin's credentials and opens a session.
      *
-     * @param dto The payload containing the admin's email and password
+     * @param dto The admin's email and password
      * @returns The generated access and refresh token pair
      * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
@@ -85,8 +84,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate admin',
-        description:
-            'Validates administrative credentials and issues a JWT access and refresh token pair for an admin.',
+        description: 'Validates admin credentials and issues a JWT access and refresh token pair.',
     })
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
@@ -99,10 +97,9 @@ export class AuthController {
     }
 
     /**
-     * Rotates an active refresh token to issue a fresh access and refresh token pair.
-     * Crucial for maintaining continuous access without requiring the user to re-enter credentials, while also invalidating the old refresh token to prevent reuse.
+     * Exchanges a valid refresh token for a new token pair, invalidating the old refresh token.
      *
-     * @param dto The payload containing the current valid refresh token
+     * @param dto The refresh token being rotated away
      * @returns The newly generated access and refresh token pair
      * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the refresh token is invalid or expired
@@ -113,7 +110,8 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Refresh session tokens',
-        description: 'Exchanges a valid refresh token for a new access and refresh token pair.',
+        description:
+            'Exchanges a valid refresh token for a new access and refresh token pair, invalidating the old refresh token.',
     })
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
@@ -127,10 +125,10 @@ export class AuthController {
     }
 
     /**
-     * Terminates the current active session.
-     * Invalidates the provided refresh token in the backend cache to ensure it can no longer be used to generate new access tokens.
+     * Revokes the session bound to the provided refresh token. Idempotent: an invalid or
+     * already-revoked token still answers 204.
      *
-     * @param dto The payload containing the refresh token to invalidate
+     * @param dto The refresh token identifying the session to revoke
      * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the user is not authenticated
      */
@@ -138,10 +136,11 @@ export class AuthController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Logout from current device',
-        description: 'Invalidates the current session by removing its refresh token from the cache.',
+        summary: 'Log out a session',
+        description:
+            'Revokes the session bound to the provided refresh token. Responds 204 even if the token is invalid or already revoked.',
     })
-    @ApiNoContentResponse({ description: 'Successfully logged out.' })
+    @ApiNoContentResponse({ description: 'Session revoked.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     async logout(@Body(NotEmptyBodyPipe) dto: PostRefreshDto) {
@@ -149,8 +148,7 @@ export class AuthController {
     }
 
     /**
-     * Terminates all active refresh sessions for the authenticated principal across all devices.
-     * Useful for security breaches or password resets, ensuring no device can mint new tokens.
+     * Revokes every active session of the authenticated principal, across all devices.
      *
      * @param accessTokenPayload The decoded payload of the currently authenticated request
      * @throws {UnauthenticatedException} If the user is not authenticated
@@ -159,10 +157,10 @@ export class AuthController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Logout from all devices',
-        description: 'Revokes all active refresh sessions for the current principal.',
+        summary: 'Log out all sessions',
+        description: 'Revokes every active session of the authenticated principal, across all devices.',
     })
-    @ApiNoContentResponse({ description: 'Successfully logged out from all devices.' })
+    @ApiNoContentResponse({ description: 'All sessions revoked.' })
     @ApiDefaultUnauthenticatedResponse()
     async logoutAll(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload) {
         await this.commandPipeline.execute(new LogoutAllCommand(accessTokenPayload.sub));

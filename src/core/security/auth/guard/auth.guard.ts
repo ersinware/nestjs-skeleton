@@ -10,12 +10,7 @@ import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
-import {
-    DependencyUnavailableException,
-    DependencyUnavailableMessage,
-    UnauthenticatedException,
-    UnauthenticatedMessage,
-} from 'src/shared/exception';
+import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * Global authentication guard: verifies the JWT access token and enforces the cached session
@@ -75,15 +70,10 @@ export class AuthGuard implements CanActivate {
             throw new UnauthenticatedException();
         }
 
-        let currentVersion: number;
-        try {
-            currentVersion = await this.sessionPort.getVersion(payload.sub);
-        } catch {
-            // Fail closed: without the cached version, instant session eviction cannot be honoured, so
-            // reject rather than admit a possibly-revoked token. 503 marks a retryable dependency
-            // outage; the global filter keeps 503s out of the logs and Sentry.
-            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT);
-        }
+        // Deliberately unguarded — the port's DependencyUnavailableException propagates, so the guard
+        // fails closed: without the cached version, instant session eviction cannot be honoured, and
+        // rejecting with a retryable 503 beats admitting a possibly-revoked token.
+        const currentVersion = await this.sessionPort.getVersion(payload.sub);
 
         if (payload.version < currentVersion) {
             throw new UnauthenticatedException();
