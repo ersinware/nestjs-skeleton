@@ -1,6 +1,6 @@
 /**
  * @file health.module.ts
- * @description Configures health check controllers and indicators to monitor application stability. It leverages the Terminus module to expose health status endpoints to orchestration tools like Kubernetes or AWS ECS, enabling automated traffic routing away from unhealthy instances.
+ * @description Wires the health bounded context: controller, query handler, and the Terminus-backed reader adapter.
  */
 
 import { Module } from '@nestjs/common';
@@ -15,8 +15,7 @@ import { HealthReaderAdapter } from 'src/module/health/infrastructure/adapter/he
 import { HealthController } from 'src/module/health/presentation/controller/health.controller';
 
 /**
- * The module responsible for orchestrating application health monitoring probes.
- * It groups the health controller and related services to ensure the application's readiness and liveness can be verified at runtime.
+ * Bounded context exposing the liveness, readiness, and detailed health probes.
  */
 @Module({
     imports: [
@@ -30,11 +29,11 @@ import { HealthController } from 'src/module/health/presentation/controller/heal
     ],
     controllers: [HealthController],
     providers: [
-        GetHealthStatusQueryHandler,
         {
             provide: TOKEN_GET_HEALTH_STATUS_PORT,
             useClass: HealthReaderAdapter,
         },
+        GetHealthStatusQueryHandler,
     ],
 })
 export class HealthModule {}

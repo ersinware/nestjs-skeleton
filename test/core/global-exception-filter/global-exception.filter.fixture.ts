@@ -31,13 +31,14 @@ export class HealthExceptionTriggerController {
             },
             error: {
                 database: { status: 'down', message: 'Database connection failed.' },
-                redis: { status: 'down', message: 'Redis connection failed.' },
+                cache: { status: 'down', message: 'Cache connection failed.' },
             },
             details: {
                 memory_heap: { status: 'up' },
                 memory_rss: { status: 'up' },
+                session: { status: 'up' },
                 database: { status: 'down', message: 'Database connection failed.' },
-                redis: { status: 'down', message: 'Redis connection failed.' },
+                cache: { status: 'down', message: 'Cache connection failed.' },
             },
         } satisfies ResponseUnhealthyDto);
     }

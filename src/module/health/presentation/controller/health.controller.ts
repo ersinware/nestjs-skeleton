@@ -1,6 +1,6 @@
 /**
  * @file health.controller.ts
- * @description Exposes the health surface as three endpoints with three different audiences: a dependency-free liveness probe, a dependency-checking readiness probe, and a detailed operator view.
+ * @description Exposes the health surface: a dependency-free liveness probe, a dependency-checking readiness probe, and a detailed operator view.
  */
 
 import { Controller, Get, HttpCode, HttpStatus, VERSION_NEUTRAL } from '@nestjs/common';
@@ -28,17 +28,11 @@ import { AdminRole } from 'src/shared/domain/admin';
 import { DependencyUnavailableMessage } from 'src/shared/exception';
 
 /**
- * The controller exposing the operational state of the service and its dependencies.
- *
- * The surface is split by AUDIENCE, not by convenience. An orchestrator asks two questions that must
- * never share an answer: "should this process be restarted" (liveness) and "should this instance
- * receive traffic" (readiness). Answering liveness with a dependency check turns a Redis or Postgres
- * outage into a restart storm across every otherwise-healthy instance, so the liveness probe touches
- * nothing.
- *
- * Both probes are public but answer with a bare status code, because a body would publish the
- * infrastructure topology and the currently failing dependency to any anonymous caller. The detailed
- * view carries exactly that information, so it is restricted to super admins.
+ * Exposes the operational state of the service, split by audience: liveness ("restart this
+ * process?") and readiness ("route traffic here?") must never share an answer, or a dependency
+ * outage restarts every healthy instance. Both probes are public and body-less — a body would
+ * disclose the dependency topology to anonymous callers; the detailed view carries exactly that
+ * information and is therefore restricted to super admins.
  */
 @Controller({
     path: ROUTE_HEALTH,
@@ -48,40 +42,31 @@ import { DependencyUnavailableMessage } from 'src/shared/exception';
 @ApiDefaultInternalServerErrorResponse()
 export class HealthController {
     /**
-     * Injects the query pipeline to execute health check queries. The health query is deliberately
-     * non-cacheable, so the pipeline passes it straight through to the handler — routing every edge
-     * through the pipeline keeps the "no query bypasses the behavior chain" invariant intact.
+     * Creates the controller.
      *
-     * @param queryPipeline The CQRS query pipeline.
+     * @param queryPipeline The CQRS query pipeline; the health query is non-cacheable, but every edge still dispatches through the pipeline.
      */
     constructor(private readonly queryPipeline: QueryPipeline) {}
 
     /**
-     * Answers whether this process is alive at all — the question a `livenessProbe` acts on by
-     * restarting the container. It deliberately checks NO dependency: a downed database or cache is
-     * not repaired by killing healthy instances, and treating it as a liveness failure would take the
-     * whole deployment down with the dependency. Reaching this method IS the answer, so there is no
-     * use case to dispatch and, uniquely on this controller, no pipeline call.
+     * Liveness probe. Deliberately checks no dependency — restarting instances does not repair a
+     * downed database or cache. Reaching this method IS the answer, so no use case is dispatched.
      */
     @Get(ROUTE_HEALTH_LIVE)
     @Public()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Liveness probe',
-        description:
-            'Reports whether the process is running and able to answer HTTP. Checks no dependency, so it never fails because of an outage elsewhere. Empty body by design — the status code is the whole answer.',
+        description: 'Reports whether the process is alive. Checks no dependency; the status code is the whole answer.',
     })
     @ApiNoContentResponse({ description: 'The process is alive.' })
     checkLiveness() {}
 
     /**
-     * Answers whether this instance can serve traffic right now — the question a `readinessProbe` and
-     * the container `HEALTHCHECK` act on by routing traffic away, without restarting anything. It
-     * runs the full dependency check but discards the detail: the caller is a load balancer that
-     * branches on the status code, and the endpoint is unauthenticated.
+     * Readiness probe. Runs the full dependency check but discards the detail: the caller branches
+     * on the status code, and the endpoint is unauthenticated.
      *
-     * @throws {ServiceUnavailableException} If one or more health indicators fail; the global filter
-     * turns it into a bare 503.
+     * @throws {ServiceUnavailableException} When any indicator fails; the global filter turns it into a bare 503.
      */
     @Get(ROUTE_HEALTH_READY)
     @Public()
@@ -89,7 +74,7 @@ export class HealthController {
     @ApiOperation({
         summary: 'Readiness probe',
         description:
-            'Reports whether the instance can serve traffic, verifying memory headroom, database and cache connectivity. Empty body by design — the status code is the whole answer, and the failing dependency is never disclosed to an anonymous caller.',
+            'Reports whether the instance can serve traffic, checking every dependency. The status code is the whole answer; the failing dependency is never disclosed.',
     })
     @ApiNoContentResponse({ description: 'The instance is ready to serve traffic.' })
     @ApiServiceUnavailableResponse({ description: DependencyUnavailableMessage.DEFAULT })
@@ -98,13 +83,11 @@ export class HealthController {
     }
 
     /**
-     * Reports the per-indicator health detail an operator needs to tell WHICH dependency failed.
-     * Restricted to super admins: the payload names the application's dependencies and their current
-     * state, which is reconnaissance material for anyone else.
+     * Per-indicator health detail, naming which dependency failed. Restricted to super admins —
+     * the payload is reconnaissance material for anyone else.
      *
-     * @returns The resolved health check result payload containing the status of all evaluated indicators
-     * @throws {ServiceUnavailableException} If one or more health indicators fail; the global filter
-     * passes the raw indicator output through.
+     * @returns The status of every indicator.
+     * @throws {ServiceUnavailableException} When any indicator fails; the global filter passes the indicator report through.
      */
     @Get()
     @Roles(AdminRole.SUPER_ADMIN)
@@ -112,7 +95,7 @@ export class HealthController {
     @ApiOperation({
         summary: 'Detailed health status',
         description:
-            'Returns the per-indicator health status of the API service and its dependencies. Restricted to super admins because it discloses the dependency topology.',
+            'Returns the per-indicator health status of the service and its dependencies. Requires super-administrator authorization.',
     })
     @ApiOkResponse({
         description: 'Service is fully healthy.',
