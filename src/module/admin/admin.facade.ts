@@ -1,6 +1,6 @@
 /**
  * @file admin.facade.ts
- * @description The single public API for the Admins module. Exposes querying capabilities to other modules.
+ * @description The single entry point other modules use to read from the admin bounded context.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -15,16 +15,15 @@ import {
 } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 
 /**
- * The single public API for the Admins module.
- * Other modules MUST inject this Facade instead of internal services.
- * Returns flat interface types — never internal domain or infrastructure objects.
+ * Read-only facade of the admin bounded context. Other modules inject this instead of anything
+ * internal; results are the queries' flat read-models, never domain or infrastructure objects.
  */
 @Injectable()
 export class AdminFacade {
     /**
-     * Initializes the admin facade with the query pipeline.
+     * Injects the pipeline the facade dispatches its queries through.
      *
-     * @param queryPipeline The CQRS query pipeline (caching behavior applies to cacheable queries)
+     * @param queryPipeline The CQRS query pipeline
      */
     constructor(private readonly queryPipeline: QueryPipeline) {}
 

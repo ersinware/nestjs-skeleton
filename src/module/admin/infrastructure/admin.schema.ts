@@ -1,6 +1,6 @@
 /**
  * @file admin.schema.ts
- * @description Database table definition for the 'admins' entity using Drizzle ORM.
+ * @description Drizzle schema of the admin bounded context: the `admin` PostgreSQL logical schema and its table.
  */
 
 import { sql } from 'drizzle-orm';
@@ -15,12 +15,12 @@ import { AdminRole } from 'src/shared/domain/admin';
 export const adminSchema = pgSchema('admin');
 
 /**
- * Drizzle ORM enum for admin roles.
+ * PostgreSQL enum derived from AdminRole, so a new role reaches the database without a hand-edit here.
  */
-export const adminRoleEnum = adminSchema.enum('admin_role', [AdminRole.ADMIN, AdminRole.SUPER_ADMIN]);
+export const adminRoleEnum = adminSchema.enum('admin_role', Object.values(AdminRole) as [AdminRole]);
 
 /**
- * The Drizzle ORM table definition for the 'admins' table.
+ * The admin accounts table.
  */
 export const admin = adminSchema.table(
     'admin',
@@ -31,8 +31,7 @@ export const admin = adminSchema.table(
         id: uuid('id').primaryKey().notNull(),
 
         /**
-         * Email address associated with the admin account.
-         * Enforced as globally unique at the database level.
+         * Email address, unique at the database level.
          */
         email: text('email').notNull().unique(),
 
@@ -42,35 +41,35 @@ export const admin = adminSchema.table(
         name: text('name').notNull(),
 
         /**
-         * The hashed password of the admin.
+         * The Argon2-hashed password.
          */
         password: text('password').notNull(),
 
         /**
-         * The role assigned to the admin account.
+         * The authorization role.
          */
         role: adminRoleEnum('role').notNull().default(AdminRole.ADMIN),
 
         /**
-         * Flag indicating whether the admin account is banned.
+         * Whether the account is banned.
          */
         isBanned: boolean('is_banned').notNull().default(false),
 
         /**
-         * Timestamp indicating when the admin was soft-deleted.
+         * Soft-delete timestamp; null while the account is live.
          */
         deletedAt: timestamp('deleted_at'),
 
         /**
          * Monotonic session version. Any token minted with a lower version is rejected by the auth
-         * guard, giving instant, DB-durable revocation. Incremented on ban and account deletion.
+         * guard, giving DB-durable revocation. Bumped on ban, deletion, and session revocation.
          */
         version: integer('version').notNull().default(0),
 
         ...aggregateTimestamps,
     },
     (table) => [
-        index('admins_id_deleted_at_idx')
+        index('admin_id_live_idx')
             .on(table.id)
             .where(sql`deleted_at IS NULL`),
     ],

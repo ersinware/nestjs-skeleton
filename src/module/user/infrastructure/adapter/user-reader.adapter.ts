@@ -7,14 +7,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
-import { type IGetUserAccessProjectionPort } from 'src/module/user/application/query/get-user-access-projection/port';
-import { type GetUserAccessProjectionResult } from 'src/module/user/application/query/get-user-access-projection/query';
 import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
 import { type GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
 import { type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
 import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { type GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
+import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
 import { type IListUsersPort } from 'src/module/user/application/query/list-users/port';
 import { type ListUsersResult } from 'src/module/user/application/query/list-users/query';
 import { user } from 'src/module/user/infrastructure/user.schema';
@@ -29,10 +29,10 @@ import type { SearchParams } from 'src/shared/search';
 export class UserReaderAdapter
     implements
         IGetUserAuthStatePort,
-        IGetUserAccessProjectionPort,
         IGetUserByIdPort,
         IGetUserCredentialsByEmailPort,
-        IListUsersPort
+        IListUsersPort,
+        IGetUserSessionVersionPort
 {
     /**
      * Initializes the user query repository with the database connection.
@@ -55,20 +55,6 @@ export class UserReaderAdapter
                 .where(and(eq(user.id, id), isNull(user.deletedAt)))
                 .limit(1)
         )[0];
-
-        return row ?? null;
-    }
-
-    /**
-     * Retrieves the session-version projection by ID. Deliberately ignores soft deletion so a
-     * deleted user still resolves, letting session reconciliation converge instead of throwing and
-     * looping.
-     *
-     * @param id The unique identifier
-     * @returns The session-version projection, or null if no row exists
-     */
-    async getAccessProjection(id: string): Promise<GetUserAccessProjectionResult | null> {
-        const row = (await this.db.select({ version: user.version }).from(user).where(eq(user.id, id)).limit(1))[0];
 
         return row ?? null;
     }
@@ -159,5 +145,19 @@ export class UserReaderAdapter
         ]);
 
         return { data, total: countResult[0]?.total ?? 0 };
+    }
+
+    /**
+     * Retrieves the session-version projection by ID. Deliberately ignores soft deletion so a
+     * deleted user still resolves, letting session reconciliation converge instead of throwing and
+     * looping.
+     *
+     * @param id The unique identifier
+     * @returns The session-version projection, or null if no row exists
+     */
+    async getSessionVersion(id: string): Promise<GetUserSessionVersionResult | null> {
+        const row = (await this.db.select({ version: user.version }).from(user).where(eq(user.id, id)).limit(1))[0];
+
+        return row ?? null;
     }
 }

@@ -18,7 +18,7 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * monotonic and a fresh login mints a token at the current version.
  */
 @CommandHandler(UnbanUserCommand)
-export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand> {
+export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *

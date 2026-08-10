@@ -21,6 +21,13 @@ type UserProps = {
 };
 
 /**
+ * The full persistable state of a User: the module-owned props plus the identity and deletion
+ * timestamp owned by the aggregate-root bases. The shape both reconstitution consumes and
+ * {@link User.toSnapshot} produces.
+ */
+type UserSnapshot = { id: string; deletedAt: Date | null } & UserProps;
+
+/**
  * The User aggregate root.
  * Encapsulates the core rules, state, and behaviors of an end user.
  */
@@ -28,46 +35,51 @@ export class User extends SoftDeletableAggregateRoot {
     private props: UserProps;
 
     /**
-     * Initializes a new instance of the User aggregate.
+     * Initializes a new instance of the User aggregate. Splits the snapshot along the ownership
+     * boundary: id and deletedAt go to the aggregate-root bases that own them, the rest is stored as
+     * the module-owned state.
      *
-     * @param id The unique identifier
-     * @param deletedAt The soft-deletion timestamp, or null while the account is live
-     * @param props The aggregate state properties
+     * @param snapshot The full aggregate state, including the base-owned identity and deletion timestamp
      */
-    private constructor(id: string, deletedAt: Date | null, props: UserProps) {
+    private constructor({ id, deletedAt, ...props }: UserSnapshot) {
         super(id, deletedAt);
         this.props = props;
     }
 
     /**
-     * Factory method to create a new User.
-     * Enforces invariant rules on creation and emits a CREATED event.
+     * Factory method to create a new User with a fresh lifecycle state.
+     *
+     * @param props The new unique identifier plus the initial properties, excluding managed fields
+     * @returns The newly created aggregate
      */
-    static create(id: string, props: Omit<UserProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): User {
-        const now = new Date(),
-            user = new User(id, null, {
-                ...props,
-                isBanned: false,
-                version: 0,
-                createdAt: now,
-                updatedAt: now,
-            });
+    static create(props: { id: string } & Omit<UserProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): User {
+        const now = new Date();
 
-        return user;
+        return new User({
+            ...props,
+            isBanned: false,
+            deletedAt: null,
+            version: 0,
+            createdAt: now,
+            updatedAt: now,
+        });
     }
 
     /**
      * Factory method to reconstitute an existing User from the database.
+     *
+     * @param snapshot The persisted aggregate state, including the identity and deletion timestamp
+     * @returns The reconstituted aggregate
      */
-    static reconstitute(id: string, deletedAt: Date | null, props: UserProps): User {
-        return new User(id, deletedAt, props);
+    static reconstitute(snapshot: UserSnapshot): User {
+        return new User(snapshot);
     }
 
     /**
      * Creates a snapshot of the aggregate state for persistence: the module-owned props plus the
      * identity and deletion timestamp owned by the aggregate-root bases.
      */
-    toSnapshot(): { id: string; deletedAt: Date | null } & UserProps {
+    toSnapshot(): UserSnapshot {
         return {
             id: this.id,
             deletedAt: this.deletedAt,
@@ -173,7 +185,7 @@ export class User extends SoftDeletableAggregateRoot {
     /**
      * Revokes every active session after refresh-token reuse was detected for this account. Bumps the
      * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
-     * SESSION_REUSE_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
+     * SESSIONS_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
      * owner can simply sign back in (and is separately advised, not forced, to change their password).
      *
      * @throws {SystemException} When the account has been soft-deleted
@@ -184,7 +196,7 @@ export class User extends SoftDeletableAggregateRoot {
         this.props.version++;
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(UserEvent.SESSION_REUSE_REVOKED, this.id));
+        this.addDomainEvent(new DomainEvent(UserEvent.SESSIONS_REVOKED, this.id));
     }
 
     /**

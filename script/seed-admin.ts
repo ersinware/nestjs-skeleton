@@ -38,11 +38,12 @@ async function seed() {
         console.log('Admin already exists!');
     } else {
         console.log('Inserting admin into database...');
-        const seedAdmin = Admin.create(uuidv7(), {
+        const seedAdmin = Admin.create({
+            id: uuidv7(),
             email,
             name: 'Ersinware Admin',
-            role: AdminRole.SUPER_ADMIN,
             password: hashedPassword,
+            role: AdminRole.SUPER_ADMIN,
         });
         await adminsRepo.save(seedAdmin);
         console.log('\n--- SUPER ADMIN CREDENTIALS ---');

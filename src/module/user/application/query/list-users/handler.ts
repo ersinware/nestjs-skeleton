@@ -14,7 +14,7 @@ import { ListUsersQuery, type ListUsersResult } from 'src/module/user/applicatio
  * Returns a paginated list of public user read-models.
  */
 @QueryHandler(ListUsersQuery)
-export class ListUsersQueryHandler implements IQueryHandler<ListUsersQuery> {
+export class ListUsersQueryHandler implements IQueryHandler<ListUsersQuery, ListUsersResult> {
     /**
      * Initializes the handler with the required ports.
      *

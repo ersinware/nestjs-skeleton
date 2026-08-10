@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles GetAdminAuthStateQuery by fetching the fields required for authentication checks.
+ * @description Handler for GetAdminAuthStateQuery.
  */
 
 import { Inject } from '@nestjs/common';
@@ -14,10 +14,10 @@ import {
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Returns an admin's active status and current session version by ID.
+ * Returns an admin's ban status and current session version.
  */
 @QueryHandler(GetAdminAuthStateQuery)
-export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuthStateQuery> {
+export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuthStateQuery, GetAdminAuthStateResult> {
     /**
      * Initializes the handler with the required port.
      *
@@ -26,11 +26,11 @@ export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuth
     constructor(@Inject(TOKEN_GET_ADMIN_AUTH_STATE_PORT) private readonly port: IGetAdminAuthStatePort) {}
 
     /**
-     * Executes the get admin auth state query.
+     * Executes the query.
      *
      * @param query The query parameters
-     * @returns The admin's active status and current session version
-     * @throws {ResourceNotFoundException} When no admin exists with the given ID.
+     * @returns The admin's ban status and current session version
+     * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
      */
     async execute(query: GetAdminAuthStateQuery): Promise<GetAdminAuthStateResult> {
         const result = await this.port.getAuthState(query.id);

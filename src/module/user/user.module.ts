@@ -24,13 +24,13 @@ import { UpdateUserCommandHandler } from 'src/module/user/application/command/up
 import { UserCacheListener } from 'src/module/user/application/event/user-cache.listener';
 import { UserReuseListener } from 'src/module/user/application/event/user-reuse.listener';
 import { UserSessionListener } from 'src/module/user/application/event/user-session.listener';
-import { TOKEN_GET_USER_ACCESS_PROJECTION_PORT } from 'src/module/user/application/query/get-user-access-projection/port';
 import { GetUserAuthStateQueryHandler } from 'src/module/user/application/query/get-user-auth-state/handler';
 import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
 import { TOKEN_GET_USER_BY_ID_PORT } from 'src/module/user/application/query/get-user-by-id/port';
 import { GetUserCredentialsByEmailQueryHandler } from 'src/module/user/application/query/get-user-credentials-by-email/handler';
 import { TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/user/application/query/get-user-credentials-by-email/port';
+import { TOKEN_GET_USER_SESSION_VERSION_PORT } from 'src/module/user/application/query/get-user-session-version/port';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
@@ -74,7 +74,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         UserSessionListener,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
         { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },
-        { provide: TOKEN_GET_USER_ACCESS_PROJECTION_PORT, useClass: UserReaderAdapter },
+        { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_BY_ID_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_LIST_USERS_PORT, useClass: UserReaderAdapter },

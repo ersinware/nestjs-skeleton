@@ -15,7 +15,7 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * Returns the public user read-model by ID.
  */
 @QueryHandler(GetUserByIdQuery)
-export class GetUserByIdQueryHandler implements IQueryHandler<GetUserByIdQuery> {
+export class GetUserByIdQueryHandler implements IQueryHandler<GetUserByIdQuery, GetUserByIdResult> {
     /**
      * Initializes the handler with the required port.
      *

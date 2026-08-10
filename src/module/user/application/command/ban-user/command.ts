@@ -8,8 +8,8 @@ import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
- * Command to ban a user account. Invalidating: a ban flips the account's ban status, so it evicts both
- * the public profile projection and the auth-state read the guards consult.
+ * Command to ban a user account. Invalidating: a ban flips the account's ban status, so it evicts the
+ * public profile projection.
  */
 export class BanUserCommand extends Command<void> implements ICacheInvalidatingCommand {
     /**
@@ -22,11 +22,11 @@ export class BanUserCommand extends Command<void> implements ICacheInvalidatingC
     }
 
     /**
-     * The cache keys this ban evicts: the user's profile projection and auth-state.
+     * The cache key this ban evicts: the user's profile projection.
      *
      * @returns The cache keys to evict on success
      */
     invalidatedKeys(): string[] {
-        return [CacheKeys.userById(this.id), CacheKeys.userAuthState(this.id)];
+        return [CacheKeys.userById(this.id)];
     }
 }

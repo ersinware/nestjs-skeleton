@@ -17,7 +17,7 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * Returns a user's active status and current session version by ID.
  */
 @QueryHandler(GetUserAuthStateQuery)
-export class GetUserAuthStateQueryHandler implements IQueryHandler<GetUserAuthStateQuery> {
+export class GetUserAuthStateQueryHandler implements IQueryHandler<GetUserAuthStateQuery, GetUserAuthStateResult> {
     /**
      * Initializes the handler with the required port.
      *

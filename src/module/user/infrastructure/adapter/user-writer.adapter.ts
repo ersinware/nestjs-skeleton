@@ -33,21 +33,6 @@ export class UserWriterAdapter implements IUserWriterPort {
     ) {}
 
     /**
-     * Maps a database row to the User aggregate root.
-     */
-    private mapToDomain(row: InferSelectModel<typeof userSchema>): User {
-        return User.reconstitute(row.id, row.deletedAt, {
-            email: row.email,
-            name: row.name,
-            password: row.password,
-            isBanned: row.isBanned,
-            version: row.version,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-        });
-    }
-
-    /**
      * Loads a specific user aggregate by its unique identifier for mutation.
      *
      * @param id The unique identifier of the target user
@@ -97,6 +82,23 @@ export class UserWriterAdapter implements IUserWriterPort {
         }
 
         this.publishDomainEvents(user);
+    }
+
+    /**
+     * Maps a database row to the User aggregate root.
+     */
+    private mapToDomain(row: InferSelectModel<typeof userSchema>): User {
+        return User.reconstitute({
+            id: row.id,
+            email: row.email,
+            name: row.name,
+            password: row.password,
+            isBanned: row.isBanned,
+            deletedAt: row.deletedAt,
+            version: row.version,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+        });
     }
 
     /**

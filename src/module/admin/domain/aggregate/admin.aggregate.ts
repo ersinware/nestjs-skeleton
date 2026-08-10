@@ -1,6 +1,6 @@
 /**
  * @file admin.aggregate.ts
- * @description The Admin Aggregate Root. Encapsulates all business rules and state for an Admin.
+ * @description The Admin aggregate root — owns the state and invariants of an admin account.
  */
 
 import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
@@ -9,7 +9,7 @@ import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
 
 /**
- * Properties that define the state of an Admin aggregate.
+ * The module-owned state of an Admin aggregate.
  */
 type AdminProps = {
     email: string;
@@ -23,65 +23,64 @@ type AdminProps = {
 };
 
 /**
- * The Admin aggregate root.
- * Encapsulates the core rules, state, and behaviors of an administrative user.
+ * The full persistable state of an Admin: the module-owned props plus the identity and deletion
+ * timestamp owned by the aggregate-root bases. Consumed by reconstitution, produced by
+ * {@link Admin.toSnapshot}.
+ */
+type AdminSnapshot = { id: string; deletedAt: Date | null } & AdminProps;
+
+/**
+ * The Admin aggregate root. Owns every admin invariant: ban/unban transitions, session revocation
+ * through the monotonic version counter, and soft-delete immutability.
  */
 export class Admin extends SoftDeletableAggregateRoot {
     private props: AdminProps;
 
     /**
-     * Initializes a new instance of the Admin aggregate.
+     * Splits the snapshot along the ownership boundary: id and deletedAt go to the aggregate-root
+     * bases that own them, the rest becomes the module-owned state.
      *
-     * @param id The unique identifier
-     * @param deletedAt The soft-deletion timestamp, or null while the account is live
-     * @param props The aggregate state properties
+     * @param snapshot The full aggregate state
      */
-    private constructor(id: string, deletedAt: Date | null, props: AdminProps) {
+    private constructor({ id, deletedAt, ...props }: AdminSnapshot) {
         super(id, deletedAt);
         this.props = props;
     }
 
     /**
-     * Factory method to create a new Admin.
-     * Enforces invariant rules on creation and emits a CREATED event.
+     * Creates a new Admin with a fresh lifecycle state. Emits no event: the sole creation path is
+     * the seed script, which has no reaction to trigger.
      *
-     * @param id The new unique identifier
-     * @param props The initial properties excluding managed fields
+     * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(id: string, props: Omit<AdminProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): Admin {
+    static create(props: { id: string } & Omit<AdminProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): Admin {
         const now = new Date();
 
-        const admin = new Admin(id, null, {
+        return new Admin({
             ...props,
             isBanned: false,
+            deletedAt: null,
             version: 0,
             createdAt: now,
             updatedAt: now,
         });
-
-        admin.addDomainEvent(new DomainEvent(AdminEvent.CREATED, id));
-
-        return admin;
     }
 
     /**
-     * Factory method to reconstitute an existing Admin from the database.
+     * Reconstitutes an existing Admin from its persisted state.
      *
-     * @param id The unique identifier
-     * @param deletedAt The persisted soft-deletion timestamp, or null while the account is live
-     * @param props The persisted aggregate state
+     * @param snapshot The persisted aggregate state
      * @returns The reconstituted aggregate
      */
-    static reconstitute(id: string, deletedAt: Date | null, props: AdminProps): Admin {
-        return new Admin(id, deletedAt, props);
+    static reconstitute(snapshot: AdminSnapshot): Admin {
+        return new Admin(snapshot);
     }
 
     /**
-     * Creates a snapshot of the aggregate state for persistence: the module-owned props plus the
-     * identity and deletion timestamp owned by the aggregate-root bases.
+     * Returns the full aggregate state for persistence.
      */
-    toSnapshot(): { id: string; deletedAt: Date | null } & AdminProps {
+    toSnapshot(): AdminSnapshot {
         return {
             id: this.id,
             deletedAt: this.deletedAt,
@@ -140,7 +139,7 @@ export class Admin extends SoftDeletableAggregateRoot {
     /**
      * Revokes every active session after refresh-token reuse was detected for this account. Bumps the
      * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
-     * SESSION_REUSE_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
+     * SESSIONS_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
      * owner can simply sign back in (and is separately advised, not forced, to change their password).
      *
      * @throws {SystemException} When the account has been soft-deleted
@@ -151,13 +150,13 @@ export class Admin extends SoftDeletableAggregateRoot {
         this.props.version++;
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(AdminEvent.SESSION_REUSE_REVOKED, this.id));
+        this.addDomainEvent(new DomainEvent(AdminEvent.SESSIONS_REVOKED, this.id));
     }
 
     /**
-     * Soft-deletes the admin account.
-     * Sets the deletion timestamp, deactivates the account, bumps the session version for a
-     * permanent cut-off, and emits a DELETED event.
+     * Soft-deletes the admin account: sets the deletion timestamp, bans the account, bumps the
+     * session version for a permanent cut-off, and emits a DELETED event. A no-op when already
+     * deleted.
      */
     markAsDeleted() {
         if (this.deletedAt) {

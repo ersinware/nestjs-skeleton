@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the DeleteAdminCommand by revoking sessions, preventing super-admin deletion, and soft-deleting the entity.
+ * @description Handler for DeleteAdminCommand.
  */
 
 import { Inject } from '@nestjs/common';
@@ -16,11 +16,11 @@ import { AdminRole } from 'src/shared/domain/admin';
 import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Handler for the DeleteAdminCommand.
- * Soft-deletes an admin account while enforcing authorization rules.
+ * Soft-deletes the admin account and revokes all of its active sessions. Super-admins cannot be
+ * deleted, so the system can never lock itself out.
  */
 @CommandHandler(DeleteAdminCommand)
-export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCommand> {
+export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -35,11 +35,11 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
     ) {}
 
     /**
-     * Executes the delete admin command.
+     * Executes the deletion.
      *
-     * @param command The delete admin command parameters
+     * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
-     * @throws {AccessDeniedException} When attempting to delete a super administrator.
+     * @throws {AccessDeniedException} When the target is a super-admin.
      */
     async execute(command: DeleteAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -54,15 +54,10 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
         admin.markAsDeleted();
         await this.adminWriterPort.save(admin);
+        this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: admin.id });
 
-        // Unconditional: the writer's `load()` filters out soft-deleted rows, so reaching here means
-        // the account was live and the transition genuinely happened.
-        this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: command.id });
-
-        try {
-            await this.sessionPort.setVersion(command.id, admin.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
+        this.sessionPort.setVersion(admin.id, admin.version).catch(() => {});
     }
 }

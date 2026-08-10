@@ -1,6 +1,6 @@
 /**
  * @file response-admin.dto.ts
- * @description Defines the structure of the data returned when querying admin records. It explicitly sanitizes the output to ensure sensitive data (like password hashes or internal markers) is never leaked to the client.
+ * @description Response schema for admin records.
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
@@ -9,15 +9,14 @@ import { IsEmailAddress, IsEntityId, IsPersonName } from 'src/core/http';
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**
- * DTO representing admin response data.
- * Sanitizes and whitelist-exposes fields, excluding passwords and internal identifiers.
+ * Whitelist-exposes the client-safe admin fields; anything not exposed here — the password hash in
+ * particular — can never reach a client.
  */
 @Exclude()
 @ApiSchema({ name: 'ResponseAdmin', description: 'Standard admin response schema.' })
 export class ResponseAdminDto {
     /**
-     * The unique database identifier of the admin.
-     * Exposed to allow clients to perform subsequent operations (update, delete) on this specific entity.
+     * The unique identifier of the admin, used to address follow-up operations.
      */
     @Expose()
     @IsEntityId('The admin ID')
@@ -25,7 +24,6 @@ export class ResponseAdminDto {
 
     /**
      * The email address of the admin.
-     * Exposed for display and identification purposes in the user interface.
      */
     @Expose()
     @IsEmailAddress()
@@ -33,22 +31,32 @@ export class ResponseAdminDto {
 
     /**
      * The full name of the admin.
-     * Exposed for personalization and display in the administrative dashboard.
      */
     @Expose()
     @IsPersonName()
     readonly name!: string;
 
     /**
-     * The role of the admin.
-     * Exposed so the client application can render role-specific UI components or enforce client-side guardrails.
+     * The authorization role of the admin.
      */
     @Expose()
     @ApiProperty({
         type: String,
-        enum: [AdminRole.ADMIN, AdminRole.SUPER_ADMIN],
+        enum: AdminRole,
         description: 'The authorization role of the admin',
         example: AdminRole.ADMIN,
     })
     readonly role!: AdminRole;
+
+    /**
+     * Whether the account is currently banned, so the back office can offer the matching
+     * ban/unban action.
+     */
+    @Expose()
+    @ApiProperty({
+        type: Boolean,
+        description: 'Whether the admin account is currently banned',
+        example: false,
+    })
+    readonly isBanned!: boolean;
 }

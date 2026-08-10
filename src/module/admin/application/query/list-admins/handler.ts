@@ -1,6 +1,6 @@
 /**
- * @file list-admins.handler.ts
- * @description Handles ListAdminsQuery by delegating the paginated fetch to the reader port.
+ * @file handler.ts
+ * @description Handler for ListAdminsQuery.
  */
 
 import { Inject } from '@nestjs/common';
@@ -10,10 +10,10 @@ import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-
 import { ListAdminsQuery, type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 
 /**
- * Returns a paginated list of public admin read-models.
+ * Returns a paginated list of admin read-models.
  */
 @QueryHandler(ListAdminsQuery)
-export class ListAdminsQueryHandler implements IQueryHandler<ListAdminsQuery> {
+export class ListAdminsQueryHandler implements IQueryHandler<ListAdminsQuery, ListAdminsResult> {
     /**
      * Initializes the handler with the required port.
      *
@@ -22,12 +22,12 @@ export class ListAdminsQueryHandler implements IQueryHandler<ListAdminsQuery> {
     constructor(@Inject(TOKEN_LIST_ADMINS_PORT) private readonly port: IListAdminsPort) {}
 
     /**
-     * Executes the list admins query.
+     * Executes the query.
      *
-     * @param query The query containing pagination parameters
-     * @returns A paginated list of admins
+     * @param query The query carrying the pagination parameters
+     * @returns The paginated list of admins
      */
     async execute(query: ListAdminsQuery): Promise<ListAdminsResult> {
-        return this.port.listAdmins(query.query);
+        return this.port.listAdmins(query.params);
     }
 }

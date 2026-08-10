@@ -1,7 +1,6 @@
 /**
- * @file get-admin-credentials-by-email.handler.ts
- * @description Handles GetAdminCredentialsByEmailQuery. Returns only the credential fields needed
- * for authentication. Used exclusively internally — never by presentation controllers.
+ * @file handler.ts
+ * @description Handler for GetAdminCredentialsByEmailQuery.
  */
 
 import { Inject } from '@nestjs/common';
@@ -15,10 +14,13 @@ import {
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Returns the minimal credential projection for an admin by email address.
+ * Returns the credential fields login needs for an admin, looked up by email.
  */
 @QueryHandler(GetAdminCredentialsByEmailQuery)
-export class GetAdminCredentialsByEmailQueryHandler implements IQueryHandler<GetAdminCredentialsByEmailQuery> {
+export class GetAdminCredentialsByEmailQueryHandler implements IQueryHandler<
+    GetAdminCredentialsByEmailQuery,
+    GetAdminCredentialsByEmailResult
+> {
     /**
      * Initializes the handler with the required port.
      *
@@ -29,10 +31,10 @@ export class GetAdminCredentialsByEmailQueryHandler implements IQueryHandler<Get
     ) {}
 
     /**
-     * Executes the get admin credentials by email query.
+     * Executes the query.
      *
      * @param query The query parameters
-     * @returns The credentials read model
+     * @returns The credentials read-model
      * @throws {ResourceNotFoundException} When no active admin exists with the given email.
      */
     async execute(query: GetAdminCredentialsByEmailQuery): Promise<GetAdminCredentialsByEmailResult> {

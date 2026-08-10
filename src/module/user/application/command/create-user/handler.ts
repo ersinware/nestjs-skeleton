@@ -19,7 +19,7 @@ import { uuidv7 } from 'uuidv7';
  * Creates a new user account and returns the generated entity ID.
  */
 @CommandHandler(CreateUserCommand)
-export class CreateUserCommandHandler implements ICommandHandler<CreateUserCommand> {
+export class CreateUserCommandHandler implements ICommandHandler<CreateUserCommand, string> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -40,7 +40,8 @@ export class CreateUserCommandHandler implements ICommandHandler<CreateUserComma
      */
     async execute(command: CreateUserCommand) {
         const { email, name, password } = command,
-            user = User.create(uuidv7(), {
+            user = User.create({
+                id: uuidv7(),
                 email,
                 name,
                 password: await this.hashingPort.hash(password),

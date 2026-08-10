@@ -1,8 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles RevokeAdminSessionsCommand. On detected refresh-token reuse it bumps the admin's
- * session version (revoking every token), sends a security-notice email, then applies the version to
- * Redis on a best-effort basis.
+ * @description Handler for RevokeAdminSessionsCommand.
  */
 
 import { Inject } from '@nestjs/common';
@@ -18,10 +16,11 @@ import {
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
 
 /**
- * Revokes all of an admin's sessions after refresh-token reuse and emails the account owner a security notice.
+ * Bumps the admin's session version — invalidating every outstanding token — and emails the account
+ * owner a security notice.
  */
 @CommandHandler(RevokeAdminSessionsCommand)
-export class RevokeAdminSessionsCommandHandler implements ICommandHandler<RevokeAdminSessionsCommand> {
+export class RevokeAdminSessionsCommandHandler implements ICommandHandler<RevokeAdminSessionsCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -38,7 +37,7 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
     ) {}
 
     /**
-     * Executes the revoke-admin-sessions command.
+     * Executes the revocation.
      *
      * @param command The command payload
      */
@@ -52,38 +51,27 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
 
         admin.revokeSessions();
 
-        // Ordered by what each step costs if it fails, strongest guarantee first.
-        //
-        // The save is the actual security outcome: the bumped version lives in the DB, which is the
-        // authority every later refresh is checked against. The audit record comes next, while the
-        // fact is established and nothing that can throw has run yet.
-        //
-        // The email used to sit between them. A transient Gmail failure therefore threw before the
-        // version ever reached Redis, and — because this handler runs under a listener registered
-        // with `suppressErrors: false` — the error was swallowed by the emitter's caller. The net
-        // result was no email, no eviction, and no trace of either.
+        // The save is the security outcome: the bumped version lives in the DB, which is the
+        // authority every later refresh is checked against. The audit record follows while the fact
+        // is established.
         await this.adminWriterPort.save(admin);
+        this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id });
 
-        this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: command.id });
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so Redis being unreachable delays the cut-off rather than defeating it. The catch
+        // only stops an unhandled rejection.
+        this.sessionPort.setVersion(admin.id, admin.version).catch(() => {});
 
-        // Best-effort instant eviction, deliberately guarded: the DB version already denies the next
-        // refresh, so Redis being unreachable delays the cut-off rather than defeating it.
-        try {
-            await this.sessionPort.setVersion(command.id, admin.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
-
-        // Last and unguarded: everything that must not be lost is already durable, so a failure here
-        // is free to surface.
+        // Last: everything that must not be lost is already durable, so a failure here is free to
+        // surface.
         await this.emailerPort.sendEmail(this.buildSecurityEmail(admin.email, admin.name));
     }
 
     /**
-     * Builds the security-notice email sent after sessions are revoked, advising (not forcing) a password change.
+     * Builds the security-notice email, advising (not forcing) a password change.
      *
      * @param to The recipient's email address
-     * @param name The recipient's display name, used to personalize the message
+     * @param name The recipient's display name
      * @returns The email payload to send
      */
     private buildSecurityEmail(to: string, name: string): EmailPayload {

@@ -1,7 +1,7 @@
 /**
- * @file get-admin-credentials-by-email.query.ts
- * @description Query that resolves the minimal credential projection for an admin by email.
- * Used exclusively by the internal modules.
+ * @file query.ts
+ * @description Query that resolves an admin's credential read-model by email. Carries the password
+ * hash, so it is consumed only by the auth flow — never exposed through a controller.
  */
 
 import { Query } from '@nestjs/cqrs';
@@ -22,7 +22,8 @@ export class GetAdminCredentialsByEmailQuery extends Query<GetAdminCredentialsBy
 }
 
 /**
- * The expected result of the GetAdminCredentialsByEmailQuery, returning the credentials read model.
+ * The credential fields login verifies (password hash) and embeds into the minted tokens (id, role,
+ * ban status, session version).
  */
 export type GetAdminCredentialsByEmailResult = {
     id: string;

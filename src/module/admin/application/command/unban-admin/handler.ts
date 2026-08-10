@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the UnbanAdminCommand by lifting the ban on the admin account, preventing changes to super-admins.
+ * @description Handler for UnbanAdminCommand.
  */
 
 import { Inject } from '@nestjs/common';
@@ -15,12 +15,11 @@ import { AdminRole } from 'src/shared/domain/admin';
 import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Handler for the UnbanAdminCommand.
- * Lifts the ban on the admin account while enforcing authorization rules. Unlike banning, no session
- * eviction is needed: the version is monotonic and a fresh login mints a token at the current version.
+ * Lifts the ban on the admin account. Unlike banning, no session eviction is needed: the session
+ * version is monotonic and a fresh login mints a token at the current version.
  */
 @CommandHandler(UnbanAdminCommand)
-export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminCommand> {
+export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -33,11 +32,11 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
     ) {}
 
     /**
-     * Executes the unban admin command.
+     * Executes the unban.
      *
-     * @param command The unban admin command parameters
+     * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
-     * @throws {AccessDeniedException} When attempting to change the status of a super administrator.
+     * @throws {AccessDeniedException} When the target is a super-admin.
      */
     async execute(command: UnbanAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -50,14 +49,11 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
             throw new AccessDeniedException();
         }
 
-        // `unban()` is a silent no-op on an account that is not banned and reports whether it actually
-        // transitioned. On a no-op there is nothing to persist or audit — saving would rewrite
-        // identical values, and an entry for a ban that was never in place would be a fabricated fact.
         if (!admin.unban()) {
             return;
         }
 
         await this.adminWriterPort.save(admin);
-        this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: command.id });
+        this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: admin.id });
     }
 }

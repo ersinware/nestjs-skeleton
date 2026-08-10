@@ -19,7 +19,7 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * Bans an existing user, revoking all of their active sessions.
  */
 @CommandHandler(BanUserCommand)
-export class BanUserCommandHandler implements ICommandHandler<BanUserCommand> {
+export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -66,10 +66,8 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand> {
         // evidence of who imposed it. The actor comes from the ambient audit context, not from here.
         this.auditPort.record({ action: AuditAction.USER_BANNED, targetId: command.id });
 
-        try {
-            await this.sessionPort.setVersion(command.id, user.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
+        this.sessionPort.setVersion(command.id, user.version).catch(() => {});
     }
 }

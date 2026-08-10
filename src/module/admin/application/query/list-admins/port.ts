@@ -12,14 +12,14 @@ import { PaginationParams } from 'src/shared/pagination';
 export const TOKEN_LIST_ADMINS_PORT = Symbol('TOKEN_LIST_ADMINS_PORT');
 
 /**
- * Thin read contract for listing admin read-models with pagination and search.
+ * Thin read contract for listing admin read-models with pagination.
  */
 export interface IListAdminsPort {
     /**
-     * Retrieves a paginated list of non-deleted admin read-models.
+     * Reads one page of non-deleted admin read-models.
      *
-     * @param params The pagination limits and search parameters
-     * @returns Paginated list of admins
+     * @param params The pagination parameters
+     * @returns The page of admins plus the total row count
      */
     listAdmins(params: PaginationParams): Promise<ListAdminsResult>;
 }

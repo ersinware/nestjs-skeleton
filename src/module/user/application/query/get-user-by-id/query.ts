@@ -6,8 +6,13 @@
 
 import { Query } from '@nestjs/cqrs';
 import type { ICacheableQuery } from 'src/core/cqrs';
-import { USER_CACHE_TTL_SECONDS } from 'src/module/user/application/query/user-cache.constant';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
+
+/**
+ * TTL for the cached user profile read-model. Longer than the auth-state TTL: a stale profile is a
+ * cosmetic risk, not a security one, and eviction (pipeline + events) is the primary freshness path.
+ */
+const USER_CACHE_TTL_SECONDS = 300;
 
 /**
  * Fetches the public user projection by unique identifier. Cacheable: its result is keyed by user id
