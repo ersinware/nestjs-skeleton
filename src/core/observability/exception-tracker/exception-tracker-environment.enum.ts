@@ -9,7 +9,12 @@
  * runtime mode doing so.
  */
 export enum ExceptionTrackerEnvironment {
+    /** Captures from local development. */
     DEVELOPMENT = 'development',
+
+    /** Captures from production — the alerting environment. */
     PRODUCTION = 'production',
+
+    /** Captures from automated test runs. */
     TEST = 'test',
 }

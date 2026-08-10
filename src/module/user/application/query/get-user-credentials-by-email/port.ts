@@ -19,6 +19,7 @@ export interface IGetUserCredentialsByEmailPort {
      *
      * @param email The exact email address to query
      * @returns The user credentials projection, or null if no active user is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getCredentialsByEmail(email: string): Promise<GetUserCredentialsByEmailResult | null>;
 }

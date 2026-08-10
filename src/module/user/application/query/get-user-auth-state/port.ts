@@ -19,6 +19,7 @@ export interface IGetUserAuthStatePort {
      *
      * @param id The unique identifier of the target user
      * @returns The authentication state, or null if no user is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getAuthState(id: string): Promise<GetUserAuthStateResult | null>;
 }

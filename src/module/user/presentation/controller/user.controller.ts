@@ -1,6 +1,6 @@
 /**
  * @file user.controller.ts
- * @description Exposes HTTP endpoints for user profile management. Enforces role-based access control (RBAC) to ensure standard users can only modify themselves while administrators can manage all users.
+ * @description HTTP endpoints of the user bounded context: public registration, self-service profile management, and admin lookup and ban/unban.
  */
 
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
@@ -52,8 +52,8 @@ import { AdminRole } from 'src/shared/domain/admin';
 import { ResourceConflictMessage } from 'src/shared/exception';
 
 /**
- * The controller providing routing and handling for user domain API requests.
- * Maps incoming HTTP payloads to business logic operations and serializes the responses to prevent data leaks.
+ * User endpoints: public registration, self-scoped profile routes (`me`), and admin-only lookup and
+ * ban/unban. Responses are serialized through the whitelist DTOs so internal fields never leak.
  */
 @Controller({
     path: 'user',
@@ -61,8 +61,6 @@ import { ResourceConflictMessage } from 'src/shared/exception';
 })
 @ApiTags('user')
 @ApiDefaultInternalServerErrorResponse()
-// Class-level like the 500: the global AuthGuard reads the session store on every guarded route,
-// so any of them can answer 503 when it is unreachable.
 @ApiDefaultDependencyUnavailableResponse()
 export class UserController {
     /**
@@ -77,43 +75,47 @@ export class UserController {
     ) {}
 
     /**
-     * Registers a new user account.
-     * Typically public, allowing unauthenticated guests to sign up.
+     * Registers a new user account. Public: this is the sign-up route.
      *
-     * @param postUserDto The payload containing registration details
-     * @returns The newly created and serialized user profile
+     * @param postUserDto The registration payload
+     * @returns The newly created, serialized user profile
      */
     @Public()
     @Post()
     @ApiOperation({
         summary: 'Register user',
-        description: 'Creates a new user profile.',
+        description: 'Creates a new user account. Public sign-up route.',
     })
     @ApiCreatedResponse({ description: 'User account successfully created.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
     async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto): Promise<ResponseUserDto> {
-        const id: string = await this.commandPipeline.execute(
-            new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
+        return plainToInstance(
+            ResponseUserDto,
+            await this.queryPipeline.execute(
+                new GetUserByIdQuery(
+                    await this.commandPipeline.execute(
+                        new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
+                    ),
+                ),
+            ),
         );
-
-        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(id)));
     }
 
     /**
-     * Retrieves all registered users in a paginated format.
-     * Exclusively available to administrators for back-office management.
+     * Lists user accounts with pagination and optional search. Admin-only.
      *
-     * @param query The pagination limits and optional search parameters
-     * @returns A paginated response containing a list of serialized user profiles
+     * @param query The pagination and search query parameters
+     * @returns The paginated list of user profiles
      */
     @Get()
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Get all users',
+        summary: 'List all users',
         description:
-            'Retrieves registered users with pagination and optional search query. Requires administrator authorization.',
+            'Retrieves user accounts with pagination and optional search. Requires administrator authorization.',
     })
     @ApiDefaultOkResponsePaginated({ message: 'Users successfully retrieved.', model: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -131,8 +133,8 @@ export class UserController {
     }
 
     /**
-     * Retrieves the profile details of the currently authenticated user.
-     * Relies on the decoded JWT payload to infer the target user ID safely.
+     * Retrieves the currently authenticated user's profile; the target id comes from the verified
+     * token, never from the client.
      *
      * @param accessTokenPayload The decoded access token payload of the requester
      * @returns The serialized profile of the current user
@@ -154,10 +156,9 @@ export class UserController {
     }
 
     /**
-     * Retrieves the profile details of a specific user by their unique identifier.
-     * Exclusively available to administrators for support and auditing purposes.
+     * Retrieves a specific user's profile by unique identifier. Admin-only.
      *
-     * @param params The path parameters containing the target user ID
+     * @param params The path parameters carrying the target user ID
      * @returns The serialized profile of the requested user
      */
     @Get(ROUTE_PARAM_ID)
@@ -166,7 +167,7 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get user by ID',
-        description: 'Retrieves details of a specific user. Requires administrator authorization.',
+        description: 'Retrieves a specific user account. Requires administrator authorization.',
     })
     @ApiOkResponse({ description: 'User details successfully retrieved.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -178,12 +179,11 @@ export class UserController {
     }
 
     /**
-     * Updates the profile details of the currently authenticated user.
-     * Allows users to modify their own non-sensitive information like names.
+     * Updates the currently authenticated user's profile.
      *
      * @param accessTokenPayload The decoded access token payload of the requester
-     * @param patchUserDto The sparse payload containing the fields to update
-     * @returns The updated and serialized profile of the current user
+     * @param patchUserDto The sparse payload carrying the fields to update
+     * @returns The updated, serialized profile of the current user
      */
     @Patch('me')
     @ApiBearerAuth()
@@ -211,22 +211,23 @@ export class UserController {
     }
 
     /**
-     * Changes the password of the currently authenticated user.
-     * Requires the current password to be verified to prevent unauthorized account takeovers.
+     * Changes the currently authenticated user's password; the current password must be verified so
+     * a hijacked session cannot take the account over.
      *
      * @param accessTokenPayload The decoded access token payload of the requester
-     * @param patchUserPasswordDto The payload containing the current and new passwords
+     * @param patchUserPasswordDto The payload carrying the current and new passwords
      */
     @Patch('me/password')
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Change current user password',
-        description:
-            "Updates the currently authenticated user's password. Doing so will immediately revoke all active sessions.",
+        description: "Updates the currently authenticated user's password and revokes all active sessions.",
     })
     @ApiNoContentResponse({ description: 'Password successfully changed.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
+    // share the status, so naming one cause would document the endpoint as if the others did not exist.
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceNotFoundResponse()
     async changePasswordMe(
@@ -243,8 +244,7 @@ export class UserController {
     }
 
     /**
-     * Permanently deletes or deactivates the currently authenticated user's account.
-     * A destructive action initiated by the user to leave the platform.
+     * Soft-deletes the currently authenticated user's account.
      *
      * @param accessTokenPayload The decoded access token payload of the requester
      */
@@ -253,7 +253,7 @@ export class UserController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Delete current user account',
-        description: 'Soft deletes the currently authenticated user account.',
+        description: 'Soft deletes the currently authenticated user account and revokes all active sessions.',
     })
     @ApiNoContentResponse({ description: 'User account successfully deleted.' })
     @ApiDefaultUnauthenticatedResponse()
@@ -263,10 +263,9 @@ export class UserController {
     }
 
     /**
-     * Bans a user, allowing administrators to suspend accounts.
-     * Banning a user immediately revokes all their active sessions.
+     * Bans a user account and revokes all of its active sessions. Admin-only.
      *
-     * @param params The path parameters containing the target user ID
+     * @param params The path parameters carrying the target user ID
      */
     @Post(`${ROUTE_PARAM_ID}/ban`)
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
@@ -286,9 +285,9 @@ export class UserController {
     }
 
     /**
-     * Unbans a user, allowing administrators to reinstate suspended accounts.
+     * Lifts the ban on a user account. Admin-only.
      *
-     * @param params The path parameters containing the target user ID
+     * @param params The path parameters carrying the target user ID
      */
     @Post(`${ROUTE_PARAM_ID}/unban`)
     @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)

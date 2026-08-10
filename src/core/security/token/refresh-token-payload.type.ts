@@ -20,7 +20,7 @@ export type RefreshTokenPayload = {
     jti: string;
 
     /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
-    version: number;
+    sessionVersion: number;
 
     /** Discriminator rejecting an access token presented as a refresh token. */
     type: AuthTokenType.REFRESH;

@@ -9,18 +9,12 @@ import type { ICacheableQuery } from 'src/core/cqrs';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
- * TTL for the cached user profile read-model. Longer than the auth-state TTL: a stale profile is a
- * cosmetic risk, not a security one, and eviction (pipeline + events) is the primary freshness path.
- */
-const USER_CACHE_TTL_SECONDS = 300;
-
-/**
  * Fetches the public user projection by unique identifier. Cacheable: its result is keyed by user id
  * and served from cache by the query pipeline until the owning user's mutation evicts it.
  */
 export class GetUserByIdQuery extends Query<GetUserByIdResult> implements ICacheableQuery {
-    /** Time-to-live for the cached projection; a safety net bounding staleness if an eviction is missed. */
-    readonly cacheTtlSeconds = USER_CACHE_TTL_SECONDS;
+    /** Time-to-live of the cached projection. */
+    readonly cacheTtlSeconds = 300;
 
     /**
      * Initializes the query with its parameters.
@@ -42,14 +36,11 @@ export class GetUserByIdQuery extends Query<GetUserByIdResult> implements ICache
 }
 
 /**
- * The expected result of the GetUserByIdQuery, returning the read model.
- * Does not expose sensitive fields such as the hashed password.
+ * The public user projection — the client-safe fields only, never the password hash.
  */
 export type GetUserByIdResult = {
     id: string;
     email: string;
     name: string;
     isBanned: boolean;
-    createdAt: Date;
-    updatedAt: Date;
 };

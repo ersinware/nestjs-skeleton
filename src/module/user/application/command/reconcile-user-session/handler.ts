@@ -15,18 +15,17 @@ import {
 } from 'src/module/user/application/query/get-user-session-version/port';
 
 /**
- * Pushes the user's current DB session version into Redis. Reading the version from the database makes
- * the outcome converge under duplicate, out-of-order, and concurrent delivery regardless of the event
- * verb. No inbox is used: the write is monotonic-max and its input derives from the re-readable
- * database (CLAUDE.md §8). Reads run on the handler's own port, never the QueryBus.
+ * Pushes the user's current DB session version into Redis. Re-reading the version from the database
+ * makes the outcome converge under duplicate, out-of-order, and concurrent delivery, so no inbox is
+ * needed: the write is idempotent by construction.
  */
 @CommandHandler(ReconcileUserSessionCommand)
 export class ReconcileUserSessionCommandHandler implements ICommandHandler<ReconcileUserSessionCommand, void> {
     /**
-     * Initializes the handler with the session and session-version ports.
+     * Initializes the handler with the required ports.
      *
-     * @param sessionPort The service managing the session version in Redis.
-     * @param sessionVersionPort The query port that reads the user's session version, including soft-deleted rows.
+     * @param sessionPort The port that writes the session version to Redis
+     * @param sessionVersionPort The port that reads the user's session version, including soft-deleted rows
      */
     constructor(
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
@@ -37,16 +36,16 @@ export class ReconcileUserSessionCommandHandler implements ICommandHandler<Recon
     /**
      * Executes the reconcile-user-session command.
      *
-     * @param command The command payload carrying the user id.
+     * @param command The command payload
      */
     async execute(command: ReconcileUserSessionCommand) {
-        const sessionVersion = await this.sessionVersionPort.getSessionVersion(command.id);
+        const result = await this.sessionVersionPort.getSessionVersion(command.id);
 
-        // A missing row means the account never existed — nothing to reconcile.
-        if (!sessionVersion) {
+        // Users are only ever soft-deleted, so a missing row means there is nothing to reconcile.
+        if (!result) {
             return;
         }
 
-        await this.sessionPort.setVersion(command.id, sessionVersion.version);
+        await this.sessionPort.setVersion(command.id, result.sessionVersion);
     }
 }

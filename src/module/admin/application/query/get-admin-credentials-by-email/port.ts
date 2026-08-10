@@ -19,6 +19,7 @@ export interface IGetAdminCredentialsByEmailPort {
      *
      * @param email The exact email address to look up
      * @returns The credentials, or null when no non-deleted admin exists
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getCredentialsByEmail(email: string): Promise<GetAdminCredentialsByEmailResult | null>;
 }

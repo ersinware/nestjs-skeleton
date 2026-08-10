@@ -7,5 +7,6 @@
  * User authorization roles.
  */
 export enum UserRole {
+    /** The single role every end-user account holds. */
     USER = 'user',
 }

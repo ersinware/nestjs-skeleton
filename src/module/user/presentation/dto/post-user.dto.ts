@@ -1,6 +1,6 @@
 /**
  * @file post-user.dto.ts
- * @description Defines the validation schema for registering a new user in the system.
+ * @description Request schema for registering a new user.
  */
 
 import { ApiSchema } from '@nestjs/swagger';
@@ -8,8 +8,8 @@ import { Exclude, Expose } from 'class-transformer';
 import { IsEmailAddress, IsPersonName, IsStrongPassword } from 'src/core/http';
 
 /**
- * The payload containing all necessary information to create a new user account.
- * Enforces strict formatting on emails and password strength requirements.
+ * Registration payload. The composed decorators enforce email format, name shape, and password
+ * strength in one place each.
  */
 @Exclude()
 @ApiSchema({ name: 'PostUser', description: 'Input validation schema for user registration and creation.' })
@@ -29,7 +29,7 @@ export class PostUserDto {
     readonly name!: string;
 
     /**
-     * The plain-text password that will be securely hashed upon creation.
+     * The plain-text password, hashed before persistence.
      */
     @Expose()
     @IsStrongPassword()

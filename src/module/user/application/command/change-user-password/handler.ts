@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles ChangeUserPasswordCommand. Verifies the current password and securely updates the User aggregate root.
+ * @description Handles ChangeUserPasswordCommand. Verifies the current password before changing it and revoking every session.
  */
 
 import { Inject } from '@nestjs/common';
@@ -65,19 +65,10 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
 
         user.changePassword(await this.hashingPort.hash(newPassword));
         await this.userWriterPort.save(user);
-
-        // The two rejections above leave no record: a wrong current password is a failed credential
-        // check on an already-authenticated session, not a privileged action, and auditing every
-        // mistyped password would bury the changes that did happen.
-        // No `targetId`: this command is reachable only from the self-scoped route, so the subject is
-        // the actor the ambient context already names. Restating it would not add a fact, it would
-        // make the same principal appear twice under two meanings.
         this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
 
-        // A password change bumps the session version for a permanent cut-off of every token minted
-        // before it.
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
-        this.sessionPort.setVersion(id, user.version).catch(() => {});
+        this.sessionPort.setVersion(id, user.sessionVersion).catch(() => {});
     }
 }

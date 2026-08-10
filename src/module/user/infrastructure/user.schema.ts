@@ -1,6 +1,6 @@
 /**
  * @file user.schema.ts
- * @description Database table definition for the 'users' entity using Drizzle ORM.
+ * @description Drizzle schema of the user bounded context: the `user` PostgreSQL logical schema and its table.
  */
 
 import { sql } from 'drizzle-orm';
@@ -14,7 +14,7 @@ import { aggregateTimestamps } from 'src/core/database';
 export const userSchema = pgSchema('user');
 
 /**
- * The Drizzle ORM table definition for the 'users' table.
+ * The user accounts table.
  */
 export const user = userSchema.table(
     'user',
@@ -25,8 +25,7 @@ export const user = userSchema.table(
         id: uuid('id').primaryKey(),
 
         /**
-         * Email address associated with the user account.
-         * Enforced as globally unique at the database level.
+         * Email address, unique at the database level.
          */
         email: text('email').notNull().unique(),
 
@@ -36,31 +35,31 @@ export const user = userSchema.table(
         name: text('name').notNull(),
 
         /**
-         * The hashed password of the user.
+         * The Argon2-hashed password.
          */
         password: text('password').notNull(),
 
         /**
-         * Flag indicating whether the user account is banned.
+         * Whether the account is banned.
          */
         isBanned: boolean('is_banned').notNull().default(false),
 
         /**
-         * Timestamp indicating when the user was soft-deleted.
+         * Soft-delete timestamp; null while the account is live.
          */
         deletedAt: timestamp('deleted_at'),
 
         /**
          * Monotonic session version. Any token minted with a lower version is rejected by the auth
-         * guard, giving instant, DB-durable revocation. Incremented on ban, password change, and
-         * account deletion.
+         * guard, giving DB-durable revocation. Bumped on ban, password change, deletion, and
+         * session revocation.
          */
-        version: integer('version').notNull().default(0),
+        sessionVersion: integer('session_version').notNull().default(0),
 
         ...aggregateTimestamps,
     },
     (table) => [
-        index('users_id_live_idx')
+        index('user_id_live_idx')
             .on(table.id)
             .where(sql`deleted_at IS NULL`),
     ],

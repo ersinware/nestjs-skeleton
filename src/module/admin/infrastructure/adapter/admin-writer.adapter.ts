@@ -7,7 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE_CLIENT, isUniqueViolation } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
 import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
@@ -39,15 +39,19 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * @returns The aggregate, or null when no non-deleted admin exists
      */
     async load(id: string): Promise<Admin | null> {
-        const row = (
-            await this.db
-                .select()
-                .from(adminSchema)
-                .where(and(eq(adminSchema.id, id), isNull(adminSchema.deletedAt)))
-                .limit(1)
-        )[0];
+        try {
+            const row = (
+                await this.db
+                    .select()
+                    .from(adminSchema)
+                    .where(and(eq(adminSchema.id, id), isNull(adminSchema.deletedAt)))
+                    .limit(1)
+            )[0];
 
-        return row ? this.mapToDomain(row) : null;
+            return row ? this.mapToDomain(row) : null;
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -77,7 +81,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
                 throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE, { cause: error });
             }
 
-            throw error;
+            throw translateConnectionFailure(error);
         }
 
         this.publishDomainEvents(admin);
@@ -95,7 +99,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             role: row.role,
             isBanned: row.isBanned,
             deletedAt: row.deletedAt,
-            version: row.version,
+            sessionVersion: row.sessionVersion,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });

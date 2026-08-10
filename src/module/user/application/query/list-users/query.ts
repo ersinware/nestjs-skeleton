@@ -14,7 +14,7 @@ export class ListUsersQuery extends Query<ListUsersResult> {
     /**
      * Initializes the query with its parameters.
      *
-     * @param query The pagination limits and search parameters
+     * @param params The pagination limits and search parameters
      */
     constructor(readonly params: SearchParams & PaginationParams) {
         super();
@@ -30,8 +30,6 @@ export type ListUsersResult = {
         email: string;
         name: string;
         isBanned: boolean;
-        createdAt: Date;
-        updatedAt: Date;
     }[];
     total: number;
 };

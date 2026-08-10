@@ -25,5 +25,5 @@ export class GetAdminAuthStateQuery extends Query<GetAdminAuthStateResult> {
  */
 export type GetAdminAuthStateResult = {
     isBanned: boolean;
-    version: number;
+    sessionVersion: number;
 };

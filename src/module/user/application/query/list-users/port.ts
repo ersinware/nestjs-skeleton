@@ -21,6 +21,7 @@ export interface IListUsersPort {
      *
      * @param params The pagination and search parameters
      * @returns A paginated list of users
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     listUsers(params: SearchParams & PaginationParams): Promise<ListUsersResult>;
 }

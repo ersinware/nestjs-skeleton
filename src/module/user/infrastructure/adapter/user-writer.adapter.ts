@@ -1,13 +1,13 @@
 /**
  * @file user-writer.adapter.ts
- * @description The Drizzle ORM implementation of the user writer port. Handles mapping between domain aggregates and database models for write operations.
+ * @description Drizzle implementation of the user writer port.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE_CLIENT, isUniqueViolation } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
 import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
@@ -16,16 +16,16 @@ import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/e
 import { uuidv7 } from 'uuidv7';
 
 /**
- * Drizzle ORM implementation of the IUserWriterPort.
- * Handles persistence and reconstitution of the User aggregate root.
+ * Persists and reconstitutes the User aggregate, translating driver errors at the port boundary
+ * and dispatching the aggregate's domain events after the write.
  */
 @Injectable()
 export class UserWriterAdapter implements IUserWriterPort {
     /**
-     * Initializes the user repository with the database connection.
+     * Injects the database connection and the event publisher.
      *
-     * @param db The PostgresJs database instance
-     * @param eventPublisherPort The in-process bus the aggregate's domain events are dispatched on
+     * @param db The Drizzle database client
+     * @param eventPublisherPort The port the aggregate's domain events are dispatched through
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase,
@@ -39,22 +39,25 @@ export class UserWriterAdapter implements IUserWriterPort {
      * @returns The user aggregate root, or null if no active user is found
      */
     async load(id: string): Promise<User | null> {
-        const row = (
-            await this.db
-                .select()
-                .from(userSchema)
-                .where(and(eq(userSchema.id, id), isNull(userSchema.deletedAt)))
-                .limit(1)
-        )[0];
+        try {
+            const row = (
+                await this.db
+                    .select()
+                    .from(userSchema)
+                    .where(and(eq(userSchema.id, id), isNull(userSchema.deletedAt)))
+                    .limit(1)
+            )[0];
 
-        return row ? this.mapToDomain(row) : null;
+            return row ? this.mapToDomain(row) : null;
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
-     * Saves a User aggregate to the database, then dispatches the domain events it accumulated.
+     * Upserts the aggregate's snapshot, then dispatches the domain events it accumulated.
      *
-     * @param user The User aggregate root to save
-     * @throws {ResourceConflictException} if the email address is already taken
+     * @param user The aggregate to save
      */
     async save(user: User) {
         const payload = user.toSnapshot();
@@ -78,7 +81,7 @@ export class UserWriterAdapter implements IUserWriterPort {
                 throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE, { cause: error });
             }
 
-            throw error;
+            throw translateConnectionFailure(error);
         }
 
         this.publishDomainEvents(user);
@@ -95,25 +98,22 @@ export class UserWriterAdapter implements IUserWriterPort {
             password: row.password,
             isBanned: row.isBanned,
             deletedAt: row.deletedAt,
-            version: row.version,
+            sessionVersion: row.sessionVersion,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });
     }
 
     /**
-     * Pulls the aggregate's accumulated domain events and dispatches them on the in-process bus.
-     * Emitted after the row is written so a listener that re-reads the user observes the new state.
-     *
-     * Dispatch is fire-and-forget: the write is the caller's contract, so a failing listener must not
-     * fail the command that already persisted the row. A rejected dispatch is swallowed; the flows
-     * that matter reconcile through authoritative reads (refresh reads the version from the DB).
+     * Dispatches the aggregate's accumulated domain events, after the row is written so a listener
+     * that re-reads the user observes the new state. Fire-and-forget: a failing listener must not
+     * fail the command that already persisted the row — the flows that matter reconcile through
+     * authoritative reads.
      *
      * @param user The aggregate whose domain events are dispatched
      */
     private publishDomainEvents(user: User) {
         for (const event of user.pullDomainEvents()) {
-            // The catch only stops an unhandled rejection from crashing the process.
             this.eventPublisherPort
                 .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
                 .catch(() => {});

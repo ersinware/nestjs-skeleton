@@ -49,19 +49,14 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             throw new ResourceNotFoundException();
         }
 
-        // `updateProfile` is a silent no-op when the payload matches the current state: nothing
-        // mutated, no domain event accrued. With nothing changed there is nothing to persist and no
-        // fact to audit, so both are skipped — saving here would rewrite identical values, and an
-        // entry for a change that changed nothing would be a fabricated fact (the same truth the
-        // domain event follows).
+        // `updateProfile` reports whether anything actually changed. On a payload matching the
+        // current state there is nothing to persist or audit — an entry for a change that changed
+        // nothing would fabricate a fact.
         if (!user.updateProfile({ ...(name && { name }), ...(email && { email }) })) {
             return;
         }
 
         await this.userWriterPort.save(user);
-
-        // The actor comes from the ambient audit context, not from here — and no `targetId` either:
-        // this command is reachable only from the self-scoped route, so the subject IS that actor.
         this.auditPort.record({ action: AuditAction.USER_UPDATED });
     }
 }

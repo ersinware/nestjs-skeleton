@@ -49,6 +49,9 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
             throw new AccessDeniedException();
         }
 
+        // `unban()` reports whether the account actually transitioned. On an account that is not
+        // banned there is nothing to persist or audit — an entry for a ban that was never in place
+        // would fabricate a fact.
         if (!admin.unban()) {
             return;
         }

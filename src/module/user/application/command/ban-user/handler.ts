@@ -46,28 +46,17 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, vo
             throw new ResourceNotFoundException();
         }
 
-        // `ban()` is a silent no-op on an already-banned account, so the state is read BEFORE it to
-        // tell a real transition from a repeated request. The audit trail follows the same truth as
-        // the domain event: an entry for a ban that changed nothing would be a fabricated fact.
-        // `ban()` is a silent no-op on an already-banned account and reports whether it actually
-        // transitioned. On a no-op there is nothing to persist, audit, or evict: re-writing identical
-        // values and re-pushing the eviction would be pure noise — and because the setVersion failure
-        // below is swallowed and silent, "re-ban to retry a lost eviction" was never an actionable
-        // path anyway; a real ban stays effective within one access-token TTL regardless, since
-        // refresh is refused for a banned identity.
+        // On an already-banned account `ban()` is a no-op: nothing changed, so there is nothing to
+        // persist, audit, or evict.
         if (!user.ban()) {
             return;
         }
 
         await this.userWriterPort.save(user);
-
-        // Recorded once the write is durable, and before the best-effort eviction below: the ban is
-        // already a fact at this point, and an unreachable Redis must not cost the trail its only
-        // evidence of who imposed it. The actor comes from the ambient audit context, not from here.
-        this.auditPort.record({ action: AuditAction.USER_BANNED, targetId: command.id });
+        this.auditPort.record({ action: AuditAction.USER_BANNED, targetId: user.id });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
-        this.sessionPort.setVersion(command.id, user.version).catch(() => {});
+        this.sessionPort.setVersion(user.id, user.sessionVersion).catch(() => {});
     }
 }

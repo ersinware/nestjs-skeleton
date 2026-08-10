@@ -17,7 +17,7 @@ type AdminProps = {
     password: string;
     role: AdminRole;
     isBanned: boolean;
-    version: number;
+    sessionVersion: number;
     createdAt: Date;
     updatedAt: Date;
 };
@@ -54,14 +54,16 @@ export class Admin extends SoftDeletableAggregateRoot {
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(props: { id: string } & Omit<AdminProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): Admin {
+    static create(
+        props: { id: string } & Omit<AdminProps, 'isBanned' | 'sessionVersion' | 'createdAt' | 'updatedAt'>,
+    ): Admin {
         const now = new Date();
 
         return new Admin({
             ...props,
             isBanned: false,
             deletedAt: null,
-            version: 0,
+            sessionVersion: 0,
             createdAt: now,
             updatedAt: now,
         });
@@ -104,7 +106,7 @@ export class Admin extends SoftDeletableAggregateRoot {
         }
 
         this.props.isBanned = true;
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.BANNED, this.id));
@@ -147,7 +149,7 @@ export class Admin extends SoftDeletableAggregateRoot {
     revokeSessions() {
         this.assertNotDeleted(this.revokeSessions.name);
 
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.SESSIONS_REVOKED, this.id));
@@ -167,7 +169,7 @@ export class Admin extends SoftDeletableAggregateRoot {
 
         this.setDeletedAt(now);
         this.props.isBanned = true;
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = now;
 
         this.addDomainEvent(new DomainEvent(AdminEvent.DELETED, this.id));
@@ -199,8 +201,8 @@ export class Admin extends SoftDeletableAggregateRoot {
     }
 
     /** The monotonic session-version counter. */
-    get version(): number {
-        return this.props.version;
+    get sessionVersion(): number {
+        return this.props.sessionVersion;
     }
 
     /** The creation timestamp. */

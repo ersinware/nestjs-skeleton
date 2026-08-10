@@ -6,17 +6,14 @@
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Enum defining the client-safe messages of change-password rejections. Lives with the command
- * because the vocabulary belongs to this use case, not to the shared exception taxonomy.
+ * Client-safe rejection messages of this use case. Lives with the command because the vocabulary
+ * belongs to the use case, not the shared exception taxonomy.
  */
 export enum ChangeUserPasswordMessage {
-    /**
-     * Targets incorrect current password submissions.
-     */
+    /** The submitted current password does not match. */
     CURRENT_PASSWORD_MISMATCH = 'The current password provided is incorrect.',
-    /**
-     * Targets password reuse violations.
-     */
+
+    /** The new password equals the current one. */
     PASSWORD_REUSE = 'New password cannot be the same as the current password.',
 }
 
