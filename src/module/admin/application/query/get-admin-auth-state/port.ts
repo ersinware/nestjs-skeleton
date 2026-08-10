@@ -19,6 +19,7 @@ export interface IGetAdminAuthStatePort {
      *
      * @param id The unique identifier of the target admin
      * @returns The authentication state, or null when no non-deleted admin exists
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getAuthState(id: string): Promise<GetAdminAuthStateResult | null>;
 }

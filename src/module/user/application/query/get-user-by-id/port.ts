@@ -19,6 +19,7 @@ export interface IGetUserByIdPort {
      *
      * @param id The unique identifier of the target user
      * @returns The user projection, or null if no active user is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getById(id: string): Promise<GetUserByIdResult | null>;
 }

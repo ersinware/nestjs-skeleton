@@ -19,6 +19,7 @@ export interface IAdminWriterPort {
      *
      * @param id The unique identifier of the target admin
      * @returns The aggregate, or null when no non-deleted admin exists
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     load(id: string): Promise<Admin | null>;
 
@@ -27,6 +28,7 @@ export interface IAdminWriterPort {
      *
      * @param admin The aggregate to save
      * @throws {ResourceConflictException} When the email address is already in use.
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     save(admin: Admin): Promise<void>;
 }

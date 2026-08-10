@@ -37,13 +37,13 @@ export class ReconcileAdminSessionCommandHandler implements ICommandHandler<Reco
      * @param command The command payload
      */
     async execute(command: ReconcileAdminSessionCommand) {
-        const sessionVersion = await this.sessionVersionPort.getSessionVersion(command.id);
+        const result = await this.sessionVersionPort.getSessionVersion(command.id);
 
         // Admins are only ever soft-deleted, so a missing row means there is nothing to reconcile.
-        if (!sessionVersion) {
+        if (!result) {
             return;
         }
 
-        await this.sessionPort.setVersion(command.id, sessionVersion.version);
+        await this.sessionPort.setVersion(command.id, result.sessionVersion);
     }
 }

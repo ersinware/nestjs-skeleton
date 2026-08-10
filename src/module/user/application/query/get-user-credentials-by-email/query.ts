@@ -27,5 +27,5 @@ export type GetUserCredentialsByEmailResult = {
     id: string;
     password: string;
     isBanned: boolean;
-    version: number;
+    sessionVersion: number;
 };

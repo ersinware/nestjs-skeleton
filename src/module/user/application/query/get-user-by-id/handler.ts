@@ -19,9 +19,9 @@ export class GetUserByIdQueryHandler implements IQueryHandler<GetUserByIdQuery, 
     /**
      * Initializes the handler with the required port.
      *
-     * @param getUserByIdPort The port used to execute the query
+     * @param port The port used to execute the query
      */
-    constructor(@Inject(TOKEN_GET_USER_BY_ID_PORT) private readonly getUserByIdPort: IGetUserByIdPort) {}
+    constructor(@Inject(TOKEN_GET_USER_BY_ID_PORT) private readonly port: IGetUserByIdPort) {}
 
     /**
      * Executes the get user by ID query.
@@ -31,7 +31,7 @@ export class GetUserByIdQueryHandler implements IQueryHandler<GetUserByIdQuery, 
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      */
     async execute(query: GetUserByIdQuery): Promise<GetUserByIdResult> {
-        const user = await this.getUserByIdPort.getById(query.id);
+        const user = await this.port.getById(query.id);
 
         if (!user) {
             throw new ResourceNotFoundException();

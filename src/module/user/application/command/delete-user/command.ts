@@ -22,9 +22,7 @@ export class DeleteUserCommand extends Command<void> implements ICacheInvalidati
     }
 
     /**
-     * The cache key this deletion evicts: the user's profile projection.
-     *
-     * @returns The cache keys to evict on success
+     * @returns The cache keys to evict on success — the user's cached projection
      */
     invalidatedKeys(): string[] {
         return [CacheKeys.userById(this.id)];

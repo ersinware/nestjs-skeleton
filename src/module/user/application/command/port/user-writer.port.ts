@@ -1,6 +1,6 @@
 /**
  * @file user-writer.port.ts
- * @description Outbound port for User commands. Defines the contract for the infrastructure layer to persist the User aggregate.
+ * @description Outbound port for loading and persisting the User aggregate, shared by all user commands.
  */
 
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
@@ -19,17 +19,16 @@ export interface IUserWriterPort {
      *
      * @param id The unique identifier of the target user
      * @returns The user aggregate root, or null if no active user is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     load(id: string): Promise<User | null>;
 
     /**
-     * Saves a User aggregate to the database.
-     * This handles both insertion and updating, and should dispatch/store any domain events attached to the aggregate.
+     * Persists the aggregate (insert or update), then dispatches the domain events it accumulated.
      *
-     * @param user The User aggregate root to save.
-     * @param tx Optional transaction context
-     * @throws {ResourceConflictException} When the email is already in use — the unique violation
-     * translated at the port boundary.
+     * @param user The aggregate to save
+     * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     save(user: User): Promise<void>;
 }

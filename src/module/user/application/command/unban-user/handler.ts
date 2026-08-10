@@ -43,14 +43,14 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
             throw new ResourceNotFoundException();
         }
 
-        // `unban()` is a silent no-op on an account that is not banned and reports whether it actually
-        // transitioned. On a no-op there is nothing to persist or audit — saving would rewrite
-        // identical values, and an entry for a ban that was never in place would be a fabricated fact.
+        // `unban()` reports whether the account actually transitioned. On an account that is not
+        // banned there is nothing to persist or audit — an entry for a ban that was never in place
+        // would fabricate a fact.
         if (!user.unban()) {
             return;
         }
 
         await this.userWriterPort.save(user);
-        this.auditPort.record({ action: AuditAction.USER_UNBANNED, targetId: command.id });
+        this.auditPort.record({ action: AuditAction.USER_UNBANNED, targetId: user.id });
     }
 }

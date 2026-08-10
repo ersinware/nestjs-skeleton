@@ -17,8 +17,8 @@ import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/po
 import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
-import { AdminReuseListener } from 'src/module/admin/application/event/admin-reuse.listener';
 import { AdminSessionListener } from 'src/module/admin/application/event/admin-session.listener';
+import { AdminTokenReuseListener } from 'src/module/admin/application/event/admin-token-reuse.listener';
 import { GetAdminAuthStateQueryHandler } from 'src/module/admin/application/query/get-admin-auth-state/handler';
 import { TOKEN_GET_ADMIN_AUTH_STATE_PORT } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { GetAdminCredentialsByEmailQueryHandler } from 'src/module/admin/application/query/get-admin-credentials-by-email/handler';
@@ -47,7 +47,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         ListAdminsQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,
-        AdminReuseListener,
+        AdminTokenReuseListener,
         AdminSessionListener,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
         { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },

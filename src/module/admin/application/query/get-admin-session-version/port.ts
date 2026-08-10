@@ -20,6 +20,7 @@ export interface IGetAdminSessionVersionPort {
      *
      * @param id The unique identifier of the target admin
      * @returns The session version, or null when no row exists
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getSessionVersion(id: string): Promise<GetAdminSessionVersionResult | null>;
 }

@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
@@ -41,15 +41,19 @@ export class AdminReaderAdapter
      * @returns The auth state, or null when no non-deleted admin exists
      */
     async getAuthState(id: string): Promise<GetAdminAuthStateResult | null> {
-        return (
-            (
-                await this.db
-                    .select({ isBanned: admin.isBanned, version: admin.version })
-                    .from(admin)
-                    .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
-                    .limit(1)
-            )[0] ?? null
-        );
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ isBanned: admin.isBanned, sessionVersion: admin.sessionVersion })
+                        .from(admin)
+                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -59,21 +63,25 @@ export class AdminReaderAdapter
      * @returns The credentials, or null when no non-deleted admin exists
      */
     async getCredentialsByEmail(email: string): Promise<GetAdminCredentialsByEmailResult | null> {
-        return (
-            (
-                await this.db
-                    .select({
-                        id: admin.id,
-                        password: admin.password,
-                        role: admin.role,
-                        isBanned: admin.isBanned,
-                        version: admin.version,
-                    })
-                    .from(admin)
-                    .where(and(eq(admin.email, email), isNull(admin.deletedAt)))
-                    .limit(1)
-            )[0] ?? null
-        );
+        try {
+            return (
+                (
+                    await this.db
+                        .select({
+                            id: admin.id,
+                            password: admin.password,
+                            role: admin.role,
+                            isBanned: admin.isBanned,
+                            sessionVersion: admin.sessionVersion,
+                        })
+                        .from(admin)
+                        .where(and(eq(admin.email, email), isNull(admin.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -83,8 +91,10 @@ export class AdminReaderAdapter
      * @returns The page of admins plus the total row count
      */
     async listAdmins(params: PaginationParams): Promise<ListAdminsResult> {
-        const conditions = isNull(admin.deletedAt),
-            [rows, countResult] = await Promise.all([
+        const conditions = isNull(admin.deletedAt);
+
+        try {
+            const [data, countResult] = await Promise.all([
                 this.db
                     .select({
                         id: admin.id,
@@ -101,7 +111,10 @@ export class AdminReaderAdapter
                 this.db.select({ total: count() }).from(admin).where(conditions),
             ]);
 
-        return { data: rows, total: countResult[0]?.total ?? 0 };
+            return { data, total: countResult[0]?.total ?? 0 };
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -112,8 +125,18 @@ export class AdminReaderAdapter
      * @returns The session version, or null when no row exists
      */
     async getSessionVersion(id: string): Promise<GetAdminSessionVersionResult | null> {
-        return (
-            (await this.db.select({ version: admin.version }).from(admin).where(eq(admin.id, id)).limit(1))[0] ?? null
-        );
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ sessionVersion: admin.sessionVersion })
+                        .from(admin)
+                        .where(eq(admin.id, id))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 }

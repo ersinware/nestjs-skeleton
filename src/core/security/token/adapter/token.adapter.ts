@@ -49,12 +49,12 @@ export class TokenAdapter implements ITokenPort {
     /**
      * Generates a signed access/refresh token pair, minting the refresh token's JTI.
      */
-    async generateTokens(role: AuthRole, id: string, version: number): Promise<GeneratedTokens> {
+    async generateTokens(role: AuthRole, id: string, sessionVersion: number): Promise<GeneratedTokens> {
         const refreshTokenJti = crypto.randomUUID();
 
         return Promise.all([
-            this.generateAccessToken(role, id, version),
-            this.generateRefreshToken(role, id, refreshTokenJti, version),
+            this.generateAccessToken(role, id, sessionVersion),
+            this.generateRefreshToken(role, id, refreshTokenJti, sessionVersion),
         ]).then(([accessToken, refreshToken]) => ({ accessToken, refreshToken, refreshTokenJti }));
     }
 
@@ -79,9 +79,9 @@ export class TokenAdapter implements ITokenPort {
     /**
      * Signs an access token carrying the principal, role, and session version.
      */
-    private async generateAccessToken(role: AuthRole, id: string, version: number): Promise<string> {
+    private async generateAccessToken(role: AuthRole, id: string, sessionVersion: number): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, role, version, type: AuthTokenType.ACCESS },
+            { sub: id, role, sessionVersion, type: AuthTokenType.ACCESS },
             {
                 secret: this.accessSecret,
                 expiresIn: this.accessTtl,
@@ -93,9 +93,14 @@ export class TokenAdapter implements ITokenPort {
      * Signs a refresh token carrying the principal, role, session version, and the JTI
      * that session storage tracks for rotation and reuse detection.
      */
-    private async generateRefreshToken(role: AuthRole, id: string, jti: string, version: number): Promise<string> {
+    private async generateRefreshToken(
+        role: AuthRole,
+        id: string,
+        jti: string,
+        sessionVersion: number,
+    ): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, role, jti, version, type: AuthTokenType.REFRESH },
+            { sub: id, role, jti, sessionVersion, type: AuthTokenType.REFRESH },
             {
                 secret: this.refreshSecret,
                 expiresIn: this.refreshTtl,

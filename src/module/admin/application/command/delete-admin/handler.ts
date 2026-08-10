@@ -58,6 +58,6 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
-        this.sessionPort.setVersion(admin.id, admin.version).catch(() => {});
+        this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch(() => {});
     }
 }

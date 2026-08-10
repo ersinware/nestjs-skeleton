@@ -60,10 +60,8 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so Redis being unreachable delays the cut-off rather than defeating it. The catch
         // only stops an unhandled rejection.
-        this.sessionPort.setVersion(admin.id, admin.version).catch(() => {});
+        this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch(() => {});
 
-        // Last: everything that must not be lost is already durable, so a failure here is free to
-        // surface.
         await this.emailerPort.sendEmail(this.buildSecurityEmail(admin.email, admin.name));
     }
 

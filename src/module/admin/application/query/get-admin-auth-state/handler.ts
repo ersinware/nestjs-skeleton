@@ -35,7 +35,7 @@ export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuth
     async execute(query: GetAdminAuthStateQuery): Promise<GetAdminAuthStateResult> {
         const result = await this.port.getAuthState(query.id);
 
-        if (result === null) {
+        if (!result) {
             throw new ResourceNotFoundException();
         }
 

@@ -228,6 +228,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 - **One reader per data source implements every thin read-port of that source** (`AdminReaderAdapter` — one `*-reader.adapter.ts`, injecting the data source once), never one adapter per port; handlers still see only their thin port.
 - **Readers consolidate, writers are singular, and a module that never writes has no writer** — do not open an empty box.
 - **Writers own driver-error translation.** A constraint violation is meaningful only to the schema's owner, so the writer catches the driver error at the port boundary and rethrows the matching taxonomy exception with `{ cause }` (unique-violation on `email` → `ResourceConflictException(EMAIL_IN_USE)`). Classification predicates live in `core/database` (`isUniqueViolation`); a raw driver error never escapes infrastructure.
+- **Connection failures are translated by EVERY database adapter method** — reader and writer alike — by ending its `catch` with `throw translateConnectionFailure(error)` (`core/database`): the helper only TRANSLATES (returns `DependencyUnavailableException` for an unreachable database, the original error otherwise — 503 silent per request, the episode logged at the connection level, § Dependency outages; everything else stays 500 + Sentry), while the `throw` stays at the adapter's call site. Two deliberate non-sites: the database health adapter (its raw throw feeds the indicator, § Health Probes) and the test-only cleaner.
 
 ## HTTP Layer
 
@@ -347,7 +348,7 @@ Every file MUST start with `@file` + `@description`, and `@file` MUST match the 
 - Comments state the present design rationale only — never project history or past refactors (that is git's job).
 - `@param` MUST NOT include TypeScript types.
 - `@throws {ExceptionType}` in curly braces.
-- **`@throws` lives on the INTERFACE method** — the contract, not the implementation, owns failure semantics — and documents only CONTRACT-level throws: deliberate taxonomy exceptions, reject-on-failure semantics (health/cleaner pings), library errors the caller must catch. Never tag the ubiquitous "an untranslated raw infra error may escape as 500 + Sentry" per method — that is every port's shared unexpected path, and tagging it is noise.
+- **`@throws` lives on the INTERFACE method** — the contract, not the implementation, owns failure semantics — and documents only CONTRACT-level throws: deliberate taxonomy exceptions, reject-on-failure semantics (health/cleaner pings), library errors the caller must catch. A Facade method is a boundary contract too, despite being a concrete class: it documents the FULL contract-level set, including taxonomy exceptions it merely propagates (e.g. `DependencyUnavailableException` from the read path). Never tag the ubiquitous "an untranslated raw infra error may escape as 500 + Sentry" per method — that is every port's shared unexpected path, and tagging it is noise.
 - No `@returns` on `void`/`Promise<void>` methods.
 - Decorator functions returning a decorator: describe the value, not the raw type.
 

@@ -1,18 +1,16 @@
 /**
  * @file user-cache-key.util.ts
- * @description Utility defining dynamic prefix-based cache key formats for application entities.
+ * @description Single source of the user module's cache key formats, shared by the caching and both invalidation paths.
  */
-
-const PREFIX = 'app';
 
 export const CacheKeys = {
     /**
-     * Generates a cache key for a single user record.
+     * The cache key of a single user's projection.
      *
-     * @param id The principal identifier.
-     * @returns The cache key string.
+     * @param id The unique identifier of the user
+     * @returns The cache key
      */
     userById(id: string): string {
-        return `${PREFIX}:user:${id}`;
+        return `user:${id}`;
     },
 } as const;

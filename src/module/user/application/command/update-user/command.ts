@@ -1,7 +1,6 @@
 /**
  * @file command.ts
- * @description Defines the UpdateUserCommand for updating a user's profile details. Declares the
- * cache key it dirties so the command pipeline evicts the user's projection on success.
+ * @description Defines the UpdateUserCommand for updating a user's profile details.
  */
 
 import { Command } from '@nestjs/cqrs';
@@ -10,7 +9,7 @@ import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
  * Command to update a user's basic profile details. Invalidating: a successful update evicts the
- * user's cached projection (shared key with the read side via CacheKeys).
+ * user's cached projection.
  */
 export class UpdateUserCommand extends Command<void> implements ICacheInvalidatingCommand {
     /**
@@ -29,9 +28,7 @@ export class UpdateUserCommand extends Command<void> implements ICacheInvalidati
     }
 
     /**
-     * The cache keys this update evicts: the updated user's projection.
-     *
-     * @returns The cache keys to evict on success
+     * @returns The cache keys to evict on success — the user's cached projection
      */
     invalidatedKeys(): string[] {
         return [CacheKeys.userById(this.id)];

@@ -75,7 +75,7 @@ export class AuthGuard implements CanActivate {
         // rejecting with a retryable 503 beats admitting a possibly-revoked token.
         const currentVersion = await this.sessionPort.getVersion(payload.sub);
 
-        if (payload.version < currentVersion) {
+        if (payload.sessionVersion < currentVersion) {
             throw new UnauthenticatedException();
         }
 

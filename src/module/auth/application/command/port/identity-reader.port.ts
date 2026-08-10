@@ -75,7 +75,7 @@ export type AuthIdentity = {
     isBanned: boolean;
 
     /** The current session version, embedded into freshly minted tokens */
-    version: number;
+    sessionVersion: number;
 };
 
 /**
@@ -83,7 +83,7 @@ export type AuthIdentity = {
  * banned account or a token carrying a stale version. Derived from {@link AuthIdentity} so the two
  * contracts cannot drift apart.
  */
-export type AuthState = Pick<AuthIdentity, 'isBanned' | 'version'>;
+export type AuthState = Pick<AuthIdentity, 'isBanned' | 'sessionVersion'>;
 
 /**
  * The single read surface authentication needs over every identity realm.
@@ -100,6 +100,7 @@ export interface IIdentityReaderPort {
      * @param email The email address to search for
      * @returns The associated identity
      * @throws {ResourceNotFoundException} If no identity is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getCredentialsByEmail(realm: IdentityRealm, email: string): Promise<AuthIdentity>;
 
@@ -110,6 +111,7 @@ export interface IIdentityReaderPort {
      * @param id The unique identifier of the target identity
      * @returns The ban status and current session version
      * @throws {ResourceNotFoundException} If no identity is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getAuthState(realm: IdentityRealm, id: string): Promise<AuthState>;
 }

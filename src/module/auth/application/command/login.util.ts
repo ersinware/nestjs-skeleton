@@ -77,7 +77,7 @@ export async function login(
     }
 
     const id = identity.id,
-        tokens = await ports.tokenPort.generateTokens(identity.role, id, identity.version);
+        tokens = await ports.tokenPort.generateTokens(identity.role, id, identity.sessionVersion);
 
     await ports.sessionPort.openSession(id, tokens.refreshTokenJti);
     ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });

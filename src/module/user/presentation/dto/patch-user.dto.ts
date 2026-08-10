@@ -1,6 +1,6 @@
 /**
  * @file patch-user.dto.ts
- * @description Defines the validation schema for allowing users to update their non-sensitive profile information.
+ * @description Request schema for partial updates to a user's profile.
  */
 
 import { ApiSchema, OmitType, PartialType } from '@nestjs/swagger';
@@ -8,8 +8,7 @@ import { Exclude } from 'class-transformer';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 
 /**
- * The sparse payload used for partial updates to a user's profile.
- * Explicitly omits sensitive fields like passwords which require dedicated endpoints.
+ * Sparse payload for partial profile updates. Omits the password, which has its own endpoint.
  */
 @Exclude()
 @ApiSchema({ name: 'PatchUser', description: 'Schema for updating an existing user' })

@@ -32,6 +32,7 @@ export class AdminFacade {
      *
      * @param email The email address of the target admin
      * @throws {ResourceNotFoundException} When no active admin exists with the given email.
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     async getCredentialsByEmail(email: string): Promise<GetAdminCredentialsByEmailResult> {
         return this.queryPipeline.execute(new GetAdminCredentialsByEmailQuery(email));
@@ -42,6 +43,7 @@ export class AdminFacade {
      *
      * @param id The unique identifier of the target admin
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     async getAuthState(id: string): Promise<GetAdminAuthStateResult> {
         return this.queryPipeline.execute(new GetAdminAuthStateQuery(id));

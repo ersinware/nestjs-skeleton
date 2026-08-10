@@ -31,10 +31,10 @@ export interface ITokenPort {
      *
      * @param role The principal's authentication role.
      * @param id The principal identifier.
-     * @param version The session version to stamp into both tokens.
+     * @param sessionVersion The session version to stamp into both tokens.
      * @returns The signed token pair and the refresh token's JTI.
      */
-    generateTokens(role: AuthRole, id: string, version: number): Promise<GeneratedTokens>;
+    generateTokens(role: AuthRole, id: string, sessionVersion: number): Promise<GeneratedTokens>;
 
     /**
      * Verifies an access token's signature and expiry.

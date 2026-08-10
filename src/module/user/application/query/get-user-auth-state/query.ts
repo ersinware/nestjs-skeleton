@@ -25,5 +25,5 @@ export class GetUserAuthStateQuery extends Query<GetUserAuthStateResult> {
  */
 export type GetUserAuthStateResult = {
     isBanned: boolean;
-    version: number;
+    sessionVersion: number;
 };

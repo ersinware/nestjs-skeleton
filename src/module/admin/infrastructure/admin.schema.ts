@@ -64,7 +64,7 @@ export const admin = adminSchema.table(
          * Monotonic session version. Any token minted with a lower version is rejected by the auth
          * guard, giving DB-durable revocation. Bumped on ban, deletion, and session revocation.
          */
-        version: integer('version').notNull().default(0),
+        sessionVersion: integer('session_version').notNull().default(0),
 
         ...aggregateTimestamps,
     },

@@ -15,11 +15,12 @@ export const TOKEN_GET_USER_SESSION_VERSION_PORT = Symbol('TOKEN_GET_USER_SESSIO
  */
 export interface IGetUserSessionVersionPort {
     /**
-     * Reads the session version of a user by id without the soft-delete filter, so a
-     * deleted or missing account resolves to null rather than being hidden or throwing.
+     * Reads a user's session version without the soft-delete filter, so a deleted user resolves
+     * to its (revoked) version rather than being hidden.
      *
      * @param id The unique identifier of the target user
      * @returns The session version, or null when no row exists
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getSessionVersion(id: string): Promise<GetUserSessionVersionResult | null>;
 }

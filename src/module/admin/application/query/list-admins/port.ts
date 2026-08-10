@@ -20,6 +20,7 @@ export interface IListAdminsPort {
      *
      * @param params The pagination parameters
      * @returns The page of admins plus the total row count
+     * @throws {DependencyUnavailableException} When the database is unreachable
      */
     listAdmins(params: PaginationParams): Promise<ListAdminsResult>;
 }

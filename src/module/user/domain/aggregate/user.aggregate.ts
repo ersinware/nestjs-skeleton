@@ -1,6 +1,6 @@
 /**
  * @file user.aggregate.ts
- * @description The User Aggregate Root. Encapsulates all business rules and state for a User.
+ * @description The User aggregate root — owns the state and invariants of an end-user account.
  */
 
 import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
@@ -8,38 +8,37 @@ import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
 
 /**
- * Properties that define the state of a User aggregate.
+ * The module-owned state of a User aggregate.
  */
 type UserProps = {
     email: string;
     name: string;
     password: string;
     isBanned: boolean;
-    version: number;
+    sessionVersion: number;
     createdAt: Date;
     updatedAt: Date;
 };
 
 /**
  * The full persistable state of a User: the module-owned props plus the identity and deletion
- * timestamp owned by the aggregate-root bases. The shape both reconstitution consumes and
- * {@link User.toSnapshot} produces.
+ * timestamp owned by the aggregate-root bases. Consumed by reconstitution, produced by
+ * {@link User.toSnapshot}.
  */
 type UserSnapshot = { id: string; deletedAt: Date | null } & UserProps;
 
 /**
- * The User aggregate root.
- * Encapsulates the core rules, state, and behaviors of an end user.
+ * The User aggregate root. Owns every user invariant: profile updates, ban/unban transitions,
+ * session revocation through the monotonic session-version counter, and soft-delete immutability.
  */
 export class User extends SoftDeletableAggregateRoot {
     private props: UserProps;
 
     /**
-     * Initializes a new instance of the User aggregate. Splits the snapshot along the ownership
-     * boundary: id and deletedAt go to the aggregate-root bases that own them, the rest is stored as
-     * the module-owned state.
+     * Splits the snapshot along the ownership boundary: id and deletedAt go to the aggregate-root
+     * bases that own them, the rest becomes the module-owned state.
      *
-     * @param snapshot The full aggregate state, including the base-owned identity and deletion timestamp
+     * @param snapshot The full aggregate state
      */
     private constructor({ id, deletedAt, ...props }: UserSnapshot) {
         super(id, deletedAt);
@@ -47,28 +46,30 @@ export class User extends SoftDeletableAggregateRoot {
     }
 
     /**
-     * Factory method to create a new User with a fresh lifecycle state.
+     * Creates a new User with a fresh lifecycle state.
      *
-     * @param props The new unique identifier plus the initial properties, excluding managed fields
+     * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(props: { id: string } & Omit<UserProps, 'isBanned' | 'version' | 'createdAt' | 'updatedAt'>): User {
+    static create(
+        props: { id: string } & Omit<UserProps, 'isBanned' | 'sessionVersion' | 'createdAt' | 'updatedAt'>,
+    ): User {
         const now = new Date();
 
         return new User({
             ...props,
             isBanned: false,
             deletedAt: null,
-            version: 0,
+            sessionVersion: 0,
             createdAt: now,
             updatedAt: now,
         });
     }
 
     /**
-     * Factory method to reconstitute an existing User from the database.
+     * Reconstitutes an existing User from its persisted state.
      *
-     * @param snapshot The persisted aggregate state, including the identity and deletion timestamp
+     * @param snapshot The persisted aggregate state
      * @returns The reconstituted aggregate
      */
     static reconstitute(snapshot: UserSnapshot): User {
@@ -76,8 +77,7 @@ export class User extends SoftDeletableAggregateRoot {
     }
 
     /**
-     * Creates a snapshot of the aggregate state for persistence: the module-owned props plus the
-     * identity and deletion timestamp owned by the aggregate-root bases.
+     * Returns the full aggregate state for persistence.
      */
     toSnapshot(): UserSnapshot {
         return {
@@ -128,7 +128,7 @@ export class User extends SoftDeletableAggregateRoot {
         this.assertNotDeleted(this.changePassword.name);
 
         this.props.password = password;
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(UserEvent.PASSWORD_CHANGED, this.id));
@@ -150,7 +150,7 @@ export class User extends SoftDeletableAggregateRoot {
         }
 
         this.props.isBanned = true;
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(UserEvent.BANNED, this.id));
@@ -193,7 +193,7 @@ export class User extends SoftDeletableAggregateRoot {
     revokeSessions() {
         this.assertNotDeleted(this.revokeSessions.name);
 
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(UserEvent.SESSIONS_REVOKED, this.id));
@@ -209,9 +209,10 @@ export class User extends SoftDeletableAggregateRoot {
         }
 
         const now = new Date();
+
         this.setDeletedAt(now);
         this.props.isBanned = true;
-        this.props.version++;
+        this.props.sessionVersion++;
         this.props.updatedAt = now;
 
         this.addDomainEvent(new DomainEvent(UserEvent.DELETED, this.id));
@@ -238,8 +239,8 @@ export class User extends SoftDeletableAggregateRoot {
     }
 
     /** The monotonic session-version counter. */
-    get version(): number {
-        return this.props.version;
+    get sessionVersion(): number {
+        return this.props.sessionVersion;
     }
 
     /** The creation timestamp. */

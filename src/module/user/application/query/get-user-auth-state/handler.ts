@@ -35,7 +35,7 @@ export class GetUserAuthStateQueryHandler implements IQueryHandler<GetUserAuthSt
     async execute(query: GetUserAuthStateQuery): Promise<GetUserAuthStateResult> {
         const result = await this.port.getAuthState(query.id);
 
-        if (result === null) {
+        if (!result) {
             throw new ResourceNotFoundException();
         }
 

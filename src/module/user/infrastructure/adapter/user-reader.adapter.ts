@@ -1,12 +1,12 @@
 /**
  * @file user-reader.adapter.ts
- * @description The Drizzle ORM implementation of the user reader ports. Handles data retrieval for queries, returning flat read-models directly.
+ * @description Drizzle implementation of every user query port.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, ilike, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
 import { type GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
 import { type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
@@ -22,8 +22,8 @@ import type { PaginationParams } from 'src/shared/pagination';
 import type { SearchParams } from 'src/shared/search';
 
 /**
- * Implements query-specific reader ports with direct SQL projection queries.
- * Never instantiates aggregate roots — maps rows straight to flat read-models.
+ * Implements the user query ports with direct projection queries: selects only each read-model's
+ * columns and maps rows straight to flat results, never through the aggregate.
  */
 @Injectable()
 export class UserReaderAdapter
@@ -35,9 +35,9 @@ export class UserReaderAdapter
         IGetUserSessionVersionPort
 {
     /**
-     * Initializes the user query repository with the database connection.
+     * Injects the database connection all reads run on.
      *
-     * @param db The PostgresJs database instance
+     * @param db The Drizzle database client
      */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
 
@@ -48,15 +48,19 @@ export class UserReaderAdapter
      * @returns The auth state, or null if not found
      */
     async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
-        const row = (
-            await this.db
-                .select({ isBanned: user.isBanned, version: user.version })
-                .from(user)
-                .where(and(eq(user.id, id), isNull(user.deletedAt)))
-                .limit(1)
-        )[0];
-
-        return row ?? null;
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ isBanned: user.isBanned, sessionVersion: user.sessionVersion })
+                        .from(user)
+                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -66,22 +70,24 @@ export class UserReaderAdapter
      * @returns The user read-model, or null if not found
      */
     async getById(id: string): Promise<GetUserByIdResult | null> {
-        const row = (
-            await this.db
-                .select({
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    isBanned: user.isBanned,
-                    createdAt: user.createdAt,
-                    updatedAt: user.updatedAt,
-                })
-                .from(user)
-                .where(and(eq(user.id, id), isNull(user.deletedAt)))
-                .limit(1)
-        )[0];
-
-        return row ?? null;
+        try {
+            return (
+                (
+                    await this.db
+                        .select({
+                            id: user.id,
+                            email: user.email,
+                            name: user.name,
+                            isBanned: user.isBanned,
+                        })
+                        .from(user)
+                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -91,20 +97,24 @@ export class UserReaderAdapter
      * @returns The minimal credential projection or null if not found
      */
     async getCredentialsByEmail(email: string): Promise<GetUserCredentialsByEmailResult | null> {
-        const row = (
-            await this.db
-                .select({
-                    id: user.id,
-                    password: user.password,
-                    isBanned: user.isBanned,
-                    version: user.version,
-                })
-                .from(user)
-                .where(and(eq(user.email, email), isNull(user.deletedAt)))
-                .limit(1)
-        )[0];
-
-        return row ?? null;
+        try {
+            return (
+                (
+                    await this.db
+                        .select({
+                            id: user.id,
+                            password: user.password,
+                            isBanned: user.isBanned,
+                            sessionVersion: user.sessionVersion,
+                        })
+                        .from(user)
+                        .where(and(eq(user.email, email), isNull(user.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -115,36 +125,36 @@ export class UserReaderAdapter
      * @returns Paginated list of users
      */
     async listUsers(params: SearchParams & PaginationParams): Promise<ListUsersResult> {
-        let conditions = isNull(user.deletedAt);
+        let searchFilter: SQL | undefined;
 
         if (params.search) {
-            const searchPattern = `%${params.search}%`,
-                searchFilter = or(ilike(user.name, searchPattern), ilike(user.email, searchPattern));
-
-            if (searchFilter) {
-                conditions = and(conditions, searchFilter)!;
-            }
+            const pattern = `%${params.search}%`;
+            searchFilter = or(ilike(user.name, pattern), ilike(user.email, pattern));
         }
 
-        const [data, countResult] = await Promise.all([
-            this.db
-                .select({
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    isBanned: user.isBanned,
-                    createdAt: user.createdAt,
-                    updatedAt: user.updatedAt,
-                })
-                .from(user)
-                .where(conditions)
-                .orderBy(desc(user.id))
-                .limit(params.limit)
-                .offset((params.page - 1) * params.limit),
-            this.db.select({ total: count() }).from(user).where(conditions),
-        ]);
+        const conditions = and(searchFilter, isNull(user.deletedAt));
 
-        return { data, total: countResult[0]?.total ?? 0 };
+        try {
+            const [data, countResult] = await Promise.all([
+                this.db
+                    .select({
+                        id: user.id,
+                        email: user.email,
+                        name: user.name,
+                        isBanned: user.isBanned,
+                    })
+                    .from(user)
+                    .where(conditions)
+                    .orderBy(desc(user.id))
+                    .limit(params.limit)
+                    .offset((params.page - 1) * params.limit),
+                this.db.select({ total: count() }).from(user).where(conditions),
+            ]);
+
+            return { data, total: countResult[0]?.total ?? 0 };
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 
     /**
@@ -156,8 +166,18 @@ export class UserReaderAdapter
      * @returns The session-version projection, or null if no row exists
      */
     async getSessionVersion(id: string): Promise<GetUserSessionVersionResult | null> {
-        const row = (await this.db.select({ version: user.version }).from(user).where(eq(user.id, id)).limit(1))[0];
-
-        return row ?? null;
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ sessionVersion: user.sessionVersion })
+                        .from(user)
+                        .where(eq(user.id, id))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 }

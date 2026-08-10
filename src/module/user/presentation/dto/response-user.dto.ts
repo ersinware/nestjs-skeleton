@@ -1,28 +1,28 @@
 /**
  * @file response-user.dto.ts
- * @description Defines the serialization schema for safely exposing user records to clients without leaking sensitive data like passwords or soft-delete timestamps.
+ * @description Response schema for user records.
  */
 
-import { ApiSchema } from '@nestjs/swagger';
+import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsEmailAddress, IsEntityId, IsPersonName } from 'src/core/http';
 
 /**
- * The secure serialization schema for a user profile.
- * Implements a strict whitelist approach (Exclude/Expose) to guarantee no internal fields leak.
+ * Whitelist-exposes the client-safe user fields; anything not exposed here — the password hash in
+ * particular — can never reach a client.
  */
 @Exclude()
 @ApiSchema({ name: 'ResponseUser', description: 'Standard user response schema.' })
 export class ResponseUserDto {
     /**
-     * The public-facing unique identifier of the user.
+     * The unique identifier of the user, used to address follow-up operations.
      */
     @Expose()
     @IsEntityId('The user ID')
     readonly id!: string;
 
     /**
-     * The verified email address of the user.
+     * The email address of the user.
      */
     @Expose()
     @IsEmailAddress()
@@ -34,4 +34,16 @@ export class ResponseUserDto {
     @Expose()
     @IsPersonName()
     readonly name!: string;
+
+    /**
+     * Whether the account is currently banned, so the back office can offer the matching
+     * ban/unban action.
+     */
+    @Expose()
+    @ApiProperty({
+        type: Boolean,
+        description: 'Whether the user account is currently banned',
+        example: false,
+    })
+    readonly isBanned!: boolean;
 }

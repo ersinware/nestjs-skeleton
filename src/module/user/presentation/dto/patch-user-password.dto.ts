@@ -1,6 +1,6 @@
 /**
  * @file patch-user-password.dto.ts
- * @description Defines the input validation schema for changing a user's password securely.
+ * @description Request schema for changing a user's password.
  */
 
 import { ApiSchema } from '@nestjs/swagger';
@@ -8,8 +8,7 @@ import { Exclude, Expose } from 'class-transformer';
 import { IsStrongPassword } from 'src/core/http';
 
 /**
- * The payload required to securely update a user's password.
- * Validates both the current and new passwords to ensure strength and authorize the change.
+ * Password-change payload: the current password authorizes the change, the new one replaces it.
  */
 @Exclude()
 @ApiSchema({ name: 'PatchUserPassword', description: 'Schema for changing user password' })

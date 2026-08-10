@@ -46,8 +46,6 @@ import { AdminRole } from 'src/shared/domain/admin';
 @ApiDefaultUnauthenticatedResponse()
 @ApiDefaultAccessDeniedResponse()
 @ApiDefaultInternalServerErrorResponse()
-// Class-level like the 500: the global AuthGuard reads the session store on every guarded route,
-// so any of them can answer 503 when it is unreachable.
 @ApiDefaultDependencyUnavailableResponse()
 export class AdminController {
     /**

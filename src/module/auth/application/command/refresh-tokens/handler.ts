@@ -111,11 +111,11 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
         // Version is read from the DB (the authority), so a ban/password-change/delete that advanced
         // the version rejects the refresh before it can mint a fresh token.
-        if (payload.version < identity.version) {
+        if (payload.sessionVersion < identity.sessionVersion) {
             throw new UnauthenticatedException();
         }
 
-        const tokens = await this.tokenPort.generateTokens(role, sub, identity.version),
+        const tokens = await this.tokenPort.generateTokens(role, sub, identity.sessionVersion),
             // Single atomic rotation is both the single-use gate and the classifier (see RotateOutcome). The
             // old session's grace tombstone lets a lost concurrent-refresh race be told apart from a token
             // replayed after that window — the refresh-token reuse signal (RFC 9700) — so no separate pre-read

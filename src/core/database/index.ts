@@ -4,7 +4,7 @@
  */
 
 export { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
-export { isUniqueViolation } from 'src/core/database/driver-error.util';
+export { isUniqueViolation, translateConnectionFailure } from 'src/core/database/driver-error.util';
 export { DatabaseModule } from 'src/core/database/module';
 export { TOKEN_DATABASE_CLEANER_PORT, type IDatabaseCleanerPort } from 'src/core/database/port/database-cleaner.port';
 export { TOKEN_DATABASE_HEALTH_PORT, type IDatabaseHealthPort } from 'src/core/database/port/database-health.port';

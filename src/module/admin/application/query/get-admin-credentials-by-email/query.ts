@@ -30,5 +30,5 @@ export type GetAdminCredentialsByEmailResult = {
     password: string;
     role: AdminRole;
     isBanned: boolean;
-    version: number;
+    sessionVersion: number;
 };

@@ -17,7 +17,7 @@ export type AccessTokenPayload = {
     role: AuthRole;
 
     /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
-    version: number;
+    sessionVersion: number;
 
     /** Discriminator rejecting a refresh token presented as an access token. */
     type: AuthTokenType.ACCESS;

@@ -8,6 +8,9 @@
  * and one RESTORED entry per episode.
  */
 export enum ConnectionLogMessage {
+    /** The outage began — logged as `warn` with the driver error, once per episode. */
     LOST = 'Connection lost.',
+
+    /** The outage ended — logged as `info`, once per episode. */
     RESTORED = 'Connection restored.',
 }

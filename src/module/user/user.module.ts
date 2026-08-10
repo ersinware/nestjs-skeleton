@@ -1,6 +1,6 @@
 /**
  * @file user.module.ts
- * @description Configures the user domain of the application, binding the REST controllers, business services, and database repositories required for user management.
+ * @description NestJS wiring of the user bounded context.
  */
 
 import { Module } from '@nestjs/common';
@@ -22,8 +22,8 @@ import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/co
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
 import { UserCacheListener } from 'src/module/user/application/event/user-cache.listener';
-import { UserReuseListener } from 'src/module/user/application/event/user-reuse.listener';
 import { UserSessionListener } from 'src/module/user/application/event/user-session.listener';
+import { UserTokenReuseListener } from 'src/module/user/application/event/user-token-reuse.listener';
 import { GetUserAuthStateQueryHandler } from 'src/module/user/application/query/get-user-auth-state/handler';
 import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
@@ -39,9 +39,8 @@ import { UserController } from 'src/module/user/presentation/controller/user.con
 import { UserFacade } from 'src/module/user/user.facade';
 
 /**
- * The module responsible for orchestrating user-related operations.
- * Registers both the write repository (aggregate-based) and the read/query repository (projection-based),
- * and exposes the UserFacade for cross-domain usage.
+ * Wires the user bounded context: binds every port token to its adapter, registers the handlers and
+ * listeners, and exports only the facade — the sole surface other modules may consume.
  */
 @Module({
     imports: [
@@ -70,7 +69,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         GetUserCredentialsByEmailQueryHandler,
         GetUserAuthStateQueryHandler,
         UserCacheListener,
-        UserReuseListener,
+        UserTokenReuseListener,
         UserSessionListener,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
         { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },
