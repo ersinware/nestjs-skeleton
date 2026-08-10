@@ -18,7 +18,10 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * Returns the minimal credential projection for a user by email address.
  */
 @QueryHandler(GetUserCredentialsByEmailQuery)
-export class GetUserCredentialsByEmailQueryHandler implements IQueryHandler<GetUserCredentialsByEmailQuery> {
+export class GetUserCredentialsByEmailQueryHandler implements IQueryHandler<
+    GetUserCredentialsByEmailQuery,
+    GetUserCredentialsByEmailResult
+> {
     /**
      * Initializes the handler with the required port.
      *

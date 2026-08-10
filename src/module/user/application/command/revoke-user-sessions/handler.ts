@@ -21,7 +21,7 @@ import { RevokeUserSessionsCommand } from 'src/module/user/application/command/r
  * Revokes all of a user's sessions after refresh-token reuse and emails the account owner a security notice.
  */
 @CommandHandler(RevokeUserSessionsCommand)
-export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeUserSessionsCommand> {
+export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeUserSessionsCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -52,30 +52,20 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
 
         user.revokeSessions();
 
-        // Ordered by what each step costs if it fails, strongest guarantee first.
-        //
-        // The save is the actual security outcome: the bumped version lives in the DB, which is the
-        // authority every later refresh is checked against. The audit record comes next, while the
-        // fact is established and nothing that can throw has run yet.
-        //
-        // The email used to sit between them. A transient Gmail failure therefore threw before the
-        // version ever reached Redis, and — because this handler runs under a listener registered
-        // with `suppressErrors: false` — the error was swallowed by the emitter's caller. The net
-        // result was no email, no eviction, and no trace of either.
+        // The save is the security outcome: the bumped version lives in the DB, which is the
+        // authority every later refresh is checked against. The audit record follows while the fact
+        // is established.
         await this.userWriterPort.save(user);
 
         this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: command.id });
 
-        // Best-effort instant eviction, deliberately guarded: the DB version already denies the next
-        // refresh, so Redis being unreachable delays the cut-off rather than defeating it.
-        try {
-            await this.sessionPort.setVersion(command.id, user.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so Redis being unreachable delays the cut-off rather than defeating it. The catch
+        // only stops an unhandled rejection.
+        this.sessionPort.setVersion(command.id, user.version).catch(() => {});
 
-        // Last and unguarded: everything that must not be lost is already durable, so a failure here
-        // is free to surface.
+        // Last: everything that must not be lost is already durable, so a failure here is free to
+        // surface.
         await this.emailerPort.sendEmail(this.buildSecurityEmail(user.email, user.name));
     }
 

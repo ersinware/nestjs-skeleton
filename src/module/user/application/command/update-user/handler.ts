@@ -17,7 +17,7 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * Updates profile fields on an existing user.
  */
 @CommandHandler(UpdateUserCommand)
-export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserCommand> {
+export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *

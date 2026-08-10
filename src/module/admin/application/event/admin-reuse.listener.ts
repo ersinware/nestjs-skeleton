@@ -1,41 +1,35 @@
 /**
  * @file admin-reuse.listener.ts
- * @description In-process listener that reacts to auth's refresh-token-reuse integration event by
- * dispatching the command that revokes the admin's sessions and warns the account owner.
+ * @description Listener that reacts to auth's refresh-token-reuse event by dispatching session revocation.
  */
 
 import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
 import { CommandPipeline } from 'src/core/cqrs';
+import { OnAppEvent } from 'src/core/event-bus';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
 
 /**
- * Bridges auth's `admin.refresh_reuse_detected` integration event to the admin module's session-revocation
- * command. Kept thin: it only forwards the ids; idempotency and the actual work live in the command handler.
+ * Bridges auth's refresh-token-reuse integration event to the session-revocation command. Kept thin:
+ * it only forwards the id; the actual work and its idempotency live in the command handler.
  */
 @Injectable()
 export class AdminReuseListener {
     /**
-     * Injects the command pipeline used to dispatch the revocation command.
+     * Injects the pipeline the listener dispatches its command through.
      *
-     * @param commandPipeline The CQRS command pipeline.
+     * @param commandPipeline The CQRS command pipeline
      */
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Dispatches session revocation when auth reports refresh-token reuse for an admin. The unique event
-     * id is forwarded as the email idempotency key so an at-least-once redelivery yields a single email.
+     * Dispatches session revocation when auth reports refresh-token reuse for an admin.
      *
-     * `suppressErrors: false` is load-bearing: the library default is `true`, which catches a thrown
-     * error and only logs it, letting `emitAsync` resolve — the revocation would then be skipped
-     * silently. With it set, the failure surfaces to the emitting caller.
-     *
-     * @param event The dispatched integration event carrying the admin id and the unique event id.
+     * @param event The event carrying the admin id
      */
-    @OnEvent(AdminIntegrationEvent.REFRESH_REUSE_DETECTED, { suppressErrors: false })
+    @OnAppEvent(AdminIntegrationEvent.REFRESH_REUSE_DETECTED)
     async handleRefreshReuseDetected(event: DispatchedDomainEvent) {
-        await this.commandPipeline.execute(new RevokeAdminSessionsCommand(event.aggregateId, event.eventId));
+        await this.commandPipeline.execute(new RevokeAdminSessionsCommand(event.aggregateId));
     }
 }

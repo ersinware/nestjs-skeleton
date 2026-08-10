@@ -60,7 +60,7 @@ export const user = userSchema.table(
         ...aggregateTimestamps,
     },
     (table) => [
-        index('users_id_deleted_at_idx')
+        index('users_id_live_idx')
             .on(table.id)
             .where(sql`deleted_at IS NULL`),
     ],

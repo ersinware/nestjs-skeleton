@@ -9,7 +9,7 @@ import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
  * Command to softly delete an existing user. Invalidating: a soft delete removes the account from
- * every read, so it evicts both the public profile projection and the auth-state read.
+ * every read, so it evicts the public profile projection.
  */
 export class DeleteUserCommand extends Command<void> implements ICacheInvalidatingCommand {
     /**
@@ -22,11 +22,11 @@ export class DeleteUserCommand extends Command<void> implements ICacheInvalidati
     }
 
     /**
-     * The cache keys this deletion evicts: the user's profile projection and auth-state.
+     * The cache key this deletion evicts: the user's profile projection.
      *
      * @returns The cache keys to evict on success
      */
     invalidatedKeys(): string[] {
-        return [CacheKeys.userById(this.id), CacheKeys.userAuthState(this.id)];
+        return [CacheKeys.userById(this.id)];
     }
 }

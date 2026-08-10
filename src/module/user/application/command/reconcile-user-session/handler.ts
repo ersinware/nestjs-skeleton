@@ -10,9 +10,9 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { ReconcileUserSessionCommand } from 'src/module/user/application/command/reconcile-user-session/command';
 import {
-    TOKEN_GET_USER_ACCESS_PROJECTION_PORT,
-    type IGetUserAccessProjectionPort,
-} from 'src/module/user/application/query/get-user-access-projection/port';
+    TOKEN_GET_USER_SESSION_VERSION_PORT,
+    type IGetUserSessionVersionPort,
+} from 'src/module/user/application/query/get-user-session-version/port';
 
 /**
  * Pushes the user's current DB session version into Redis. Reading the version from the database makes
@@ -21,17 +21,17 @@ import {
  * database (CLAUDE.md §8). Reads run on the handler's own port, never the QueryBus.
  */
 @CommandHandler(ReconcileUserSessionCommand)
-export class ReconcileUserSessionCommandHandler implements ICommandHandler<ReconcileUserSessionCommand> {
+export class ReconcileUserSessionCommandHandler implements ICommandHandler<ReconcileUserSessionCommand, void> {
     /**
-     * Initializes the handler with the session and access-projection ports.
+     * Initializes the handler with the session and session-version ports.
      *
      * @param sessionPort The service managing the session version in Redis.
-     * @param accessProjectionPort The query port that reads the user's session version, including soft-deleted rows.
+     * @param sessionVersionPort The query port that reads the user's session version, including soft-deleted rows.
      */
     constructor(
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_GET_USER_ACCESS_PROJECTION_PORT)
-        private readonly accessProjectionPort: IGetUserAccessProjectionPort,
+        @Inject(TOKEN_GET_USER_SESSION_VERSION_PORT)
+        private readonly sessionVersionPort: IGetUserSessionVersionPort,
     ) {}
 
     /**
@@ -40,13 +40,13 @@ export class ReconcileUserSessionCommandHandler implements ICommandHandler<Recon
      * @param command The command payload carrying the user id.
      */
     async execute(command: ReconcileUserSessionCommand) {
-        const projection = await this.accessProjectionPort.getAccessProjection(command.id);
+        const sessionVersion = await this.sessionVersionPort.getSessionVersion(command.id);
 
         // A missing row means the account never existed — nothing to reconcile.
-        if (!projection) {
+        if (!sessionVersion) {
             return;
         }
 
-        await this.sessionPort.setVersion(command.id, projection.version);
+        await this.sessionPort.setVersion(command.id, sessionVersion.version);
     }
 }

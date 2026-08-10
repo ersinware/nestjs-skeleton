@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the BanAdminCommand by banning the admin account, preventing bans on super-admins.
+ * @description Handler for BanAdminCommand.
  */
 
 import { Inject } from '@nestjs/common';
@@ -16,11 +16,10 @@ import { AdminRole } from 'src/shared/domain/admin';
 import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Handler for the BanAdminCommand.
- * Bans the admin account while enforcing authorization rules, revoking all of its active sessions.
+ * Bans the admin account and revokes all of its active sessions. Super-admins cannot be banned.
  */
 @CommandHandler(BanAdminCommand)
-export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand> {
+export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -35,11 +34,11 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand> 
     ) {}
 
     /**
-     * Executes the ban admin command.
+     * Executes the ban.
      *
-     * @param command The ban admin command parameters
+     * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
-     * @throws {AccessDeniedException} When attempting to ban a super administrator.
+     * @throws {AccessDeniedException} When the target is a super-admin.
      */
     async execute(command: BanAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -52,27 +51,17 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand> 
             throw new AccessDeniedException();
         }
 
-        // `ban()` is a silent no-op on an already-banned account and reports whether it actually
-        // transitioned. On a no-op there is nothing to persist, audit, or evict: re-writing identical
-        // values and re-pushing the eviction would be pure noise — and because the setVersion failure
-        // below is swallowed and silent, "re-ban to retry a lost eviction" was never an actionable
-        // path anyway; a real ban stays effective within one access-token TTL regardless, since
-        // refresh is refused for a banned identity.
+        // On an already-banned account `ban()` is a no-op: nothing changed, so there is nothing to
+        // persist, audit, or evict.
         if (!admin.ban()) {
             return;
         }
 
         await this.adminWriterPort.save(admin);
+        this.auditPort.record({ action: AuditAction.ADMIN_BANNED, targetId: admin.id });
 
-        // Recorded once the write is durable, and before the best-effort eviction below: the ban is
-        // already a fact at this point, and an unreachable Redis must not cost the trail its only
-        // evidence of who imposed it. The actor comes from the ambient audit context, not from here.
-        this.auditPort.record({ action: AuditAction.ADMIN_BANNED, targetId: command.id });
-
-        try {
-            await this.sessionPort.setVersion(command.id, admin.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
+        this.sessionPort.setVersion(admin.id, admin.version).catch(() => {});
     }
 }

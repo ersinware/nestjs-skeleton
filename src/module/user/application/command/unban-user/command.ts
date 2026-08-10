@@ -9,7 +9,7 @@ import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
  * Command to unban a user account. Invalidating: lifting a ban flips the account's ban status, so it
- * evicts both the public profile projection and the auth-state read the guards consult.
+ * evicts the public profile projection.
  */
 export class UnbanUserCommand extends Command<void> implements ICacheInvalidatingCommand {
     /**
@@ -22,11 +22,11 @@ export class UnbanUserCommand extends Command<void> implements ICacheInvalidatin
     }
 
     /**
-     * The cache keys this unban evicts: the user's profile projection and auth-state.
+     * The cache key this unban evicts: the user's profile projection.
      *
      * @returns The cache keys to evict on success
      */
     invalidatedKeys(): string[] {
-        return [CacheKeys.userById(this.id), CacheKeys.userAuthState(this.id)];
+        return [CacheKeys.userById(this.id)];
     }
 }

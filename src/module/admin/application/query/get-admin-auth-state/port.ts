@@ -15,10 +15,10 @@ export const TOKEN_GET_ADMIN_AUTH_STATE_PORT = Symbol('TOKEN_GET_ADMIN_AUTH_STAT
  */
 export interface IGetAdminAuthStatePort {
     /**
-     * Reads an admin's authentication state (active status + session version) by their unique identifier.
+     * Reads an admin's authentication state by their unique identifier.
      *
      * @param id The unique identifier of the target admin
-     * @returns The authentication state, or null if no admin is found
+     * @returns The authentication state, or null when no non-deleted admin exists
      */
     getAuthState(id: string): Promise<GetAdminAuthStateResult | null>;
 }

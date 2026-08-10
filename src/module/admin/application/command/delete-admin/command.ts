@@ -1,17 +1,14 @@
 /**
  * @file command.ts
- * @description Defines the command to soft-delete an administrator account.
+ * @description Command that soft-deletes an admin account.
  */
 
 import { Command } from '@nestjs/cqrs';
-import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
-import { CacheKeys } from 'src/module/admin/application/admin-cache-key.util';
 
 /**
- * Command payload to initiate the deletion of an admin account by ID. Invalidating: a soft delete
- * removes the account from every read, so it evicts the auth-state read.
+ * Soft-deletes an admin account.
  */
-export class DeleteAdminCommand extends Command<void> implements ICacheInvalidatingCommand {
+export class DeleteAdminCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
@@ -19,14 +16,5 @@ export class DeleteAdminCommand extends Command<void> implements ICacheInvalidat
      */
     constructor(readonly id: string) {
         super();
-    }
-
-    /**
-     * The cache key this deletion evicts: the admin's auth-state.
-     *
-     * @returns The cache keys to evict on success
-     */
-    invalidatedKeys(): string[] {
-        return [CacheKeys.adminAuthState(this.id)];
     }
 }

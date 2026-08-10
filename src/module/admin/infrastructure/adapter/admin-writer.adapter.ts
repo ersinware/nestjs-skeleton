@@ -1,6 +1,6 @@
 /**
  * @file admin-writer.adapter.ts
- * @description The Drizzle ORM implementation of the admins repository interface. Handles mapping between domain and database models.
+ * @description Drizzle implementation of the admin writer port.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -16,43 +16,27 @@ import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/e
 import { uuidv7 } from 'uuidv7';
 
 /**
- * Drizzle ORM implementation of the IAdminWriterPort.
- * Handles persistence and reconstitution of the Admin aggregate root.
+ * Persists and reconstitutes the Admin aggregate, translating driver errors at the port boundary
+ * and dispatching the aggregate's domain events after the write.
  */
 @Injectable()
 export class AdminWriterAdapter implements IAdminWriterPort {
     /**
-     * Initializes the admin repository with the database connection.
+     * Injects the database connection and the event publisher.
      *
-     * @param db The PostgresJs database instance
-     * @param eventPublisherPort The in-process bus the aggregate's domain events are dispatched on
+     * @param db The Drizzle database client
+     * @param eventPublisherPort The port the aggregate's domain events are dispatched through
      */
     constructor(
-        @Inject(TOKEN_DATABASE_CLIENT) readonly db: PostgresJsDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase,
         @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
     ) {}
 
     /**
-     * Maps a database row to the Admin aggregate root.
-     */
-    private mapToDomain(row: InferSelectModel<typeof adminSchema>): Admin {
-        return Admin.reconstitute(row.id, row.deletedAt, {
-            email: row.email,
-            name: row.name,
-            password: row.password,
-            role: row.role,
-            isBanned: row.isBanned,
-            version: row.version,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-        });
-    }
-
-    /**
-     * Loads a specific admin aggregate by its unique identifier for mutation.
+     * Loads an admin aggregate for mutation.
      *
      * @param id The unique identifier of the target admin
-     * @returns The admin aggregate root, or null if no active admin is found
+     * @returns The aggregate, or null when no non-deleted admin exists
      */
     async load(id: string): Promise<Admin | null> {
         const row = (
@@ -67,10 +51,9 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Saves an Admin aggregate to the database, then dispatches the domain events it accumulated.
+     * Upserts the aggregate's snapshot, then dispatches the domain events it accumulated.
      *
-     * @param admin The Admin aggregate root to save
-     * @throws {ResourceConflictException} if the email address is already taken
+     * @param admin The aggregate to save
      */
     async save(admin: Admin) {
         const payload = admin.toSnapshot();
@@ -101,18 +84,32 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Pulls the aggregate's accumulated domain events and dispatches them on the in-process bus.
-     * Emitted after the row is written so a listener that re-reads the admin observes the new state.
-     *
-     * Dispatch is fire-and-forget: the write is the caller's contract, so a failing listener must not
-     * fail the command that already persisted the row. A rejected dispatch is swallowed; the flows
-     * that matter reconcile through authoritative reads (refresh reads the version from the DB).
+     * Maps a database row to the Admin aggregate root.
+     */
+    private mapToDomain(row: InferSelectModel<typeof adminSchema>): Admin {
+        return Admin.reconstitute({
+            id: row.id,
+            email: row.email,
+            name: row.name,
+            password: row.password,
+            role: row.role,
+            isBanned: row.isBanned,
+            deletedAt: row.deletedAt,
+            version: row.version,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+        });
+    }
+
+    /**
+     * Dispatches the aggregate's accumulated domain events, after the row is written so a listener
+     * that re-reads the admin observes the new state. Fire-and-forget: a failing listener must not
+     * fail the command that already persisted the row.
      *
      * @param admin The aggregate whose domain events are dispatched
      */
     private publishDomainEvents(admin: Admin) {
         for (const event of admin.pullDomainEvents()) {
-            // The catch only stops an unhandled rejection from crashing the process.
             this.eventPublisherPort
                 .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
                 .catch(() => {});

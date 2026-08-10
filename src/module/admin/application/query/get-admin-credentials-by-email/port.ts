@@ -15,10 +15,10 @@ export const TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT = Symbol('TOKEN_GET_ADMIN
  */
 export interface IGetAdminCredentialsByEmailPort {
     /**
-     * Retrieves credential fields for a non-deleted admin by email.
+     * Reads an admin's credential read-model by email.
      *
-     * @param email The exact email address to query
-     * @returns The credentials read model or null if not found
+     * @param email The exact email address to look up
+     * @returns The credentials, or null when no non-deleted admin exists
      */
     getCredentialsByEmail(email: string): Promise<GetAdminCredentialsByEmailResult | null>;
 }

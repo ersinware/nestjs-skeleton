@@ -1,6 +1,6 @@
 /**
  * @file admin-writer.port.ts
- * @description Outbound port for Admin commands. Defines the contract for the infrastructure layer to persist the Admin aggregate.
+ * @description Outbound port for loading and persisting the Admin aggregate, shared by all admin commands.
  */
 
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
@@ -15,20 +15,18 @@ export const TOKEN_ADMIN_WRITER_PORT = Symbol('TOKEN_ADMIN_WRITER_PORT');
  */
 export interface IAdminWriterPort {
     /**
-     * Loads a specific admin aggregate by its unique identifier for mutation.
+     * Loads an admin aggregate for mutation.
      *
      * @param id The unique identifier of the target admin
-     * @returns The admin aggregate root, or null if no active admin is found
+     * @returns The aggregate, or null when no non-deleted admin exists
      */
     load(id: string): Promise<Admin | null>;
 
     /**
-     * Saves an Admin aggregate to the database.
-     * This handles both insertion and updating, and should dispatch/store any domain events attached to the aggregate.
+     * Persists the aggregate (insert or update), then dispatches the domain events it accumulated.
      *
-     * @param admin The Admin aggregate root to save.
-     * @throws {ResourceConflictException} When the email is already in use — the unique violation
-     * translated at the port boundary.
+     * @param admin The aggregate to save
+     * @throws {ResourceConflictException} When the email address is already in use.
      */
-    save(admin: Admin, tx?: unknown): Promise<void>;
+    save(admin: Admin): Promise<void>;
 }

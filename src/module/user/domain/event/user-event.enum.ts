@@ -9,5 +9,5 @@ export enum UserEvent {
     BANNED = 'user.banned',
     UNBANNED = 'user.unbanned',
     DELETED = 'user.deleted',
-    SESSION_REUSE_REVOKED = 'user.session_reuse_revoked',
+    SESSIONS_REVOKED = 'user.sessions_revoked',
 }

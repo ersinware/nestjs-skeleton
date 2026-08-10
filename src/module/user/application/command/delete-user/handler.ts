@@ -18,7 +18,7 @@ import { ResourceNotFoundException } from 'src/shared/exception';
  * Marks a user account as deleted.
  */
 @CommandHandler(DeleteUserCommand)
-export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserCommand> {
+export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -53,10 +53,8 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
         // reachable only from the self-scoped route, where the subject is the actor already on record.
         this.auditPort.record({ action: AuditAction.USER_DELETED });
 
-        try {
-            await this.sessionPort.setVersion(command.id, user.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
+        this.sessionPort.setVersion(command.id, user.version).catch(() => {});
     }
 }

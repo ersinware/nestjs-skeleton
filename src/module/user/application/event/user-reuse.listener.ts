@@ -5,8 +5,8 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
 import { CommandPipeline } from 'src/core/cqrs';
+import { OnAppEvent } from 'src/core/event-bus';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 import { UserIntegrationEvent } from 'src/shared/domain/user';
@@ -25,17 +25,12 @@ export class UserReuseListener {
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Dispatches session revocation when auth reports refresh-token reuse for a user. The unique event id
-     * is forwarded as the email idempotency key so an at-least-once redelivery yields a single email.
+     * Dispatches session revocation when auth reports refresh-token reuse for a user.
      *
-     * `suppressErrors: false` is load-bearing: the library default is `true`, which catches a thrown
-     * error and only logs it, letting `emitAsync` resolve — the revocation would then be skipped
-     * silently. With it set, the failure surfaces to the emitting caller.
-     *
-     * @param event The dispatched integration event carrying the user id and the unique event id.
+     * @param event The dispatched integration event carrying the user id.
      */
-    @OnEvent(UserIntegrationEvent.REFRESH_REUSE_DETECTED, { suppressErrors: false })
+    @OnAppEvent(UserIntegrationEvent.REFRESH_REUSE_DETECTED)
     async handleRefreshReuseDetected(event: DispatchedDomainEvent) {
-        await this.commandPipeline.execute(new RevokeUserSessionsCommand(event.aggregateId, event.eventId));
+        await this.commandPipeline.execute(new RevokeUserSessionsCommand(event.aggregateId));
     }
 }

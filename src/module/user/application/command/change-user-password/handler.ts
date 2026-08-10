@@ -22,7 +22,7 @@ import { InvalidInputException, ResourceNotFoundException } from 'src/shared/exc
  * Changes the password for an existing user account.
  */
 @CommandHandler(ChangeUserPasswordCommand)
-export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeUserPasswordCommand> {
+export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeUserPasswordCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -76,10 +76,8 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
 
         // A password change bumps the session version for a permanent cut-off of every token minted
         // before it.
-        try {
-            await this.sessionPort.setVersion(id, user.version);
-        } catch {
-            // Best-effort instant eviction.
-        }
+        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
+        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
+        this.sessionPort.setVersion(id, user.version).catch(() => {});
     }
 }

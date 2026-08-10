@@ -1,15 +1,14 @@
 /**
  * @file command.ts
- * @description Defines the ReconcileAdminSessionCommand, dispatched when an admin's access-relevant
- * state changes so the module can push the current DB session version into Redis.
+ * @description Command that reconciles an admin's Redis session version with the database.
  */
 
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Command to reconcile an admin's Redis session version with the database. Deriving the version from
- * the re-readable database (rather than the triggering event) makes the outcome converge under
- * duplicate, out-of-order, and concurrent delivery regardless of the event verb.
+ * Reconciles an admin's Redis session version with the database. Carries only the id: the handler
+ * re-reads the version from the DB, so the outcome converges under duplicate, out-of-order, and
+ * concurrent delivery regardless of the triggering event.
  */
 export class ReconcileAdminSessionCommand extends Command<void> {
     /**

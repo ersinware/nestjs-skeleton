@@ -1,15 +1,14 @@
 /**
  * @file admin-event.enum.ts
- * @description Enumeration for admin domain events.
+ * @description Domain-event names emitted by the Admin aggregate.
  */
 
 /**
- * Enumeration of domain events related to the Admin aggregate.
+ * Domain events the Admin aggregate emits, keyed by the on-bus event name.
  */
 export enum AdminEvent {
-    CREATED = 'admin.created',
     DELETED = 'admin.deleted',
     BANNED = 'admin.banned',
     UNBANNED = 'admin.unbanned',
-    SESSION_REUSE_REVOKED = 'admin.session_reuse_revoked',
+    SESSIONS_REVOKED = 'admin.sessions_revoked',
 }

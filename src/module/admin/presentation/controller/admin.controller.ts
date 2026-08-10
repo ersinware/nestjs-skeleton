@@ -1,6 +1,6 @@
 /**
  * @file admin.controller.ts
- * @description Exposes HTTP endpoints for managing administrative accounts. This controller is strictly protected and only accessible to super admins, ensuring that critical operations like creating or deactivating administrators remain secure.
+ * @description HTTP endpoints for managing admin accounts, restricted to super-admins.
  */
 
 import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
@@ -33,8 +33,8 @@ import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-adm
 import { AdminRole } from 'src/shared/domain/admin';
 
 /**
- * The controller handling admin management endpoints.
- * Provides routes for creating, deleting, listing, and updating the status of administrative users.
+ * Admin management endpoints: listing, soft-deleting, banning, and unbanning admin accounts.
+ * Every route requires the super-admin role.
  */
 @Controller({
     path: 'admin',
@@ -51,10 +51,10 @@ import { AdminRole } from 'src/shared/domain/admin';
 @ApiDefaultDependencyUnavailableResponse()
 export class AdminController {
     /**
-     * Initializes the controller with the command and query pipelines.
+     * Injects the pipelines the controller dispatches through.
      *
-     * @param commandPipeline The CQRS command pipeline (invalidation behavior applies)
-     * @param queryPipeline The CQRS query pipeline (caching behavior applies)
+     * @param commandPipeline The CQRS command pipeline
+     * @param queryPipeline The CQRS query pipeline
      */
     constructor(
         private readonly commandPipeline: CommandPipeline,
@@ -62,11 +62,10 @@ export class AdminController {
     ) {}
 
     /**
-     * Retrieves all admins with pagination capabilities.
-     * Useful for displaying a list of administrative users in a back-office dashboard. Requires super-administrator authorization.
+     * Lists admin accounts with pagination.
      *
-     * @param query The query string parameters used for pagination
-     * @returns A paginated response containing a list of administrator profiles
+     * @param query The pagination query parameters
+     * @returns The paginated list of admin profiles
      */
     @Get()
     @ApiOperation({
@@ -87,10 +86,10 @@ export class AdminController {
     }
 
     /**
-     * Deletes an admin account from the system.
-     * Hard deletion is not performed; instead, it soft deletes the record. Super admins cannot be deleted to prevent locking out the system. Requires super-administrator authorization.
+     * Soft-deletes an admin account. Super-admins cannot be deleted, so the system can never lock
+     * itself out.
      *
-     * @param params The URL path parameters containing the target admin ID
+     * @param params The path parameters carrying the target admin ID
      */
     @Delete(ROUTE_PARAM_ID)
     @HttpCode(HttpStatus.NO_CONTENT)
@@ -106,10 +105,9 @@ export class AdminController {
     }
 
     /**
-     * Bans an admin account.
-     * All current sessions belonging to the admin are immediately revoked. Super admins cannot be banned. Requires super-administrator authorization.
+     * Bans an admin account and revokes all of its active sessions. Super-admins cannot be banned.
      *
-     * @param params The URL path parameters containing the target admin ID
+     * @param params The path parameters carrying the target admin ID
      */
     @Post(`${ROUTE_PARAM_ID}/ban`)
     @HttpCode(HttpStatus.NO_CONTENT)
@@ -126,10 +124,9 @@ export class AdminController {
     }
 
     /**
-     * Unbans an admin account.
-     * Super admins cannot be modified. Requires super-administrator authorization.
+     * Lifts the ban on an admin account. Super-admins cannot be modified.
      *
-     * @param params The URL path parameters containing the target admin ID
+     * @param params The path parameters carrying the target admin ID
      */
     @Post(`${ROUTE_PARAM_ID}/unban`)
     @HttpCode(HttpStatus.NO_CONTENT)
