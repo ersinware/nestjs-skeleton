@@ -1,5 +1,5 @@
 {
-    // Fail the build on `high` and `critical` advisories (equivalent to the old `--high` flag).
+    // Fail the build on `high` and `critical` advisories.
     "high": true,
 
     // Allowlisted advisories. Every entry MUST have a corresponding note in docs/issue/.

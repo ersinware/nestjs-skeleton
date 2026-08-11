@@ -2,9 +2,9 @@ import 'reflect-metadata'; // Must be first to support class-validator decorator
 
 import { defineConfig } from 'drizzle-kit';
 import fs from 'fs';
-import { ENV, Environment } from './src/core/config';
+import { ENV, resolveEnvFilePath } from './src/core/config';
 
-const envFile = process.env[ENV.NODE_ENV] === Environment.TEST ? '.env.test' : '.env';
+const envFile = resolveEnvFilePath();
 if (fs.existsSync(envFile)) {
     process.loadEnvFile(envFile);
 }
@@ -14,6 +14,7 @@ if (!databaseUrl) {
     throw new Error(`${ENV.DATABASE_URL} environment variable is not defined.`);
 }
 
+// Outside a container the Compose hostname `postgres` does not resolve; fall back to the host port.
 if (!fs.existsSync('/.dockerenv') && databaseUrl.includes('@postgres:')) {
     databaseUrl = databaseUrl.replace('@postgres:', '@127.0.0.1:');
 }

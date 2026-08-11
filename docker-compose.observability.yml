@@ -1,11 +1,10 @@
-# Observability stack — metrics, traces and logs. Optional at every moment: nothing here is needed
-# for the API to serve a request, and the app stack starts, runs and passes its health probes with
-# this whole file down.
+# Observability stack — metrics, traces and logs. Optional: the API serves requests and passes its
+# health probes with this whole file down.
 #
-# Run under its OWN Compose project (`npm run docker:obs:*` passes -p) so that `docker compose down`
-# on the app stack cannot stop or recreate these nine containers. The link between the two stacks is
-# the external `api-network` alone — that is how the exporters reach `postgres`/`redis-*` and how the
-# API reaches `otel-collector` by hostname.
+# Runs as its OWN Compose project (`npm run docker:obs:*` passes -p) so `docker compose down` on the
+# app stack cannot stop or recreate these containers. The only link between the stacks is the
+# external `api-network` bridge — how the exporters reach `postgres`/`redis-*` and how the API
+# reaches `otel-collector` by hostname.
 services:
     prometheus:
         image: prom/prometheus:latest@sha256:a75c5a35bc21d7afe69551eefa3cb1e1fb1775fe759408007a66b54ec3de1f29
@@ -13,7 +12,7 @@ services:
         ports:
             - '4319:4318' # OTLP HTTP receiver (mapped to 4319 to avoid conflict with Jaeger on host)
         volumes:
-            - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+            - ./docker/prometheus/config.yml:/etc/prometheus/prometheus.yml
         command:
             - '--config.file=/etc/prometheus/prometheus.yml'
             - '--storage.tsdb.path=/prometheus'
@@ -59,7 +58,7 @@ services:
         image: grafana/promtail:3.4.2@sha256:c6e9a987ca086cbfef945b8ebd708eb09f98b5e78bfb659e4e5a8b3bd604d11b
         container_name: promtail
         volumes:
-            - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml
+            - ./docker/promtail/config.yml:/etc/promtail/config.yml
             - /var/run/docker.sock:/var/run/docker.sock:ro
             # NOTE: This path is native to Linux hosts. On macOS/Windows (Docker Desktop), the host does not
             # have this directory, so it will mount as an empty folder. Promtail will start but Loki won't receive logs.
@@ -83,8 +82,6 @@ services:
         networks:
             - api-network
 
-    # The three exporters belong to THIS stack, not the app stack: they exist only to be scraped by
-    # Prometheus, so with observability down they would be nine idle processes watching nobody.
     postgres-exporter:
         image: prometheuscommunity/postgres-exporter:v0.17.1@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
         container_name: postgres-exporter

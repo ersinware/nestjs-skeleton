@@ -1,35 +1,28 @@
-# Grafana provisioning API version
 apiVersion: 1
 
-# List of Grafana data sources to configure on startup
 datasources:
-    # 1. Prometheus: Default data source for monitoring application and infrastructure performance metrics
     - name: Prometheus
       type: prometheus
       uid: Prometheus
       url: http://prometheus:9090
       isDefault: true
 
-    # 2. Loki: Log aggregation engine for aggregating container logs
     - name: Loki
       type: loki
       uid: Loki
       url: http://loki:3100
       jsonData:
-          # Derived fields to parse specific info (like TraceID) from logs and link them to Jaeger traces
+          # Extracts `traceId` from JSON log lines and links each log to its Jaeger trace.
           derivedFields:
-              # Matches "traceId" pattern in JSON logs and links it directly to Jaeger search UI
               - datasourceUid: Jaeger
                 matcherRegex: '"traceId":"(\w+)"'
                 name: TraceID
                 url: '$${__value.raw}'
 
-    # 3. Jaeger: Distributed tracing backend for tracking request spans and performance bottlenecks
     - name: Jaeger
       type: jaeger
       uid: Jaeger
       url: http://jaeger:16686
       jsonData:
-          # Enables dependency node graphs in the Grafana interface
           nodeGraph:
               enabled: true

@@ -1,7 +1,7 @@
 /**
  * @file build-doc.ts
- * @description CLI script to statically compile and export Swagger OpenAPI JSON specs and Scalar HTML files.
- * Used during build time to generate static artifacts for client SDK generation or documentation hosting.
+ * @description Build-time CLI that writes static OpenAPI JSON and Scalar HTML artifacts per active
+ * API version, for client SDK generation and documentation hosting.
  */
 
 import { Logger as NestLogger, VersioningType } from '@nestjs/common';
@@ -11,13 +11,13 @@ import * as fs from 'fs';
 import { Logger } from 'nestjs-pino';
 import * as path from 'path';
 import { AppModule } from 'src/app.module';
-import { ACTIVE_VERSIONS, VERSION_1 } from 'src/core/config';
+import { ACTIVE_VERSIONS, GLOBAL_PREFIX, VERSION_1 } from 'src/core/config';
 import { createSwaggerDocument, generateStaticScalarHtml, VERSION_CONFIG } from 'src/core/doc';
 import type { LogPayload } from 'src/core/observability/logger';
 
 /**
- * Scaffolds a minimal application context to inspect NestJS metadata,
- * generates the OpenAPI schema, and saves JSON and HTML output files to the build folder.
+ * Boots the app (versioning and prefix mirroring main.ts, since they shape the generated paths),
+ * generates the OpenAPI document per active version, and writes the artifacts to dist/docs.
  */
 async function bootstrap() {
     let app: NestFastifyApplication | undefined;
@@ -30,7 +30,7 @@ async function bootstrap() {
 
         const logger = app.get(Logger);
 
-        app.enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1 }).setGlobalPrefix('api');
+        app.enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1 }).setGlobalPrefix(GLOBAL_PREFIX);
 
         const docsDir = path.join(process.cwd(), 'dist', 'docs');
         if (!fs.existsSync(docsDir)) {
@@ -78,6 +78,12 @@ async function bootstrap() {
         process.exit(1);
     }
 
+    /**
+     * Stamps the script's origin onto a log entry so both loggers emit the same shape.
+     *
+     * @param entry - The log content to wrap with the script's origin.
+     * @returns The origin-stamped payload accepted by both loggers.
+     */
     function createLogPayload({
         message,
         error,
@@ -92,7 +98,7 @@ async function bootstrap() {
             method: bootstrap.name,
             message,
             error,
-            ...(data ? { data } : undefined),
+            ...(data && { data }),
         };
     }
 }

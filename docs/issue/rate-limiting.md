@@ -1,322 +1,335 @@
-# Rate Limiting — Hedef Mimari
+# Rate Limiting — Target Architecture
 
-> **Durum: implementasyon YOK.** Projede rate limiting'e dair hiçbir kod bulunmuyor. Önceki
-> implementasyon, mimarisi yeniden tasarlanacağı için bilinçli olarak tamamen kaldırıldı. Bu belge o
-> yeniden yapımın tasarım girdisidir: neyin, hangi sırayla, hangi gerekçeyle kurulacağını anlatır.
+> **Status: NO implementation.** The project contains no rate-limiting code whatsoever. The previous
+> implementation was deliberately removed in full because its architecture will be redesigned. This
+> document is the design input for that rebuild: it describes what will be built, in what order, and
+> why.
 >
-> ⚠️ **Buradaki kararlar üzerinde tam mutabakat sağlanmış değildir.** Her biri gerekçesiyle birlikte
-> yazılmıştır ama hiçbiri kesinleşmiş sayılmaz; uygulamaya geçilmeden önce yeniden gözden geçirilmeli
-> ve gerekirse mimari güncellenmelidir. Belge bir "karar kaydı" değil, tartışmanın bugünkü halidir.
+> ⚠️ **The decisions here are not fully settled.** Each one is written down with its rationale, but
+> none is final; they must be reviewed again before implementation starts, and the architecture
+> updated where needed. This document is not a "decision record" — it is the current state of the
+> discussion.
 
 ---
 
-## 1. Bu katman neyi çözer, neyi çözmez
+## 1. What this layer solves, and what it does not
 
-Rate limiting **tek bir soruya** cevap verir: _"Bu çağıran, bu işlemi bu sıklıkta yapmaya hakkı var
-mı?"_ Amacı tahmin etmeyi (parola, token, kod) ve kaynak tüketmeyi **pahalı hale getirmektir**.
+Rate limiting answers **a single question**: _"Is this caller entitled to perform this operation this
+often?"_ Its purpose is to make guessing (passwords, tokens, codes) and resource consumption
+**expensive**.
 
-**Çözmez:**
+**It does not solve:**
 
-- **Hacimsel DDoS.** Trafiğin uygulamaya ulaşması bile istenmiyorsa çözüm CDN/WAF katmanındadır.
-  Uygulama katmanı bir isteği reddetmek için önce onu kabul etmek zorundadır.
-- **Bot yönetimi / fingerprinting.** Bu ayrı bir ürün alanıdır.
-- **Yetkilendirme.** Rate limiting "kaç kez" sorusunu cevaplar, "kim ve neye yetkili" sorusunu değil.
+- **Volumetric DDoS.** If the traffic should not even reach the application, the answer lives at the
+  CDN/WAF layer. The application layer has to accept a request before it can reject it.
+- **Bot management / fingerprinting.** That is a separate product area.
+- **Authorization.** Rate limiting answers "how many times", not "who, and entitled to what".
 
-Bu ayrım önemli çünkü limitleri belirlerken referans noktası bu: limit, **gerçek kullanıcının doğal
-ritmini** taşıyacak kadar geniş, **saldırının işine yaramayacak** kadar dar olmalıdır. Bunun ikisini
-birden yapamayan bir sayı yanlış eksende seçilmiştir.
+This distinction matters because it is the reference point when picking limits: a limit must be wide
+enough to carry a **real user's natural rhythm**, and narrow enough to be **useless to an attack**. A
+number that cannot do both at once was chosen on the wrong axis.
 
 ---
 
-## 2. Önkoşul: "çağıran kim?" sorusunun güvenilir cevabı
+## 2. Prerequisite: a trustworthy answer to "who is calling?"
 
-Rate limiting'in tamamı bu cevabın üzerine kuruludur. Cevap yanlışsa, üstündeki her sayı anlamsızdır.
+All of rate limiting is built on this answer. If the answer is wrong, every number stacked on top of
+it is meaningless.
 
-Bu API'nin önünde sunucu tarafı bir BFF var:
+This API sits behind a server-side BFF:
 
 ```
-Tarayıcı → CDN / LB → Next.js BFF (sunucu tarafı) → LB → BU API
+Browser → CDN / LB → Next.js BFF (server-side) → LB → THIS API
 ```
 
-Sonucu belirleyici: **bu API'nin TCP karşı tarafı her zaman bir BFF pod'udur, hiçbir zaman kullanıcı
-değildir.** Hiçbir şey yapılmazsa tüm kullanıcı tabanı, BFF pod sayısı kadar kovaya çöker.
+The decisive consequence: **this API's TCP peer is always a BFF pod, never the user.** With nothing
+done about it, the entire user base collapses into as many buckets as there are BFF pods.
 
-İki koşul sağlanmalı ve **ikisi de bu repodan zorlanamaz**:
+Two conditions must hold, and **neither can be enforced from this repo**:
 
-1. **BFF, tarayıcının adresini iletmeli.** Next.js route handler'ından atılan `fetch()` kendiliğinden
-   `X-Forwarded-For` göndermez; header açıkça set edilmelidir.
-2. **`TRUST_PROXY` topolojiyi tarif etmeli.** _(Bu kısım halihazırda mevcut ve rate limiting'den
-   bağımsızdır — silinmedi.)_
+1. **The BFF must forward the browser's address.** A `fetch()` issued from a Next.js route handler
+   does not send `X-Forwarded-For` on its own; the header must be set explicitly.
+2. **`TRUST_PROXY` must describe the topology.** _(This part already exists and is independent of
+   rate limiting — it was not removed.)_
 
-`TRUST_PROXY` bugün yalnızca `false` ya da **IP/CIDR listesi** kabul ediyor; `true` ve **hop sayısı**
-boot'ta reddediliyor. Gerekçe: hop sayısı _konumsaldır_ — zincire bir proxy eklendiğinde sessizce
-yanlış adresi okumaya başlar, hata vermez. CIDR listesi ise "hangi ağ bizim" der; iç bir hop eklense
-de çıkarılsa da doğru kalır.
+`TRUST_PROXY` today accepts only `false` or an **IP/CIDR list**; `true` and a **hop count** are
+rejected at boot. Rationale: a hop count is _positional_ — add one proxy to the chain and it silently
+starts reading the wrong address without erroring. A CIDR list instead says "these networks are
+ours"; it stays correct whether an internal hop is added or removed.
 
-> **Sessiz başarısızlık uyarısı.** BFF header'ı iletmezse rate limiting "çalışıyor" görünür ama herkesi
-> birkaç pod IP'sine anahtarlar. Hata da log da üretmez. Bu yüzden **her deploy'dan sonra doğrulanması
-> gereken bir şeydir**, varsayılacak bir şey değil.
-
----
-
-## 3. Kimlik ekseni (tracker) — mimarinin merkezi kararı
-
-"Kova anahtarı ne olacak?" sorusu, bu mimarideki en belirleyici karardır. IP tek başına kimliğin
-zayıf bir vekilidir ve **iki yönde birden** bozulur:
-
-- Kurumsal NAT / CGNAT / mobil operatör arkasında: **bir IP = yüzlerce kullanıcı**, hepsi tek bütçeyi
-  paylaşır. Limiti sıkmak gerçek kullanıcıyı cezalandırır.
-- IPv6 / mobil / VPN: **bir kullanıcı = onlarca IP**. Saldırgan adres değiştirmenin bedelini ödemez.
-
-**Önerilen: üç eksenli tracker, isteğin ne olduğuna göre seçilir.**
-
-| Eksen      | Ne zaman                                              | Anahtar                            | Neden                                                                                   |
-| ---------- | ----------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------- |
-| **Kimlik** | Doğrulanmış istek                                     | `user:<sub>`                       | NAT'tan etkilenmez, IP rotasyonundan etkilenmez. Gerçek kullanıcı başına bir bütçe.     |
-| **Hesap**  | Kimlik doğrulama denemeleri (login, parola sıfırlama) | `account:<hash(normalize(email))>` | Dağıtık saldırıda tek savunma budur: botnet IP değiştirir ama **hedef hesap sabittir**. |
-| **Adres**  | Anonim istek                                          | `ip:<request.ip>`                  | Elde başka bir şey yokken kalan tek eksen.                                              |
-
-Üçü birbirinin alternatifi değil, **farklı saldırılara cevap veren farklı eksenlerdir**. Bir login
-isteği aynı anda hem hesap hem adres ekseninde sayılabilir.
-
-**Kritik alt karar — guard sırası.** Kimlik eksenini kullanabilmek için, rate limit kararı verilirken
-`sub`'ın biliniyor olması gerekir. İki yol var:
-
-- **(Önerilen) Rate limit guard'ı `AuthGuard`'dan önce kalsın, kimliği kendisi çözsün** — token'ın
-  yalnızca **imzasını doğrulayarak**. HS256 doğrulaması ucuzdur, DB/Redis'e gitmez. Böylece kimliksiz
-  bir sel, oturum doğrulamasının maliyetine ulaşmadan durur.
-- Rate limit guard'ı `AuthGuard`'dan sonraya alınsın. Basittir ama **kimliği doğrulanmamış bir sel,
-  rate limit'e takılmadan önce Redis'e ulaşır** — bu bir amplifikasyon vektörüdür.
-
-> **Asla:** token'ı doğrulamadan sadece decode edip `sub`'ı okumak. İmzasız bir token'la saldırgan
-> istediği kadar yeni kova üretir — `X-Forwarded-For` açığının elle yeniden inşa edilmiş hali.
+> **Silent-failure warning.** If the BFF does not forward the header, rate limiting appears to
+> "work" but keys everyone to a handful of pod IPs. It produces no error and no log. It is therefore
+> **something to verify after every deploy**, not something to assume.
 
 ---
 
-## 4. Politika kataloğu — endpoint sayı bilmez, isim bilir
+## 3. The identity axis (tracker) — the central decision of this architecture
 
-Endpoint'ler **sayı** taşımamalı, **politika adı** taşımalıdır. Sayılar tek bir yerde, konfigürasyonda
-yaşar.
+"What is the bucket key?" is the most decisive question in this design. IP alone is a weak proxy for
+identity and breaks **in both directions at once**:
+
+- Behind corporate NAT / CGNAT / mobile carriers: **one IP = hundreds of users**, all sharing a
+  single budget. Tightening the limit punishes real users.
+- IPv6 / mobile / VPN: **one user = dozens of IPs**. The attacker pays nothing to change address.
+
+**Proposed: three tracker axes, selected by what the request is.**
+
+| Axis         | When                                            | Key                                | Why                                                                                                           |
+| ------------ | ----------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Identity** | Authenticated request                           | `user:<sub>`                       | Unaffected by NAT, unaffected by IP rotation. One budget per real user.                                       |
+| **Account**  | Authentication attempts (login, password reset) | `account:<hash(normalize(email))>` | The only defense against a distributed attack: the botnet rotates IPs but **the target account stays fixed**. |
+| **Address**  | Anonymous request                               | `ip:<request.ip>`                  | The only axis left when nothing else is available.                                                            |
+
+The three are not alternatives to one another — they are **different axes answering different
+attacks**. A single login request may be counted on both the account and the address axis at once.
+
+**Critical sub-decision — guard ordering.** To use the identity axis, `sub` must be known at the
+moment the rate-limit decision is made. Two options:
+
+- **(Proposed) Keep the rate-limit guard BEFORE `AuthGuard` and let it resolve identity itself** —
+  by verifying **only the token's signature**. HS256 verification is cheap and touches neither the
+  DB nor Redis. An unauthenticated flood is then stopped before it ever reaches the cost of session
+  validation.
+- Move the rate-limit guard after `AuthGuard`. Simpler, but **an unauthenticated flood reaches Redis
+  before it hits the rate limit** — an amplification vector.
+
+> **Never:** decoding the token without verifying it and reading `sub`. With an unsigned token an
+> attacker mints as many fresh buckets as they like — the `X-Forwarded-For` hole rebuilt by hand.
+
+---
+
+## 4. The policy catalog — an endpoint knows no numbers, only a name
+
+Endpoints must carry a **policy name**, never a **number**. Numbers live in exactly one place: the
+configuration.
 
 ```
-Endpoint  ──seçer──▶  Politika  ──oluşur──▶  bir veya birden fazla limiter
-                                              (her limiter: pencere + limit + blok süresi)
+Endpoint  ──selects──▶  Policy  ──consists of──▶  one or more limiters
+                                                   (each limiter: window + limit + block duration)
 ```
 
-Başlangıç kataloğu (isimler örnektir, kesin değildir):
+Initial catalog (names are examples, not final):
 
-| Politika          | Nerede                                    | Neden ayrı                                                                               |
-| ----------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `DEFAULT`         | İşaretlenmemiş her endpoint               | Kötüye kullanımı yumuşatır. **Güvenlik kontrolü değildir**, o yüzden cömerttir.          |
-| `AUTH`            | Kullanıcı girişi                          | Tahmin edilebilir sır doğrular.                                                          |
-| `ADMIN_AUTH`      | Admin girişi                              | Çok az kişi kullanır, çok yüksek değerdedir — herkesten sıkı olmalı.                     |
-| `REGISTRATION`    | Kayıt                                     | Kişi başına ömürde bir kez. Kısa pencere yanlış eksen; uzun pencere + düşük tavan doğru. |
-| `SENSITIVE_WRITE` | Parola değiştirme, e-posta değiştirme vb. | Mevcut sırrı doğrular veya hesabı devreder.                                              |
+| Policy            | Where                               | Why separate                                                                                      |
+| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `DEFAULT`         | Every unmarked endpoint             | Softens abuse. **Not a security control**, hence generous.                                        |
+| `AUTH`            | User login                          | Verifies a guessable secret.                                                                      |
+| `ADMIN_AUTH`      | Admin login                         | Used by very few people, of very high value — must be stricter than everything else.              |
+| `REGISTRATION`    | Sign-up                             | Once per person per lifetime. A short window is the wrong axis; a long window + low cap is right. |
+| `SENSITIVE_WRITE` | Password change, email change, etc. | Verifies an existing secret or hands over the account.                                            |
 
-**Politika ekleme maliyeti sıfıra yakın olmalı:** yeni bir enum üyesi + limiter tanımı. Guard'a
-dokunmak gerekiyorsa mekanizma yanlış kurulmuş demektir. Bir politikanın limiter eşlemesi
-**exhaustive** olmalı, yani yeni bir politika eklenip enforce edilmeyi unutulduğunda **derleme
-hatası** vermeli.
+**Adding a policy must cost near zero:** one new enum member + one limiter definition. If the guard
+has to be touched, the mechanism was built wrong. A policy's limiter mapping must be **exhaustive**:
+adding a policy and forgetting to enforce it must be a **compile error**.
 
-**Ne zaman kritik sayılır?** Kural: _endpoint **tahmin edilebilir bir sır** doğruluyorsa kritiktir._
+**When does something count as critical?** Rule: _an endpoint is critical if it verifies a
+**guessable secret**._
 
-- Login, parola değiştirme → **evet** (parola tahmin edilebilir).
-- Token yenileme (`refresh`) → **hayır**. Sunulan şey **imzalı bir token**, tahmin edilecek bir şey
-  yok; asıl savunma tek kullanımlık rotasyon + reuse tespitidir. Üstelik bu, uygulamanın kullanıcı
-  istemeden çağırdığı tek uçtur (açılış, token süresi dolması, sekme odağı) — trafiği patlamalı gelir
-  ve paylaşımlı bir IP bütçesi meşru oturumlara 429 döndürür. Çoğu istemci bunu "oturum kapandı"
-  diye okur; sonuç kitlesel logout olur.
-
----
-
-## 5. Çift pencere: patlama + sürdürülen
-
-Tek pencere iki saldırı şeklinden yalnızca birini görür.
-
-| Saldırı                            | İhtiyacı                   | Tek kısa pencere ne yapar                                                                    |
-| ---------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------- |
-| Hızlı otomatik patlama (saniyeler) | Kısa pencere, sıkı limit   | Yakalar                                                                                      |
-| Yavaş, sürdürülen tahmin (saatler) | Uzun pencere, toplam tavan | **Göremez** — pencere sürekli sıfırlanır, "kendini yavaşlat, görünmez ol" boşluğu açık kalır |
-
-Bu yüzden hassas politikalar **en az iki limiter** taşımalı ve geçmek için **hepsini birden** sağlamak
-gerekmelidir: kısa pencere ani patlamayı keser, uzun pencere toplam denemeye tavan koyar. Uzun
-pencerenin tavanı bilinçli olarak cömert seçilir — gerçek bir kullanıcının ya da paylaşımlı bir ofisin
-üreteceğinin çok üstünde, bir saldırının ihtiyaç duyduğunun çok altında.
-
-**Blok süresi açıkça belirtilmeli.** Belirtilmezse pencere süresine eşitlenir; bu da "limiti aşmanın
-bedeli, zaten dolmak üzere olan pencerenin kalanı" demektir — yani bedel yok.
-
-**Blok süresi ne kadar olmalı?** Bu, doğrudan **tracker eksenine** bağlıdır:
-
-- Tracker **IP** ise uzun blok kötü bir takastır: saldırgan adres değiştirir (bedava), aynı NAT'ı
-  paylaşan herkes birlikte kilitlenir.
-- Tracker **kimlik** veya **hesap** ise uzun blok anlamlı hale gelir.
+- Login, password change → **yes** (a password can be guessed).
+- Token refresh (`refresh`) → **no**. What is presented is a **signed token** — there is nothing to
+  guess; the real defense is single-use rotation + reuse detection. Moreover this is the one
+  endpoint the application calls without the user asking (startup, token expiry, tab focus) — its
+  traffic arrives in bursts, and a shared IP budget would return 429 to legitimate sessions. Most
+  clients read that as "you were logged out"; the result is mass logout.
 
 ---
 
-## 6. Anahtar şeması
+## 5. Dual window: burst + sustained
 
-Anahtar üç parçadan oluşmalı: **`<önek>:<politika>:<tracker>`**
+A single window sees only one of the two attack shapes.
 
-- **Önek** — throttle sayaçlarını başka hiçbir şeyle karıştırmamak için (bkz. §7).
-- **Politika** — bütçeler politika düzeyinde ayrılır.
-- **Tracker** — §3'teki eksen.
+| Attack                           | Its need                   | What a single short window does                                                                         |
+| -------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Fast automated burst (seconds)   | Short window, tight limit  | Catches it                                                                                              |
+| Slow, sustained guessing (hours) | Long window, total ceiling | **Cannot see it** — the window keeps resetting; the "slow yourself down, stay invisible" gap stays open |
 
-**Route/handler adı anahtara girmemeli.** Girerse her endpoint kendi bütçesini alır ve saldırgan
-uçlar arasında dolaşarak toplam bütçeyi çarpar: `login` + `admin login` + `register` üç ayrı bütçe
-demektir. Politika düzeyinde tek bir tavan, "kimlik doğrulama yüzeyinin tamamı" için anlamlı bir
-sınır üretir.
+Sensitive policies must therefore carry **at least two limiters**, and passing requires satisfying
+**all of them at once**: the short window cuts the burst, the long window caps the total attempt
+count. The long window's ceiling is deliberately generous — far above what a real user or a shared
+office would ever produce, far below what an attack needs.
 
-Karşı argüman: route bazlı izolasyon, bir ucun yoğun trafiği yüzünden başka bir ucun kilitlenmesini
-engeller. Bu yüzden ayrım **politika düzeyinde** yapılır — farklı ritimdeki uçlar farklı politikalara
-konur, aynı politikadaki uçlar ise zaten bilerek aynı bütçeyi paylaşır.
+**Block duration must be stated explicitly.** Left unstated it defaults to the window duration,
+which means "the price of exceeding the limit is the remainder of a window that was about to expire
+anyway" — i.e., no price at all.
 
----
+**How long should a block be?** That depends directly on the **tracker axis**:
 
-## 7. Depolama ve dayanıklılık
-
-**Redis, ayrı bir anahtar uzayında.** Sayaçlar cache ile aynı keyspace'i paylaşmamalı: aksi halde bir
-cache flush'ı tüm rate limit sayaçlarını sıfırlar — yani cache temizliği bir güvenlik kontrolünü
-kapatır. Ayrı bir key prefix'i (veya ayrı DB index'i) şart. Bunun için ikinci bir bağlantı gerekiyorsa,
-o bağlantının kopma/dönme geçişleri de birincisiyle **aynı loglama muamelesini** görmeli.
-
-**Pencere tipi: sabit pencere kabul, sliding değil.** Sabit pencere, sınırda 2× patlamaya izin verir
-(pencerenin sonunda bütçeyi harca, devrilir devrilmez tekrar harca). Sliding window bunu kapatır ama
-tracker başına sıralı bir yapı (sorted set) maliyeti getirir. Karar: **sabit pencere kullanılır ve bu
-2× payı limit seçilirken hesaba katılır.** Sliding window'a geçiş, ancak sınır patlaması gerçek bir
-sorun haline gelirse gündeme alınır.
-
-**Kesinti davranışı — tek bir "fail-open" cevabı yeterli değil:**
-
-| Politika           | Redis yokken                      | Gerekçe                                                                                                                                                                   |
-| ------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT`          | **Fail-open** (geç)               | Bu bir güvenlik kontrolü değil; bir cache kesintisi uygulamayı yere sermemeli.                                                                                            |
-| Hassas politikalar | **Süreç-içi bellek sayacına düş** | Kusurludur (etkin limit instance sayısıyla çarpılır) ama "koruma tamamen yok"tan çok daha iyidir. Bir Redis kesintisi, brute-force penceresini açan bir olay olmamalıdır. |
-
-**Fail-open dar tutulmalı.** Yalnızca _depolama_ hatasını yutmalı, "guard içinde ne olursa olsun geç"
-anlamına gelmemeli. Aksi halde alakasız bir hata (örneğin bir audit yazımı) sessizce rate limit
-bypass'ına dönüşür — sebeple sonucun ters orantılı olduğu bir hata sınıfı.
+- If the tracker is **IP**, a long block is a bad trade: the attacker changes address (free), while
+  everyone sharing the same NAT gets locked out together.
+- If the tracker is **identity** or **account**, a long block becomes meaningful.
 
 ---
 
-## 8. İstek akışı, adım adım
+## 6. Key schema
+
+The key consists of three parts: **`<prefix>:<policy>:<tracker>`**
+
+- **Prefix** — so throttle counters can never be confused with anything else (see §7).
+- **Policy** — budgets are separated at the policy level.
+- **Tracker** — the axis from §3.
+
+**The route/handler name must not enter the key.** If it does, every endpoint gets its own budget
+and the attacker multiplies the total by walking across endpoints: `login` + `admin login` +
+`register` are three separate budgets. A single ceiling at the policy level produces a meaningful
+bound for "the entire authentication surface".
+
+The counter-argument: route-level isolation prevents one endpoint's heavy traffic from locking out
+another. That is exactly why the separation happens **at the policy level** — endpoints with
+different rhythms go into different policies, while endpoints inside one policy share a budget by
+design.
+
+---
+
+## 7. Storage and resilience
+
+**Redis, in a separate key space.** Counters must not share a keyspace with the cache: otherwise a
+cache flush resets every rate-limit counter — i.e., cache maintenance switches off a security
+control. A dedicated key prefix (or a separate DB index) is mandatory. If that requires a second
+connection, that connection's lost/restored transitions must receive **the same logging treatment**
+as the first.
+
+**Window type: fixed window, accepted; not sliding.** A fixed window allows a 2× burst at the
+boundary (spend the budget at the end of the window, spend it again the moment it rolls over). A
+sliding window closes that but costs an ordered structure (sorted set) per tracker. Decision: **use
+a fixed window and account for the 2× allowance when choosing limits.** Moving to a sliding window
+goes on the table only if boundary bursts become a real problem.
+
+**Outage behavior — a single "fail-open" answer is not enough:**
+
+| Policy             | When Redis is down                          | Rationale                                                                                                                                                                               |
+| ------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEFAULT`          | **Fail-open** (let through)                 | Not a security control; a cache outage must not take the application down.                                                                                                              |
+| Sensitive policies | **Degrade to an in-process memory counter** | Imperfect (the effective limit is multiplied by the instance count) but far better than "no protection at all". A Redis outage must not be the event that opens the brute-force window. |
+
+**Fail-open must be kept narrow.** It should swallow only the _storage_ failure, never mean "let
+through no matter what happens inside the guard". Otherwise an unrelated error (say, an audit write)
+silently turns into a rate-limit bypass — a failure class where cause and consequence are inversely
+proportional.
+
+---
+
+## 8. The request flow, step by step
 
 ```
-1. İstek gelir
-   └─ Fastify onRequest hook: audit context açılır (sourceIp, userAgent, method, route)
-      · sourceIp, TRUST_PROXY'ye göre çözülmüş adrestir  → §2
+1. Request arrives
+   └─ Fastify onRequest hook: audit context opens (sourceIp, userAgent, method, route)
+      · sourceIp is the address resolved according to TRUST_PROXY  → §2
 
-2. Rate limit guard çalışır (AuthGuard'dan ÖNCE)
-   ├─ a) Politika çözülür: endpoint'teki dekoratör → yoksa DEFAULT
-   ├─ b) Tracker çözülür: token imzası geçerliyse user:<sub>, değilse ip:<addr>  → §3
-   ├─ c) Politikanın her limiter'ı için sayaç artırılır ve limit kontrol edilir  → §5
-   └─ d) Sonuç:
-        ├─ Hepsi limit içinde  → devam
-        └─ Herhangi biri aşıldı → 429 + Retry-After            → §9
+2. Rate-limit guard runs (BEFORE AuthGuard)
+   ├─ a) Policy resolved: the endpoint's decorator → DEFAULT when absent
+   ├─ b) Tracker resolved: user:<sub> when the token signature verifies, else ip:<addr>  → §3
+   ├─ c) For each of the policy's limiters, the counter is incremented and checked  → §5
+   └─ d) Outcome:
+        ├─ All within limits → continue
+        └─ Any exceeded     → 429 + Retry-After            → §9
 
-3. AuthGuard çalışır
-   └─ token DOĞRULANIR → actor audit context'e yayınlanır
+3. AuthGuard runs
+   └─ token is VERIFIED → actor is published into the audit context
 
-4. AuthRolesGuard → rol kontrolü
-5. Pipe / handler
+4. AuthRolesGuard → role check
+5. Pipes / handler
 ```
 
-Sıralamanın gerekçesi: **en ucuz reddetme en önde.** Rate limit kararı bir sayaç artırımıdır; oturum
-doğrulaması ise Redis okumasıdır. Pahalı olanı öne almak, saldırganın bedelini bize ödetir.
+The rationale for the ordering: **the cheapest rejection goes first.** A rate-limit decision is a
+counter increment; session validation is a Redis read. Putting the expensive one first makes us pay
+the attacker's bill.
 
 ---
 
-## 9. İhlal akışı
+## 9. The violation flow
 
-**İstemciye ne döner:**
+**What the client receives:**
 
-- **429** ve **`Retry-After`** header'ı. Bu header opsiyonel bir nezaket değil: onsuz istemci ne zaman
-  tekrar deneyeceğini bilemez ve genellikle hemen tekrar dener — yani blok, ürettiği yükü azaltmaz.
-- Gövde, projenin standart hata şeklini (`ErrorDefaultDto`) izlemeli.
-- **Hangi limiter'ın tetiklendiği açıklanmamalı.** "Bu hesaba özel limit aşıldı" demek, hesabın var
-  olduğunu doğrular (kullanıcı numaralandırma).
+- **429** with a **`Retry-After`** header. That header is not an optional courtesy: without it the
+  client cannot know when to retry and usually retries immediately — the block then fails to reduce
+  the load it exists to reduce.
+- The body follows the project's standard error shape (`ErrorDefaultDto`).
+- **Which limiter fired must not be disclosed.** Saying "the per-account limit was exceeded"
+  confirms the account exists (user enumeration).
 
-**Ne kaydedilir — bir bloka bir kayıt, isteğe değil.** Bir blok, **tek bir karardır** ama binlerce
-isteği reddeder. 60 saniyelik bir blok, saniyede 100 istek altında altı bin audit kaydı üretir. Audit
-deposu log seviyesinden muaftır, politikayla saklanır ve ileride bir tabloya dönüşecektir — yani
-istek başına kayıt, herhangi bir anonim çağıranın çekebileceği bir **yazma amplifikasyonu** kolu olur.
+**What gets recorded — one record per block, not per request.** A block is **a single decision**
+that rejects thousands of requests. A 60-second block under 100 requests per second produces six
+thousand audit records. The audit store is exempt from the log level, retained by policy, and will
+one day become a table — so a per-request record is a **write-amplification** lever any anonymous
+caller can pull.
 
-Bu yüzden kayıt, **limiti aşan ilk istekte** ve **yalnızca rate limit bileşeninin kendisi tarafından**
-yazılmalıdır: bloka _sebep olan_ isteği, arkasında yakalananlardan ayırt edebilen tek yer orasıdır.
-Global exception filter'ın 429'u kaydetmesi yanlıştır — filter her reddi görür, sadece ilkini değil.
+The record is therefore written **on the first request that exceeds the limit**, and **only by the
+rate-limit component itself**: that is the one place that can distinguish the request that _caused_
+the block from the ones merely caught behind it. Having the global exception filter record the 429
+is wrong — the filter sees every rejection, not just the first.
 
-Kayda ayrıca **fazladan kimlik alanı geçilmemelidir**: adres, user agent, method ve route zaten ortam
-context'inden gelir. Bir rate limit reddi bunun ötesinde bir şey tespit etmez.
+The record must also receive **no extra identity fields**: address, user agent, method and route
+already come from the ambient context. A rate-limit rejection establishes nothing beyond that.
 
-**Metrik ayrı bir iştir.** "Kaç blok oldu, hangi politikada" sorusu audit'in değil, metriklerin
-sorusudur; alarm oradan kurulur.
-
----
-
-## 10. Hesap düzeyi savunma — throttle katmanının bittiği yer
-
-Rate limiting **hız** ölçer. Kimlik doğrulama saldırılarının bir kısmı hızlı değildir.
-
-Dağıtık credential stuffing bunun tipik örneğidir: 1000 IP'lik bir botnet, her IP'den dakikada 10
-deneme yaparsa hiçbir IP limiti aşılmaz — ama dakikada 10.000 deneme yapılmış olur. Bunu **hesap
-ekseni** (§3) kısmen yakalar; geri kalanı throttle katmanının işi değildir:
-
-| Katman       | Sorumluluk                                                                                                                                                           |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Throttle** | Hız. `account:<hash(email)>` ekseninde bir limiter.                                                                                                                  |
-| **Domain**   | Başarısız deneme sayacı, kademeli gecikme, risk sinyali (görülmemiş IP/cihaz), gerekirse CAPTCHA eşiği. Bu bir **iş kuralıdır** ve login use case'inin içinde yaşar. |
-
-> **Tuzak:** düz bir hesap kilitleme, saldırgana bir DoS aracı verir — herhangi biri, herhangi bir
-> hesabın e-postasına yanlış parola göndererek o hesabı kilitleyebilir. Kademeli gecikme + risk
-> sinyali daha güvenli şekildir. Bu, tasarım gerektiren bir iştir; hızlı bir ekleme değildir.
+**Metrics are a separate job.** "How many blocks, on which policy" is a question for metrics, not
+audit; alerting is built there.
 
 ---
 
-## 11. Gözlemlenebilirlik
+## 10. Account-level defense — where the throttle layer ends
 
-Projenin genel kuralları burada da aynen geçerlidir; rate limiting'e özel ayrımlar şunlar:
+Rate limiting measures **speed**. Part of the authentication attack surface is not fast.
 
-| Sinyal     | Ne için                                        | Kural                                                                                                                                       |
-| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Audit**  | Kanıt: kim, ne zaman, nereden bloklandı        | Blok başına **bir** kayıt (§9). Blok başlangıcında, rate limit bileşeninin kendisi tarafından.                                              |
-| **Metrik** | Alarm ve trend: blok sayısı, politika kırılımı | Alarmın kaynağı budur, audit değil.                                                                                                         |
-| **Log**    | Teşhis                                         | Reddedilen istek başına log **yazılmaz**. Kesinti gibi durumlarda kayıt, bağlantı düzeyinde ve durum-geçişine bağlı olarak bir kez tutulur. |
+Distributed credential stuffing is the canonical example: a 1000-IP botnet making 10 attempts per
+minute per IP trips no IP limit — yet 10,000 attempts per minute are being made. The **account
+axis** (§3) catches part of this; the rest is not the throttle layer's job:
 
----
+| Layer        | Responsibility                                                                                                                                                              |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Throttle** | Speed. One limiter on the `account:<hash(email)>` axis.                                                                                                                     |
+| **Domain**   | Failed-attempt counter, progressive delay, risk signals (unseen IP/device), CAPTCHA threshold when needed. This is a **business rule** and lives inside the login use case. |
 
-## 12. Uygulama sırası
-
-Her adım bir öncekini varsayar; sıra atlanmamalıdır.
-
-| #   | Adım                                                                                                                       | Neden burada                                                                                                                                                                                                   |
-| --- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0   | **BFF'in `X-Forwarded-For` ilettiğini doğrula, ortam başına `TRUST_PROXY` CIDR'larını belirle**                            | Koddan önce gelir. Bu yanlışsa üstündeki hiçbir şeyin anlamı yok (§2). Kod değil, deploy işi.                                                                                                                  |
-| 1   | **İskelet:** rate limit concern'ü, port + adapter + global guard, politika dekoratörü, boş katalog                         | Üstüne her şeyin bineceği yapı.                                                                                                                                                                                |
-| 2   | **`DEFAULT` politikası**, tek pencere, IP ekseni, Redis'te **ayrı anahtar uzayı** (§7)                                     | En basit dikey kesit; uçtan uca çalıştığını burada görürüz.                                                                                                                                                    |
-| 3   | **429 için Swagger dekoratörü** (`ApiDefaultTooManyRequestsResponse` benzeri) + `Retry-After`                              | 429 üreten ilk endpoint ile birlikte **aynı anda** yazılmalı. Silme sırasında bu dekoratör de kaldırıldı; ölü kod bırakmamak için. Dokümante edilmemiş bir hata durumu, istemci için var olmayan bir durumdur. |
-| 4   | **Çift pencere** (patlama + sürdürülen) ve **hassas politikalar**: `AUTH`, `ADMIN_AUTH`, `REGISTRATION`, `SENSITIVE_WRITE` | Mekanizma ayakta olduğu için bu sadece katalog genişletmesidir.                                                                                                                                                |
-| 5   | **Kimlik ekseni** (`user:<sub>`) + guard sırası kararının uygulanması (§3)                                                 | Buraya kadar her limit IP eksenindedir; asıl kaliteyi bu adım getirir.                                                                                                                                         |
-| 6   | **Hassas politikalar için kesinti degradasyonu** (bellek sayacına düşüş, §7)                                               | Fail-open davranışı netleştikten sonra anlamlı.                                                                                                                                                                |
-| 7   | **Hesap ekseni** (`account:<hash(email)>`) + domain katmanı kademeli gecikme (§10)                                         | Tasarım gerektirir; en sona bırakılır.                                                                                                                                                                         |
-| 8   | **E2E doğrulama:** audit context'inin handler'a kadar taşındığı, `Retry-After`'ın döndüğü, blok başına tek kayıt yazıldığı | Davranışı sabitler.                                                                                                                                                                                            |
+> **Trap:** plain account lockout hands the attacker a DoS tool — anyone can lock any account by
+> sending wrong passwords to its email. Progressive delay + risk signals are the safer shape. This
+> is work that requires design; it is not a quick add-on.
 
 ---
 
-## 13. Yeniden yaparken atlanmaması gereken tuzaklar
+## 11. Observability
 
-Önceki implementasyonda bedeli ödenmiş, tekrar edilmemesi gereken hatalar:
+The project's general rules apply here unchanged; the rate-limiting-specific distinctions are:
 
-- **Süre birimi.** Kütüphanenin beklediği birim ne ise, JSDoc ve `.env` yorumu **aynı birimi** yazmalı.
-  Saniye sanılan bir milisaniye değeri, rate limiting'i **hata vermeden** devre dışı bırakır. Yanlış
-  yönde sessiz olan her varsayılan böyle yazılmalı.
-- **`X-Forwarded-For` güveni.** "Her hop'a güven" ayarı, çağıranın kendi IP'sini seçmesine — yani kendi
-  rate limit kovasını seçmesine — izin verir. Aynı değer audit kaydındaki `sourceIp`'yi de besler.
-- **Boolean dekoratör.** "Kritik mi?" diye bir bayrak taşıyan dekoratör, ikinci bir politika
-  gerektiğinde çöker. Baştan **politika adı** taşımalı.
-- **Framework guard'ından türetme.** Bir framework sınıfını extend edip alt sınıfa `@Inject` eklemek,
-  temel sınıfın bağımlılık metadata'sını **gölgeler** (genişletmez) — temel sınıfın injectlerini de
-  yeniden bildirmek gerekir, yoksa uygulama boot'ta patlar.
-- **Reddi her katmanda kaydetmek.** Kaydı yazacak tek yer, olguyu _tespit eden_ yerdir. Filter her
-  429'u görür; ilkini ayırt edemez.
-- **Sağlık uçları.** Liveness/readiness probe'ları rate limit'e takılmamalı — bir load balancer'ın
-  sağlık kontrolü 429 alırsa instance sağlıksız sayılır ve kesinti kendi kendini büyütür.
+| Signal      | For                                                    | Rule                                                                                                                          |
+| ----------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Audit**   | Evidence: who was blocked, when, from where            | **One** record per block (§9). At block start, written by the rate-limit component itself.                                    |
+| **Metrics** | Alerting and trends: block count, per-policy breakdown | This is what alarms are built on — not audit.                                                                                 |
+| **Logs**    | Diagnosis                                              | **No** log per rejected request. For outages and the like, one record at the connection level, gated on the state transition. |
+
+---
+
+## 12. Implementation order
+
+Each step assumes the previous one; the order must not be skipped.
+
+| #   | Step                                                                                                                            | Why here                                                                                                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | **Verify the BFF forwards `X-Forwarded-For`; pin down per-environment `TRUST_PROXY` CIDRs**                                     | Comes before any code. If this is wrong, nothing above it means anything (§2). Deployment work, not code.                                                                                                                  |
+| 1   | **Skeleton:** the rate-limit concern, port + adapter + global guard, the policy decorator, an empty catalog                     | The structure everything else rides on.                                                                                                                                                                                    |
+| 2   | **The `DEFAULT` policy**, single window, IP axis, a **separate key space** in Redis (§7)                                        | The simplest vertical slice; this is where we see it working end to end.                                                                                                                                                   |
+| 3   | **The Swagger decorator for 429** (something like `ApiDefaultTooManyRequestsResponse`) + `Retry-After`                          | Must be written **at the same time** as the first 429-producing endpoint. The decorator was removed together with the old implementation to leave no dead code. An undocumented error state does not exist for the client. |
+| 4   | **The dual window** (burst + sustained) and the **sensitive policies**: `AUTH`, `ADMIN_AUTH`, `REGISTRATION`, `SENSITIVE_WRITE` | With the mechanism standing, this is pure catalog extension.                                                                                                                                                               |
+| 5   | **The identity axis** (`user:<sub>`) + implementing the guard-ordering decision (§3)                                            | Up to this point every limit is on the IP axis; this step brings the real quality.                                                                                                                                         |
+| 6   | **Outage degradation for the sensitive policies** (fall back to the memory counter, §7)                                         | Meaningful only once the fail-open behavior is settled.                                                                                                                                                                    |
+| 7   | **The account axis** (`account:<hash(email)>`) + the domain-layer progressive delay (§10)                                       | Requires design; deliberately last.                                                                                                                                                                                        |
+| 8   | **E2E verification:** the audit context reaches the handler, `Retry-After` is returned, exactly one record per block            | Pins the behavior down.                                                                                                                                                                                                    |
+
+---
+
+## 13. Traps that must not be repeated in the rebuild
+
+Mistakes whose price was paid in the previous implementation:
+
+- **Duration units.** Whatever unit the library expects, the JSDoc and the `.env` comment must state
+  **the same unit**. A millisecond value mistaken for seconds disables rate limiting **without an
+  error**. Every default that fails silently in the wrong direction must be written down like this.
+- **Trusting `X-Forwarded-For`.** A "trust every hop" setting lets the caller choose its own IP —
+  i.e., choose its own rate-limit bucket. The same value also feeds `sourceIp` in the audit record.
+- **A boolean decorator.** A decorator carrying an "is it critical?" flag collapses the moment a
+  second policy is needed. It must carry a **policy name** from the start.
+- **Extending a framework guard.** Extending a framework class and adding `@Inject` on the subclass
+  **shadows** (does not extend) the base class's dependency metadata — the base class's injects must
+  be re-declared too, or the application dies at boot.
+- **Recording the rejection at every layer.** The one place that writes the record is the place that
+  _establishes_ the fact. The filter sees every 429; it cannot tell the first one apart.
+- **Health endpoints.** Liveness/readiness probes must not be rate-limited — if a load balancer's
+  health check receives a 429, the instance is declared unhealthy and the outage amplifies itself.
