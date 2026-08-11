@@ -4,9 +4,9 @@
 // config — and `--incremental` keeps it cheap.
 module.exports = {
     '**/*': 'prettier --write --cache --cache-location .prettiercache --ignore-unknown',
+    '**/*.ts': () => 'npm run test:type',
     // Typed lint loads the whole project's type graph regardless of the staged file count, which
     // overflows Node's default ~2 GB heap; the flag raises it for this one process only.
     '**/*.{js,mjs,cjs,ts,mts,cts}':
         'node --max-old-space-size=4096 node_modules/eslint/bin/eslint.js --fix --cache --max-warnings 0 --no-warn-ignored',
-    '**/*.ts': () => 'npm run test:type',
 };
