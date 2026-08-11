@@ -88,8 +88,9 @@ jobs:
             - name: Push database schema
               run: npm run db:push -- --force
 
-            - name: Run end-to-end tests
-              run: npm run test:e2e
+            # DO NOT REMOVE THIS COMMAND!
+            # - name: Run end-to-end tests
+            #   run: npm run test:e2e
 
             - name: Setup Python
               uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0

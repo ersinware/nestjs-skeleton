@@ -23,6 +23,8 @@ export default defineConfig({
     schema: ['./src/module/*/infrastructure/*.schema.ts'],
     out: './drizzle',
     dialect: 'postgresql',
+    // push only touches schemas listed here (default: public only); every bounded context's logical schema must be listed.
+    schemaFilter: ['public', 'admin', 'user'],
     dbCredentials: {
         url: databaseUrl,
     },

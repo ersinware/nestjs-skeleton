@@ -385,7 +385,7 @@ Used once → inline. Used more than once → extract to a named variable.
 
 ## Testing Rules
 
-- `vitest.config.mts` sets `restoreMocks: true` — never call `vi.clearAllMocks()` / `vi.resetAllMocks()` / `vi.restoreAllMocks()`.
+- `vitest.config.mts` sets `restoreMocks: true` + `clearMocks: true` (since Vitest 3, `restoreMocks` alone no longer wipes `vi.fn()` call history) — never call `vi.clearAllMocks()` / `vi.resetAllMocks()` / `vi.restoreAllMocks()`.
 - Never assert hardcoded validation message strings — use `expect.any(String)` or `expect.stringContaining(...)`.
 - **Positive & Negative Path**: verify all mocks called in chronological order with `.toHaveBeenCalledWith(...)`. In negative paths, assert `.not.toHaveBeenCalled()` only on the **immediate next** function — not further downstream.
 

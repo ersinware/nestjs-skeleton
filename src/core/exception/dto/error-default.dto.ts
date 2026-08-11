@@ -31,7 +31,7 @@ export class ErrorDefaultDto {
      */
     @Expose()
     @ApiProperty({
-        type: [String],
+        type: 'string',
         isArray: true,
         minItems: 1,
         description: 'List of error messages detailing what went wrong',
