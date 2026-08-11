@@ -1,6 +1,6 @@
 /**
  * @file tracing.ts
- * @description Responsible for initializing the OpenTelemetry (OTel) tracing system. It is loaded before all other modules as the Node.js process starts, enabling the collection of application performance metrics and distributed tracing data. It must be imported at the very top of `main.ts`.
+ * @description Initializes the OpenTelemetry SDK (traces, metrics, host metrics). Imported at the top of `main.ts`, before the modules its auto-instrumentation patches at require-time.
  */
 
 import { metrics } from '@opentelemetry/api';
@@ -10,12 +10,14 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { HostMetrics } from '@opentelemetry/host-metrics';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { ENV, Environment } from 'src/core/config';
+import { ENV, Environment, RUNTIME_FLAG } from 'src/core/config';
 
-let otelSDK: NodeSDK | undefined;
-
-if (process.env[ENV.NODE_ENV] !== Environment.TEST && !process.env['VITEST'] && process.env['CI'] !== 'true') {
-    otelSDK = new NodeSDK({
+if (
+    process.env[ENV.NODE_ENV] !== Environment.TEST &&
+    !process.env[RUNTIME_FLAG.VITEST] &&
+    process.env[RUNTIME_FLAG.CI] !== 'true'
+) {
+    const otelSDK = new NodeSDK({
         traceExporter: new OTLPTraceExporter(),
         metricReader: new PeriodicExportingMetricReader({
             exporter: new OTLPMetricExporter(),
@@ -38,24 +40,24 @@ if (process.env[ENV.NODE_ENV] !== Environment.TEST && !process.env['VITEST'] && 
     });
 
     /**
-     * Gracefully shuts down the OpenTelemetry SDK when the application is closing.
-     * Performs memory cleanup before terminating the process to prevent the loss of unsent tracing or metric data.
+     * Flushes unsent telemetry on a termination signal. Flush-only by design: process termination
+     * belongs to Nest's shutdown hooks, and exiting here would cut that cleanup mid-flight.
      */
     function handleShutdown() {
-        otelSDK!
-            .shutdown()
-            .catch((error) => console.error('Error shutting down OpenTelemetry SDK', error))
-            .finally(() => process.exit(0));
+        // console over a logger: runs outside (and possibly after) the DI container's lifetime.
+        otelSDK.shutdown().catch((error) => console.error('Error shutting down OpenTelemetry SDK', error));
     }
 
-    process.on('SIGTERM', handleShutdown);
-    process.on('SIGINT', handleShutdown);
+    // `once`, not `on`: Nest's shutdown hooks re-raise the signal after cleanup so the process
+    // terminates with the default behavior — a persistent listener here would swallow that second
+    // signal and keep the process alive forever.
+    process.once('SIGTERM', handleShutdown);
+    process.once('SIGINT', handleShutdown);
 
     otelSDK.start();
 
-    const hostMetrics = new HostMetrics({
+    new HostMetrics({
         meterProvider: metrics.getMeterProvider(),
         name: 'nestjs-host-metrics',
-    });
-    hostMetrics.start();
+    }).start();
 }

@@ -3,10 +3,12 @@
  * @description Public entry point of the config concern. Nothing outside may import past this barrel.
  */
 
+export { resolveEnvFilePath } from 'src/core/config/environment/env-file.util';
 export { ENV } from 'src/core/config/environment/env.constant';
 export { validateConfig } from 'src/core/config/environment/env.validation';
 export type { EnvironmentVariables } from 'src/core/config/environment/env.validation';
 export { Environment } from 'src/core/config/environment/node-env.enum';
+export { RUNTIME_FLAG } from 'src/core/config/environment/runtime-flag.constant';
 export { resolveTrustProxy } from 'src/core/config/environment/trust-proxy.util';
 export {
     GLOBAL_PREFIX,
