@@ -1,6 +1,6 @@
 /**
  * @file app.module.ts
- * @description The root module of the application. It constructs the application's dependency tree by aggregating all configuration, security, database, infrastructure, and business logic modules. It also registers global guards, pipes, interceptors, and exception filters that apply across the entire application.
+ * @description Root module: aggregates every core concern and bounded context, and binds the global guards, pipes, interceptors, and exception filter.
  */
 
 import { Module, ValidationPipe } from '@nestjs/common';
@@ -8,7 +8,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CacheModule } from 'src/core/cache';
-import { ENV, Environment, validateConfig } from 'src/core/config';
+import { resolveEnvFilePath, validateConfig } from 'src/core/config';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
@@ -26,14 +26,13 @@ import { HealthModule } from 'src/module/health';
 import { UserModule } from 'src/module/user';
 
 /**
- * The root module class of the NestJS application.
- * Ensures the initialization of all essential core modules (database, logging, caching, etc.) and registers cross-cutting concerns across the application.
+ * Composition root of the application's dependency tree.
  */
 @Module({
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
-            envFilePath: process.env[ENV.NODE_ENV] === Environment.TEST ? '.env.test' : '.env',
+            envFilePath: resolveEnvFilePath(),
             validate: validateConfig,
         }),
         EventEmitterModule.forRoot(),
@@ -77,9 +76,9 @@ import { UserModule } from 'src/module/user';
                 transform: true,
             }),
         },
-        // The ambient audit context is opened by `auditContextHook` on request arrival and completed
-        // by `AuthGuard`, both of which run before any interceptor — so the actor is already in scope
-        // when this records an `@Audited` disclosure.
+        // The ambient audit context is seeded by `auditContextHook` and completed by `AuthGuard`,
+        // both of which run before any interceptor — so the actor is already in scope when this
+        // records an `@Audited` disclosure.
         {
             provide: APP_INTERCEPTOR,
             useClass: AuditInterceptor,

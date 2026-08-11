@@ -1,11 +1,14 @@
 /**
  * @file main.ts
- * @description The main entry point of the application. It is responsible for bootstrapping the NestJS application with the Fastify adapter, establishing global configurations (versioning, global prefix, shutdown hooks, etc.), and setting up the Scalar API documentation. It creates the foundational context required for the application to handle HTTP requests.
+ * @description Application entry point: bootstraps NestJS on Fastify, applies app-wide HTTP configuration, and mounts the Scalar API documentation.
  */
 
-import 'reflect-metadata'; // Must be imported before anything else to enable TypeScript decorators
-import 'src/instrument'; // Must be the second import to initialize Sentry
-import 'src/tracing'; // Must be the absolute first import to initialize OpenTelemetry Auto-Instrumentation
+// Mandatory sequence, ahead of every other import: `reflect-metadata` so decorators work at all;
+// Sentry so its error hooks exist before any other code can fail; OTel auto-instrumentation before
+// the modules it patches at require-time (after Sentry, the composition order Sentry documents).
+import 'reflect-metadata';
+import 'src/instrument';
+import 'src/tracing';
 
 import { VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -28,21 +31,20 @@ import { createSwaggerDocument } from 'src/core/doc';
 import { auditContextHook } from 'src/core/observability/audit';
 
 /**
- * Bootstraps the NestJS application using the Fastify adapter.
- * Configures URI-based versioning, the global API prefix, and the application logger so that the application can accept HTTP traffic. Additionally, it enables shutdown hooks to ensure graceful termination.
+ * Bootstraps the application: URI versioning, global prefix, Pino logger, graceful shutdown hooks,
+ * and the audit context hook, then starts listening.
  */
 async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(
-            AppModule,
-            // Not `true`: that believes every hop in `X-Forwarded-For`, which is client-written, so it
-            // would let a caller choose the `remoteAddress` recorded against it (see resolveTrustProxy).
-            new FastifyAdapter({ trustProxy: resolveTrustProxy() }),
-            { bufferLogs: true },
-        ),
-        configService = app.get(ConfigService);
+        AppModule,
+        // Not `true`: that believes every hop in `X-Forwarded-For`, which is client-written, so it
+        // would let a caller choose the `remoteAddress` recorded against it (see resolveTrustProxy).
+        new FastifyAdapter({ trustProxy: resolveTrustProxy() }),
+        { bufferLogs: true },
+    );
 
-    // Registered here rather than as a provider because it must run ahead of the entire Nest pipeline —
-    // guards included — so that a request refused by a guard still carries the address it came from.
+    // A raw Fastify hook, not a provider: it must run ahead of the entire Nest pipeline so a
+    // request refused by a guard still carries the address it came from.
     app.getHttpAdapter().getInstance().addHook('onRequest', auditContextHook);
 
     app.enableShutdownHooks()
@@ -52,19 +54,20 @@ async function bootstrap() {
 
     setupDocumentation(app);
 
-    await app.listen(configService.getOrThrow<number>(ENV.PORT), '0.0.0.0');
+    await app.listen(app.get(ConfigService).getOrThrow<number>(ENV.PORT), '0.0.0.0');
 }
 
 /**
- * Registers Scalar documentation endpoints for all active API versions.
- * Integrates customized Swagger documents so developers and clients can easily inspect and test the API. It also ensures that response streams are correctly handled under the Fastify environment.
+ * Registers a Scalar documentation endpoint for each active API version.
  *
- * @param app The Fastify-based NestJS application instance where the documentation will be configured
+ * @param app The application whose Swagger document is generated and served
  */
 function setupDocumentation(app: NestFastifyApplication) {
     ACTIVE_VERSIONS.forEach((version) => {
         const path = `/${GLOBAL_PREFIX}/${VERSION_PREFIX}${version}/${ROUTE_DOCS}`;
 
+        // Scalar's handler calls the Express-style `res.send`, which Fastify's raw middleware
+        // response lacks — shim it before the handler runs.
         app.use(
             path,
             (
@@ -86,10 +89,10 @@ function setupDocumentation(app: NestFastifyApplication) {
         app.use(
             path,
             apiReference({
-                spec: { content: createSwaggerDocument(app, version) },
+                content: createSwaggerDocument(app, version),
                 showOperationId: true,
                 operationsSorter: 'method',
-            } as unknown as Parameters<typeof apiReference>[0]),
+            }),
         );
     });
 }
