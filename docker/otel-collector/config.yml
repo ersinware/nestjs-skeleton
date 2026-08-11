@@ -1,15 +1,13 @@
-# OpenTelemetry Collector — tail-sampling gateway for traces.
+# OpenTelemetry Collector — tail-sampling gateway between the API and Jaeger.
 #
-# Sits between the API and Jaeger: the app exports 100% of its spans here, and THIS is where the
-# keep/drop decision is made — after each trace is complete, so it can be made on the OUTCOME
-# (error / latency), which head sampling in the app cannot do.
+# The app exports 100% of its spans here; the keep/drop decision is made after each trace completes,
+# on its OUTCOME (error / latency) — which head sampling in the app cannot see.
 #
-# The whole thing is toggled by ONE variable, OTEL_TAIL_SAMPLING_PERCENTAGE (passed in by
-# docker-compose):
-#   100 -> keep every trace  = tail sampling effectively OFF (ships inert by default)
-#    10 -> keep 1 in 10 of the ordinary traces = ON
-# Errors and slow traces are ALWAYS kept regardless of the percentage — that is the entire point of
-# deciding at the tail, so turning the knob down never costs you the traces worth reading.
+# One knob, OTEL_TAIL_SAMPLING_PERCENTAGE (passed in by docker-compose):
+#   100 -> keep every trace = tail sampling OFF (the default)
+#    10 -> keep 1 in 10 of the ordinary traces
+# Errors and slow traces are ALWAYS kept regardless — turning the knob down never costs the traces
+# worth reading.
 
 receivers:
     otlp:
@@ -20,11 +18,10 @@ receivers:
                 endpoint: 0.0.0.0:4317
 
 processors:
-    # Policies are OR-ed: a trace is kept if ANY policy elects it. So keep-errors OR keep-slow OR the
-    # probabilistic sample of everything else.
+    # Policies are OR-ed: a trace is kept if ANY policy elects it.
     tail_sampling:
-        # How long to wait after first seeing a trace before deciding — must exceed your slowest
-        # expected request so late spans are not judged as a truncated (and misleadingly fast) trace.
+        # Wait before deciding — must exceed the slowest expected request, or late spans are judged
+        # as a truncated (and misleadingly fast) trace.
         decision_wait: 10s
         num_traces: 50000
         expected_new_traces_per_sec: 100
@@ -47,8 +44,7 @@ processors:
     batch: {}
 
 exporters:
-    # Forward the surviving traces to Jaeger over the same OTLP/HTTP endpoint the app used to hit
-    # directly, before the collector was inserted in front of it.
+    # Forward the surviving traces to Jaeger over OTLP/HTTP.
     otlphttp/jaeger:
         endpoint: http://jaeger:4318
 

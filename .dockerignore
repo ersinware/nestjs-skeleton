@@ -24,6 +24,7 @@
 .prettierignore
 .prettierrc
 .secrets
+.vars
 .spectral.yml
 .vscode
 build

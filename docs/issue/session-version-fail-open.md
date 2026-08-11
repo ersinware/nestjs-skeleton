@@ -1,15 +1,16 @@
-# Bilinen Açık: Session Version Fail-Open
+# Known Vulnerability: Session Version Fail-Open
 
-**Durum:** Bilinçli olarak ertelendi — çözülmedi.
-**Tespit:** 2026-07-19, exception & observability denetimi sırasında.
-**Etki:** Ban/şifre değişikliği sonrası anlık oturum sonlandırma, dar bir pencerede sessizce uygulanmayabilir.
-**Aciliyet:** Düşük — maruziyet ≤ `JWT_ACCESS_TTL` (varsayılan 15dk) ve refresh yolu etkilenmiyor.
+**Status:** Deliberately deferred — not fixed.
+**Found:** 2026-07-19, during the exception & observability audit.
+**Impact:** Instant session termination after a ban/password change may silently not apply within a
+narrow window.
+**Urgency:** Low — exposure ≤ `JWT_ACCESS_TTL` (default 15min) and the refresh path is unaffected.
 
 ---
 
-## 1. Sorun
+## 1. The problem
 
-`getVersion` cache'te key bulamadığında `0` döner:
+`getVersion` returns `0` when the key is missing from the cache:
 
 ```ts
 // src/core/security/session/adapter.ts
@@ -19,7 +20,7 @@ async getVersion(id: string): Promise<number> {
 }
 ```
 
-`AuthGuard` bu değeri şöyle kullanır:
+`AuthGuard` uses that value like this:
 
 ```ts
 // src/core/security/auth/guard/auth.guard.ts
@@ -28,29 +29,30 @@ if (payload.version < currentVersion) {
 }
 ```
 
-`currentVersion === 0` olduğunda bu koşul **hiçbir zaman** sağlanmaz — her token kabul edilir.
+When `currentVersion === 0` this condition can **never** hold — every token is accepted.
 
-### Kök neden: yokluk belirsiz
+### Root cause: absence is ambiguous
 
-Key'in olmaması iki tamamen farklı durumu ifade eder ve ikisi ayırt edilemez:
+A missing key expresses two entirely different situations, and they cannot be told apart:
 
-| Durum             | Anlamı                                        | Doğru davranış |
-| ----------------- | --------------------------------------------- | -------------- |
-| Hiç yazılmadı     | Kullanıcının version'ı hiç artmadı (çoğunluk) | Kabul et       |
-| Yazıldı, kayboldu | Ban uygulandı ama Redis'te iz yok             | **Reddet**     |
+| Situation          | Meaning                                          | Correct behavior |
+| ------------------ | ------------------------------------------------ | ---------------- |
+| Never written      | The user's version never advanced (the majority) | Accept           |
+| Written, then lost | A ban was applied but Redis holds no trace of it | **Reject**       |
 
-Cache'in kendi içinde bu ayrımı yapmanın yolu yoktur. Çözüm mutlaka cache'in dışından gelmek zorundadır.
+There is no way to make this distinction from inside the cache. The answer must come from outside
+it.
 
-### Senaryo
+### Scenario
 
-1. `redis-session` erişilemez durumda
-2. Bir admin banlanır → DB'de `version` artar, `save()` başarılı
-3. `sessionPort.setVersion(...)` başarısız olur → handler'daki `catch` yalnızca loglar
-4. Aynı anda `AdminSessionListener` de aynı Redis'e yazmaya çalışır → o da başarısız
-5. Redis geri gelir — **`version:` key'i yoktur, kimse tekrar denemez**
-6. Banlanan kullanıcının elindeki access token, süresi dolana kadar geçerli kalır
+1. `redis-session` is unreachable
+2. An admin is banned → `version` is incremented in the DB, `save()` succeeds
+3. `sessionPort.setVersion(...)` fails → the handler's `catch` only logs
+4. `AdminSessionListener` tries to write to the same Redis at the same time → it fails too
+5. Redis comes back — **the `version:` key does not exist, and nobody retries**
+6. The banned user's access token stays valid until it expires
 
-Etkilenen `catch` blokları (hepsi `setVersion` çevresinde, aynı desen):
+Affected `catch` blocks (all around `setVersion`, same pattern):
 
 - `module/admin/application/command/ban-admin/handler.ts`
 - `module/admin/application/command/delete-admin/handler.ts`
@@ -62,87 +64,118 @@ Etkilenen `catch` blokları (hepsi `setVersion` çevresinde, aynı desen):
 
 ---
 
-## 2. Riski sınırlayan faktörler
+## 2. Factors limiting the risk
 
-Sorunun ciddiyetini düşüren, tasarımda **zaten var olan** korumalar:
+Protections that **already exist** in the design and lower the severity:
 
-**Refresh yolu etkilenmiyor.** `refresh-tokens/handler.ts` hem `isBanned`'i hem `version`'ı **veritabanından** okur. Banlanan kullanıcı refresh yapamaz; access token'ı dolduğunda oturum kesin biter.
+**The refresh path is unaffected.** `refresh-tokens/handler.ts` reads both `isBanned` and `version`
+**from the database**. A banned user cannot refresh; the session terminates for good when the access
+token expires.
 
-**Maruziyet access token ömrüyle sınırlı.** `JWT_ACCESS_TTL=15m`. Başarısızlık modu "güvenlik yok" değil, **"standart JWT semantiği"** — anlık eviction bir optimizasyondur; kaybolduğunda sistem JWT'nin doğal davranışına (süre dolana kadar bekle) düşer.
+**Exposure is bounded by the access-token lifetime.** `JWT_ACCESS_TTL=15m`. The failure mode is not
+"no security" but **"standard JWT semantics"** — instant eviction is an optimization; when it is
+lost, the system falls back to JWT's natural behavior (wait for expiry).
 
-**Eviction ile kaybolamaz.** `version:*` key'leri `redis-session`'te tutulur; bu instance'ta `maxmemory` tanımlı değildir, dolayısıyla policy `noeviction`'dır. Bellek baskısı altında atılmaları mümkün değildir.
+**It cannot be lost to eviction.** The `version:*` keys live in `redis-session`; that instance has
+no `maxmemory` configured, so the policy is `noeviction`. They cannot be dropped under memory
+pressure.
 
 ```yaml
 # docker-compose.yml
-redis-cache: --maxmemory 100mb --maxmemory-policy allkeys-lru # volume yok
+redis-cache: --maxmemory 100mb --maxmemory-policy allkeys-lru # no volume
 redis-session: --save 60 1 # redis_session_data volume
 ```
 
-**Restart'ta kaybolmaz.** RDB persistence + named volume mevcut.
+**It survives restarts.** RDB persistence + a named volume are in place.
 
-### Geriye kalan gerçek vektörler
+### The real vectors that remain
 
-1. **Ban tam olarak Redis erişilemezken uygulanırsa** — hem handler hem listener başarısız olur, tekrar deneyen yoktur
-2. **`--save 60 1`** — sert çökmede son 60 saniyenin yazımı kaybolur
-
----
-
-## 3. Çözüm seçenekleri
-
-### A) Cache-miss'te DB'den okuma — uygulanamaz
-
-`AuthGuard` `core` katmanındadır; `core` bir `module`'e import edemez ve schema-per-module gereği `user`/`admin` tablolarını okuyamaz. Port açıp adapter'ı module'e koymak bu yasağı dolanmak olur.
-
-Mimari izin verse bile yanlış olurdu: her cache-miss'te DB okuması, hiç banlanmamış kullanıcılar (yani neredeyse herkes) için auth hot path'ine DB round-trip ekler ve Redis'i araya koymanın amacını ortadan kaldırır.
-
-**Sonuç: DB okuması gerekmiyor ve bu tasarımda yapılamaz.**
-
-### B) Yokluğu anlamlı hale getir → fail-closed — gerçek çözüm
-
-Cache dışından gelecek bilgi DB olmak zorunda değil; **login'in kendisi** o bilgiyi zaten elinde tutuyor. Bugün login `openSession` çağırıyor ama `setVersion` çağırmıyor — oysa `user.version` elinde.
-
-Üç değişiklik:
-
-1. Login **her zaman** `setVersion(id, user.version)` yazsın
-2. `ROTATE_SESSION_LUA` aynı round-trip'te version key'inin TTL'ini tazelesin
-3. `getVersion` yokluğu `0` yerine "bilinmiyor" dönsün, `AuthGuard` fail-closed davransın
-
-Bundan sonra "version key yok" = "canlı oturum yok" anlamına gelir ve bu güvenlidir: access token 15dk, version key 7 gün yaşar. Key yoksa o token zaten ölmüştür.
-
-**Bedeli:** session Redis veri kaybederse herkes çıkış yapmış olur. Sessiz bir güvenlik boşluğu, gürültülü bir availability olayına dönüşür. Bir güvenlik kontrolü için doğru duruştur — `AuthGuard` zaten Redis _erişilemezken_ fail-closed davranıp 503 döner; bu yalnızca aynı duruşu veri kaybına genişletir. Ancak `--save 60 1` ile sert çökmede o 60 saniyede login olan herkes tekrar giriş yapar.
-
-### C) Transactional outbox — kısmi
-
-Yol haritasındaki outbox, **vektör 1**'i kapatır: `setVersion` relay tarafından başarana kadar tekrar denenir. **Vektör 2**'yi (sonradan veri kaybı) kapatmaz. Bu bulgu, outbox için ek bir gerekçedir.
-
-### D) Kabul et + tespit et + belgele — mevcut tercih
-
-Maruziyet ≤15dk ve refresh yolu güvenli olduğu için savunulabilir. Şartı: **bilinçli olması ve görünür olması.**
+1. **A ban applied exactly while Redis is unreachable** — both the handler and the listener fail,
+   and nobody retries
+2. **`--save 60 1`** — a hard crash loses the last 60 seconds of writes
 
 ---
 
-## 4. Karar ve yapılacaklar
+## 3. Solution options
 
-**Seçilen: D.** B gerçek bir çözüm, ancak bedeli (veri kaybında toplu logout) şu anki maruziyetten (15dk, refresh kapalı) daha büyük.
+### A) Read from the DB on cache miss — not applicable
 
-**B'ye geçme kriteri:** Tehdit modeli "ban anında geçerli olmalı, 15 dakika bile kabul edilemez" dediğinde. O noktada doğru cevap B'dir.
+`AuthGuard` lives in the `core` layer; `core` may not import a `module`, and schema-per-module
+forbids it from reading the `user`/`admin` tables. Opening a port and placing the adapter in a
+module would be circumventing that rule.
 
-### Yapılacaklar (küçükten büyüğe)
+Even if the architecture allowed it, it would be wrong: a DB read on every cache miss adds a DB
+round-trip to the auth hot path for users who were never banned (i.e., almost everyone) and defeats
+the point of putting Redis in front.
 
-- [ ] **`redis-session`'e AOF ekle** — `docker-compose.yml`'e `--appendonly yes --appendfsync everysec`. Çökmede kayıp penceresi 60s → 1s. Güvenlik state'i tutan bir store için RDB tek başına zayıf. Tek satır.
-- [ ] **`getVersion`'ın `0` fallback'ine gerekçe yorumu yaz** — `session/adapter.ts`. Şu an masum görünüyor; bunun _bilinçli bir fail-open_ olduğunu ve neden kabul edildiğini (access TTL sınırı + refresh'in DB otoritesi) yazan bir yorum, sonraki okuyucunun bunu bug sanıp yanlış "düzeltmesini" engeller.
-- [x] ~~`setVersion` catch'leri Sentry'ye raporlasın~~ — **2026-07-19'da tersine karar verildi:** komut içi `setVersion` best-effort bir hızlandırmadır; kalıcı düzeltme outbox geldiğinde event yolundan sağlanacak. Bu 7 catch artık **sessizdir** (log yok, Sentry yok) ve her biri bu dosyaya işaret eden açıklayıcı bir yorum taşır.
-- [ ] _(ertelendi)_ B seçeneğinin uygulanması — yalnızca yukarıdaki kriter sağlanırsa.
+**Conclusion: a DB read is not needed and cannot be done in this design.**
+
+### B) Make absence meaningful → fail-closed — the real fix
+
+The information from outside the cache does not have to be the DB; **login itself** already holds
+it. Today login calls `openSession` but not `setVersion` — even though it has `user.version` in
+hand.
+
+Three changes:
+
+1. Login **always** writes `setVersion(id, user.version)`
+2. `ROTATE_SESSION_LUA` refreshes the version key's TTL in the same round-trip
+3. `getVersion` returns "unknown" instead of `0` for absence, and `AuthGuard` fails closed
+
+After that, "no version key" means "no live session", and that is safe: an access token lives 15
+minutes, a version key 7 days. If the key is gone, that token is already dead.
+
+**The price:** if the session Redis loses data, everyone is logged out. A silent security gap turns
+into a noisy availability event. That is the right posture for a security control — `AuthGuard`
+already fails closed with a 503 while Redis is _unreachable_; this merely extends the same posture
+to data loss. With `--save 60 1`, though, a hard crash makes everyone who logged in during those 60
+seconds log in again.
+
+### C) Transactional outbox — partial
+
+The outbox on the roadmap closes **vector 1**: `setVersion` is retried by the relay until it
+succeeds. It does not close **vector 2** (data lost after the fact). This finding is one more
+argument for the outbox.
+
+### D) Accept + detect + document — the current choice
+
+Defensible because exposure is ≤15min and the refresh path is safe. Its condition: **it must be
+deliberate and visible.**
 
 ---
 
-## İlgili dosyalar
+## 4. Decision and follow-ups
 
-| Dosya                                                           | Rolü                                                       |
+**Chosen: D.** B is a real fix, but its price (mass logout on data loss) is currently larger than
+the exposure (15min, refresh closed).
+
+**Criterion for moving to B:** the moment the threat model says "a ban must take effect instantly —
+even 15 minutes is unacceptable". At that point the right answer is B.
+
+### Follow-ups (smallest to largest)
+
+- [ ] **Add AOF to `redis-session`** — `--appendonly yes --appendfsync everysec` in
+      `docker-compose.yml`. Crash-loss window 60s → 1s. RDB alone is weak for a store holding
+      security state. One line.
+- [ ] **Write a rationale comment on `getVersion`'s `0` fallback** — `session/adapter.ts`. It looks
+      innocent today; a comment stating that this is a _deliberate fail-open_ and why it is accepted
+      (access-TTL bound + refresh's DB authority) stops the next reader from mistaking it for a bug
+      and "fixing" it the wrong way.
+- [x] ~~Report the `setVersion` catches to Sentry~~ — **reversed on 2026-07-19:** the in-command
+      `setVersion` is a best-effort accelerator; the durable fix will come through the event path
+      once the outbox lands. Those 7 catches are now **silent** (no log, no Sentry) and each carries
+      an explanatory comment pointing at this file.
+- [ ] _(deferred)_ Implementing option B — only if the criterion above is met.
+
+---
+
+## Related files
+
+| File                                                            | Role                                                       |
 | --------------------------------------------------------------- | ---------------------------------------------------------- |
 | `src/core/security/session/adapter.ts`                          | `getVersion` fail-open, `setVersion`, `ROTATE_SESSION_LUA` |
-| `src/core/security/auth/guard/auth.guard.ts`                    | Version karşılaştırması                                    |
-| `src/module/auth/application/command/refresh-tokens/handler.ts` | DB otoritesi — riski sınırlayan yol                        |
-| `src/module/auth/application/command/login-*/handler.ts`        | B seçeneğinde `setVersion` eklenecek yer                   |
-| `src/module/*/application/event/*-session.listener.ts`          | İkincil reconcile yolu (aynı Redis'e bağımlı)              |
-| `docker-compose.yml`                                            | `redis-session` persistence/eviction ayarları              |
+| `src/core/security/auth/guard/auth.guard.ts`                    | The version comparison                                     |
+| `src/module/auth/application/command/refresh-tokens/handler.ts` | DB authority — the path that bounds the risk               |
+| `src/module/auth/application/command/login-*/handler.ts`        | Where `setVersion` would be added under option B           |
+| `src/module/*/application/event/*-session.listener.ts`          | The secondary reconcile path (depends on the same Redis)   |
+| `docker-compose.yml`                                            | `redis-session` persistence/eviction settings              |

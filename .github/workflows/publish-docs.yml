@@ -2,6 +2,10 @@ name: Publish Documentation & SDK
 
 on:
     workflow_call:
+        inputs:
+            SDK_REPO:
+                type: string
+                required: true
         secrets:
             SDK_REPO_PAT:
                 required: true
@@ -26,13 +30,24 @@ jobs:
 
             - name: Push API Client to SDK Repository
               env:
-                  SDK_PAT: ${{ secrets.SDK_REPO_PAT }}
+                  SDK_REPO_PAT: ${{ secrets.SDK_REPO_PAT }}
+                  SDK_REPO: ${{ inputs.SDK_REPO }}
                   BRANCH_NAME: ${{ github.ref_name }}
               run: |
+                  if [ -z "$SDK_REPO" ]; then
+                      echo "::error::The repository variable SDK_REPO is not set (Settings → Secrets and variables → Actions → Variables)."
+                      exit 1
+                  fi
+
+                  if [ -z "$SDK_REPO_PAT" ]; then
+                      echo "::error::The repository secret SDK_REPO_PAT is not set (Settings → Secrets and variables → Actions → Secrets)."
+                      exit 1
+                  fi
+
                   git config --global user.name "github-actions[bot]"
                   git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-                  git clone "https://x-access-token:${SDK_PAT}@github.com/ersinware/nestjs-skeleton-client.git" sdk-repo
+                  git clone "https://x-access-token:${SDK_REPO_PAT}@${SDK_REPO}" sdk-repo
                   cd sdk-repo
 
                   git checkout -B "$BRANCH_NAME"

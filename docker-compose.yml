@@ -1,10 +1,9 @@
 # Application stack — everything the API needs to RUN, and nothing else.
 #
-# Observability lives in docker-compose.observability.yml as a SEPARATE Compose project with its own
-# lifecycle. The two stacks meet only on the `api-network` bridge, which neither file owns: it is
-# declared `external` in both and created by `npm run docker:network`. That is what lets the app
-# stack restart all day without touching Grafana/Loki/Jaeger — and lets the app run with no
-# observability at all (the OTLP exporters fail open; set OTEL_SDK_DISABLED=true to silence them).
+# Observability lives in docker-compose.observability.yml as a SEPARATE Compose project. The two
+# stacks meet only on the `api-network` bridge, owned by neither: it is declared `external` in both
+# and created by `npm run docker:network`, so each stack starts, restarts and stops without the
+# other (the OTLP exporters fail open; set OTEL_SDK_DISABLED=true to silence them).
 services:
     postgres:
         image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88

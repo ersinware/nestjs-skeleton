@@ -101,5 +101,5 @@ jobs:
 
             - name: Run dynamic contract tests
               run: |
-                  npm run start:wait
+                  npm run ci:start:wait
                   npm run test:contract

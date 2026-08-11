@@ -1,53 +1,56 @@
-# Bilinen Açık: brace-expansion DoS (GHSA-mh99-v99m-4gvg) — allowlist'te
+# Known Vulnerability: brace-expansion DoS (GHSA-mh99-v99m-4gvg) — allowlisted
 
-**Durum:** Bilinçli olarak allowlist'e alındı — düzeltilmedi, çünkü düzeltilebilir değil.
-**Tespit:** 2026-07-27, `npm run audit` 27 high bulgu verdiğinde.
-**Etki:** Yok — açık yalnızca `devDependencies` ağacından erişiliyor; çalışan servise (prod
-`node_modules`) hiç girmiyor.
-**Aciliyet:** Düşük — upstream `minimatch` yeni major'a geçtiğinde kendiliğinden kapanacak.
+**Status:** Deliberately allowlisted — not fixed, because it is not fixable.
+**Found:** 2026-07-27, when `npm run audit` reported 27 high findings.
+**Impact:** None — the vulnerability is reachable only through the `devDependencies` tree; it never
+enters the running service (prod `node_modules`).
+**Urgency:** Low — it will close by itself when upstream `minimatch` moves to its next major.
 
 ---
 
-## 1. Sorun
+## 1. The problem
 
-`brace-expansion`, `{a,b}` gibi kalıpları açarken üretilecek kombinasyon sayısını sınırlamıyor.
-Saldırgan kontrolündeki bir glob kalıbı (`{a,b}{a,b}{a,b}...`) süreci OOM ile düşürebiliyor.
+`brace-expansion` does not bound the number of combinations it produces when expanding patterns like
+`{a,b}`. An attacker-controlled glob pattern (`{a,b}{a,b}{a,b}...`) can take the process down with an
+OOM.
 
 - Advisory: <https://github.com/advisories/GHSA-mh99-v99m-4gvg>
-- Zafiyetli aralık: `<= 5.0.7`
-- **Yamalı tek sürüm: `5.0.8`** — 1.x ve 2.x hatlarına backport **yok**.
+- Vulnerable range: `<= 5.0.7`
+- **The only patched release: `5.0.8`** — there is **no** backport to the 1.x and 2.x lines.
 
-## 2. Neden `npm audit` 21 ayrı bulgu gösteriyor
+## 2. Why `npm audit` shows 21 separate findings
 
-Tek bir advisory, 21 farklı bağımlılık yolundan sayılıyor. Hepsinin dibinde aynı zincir var:
+One advisory is counted through 21 different dependency paths. All of them bottom out in the same
+chain:
 
 ```
-<dev aracı> → minimatch@3 / @5 / @9 → brace-expansion@1.x / @2.x
+<dev tool> → minimatch@3 / @5 / @9 → brace-expansion@1.x / @2.x
 ```
 
-Erişen dev araçları: `eslint`, `@eslint/eslintrc`, `@nestjs/cli`
+The dev tools that reach it: `eslint`, `@eslint/eslintrc`, `@nestjs/cli`
 (→ `fork-ts-checker-webpack-plugin`), `@swc/cli`, `@stoplight/spectral-*`, `openapi-typescript`
 (→ `@redocly/openapi-core`), `@rollup/plugin-commonjs`.
 
-`npm audit --omit=dev` **0 bulgu** veriyor: prod ağacında bu zincirin hiçbir halkası yok.
+`npm audit --omit=dev` reports **0 findings**: no link of this chain exists in the prod tree.
 
-## 3. Neden override ile çözülemiyor
+## 3. Why an override cannot fix it
 
-Bariz çözüm `"overrides": { "brace-expansion": "^5.0.8" }` olurdu. **Çalışmaz — çalışan kodu bozar.**
-`brace-expansion@5`'in CommonJS girişi, modülün kendisi yerine bir namespace nesnesi export ediyor:
+The obvious fix would be `"overrides": { "brace-expansion": "^5.0.8" }`. **It does not work — it
+breaks running code.** The CommonJS entry of `brace-expansion@5` exports a namespace object instead
+of the module itself:
 
 ```js
 // brace-expansion@5.0.8
 const be = require('brace-expansion');
-typeof be; // 'object'  ← fonksiyon DEĞİL
+typeof be; // 'object'  ← NOT a function
 typeof be.expand; // 'function'
 ```
 
-`minimatch@3/5/9` ise modülü doğrudan çağırıyor (`braceExpand(pattern)`), yani global bir override
-tüm ESLint / Nest CLI / SWC zincirini runtime'da `TypeError` ile düşürür. `minimatch`'i topluca 10.x'e
-yükseltmek de aynı sınıfta bir kırılma (v10 CJS export şekli v3'ten farklı).
+`minimatch@3/5/9` call the module directly (`braceExpand(pattern)`), so a global override would take
+the entire ESLint / Nest CLI / SWC chain down with a runtime `TypeError`. Bulk-upgrading `minimatch`
+to 10.x is a breakage of the same class (v10's CJS export shape differs from v3's).
 
-Bu yüzden override yalnızca **zaten uyumlu olan** tüketicilere daraltıldı:
+The override was therefore narrowed to the consumers that are **already compatible**:
 
 ```jsonc
 // package.json
@@ -56,23 +59,24 @@ Bu yüzden override yalnızca **zaten uyumlu olan** tüketicilere daraltıldı:
 }
 ```
 
-`minimatch@10` zaten `brace-expansion@^5` bağımlısı olduğu için bu bump güvenli; 27 bulgunun 3'ünü
-kapattı. Geri kalan 21'i için yamalı sürüm mevcut değil.
+`minimatch@10` already depends on `brace-expansion@^5`, so this bump is safe; it closed 3 of the 27
+findings. For the remaining 21 no patched release exists.
 
-## 4. Alınan karar
+## 4. The decision taken
 
-`audit-ci.jsonc` içinde **yalnızca bu advisory** allowlist'e alındı. Bilinçli olarak
-`--skip-dev` tercih **edilmedi**: o bayrak gelecekteki tüm dev-dependency açıklarına da kör kalırdı;
-allowlist ise sadece bu bilinen kaydı susturur, denetimin geri kalanı çalışmaya devam eder.
+**Only this advisory** was allowlisted in `audit-ci.jsonc`. `--skip-dev` was deliberately **not**
+chosen: that flag would also be blind to every future dev-dependency vulnerability, while the
+allowlist silences only this one known entry and the rest of the audit keeps running.
 
-Config'de `show-not-found: true` açık — allowlist girdisi artık hiçbir şeyle eşleşmediğinde audit-ci
-uyarır. **O uyarı görüldüğü an bu dosya ve allowlist girdisi silinmelidir.**
+`show-not-found: true` is enabled in the config — audit-ci warns when an allowlist entry no longer
+matches anything. **The moment that warning appears, this file and the allowlist entry must be
+deleted.**
 
-## 5. Ne zaman kapanır
+## 5. When it closes
 
-Yukarıdaki dev araçları `minimatch@>=10`'a (dolayısıyla `brace-expansion@^5`'e) geçtiğinde. Kontrol:
+When the dev tools above move to `minimatch@>=10` (and therefore `brace-expansion@^5`). To check:
 
 ```bash
-npm ls brace-expansion --all   # 5.0.8 dışında sürüm kalmamalı
-npm run audit                  # allowlist "not found" uyarısı vermeli
+npm ls brace-expansion --all   # no version other than 5.0.8 should remain
+npm run audit                  # the allowlist should produce a "not found" warning
 ```

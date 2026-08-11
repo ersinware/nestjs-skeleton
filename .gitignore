@@ -23,6 +23,7 @@
 .prettiercache
 .project
 .secrets
+.vars
 .settings/
 .temp
 .tmp

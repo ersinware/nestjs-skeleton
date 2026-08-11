@@ -17,6 +17,9 @@ services:
 
         volumes:
             - .:/app
+            # Anonymous volume so the image's own node_modules (built against Alpine/musl) survive
+            # the bind mount above — the host's native builds (e.g. argon2) do not run on musl.
+            - /app/node_modules
 
         develop:
             watch:

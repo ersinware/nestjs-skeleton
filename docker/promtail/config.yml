@@ -1,0 +1,21 @@
+server:
+    http_listen_port: 9080
+
+positions:
+    filename: /tmp/positions.yaml
+
+clients:
+    - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+    - job_name: docker-containers
+      # Discovers running containers through the Docker socket instead of tailing fixed file paths.
+      docker_sd_configs:
+          - host: unix:///var/run/docker.sock
+      relabel_configs:
+          # Docker reports container names with a leading slash; strip it for the `container` label.
+          - source_labels: [__meta_docker_container_name]
+            regex: '/(.*)'
+            target_label: container
+          - source_labels: [__meta_docker_container_log_stream]
+            target_label: stream
