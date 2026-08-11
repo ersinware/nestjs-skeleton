@@ -39,7 +39,7 @@ rules:
         given: $..properties[*]
         then:
             field: example
-            function: truthy
+            function: defined
     operation-request-body:
         description: PUT and PATCH operations must have a requestBody.
         severity: error

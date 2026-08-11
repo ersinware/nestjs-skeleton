@@ -33,4 +33,4 @@ EXPOSE 3000
 # verifies the database and cache. 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -q --tries=1 --spider http://localhost:3000/api/health/ready || exit 1
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]
