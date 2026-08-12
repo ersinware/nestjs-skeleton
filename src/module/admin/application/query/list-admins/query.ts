@@ -6,6 +6,7 @@
 import { Query } from '@nestjs/cqrs';
 import { AdminRole } from 'src/shared/domain/admin';
 import { PaginationParams } from 'src/shared/pagination';
+import type { SearchParams } from 'src/shared/search';
 
 /**
  * Retrieves a paginated list of admins.
@@ -14,9 +15,9 @@ export class ListAdminsQuery extends Query<ListAdminsResult> {
     /**
      * Initializes the query with its parameters.
      *
-     * @param params The pagination parameters
+     * @param params The pagination limits and search parameters
      */
-    constructor(readonly params: PaginationParams) {
+    constructor(readonly params: SearchParams & PaginationParams) {
         super();
     }
 }

@@ -4,11 +4,13 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
+import { type IGetAdminByIdPort } from 'src/module/admin/application/query/get-admin-by-id/port';
+import { type GetAdminByIdResult } from 'src/module/admin/application/query/get-admin-by-id/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
@@ -17,6 +19,7 @@ import { type IListAdminsPort } from 'src/module/admin/application/query/list-ad
 import { type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import { PaginationParams } from 'src/shared/pagination';
+import type { SearchParams } from 'src/shared/search';
 
 /**
  * Implements the admin query ports with direct projection queries: selects only each read-model's
@@ -25,7 +28,12 @@ import { PaginationParams } from 'src/shared/pagination';
  */
 @Injectable()
 export class AdminReaderAdapter
-    implements IGetAdminAuthStatePort, IGetAdminCredentialsByEmailPort, IListAdminsPort, IGetAdminSessionVersionPort
+    implements
+        IGetAdminAuthStatePort,
+        IGetAdminCredentialsByEmailPort,
+        IGetAdminByIdPort,
+        IListAdminsPort,
+        IGetAdminSessionVersionPort
 {
     /**
      * Injects the database connection all reads run on.
@@ -85,13 +93,48 @@ export class AdminReaderAdapter
     }
 
     /**
+     * Reads an admin's public read-model by identifier.
+     *
+     * @param id The unique identifier of the target admin
+     * @returns The admin projection, or null when no non-deleted admin exists
+     */
+    async getById(id: string): Promise<GetAdminByIdResult | null> {
+        try {
+            return (
+                (
+                    await this.db
+                        .select({
+                            id: admin.id,
+                            email: admin.email,
+                            name: admin.name,
+                            role: admin.role,
+                            isBanned: admin.isBanned,
+                        })
+                        .from(admin)
+                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
      * Reads one page of non-deleted admin read-models.
      *
-     * @param params The pagination parameters
+     * @param params The pagination and search parameters
      * @returns The page of admins plus the total row count
      */
-    async listAdmins(params: PaginationParams): Promise<ListAdminsResult> {
-        const conditions = isNull(admin.deletedAt);
+    async listAdmins(params: SearchParams & PaginationParams): Promise<ListAdminsResult> {
+        let searchFilter: SQL | undefined;
+
+        if (params.search) {
+            const pattern = `%${params.search}%`;
+            searchFilter = or(ilike(admin.name, pattern), ilike(admin.email, pattern));
+        }
+
+        const conditions = and(searchFilter, isNull(admin.deletedAt));
 
         try {
             const [data, countResult] = await Promise.all([

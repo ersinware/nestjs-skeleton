@@ -31,6 +31,7 @@ export class AdminSessionListener {
      * @param event The event carrying the admin id
      */
     @OnAppEvent(AdminEvent.BANNED)
+    @OnAppEvent(AdminEvent.PASSWORD_CHANGED)
     @OnAppEvent(AdminEvent.DELETED)
     @OnAppEvent(AdminEvent.SESSIONS_REVOKED)
     async reconcile(event: DispatchedDomainEvent) {

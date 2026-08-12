@@ -48,6 +48,9 @@ export enum AuditAction {
     USER_SESSIONS_REVOKED = 'USER_SESSIONS_REVOKED',
 
     // Privileged actions on admins — kept apart so the trail names the subject's kind.
+    /** A change to an admin's profile identity, chiefly the email — an account-takeover vector even when self-service. */
+    ADMIN_UPDATED = 'ADMIN_UPDATED',
+
     /** An admin account was banned and its sessions revoked. */
     ADMIN_BANNED = 'ADMIN_BANNED',
 
