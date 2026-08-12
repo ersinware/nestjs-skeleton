@@ -4,6 +4,7 @@
  */
 
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { AuthRole } from 'src/shared/domain/auth-role';
 
@@ -37,22 +38,43 @@ export interface ITokenPort {
     generateTokens(role: AuthRole, id: string, sessionVersion: number): Promise<GeneratedTokens>;
 
     /**
-     * Verifies an access token's signature and expiry.
+     * Verifies an access token's signature, expiry, and type.
      *
      * @param token The JWT access token string.
      * @returns The decoded access token payload.
      * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
      * `TokenExpiredError` (a subclass) when it is expired.
+     * @throws {Error} When the token's type discriminator names another token type.
      */
     verifyAccessToken(token: string): Promise<AccessTokenPayload>;
 
     /**
-     * Verifies a refresh token's signature and expiry.
+     * Verifies a refresh token's signature, expiry, and type.
      *
      * @param token The JWT refresh token string.
      * @returns The decoded refresh token payload.
      * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
      * `TokenExpiredError` (a subclass) when it is expired.
+     * @throws {Error} When the token's type discriminator names another token type.
      */
     verifyRefreshToken(token: string): Promise<RefreshTokenPayload>;
+
+    /**
+     * Generates a signed invite token for a pending account.
+     *
+     * @param id The identifier of the account the invitation activates.
+     * @returns The signed invite token.
+     */
+    generateInviteToken(id: string): Promise<string>;
+
+    /**
+     * Verifies an invite token's signature, expiry, and type.
+     *
+     * @param token The JWT invite token string.
+     * @returns The decoded invite token payload.
+     * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
+     * `TokenExpiredError` (a subclass) when it is expired.
+     * @throws {Error} When the token's type discriminator names another token type.
+     */
+    verifyInviteToken(token: string): Promise<InviteTokenPayload>;
 }

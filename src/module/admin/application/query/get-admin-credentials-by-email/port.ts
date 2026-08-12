@@ -11,11 +11,11 @@ import type { GetAdminCredentialsByEmailResult } from 'src/module/admin/applicat
 export const TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT = Symbol('TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT');
 
 /**
- * Thin read contract for fetching an admin's credential read-model by email.
+ * Thin read contract for fetching an admin's credentials by email.
  */
 export interface IGetAdminCredentialsByEmailPort {
     /**
-     * Reads an admin's credential read-model by email.
+     * Reads an admin's credentials by email.
      *
      * @param email The exact email address to look up
      * @returns The credentials, or null when no non-deleted admin exists

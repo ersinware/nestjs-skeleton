@@ -5,17 +5,17 @@
 
 import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEmailAddress, IsPersonName, IsStrongPassword } from 'src/core/http';
+import { IsEmailAddress, IsPersonName } from 'src/core/http';
 
 /**
- * Admin-creation payload. The composed decorators enforce email format, name shape, and password
- * strength in one place each.
+ * Admin-creation payload. Carries no password: the account is created pending activation and its
+ * owner chooses the password through the emailed invitation, so no human ever handles a credential.
  */
 @Exclude()
 @ApiSchema({ name: 'PostAdmin', description: 'Input validation schema for admin account creation.' })
 export class PostAdminDto {
     /**
-     * The unique email address to associate with the new account.
+     * The unique email address the activation invitation is sent to.
      */
     @Expose()
     @IsEmailAddress()
@@ -27,11 +27,4 @@ export class PostAdminDto {
     @Expose()
     @IsPersonName()
     readonly name!: string;
-
-    /**
-     * The plain-text password, hashed before persistence.
-     */
-    @Expose()
-    @IsStrongPassword()
-    readonly password!: string;
 }

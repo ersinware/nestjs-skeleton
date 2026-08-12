@@ -23,11 +23,12 @@ export class GetAdminCredentialsByEmailQuery extends Query<GetAdminCredentialsBy
 
 /**
  * The credential fields login verifies (password hash) and embeds into the minted tokens (id, role,
- * ban status, session version).
+ * ban status, session version). The password is null while the account is pending activation;
+ * whether such an account may authenticate is the login flow's decision.
  */
 export type GetAdminCredentialsByEmailResult = {
     id: string;
-    password: string;
+    password: string | null;
     role: AdminRole;
     isBanned: boolean;
     sessionVersion: number;

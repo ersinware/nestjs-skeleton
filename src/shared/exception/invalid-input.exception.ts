@@ -11,9 +11,9 @@ import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
  */
 export enum InvalidInputMessage {
     /**
-     * Targets validation errors in both request body and parameters.
+     * The transport-neutral fallback when no thrower-owned message applies.
      */
-    DEFAULT = 'Invalid request payload or parameter format.',
+    DEFAULT = 'The provided input is invalid.',
 }
 
 /**

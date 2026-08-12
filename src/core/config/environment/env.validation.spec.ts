@@ -10,7 +10,9 @@ import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tr
 import { describe, expect, it } from 'vitest';
 
 describe('env.validation.config', () => {
-    const validConfig: Record<string, unknown> = {
+    // `satisfies` binds the baseline to the declared contract: a variable added to
+    // EnvironmentVariables without a value here — or removed there but left here — fails compilation.
+    const validConfig = {
         PORT: 3000,
         NODE_ENV: Environment.DEVELOPMENT,
         TRUST_PROXY: 'false',
@@ -35,14 +37,13 @@ describe('env.validation.config', () => {
         JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'refresh-secret',
         JWT_REFRESH_TTL: '7d',
+        JWT_INVITE_SECRET: 'invite-secret',
+        JWT_INVITE_TTL: '3d',
+        ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
         SESSION_ROTATION_GRACE_TTL: '30s',
 
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
-
-        RELAY_ENABLED: true,
-        OUTBOX_WORKER_CONCURRENCY: 2,
-        EMAIL_WORKER_CONCURRENCY: 2,
 
         GMAIL_CLIENT_ID: 'gmail-client-id',
         GMAIL_CLIENT_SECRET: 'gmail-client-secret',
@@ -57,7 +58,7 @@ describe('env.validation.config', () => {
         OTEL_SERVICE_NAME: 'nestjs-skeleton',
         OTEL_TRACES_SAMPLER: 'parentbased_traceidratio',
         OTEL_TRACES_SAMPLER_ARG: 1,
-    };
+    } satisfies Record<keyof EnvironmentVariables, unknown>;
 
     it('should return a validated EnvironmentVariables instance when config is valid', () => {
         const result = validateConfig(validConfig);
@@ -87,7 +88,7 @@ describe('env.validation.config', () => {
     });
 
     it('should throw an error if a required field is missing', () => {
-        const invalidConfig = { ...validConfig };
+        const invalidConfig: Record<string, unknown> = { ...validConfig };
         delete invalidConfig['PORT'];
 
         expect(() => validateConfig(invalidConfig)).toThrow(Error);

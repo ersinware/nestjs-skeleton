@@ -4,14 +4,7 @@
  */
 
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
-import {
-    ApiBearerAuth,
-    ApiCreatedResponse,
-    ApiNoContentResponse,
-    ApiOkResponse,
-    ApiOperation,
-    ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
@@ -75,31 +68,22 @@ export class UserController {
     ) {}
 
     /**
-     * Registers a new user account. Public: this is the sign-up route.
+     * Soft-deletes the currently authenticated user's account.
      *
-     * @param postUserDto The registration payload
-     * @returns The newly created, serialized user profile
+     * @param accessTokenPayload The decoded access token payload of the requester
      */
-    @Public()
-    @Post()
+    @Delete('me')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Register user',
-        description: 'Creates a new user account. Public sign-up route.',
+        summary: 'Delete current user account',
+        description: 'Soft deletes the currently authenticated user account and revokes all active sessions.',
     })
-    @ApiCreatedResponse({ description: 'User account successfully created.', type: ResponseUserDto })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
-    async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto): Promise<ResponseUserDto> {
-        return plainToInstance(
-            ResponseUserDto,
-            await this.queryPipeline.execute(
-                new GetUserByIdQuery(
-                    await this.commandPipeline.execute(
-                        new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
-                    ),
-                ),
-            ),
-        );
+    @ApiNoContentResponse({ description: 'User account successfully deleted.' })
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    async deleteMe(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload) {
+        await this.commandPipeline.execute(new DeleteUserCommand(accessTokenPayload.sub));
     }
 
     /**
@@ -244,22 +228,25 @@ export class UserController {
     }
 
     /**
-     * Soft-deletes the currently authenticated user's account.
+     * Registers a new user account. Public: this is the sign-up route. Returns no body — the client
+     * signs in with the submitted credentials and reads the profile from `me`.
      *
-     * @param accessTokenPayload The decoded access token payload of the requester
+     * @param postUserDto The registration payload
      */
-    @Delete('me')
-    @ApiBearerAuth()
+    @Public()
+    @Post()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Delete current user account',
-        description: 'Soft deletes the currently authenticated user account and revokes all active sessions.',
+        summary: 'Register user',
+        description: 'Creates a new user account. Public sign-up route.',
     })
-    @ApiNoContentResponse({ description: 'User account successfully deleted.' })
-    @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultResourceNotFoundResponse()
-    async deleteMe(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload) {
-        await this.commandPipeline.execute(new DeleteUserCommand(accessTokenPayload.sub));
+    @ApiNoContentResponse({ description: 'User account successfully created.' })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
+    async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto) {
+        await this.commandPipeline.execute(
+            new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
+        );
     }
 
     /**

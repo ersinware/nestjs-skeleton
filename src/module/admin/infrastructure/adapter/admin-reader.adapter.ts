@@ -65,7 +65,7 @@ export class AdminReaderAdapter
     }
 
     /**
-     * Reads an admin's credential read-model by email.
+     * Reads an admin's credentials by email.
      *
      * @param email The exact email address to look up
      * @returns The credentials, or null when no non-deleted admin exists

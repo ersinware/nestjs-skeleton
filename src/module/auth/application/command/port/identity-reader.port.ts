@@ -65,8 +65,8 @@ export type AuthIdentity = {
     /** The unique identifier of the identity */
     id: string;
 
-    /** The hashed password of the identity */
-    password: string;
+    /** The hashed password of the identity, or null while the account is pending activation */
+    password: string | null;
 
     /** The authorization role the owning realm reports, embedded into freshly minted tokens */
     role: AuthRole;
