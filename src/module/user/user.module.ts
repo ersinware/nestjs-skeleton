@@ -14,10 +14,10 @@ import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
-import { CreateUserCommandHandler } from 'src/module/user/application/command/create-user/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
+import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
@@ -56,7 +56,7 @@ import { UserFacade } from 'src/module/user/user.facade';
     controllers: [UserController],
     providers: [
         UserFacade,
-        CreateUserCommandHandler,
+        RegisterUserCommandHandler,
         UpdateUserCommandHandler,
         ChangeUserPasswordCommandHandler,
         DeleteUserCommandHandler,

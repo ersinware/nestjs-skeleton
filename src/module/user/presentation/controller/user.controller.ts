@@ -31,8 +31,8 @@ import { CurrentAccessTokenPayload, Public, Roles } from 'src/core/security/auth
 import type { AccessTokenPayload } from 'src/core/security/token';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
-import { CreateUserCommand } from 'src/module/user/application/command/create-user/command';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
+import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import { GetUserByIdQuery } from 'src/module/user/application/query/get-user-by-id/query';
@@ -238,14 +238,14 @@ export class UserController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Register user',
-        description: 'Creates a new user account. Public sign-up route.',
+        description: 'Registers a new user account. Public sign-up route.',
     })
     @ApiNoContentResponse({ description: 'User account successfully created.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
-    async create(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto) {
+    async register(@Body(NotEmptyBodyPipe) postUserDto: PostUserDto) {
         await this.commandPipeline.execute(
-            new CreateUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
+            new RegisterUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
         );
     }
 
