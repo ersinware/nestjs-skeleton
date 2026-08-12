@@ -22,7 +22,7 @@ export class ListAdminsQueryHandler implements IQueryHandler<ListAdminsQuery, Li
     constructor(@Inject(TOKEN_LIST_ADMINS_PORT) private readonly port: IListAdminsPort) {}
 
     /**
-     * Executes the query.
+     * Executes the list admins query.
      *
      * @param query The query carrying the pagination parameters
      * @returns The paginated list of admins

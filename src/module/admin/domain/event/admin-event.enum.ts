@@ -7,6 +7,12 @@
  * Domain events the Admin aggregate emits, keyed by the on-bus event name.
  */
 export enum AdminEvent {
+    /** Profile fields changed. */
+    UPDATED = 'admin.updated',
+
+    /** Password changed; the session version was bumped. */
+    PASSWORD_CHANGED = 'admin.password_changed',
+
     /** Account soft-deleted; the session version was bumped. */
     DELETED = 'admin.deleted',
 

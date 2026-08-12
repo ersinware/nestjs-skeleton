@@ -30,8 +30,8 @@ type AdminProps = {
 type AdminSnapshot = { id: string; deletedAt: Date | null } & AdminProps;
 
 /**
- * The Admin aggregate root. Owns every admin invariant: ban/unban transitions, session revocation
- * through the monotonic version counter, and soft-delete immutability.
+ * The Admin aggregate root. Owns every admin invariant: profile updates, ban/unban transitions,
+ * session revocation through the monotonic version counter, and soft-delete immutability.
  */
 export class Admin extends SoftDeletableAggregateRoot {
     private props: AdminProps;
@@ -88,6 +88,53 @@ export class Admin extends SoftDeletableAggregateRoot {
             deletedAt: this.deletedAt,
             ...this.props,
         };
+    }
+
+    /**
+     * Updates the basic profile information of the admin.
+     * Only applies changes if the provided values differ from the current state.
+     *
+     * @returns Whether any field actually changed — the caller records the audit entry only on a real
+     * transition, so a request that matched the current state leaves no fabricated trail.
+     * @throws {SystemException} When the account has been soft-deleted
+     */
+    updateProfile(payload: { name?: string; email?: string }): boolean {
+        this.assertNotDeleted(this.updateProfile.name);
+
+        let isUpdated = false;
+
+        if (payload.name && payload.name !== this.props.name) {
+            this.props.name = payload.name;
+            isUpdated = true;
+        }
+
+        if (payload.email && payload.email !== this.props.email) {
+            this.props.email = payload.email;
+            isUpdated = true;
+        }
+
+        if (isUpdated) {
+            this.props.updatedAt = new Date();
+            this.addDomainEvent(new DomainEvent(AdminEvent.UPDATED, this.id));
+        }
+
+        return isUpdated;
+    }
+
+    /**
+     * Changes the admin's password and bumps the session version so that every token minted before
+     * this change is instantly rejected by the auth guard.
+     *
+     * @throws {SystemException} When the account has been soft-deleted
+     */
+    changePassword(password: string) {
+        this.assertNotDeleted(this.changePassword.name);
+
+        this.props.password = password;
+        this.props.sessionVersion++;
+        this.props.updatedAt = new Date();
+
+        this.addDomainEvent(new DomainEvent(AdminEvent.PASSWORD_CHANGED, this.id));
     }
 
     /**

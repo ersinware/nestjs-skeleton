@@ -9,18 +9,23 @@ import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
+import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { AdminFacade } from 'src/module/admin/admin.facade';
 import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin/handler';
+import { ChangeAdminPasswordCommandHandler } from 'src/module/admin/application/command/change-admin-password/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
+import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
 import { AdminSessionListener } from 'src/module/admin/application/event/admin-session.listener';
 import { AdminTokenReuseListener } from 'src/module/admin/application/event/admin-token-reuse.listener';
 import { GetAdminAuthStateQueryHandler } from 'src/module/admin/application/query/get-admin-auth-state/handler';
 import { TOKEN_GET_ADMIN_AUTH_STATE_PORT } from 'src/module/admin/application/query/get-admin-auth-state/port';
+import { GetAdminByIdQueryHandler } from 'src/module/admin/application/query/get-admin-by-id/handler';
+import { TOKEN_GET_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-admin-by-id/port';
 import { GetAdminCredentialsByEmailQueryHandler } from 'src/module/admin/application/query/get-admin-credentials-by-email/handler';
 import { TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/application/query/get-admin-session-version/port';
@@ -35,22 +40,34 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
  * listeners, and exports only the facade — the sole surface other modules may consume.
  */
 @Module({
-    imports: [AuditModule, DatabaseModule, EventBusModule, SessionModule, EmailModule, CqrsPipelineModule],
+    imports: [
+        AuditModule,
+        DatabaseModule,
+        EventBusModule,
+        HashingModule,
+        SessionModule,
+        EmailModule,
+        CqrsPipelineModule,
+    ],
     controllers: [AdminController],
     providers: [
         AdminFacade,
+        UpdateAdminCommandHandler,
+        ChangeAdminPasswordCommandHandler,
         DeleteAdminCommandHandler,
         BanAdminCommandHandler,
         UnbanAdminCommandHandler,
         RevokeAdminSessionsCommandHandler,
         ReconcileAdminSessionCommandHandler,
         ListAdminsQueryHandler,
+        GetAdminByIdQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,
         AdminTokenReuseListener,
         AdminSessionListener,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
         { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
+        { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReaderAdapter },
