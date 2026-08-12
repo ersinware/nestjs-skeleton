@@ -8,7 +8,7 @@ import { Command } from '@nestjs/cqrs';
 /**
  * Command to create a new user.
  */
-export class CreateUserCommand extends Command<string> {
+export class CreateUserCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *

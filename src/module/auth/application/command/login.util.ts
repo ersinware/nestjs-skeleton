@@ -26,6 +26,7 @@ import {
 enum AuthRejectionReason {
     ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
     INACTIVE_ACCOUNT = 'ACCOUNT_IS_INACTIVE',
+    PENDING_ACCOUNT = 'ACCOUNT_PENDING_ACTIVATION',
     INVALID_PASSWORD = 'INVALID_PASSWORD',
 }
 
@@ -70,6 +71,12 @@ export async function login(
 
     if (identity.isBanned) {
         throw denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, identity.id);
+    }
+
+    // A pending account has no password yet, so there is nothing to verify against until its owner
+    // activates it.
+    if (!identity.password) {
+        throw denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
     }
 
     if (!(await ports.hashingPort.verify(identity.password, password))) {

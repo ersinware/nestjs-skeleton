@@ -27,6 +27,11 @@ export const TRUST_PROXY_PATTERN =
     /^(?:false|(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal)(?:\s*,\s*(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal))*)$/;
 
 /**
+ * The duration shape every TTL variable must match: an integer followed by s, m, h, or d.
+ */
+const TTL_PATTERN = /^\d+[smhd]$/;
+
+/**
  * Transforms the strings 'true'/'false' to actual booleans, leaving any other value untouched for
  * `@IsBoolean` to reject.
  *
@@ -200,7 +205,7 @@ export class EnvironmentVariables {
      * Time-to-live for JWT access tokens (e.g., '15m').
      */
     @IsString()
-    @Matches(/^\d+[smhd]$/, {
+    @Matches(TTL_PATTERN, {
         message: 'JWT_ACCESS_TTL must match the format: duration followed by s, m, h, or d (e.g., "15m", "7d")',
     })
     readonly JWT_ACCESS_TTL!: string;
@@ -215,10 +220,34 @@ export class EnvironmentVariables {
      * Time-to-live for JWT refresh tokens (e.g., '7d').
      */
     @IsString()
-    @Matches(/^\d+[smhd]$/, {
+    @Matches(TTL_PATTERN, {
         message: 'JWT_REFRESH_TTL must match the format: duration followed by s, m, h, or d (e.g., "7d", "30d")',
     })
     readonly JWT_REFRESH_TTL!: string;
+
+    /**
+     * Secret key for signing JWT invite tokens.
+     */
+    @IsString()
+    readonly JWT_INVITE_SECRET!: string;
+
+    /**
+     * Time-to-live for JWT invite tokens (e.g., '3d').
+     */
+    @IsString()
+    @Matches(TTL_PATTERN, {
+        message: 'JWT_INVITE_TTL must match the format: duration followed by s, m, h, or d (e.g., "3d", "72h")',
+    })
+    readonly JWT_INVITE_TTL!: string;
+
+    /**
+     * Base URL of the admin activation page; the invite email appends the token as a query parameter.
+     */
+    @IsString()
+    @Matches(/^https?:\/\/\S+$/, {
+        message: 'ADMIN_INVITE_URL must be an absolute http(s) URL',
+    })
+    readonly ADMIN_INVITE_URL!: string;
 
     /**
      * Grace window (e.g. '30s') during which a just-rotated refresh token is tombstoned rather than
@@ -226,7 +255,7 @@ export class EnvironmentVariables {
      * instead of triggering full session-family revocation.
      */
     @IsString()
-    @Matches(/^\d+[smhd]$/, {
+    @Matches(TTL_PATTERN, {
         message:
             'SESSION_ROTATION_GRACE_TTL must match the format: duration followed by s, m, h, or d (e.g., "30s", "1m")',
     })

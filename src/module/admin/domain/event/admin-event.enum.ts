@@ -7,6 +7,9 @@
  * Domain events the Admin aggregate emits, keyed by the on-bus event name.
  */
 export enum AdminEvent {
+    /** Account created pending activation; an invitation email is owed to the owner. */
+    INVITED = 'admin.invited',
+
     /** Profile fields changed. */
     UPDATED = 'admin.updated',
 

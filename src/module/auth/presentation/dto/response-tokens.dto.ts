@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsRefreshToken, TOKEN_MAX_LENGTH } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
+import { IsJwtToken, TOKEN_MAX_LENGTH } from 'src/core/http';
 
 /**
  * Returns the issued token pair; the class-level whitelist guarantees nothing else ever reaches
@@ -35,6 +35,6 @@ export class ResponseTokensDto {
      * The long-lived refresh token, exchanged for a new token pair when the access token expires.
      */
     @Expose()
-    @IsRefreshToken('The newly issued refresh token')
+    @IsJwtToken('The newly issued refresh token')
     readonly refreshToken!: string;
 }

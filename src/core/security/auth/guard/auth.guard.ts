@@ -9,7 +9,7 @@ import { publishAuditActor } from 'src/core/observability/audit';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { AuthTokenType, TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
+import { TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -61,12 +61,6 @@ export class AuthGuard implements CanActivate {
         try {
             payload = await this.tokenPort.verifyAccessToken(token);
         } catch {
-            throw new UnauthenticatedException();
-        }
-
-        // Separate secrets already reject refresh tokens; the explicit type assert ensures a token
-        // minted for any other purpose can never pass as an access token.
-        if (payload.type !== AuthTokenType.ACCESS) {
             throw new UnauthenticatedException();
         }
 

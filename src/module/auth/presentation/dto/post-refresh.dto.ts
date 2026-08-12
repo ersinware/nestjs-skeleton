@@ -5,7 +5,7 @@
 
 import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsRefreshToken } from 'src/module/auth/presentation/decorator/refresh-token.decorator';
+import { IsJwtToken } from 'src/core/http';
 
 /**
  * Validates the refresh token at the transport boundary; shared by the refresh and logout routes,
@@ -18,6 +18,6 @@ export class PostRefreshDto {
      * The refresh token to rotate or revoke.
      */
     @Expose()
-    @IsRefreshToken('The active refresh token')
+    @IsJwtToken('The active refresh token')
     readonly refreshToken!: string;
 }

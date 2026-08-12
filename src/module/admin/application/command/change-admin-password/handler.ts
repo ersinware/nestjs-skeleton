@@ -16,7 +16,7 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { InvalidInputException, ResourceNotFoundException } from 'src/shared/exception';
+import { InvalidInputException, ResourceNotFoundException, SystemException } from 'src/shared/exception';
 
 /**
  * Changes the password for an existing admin account.
@@ -55,6 +55,14 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<Change
 
         const hashedPassword = admin.password;
 
+        // A pending account cannot authenticate, so no request can reach this handler for it; a
+        // missing password is a broken code path, not a client fault.
+        if (!hashedPassword) {
+            throw new SystemException('A pending account cannot change its password.', {
+                context: { class: ChangeAdminPasswordCommandHandler.name, method: this.execute.name, id: admin.id },
+            });
+        }
+
         if (!(await this.hashingPort.verify(hashedPassword, currentPassword))) {
             throw new InvalidInputException(ChangeAdminPasswordMessage.CURRENT_PASSWORD_MISMATCH);
         }
@@ -69,6 +77,6 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<Change
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
-        this.sessionPort.setVersion(id, admin.sessionVersion).catch(() => {});
+        this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch(() => {});
     }
 }

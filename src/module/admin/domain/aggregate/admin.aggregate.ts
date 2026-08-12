@@ -7,6 +7,7 @@ import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
 import { AdminRole } from 'src/shared/domain/admin';
 import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
+import { SystemException } from 'src/shared/exception';
 
 /**
  * The module-owned state of an Admin aggregate.
@@ -14,7 +15,8 @@ import { DomainEvent } from 'src/shared/domain/event';
 type AdminProps = {
     email: string;
     name: string;
-    password: string;
+    /** Null until the invited admin activates the account by setting a password. */
+    password: string | null;
     role: AdminRole;
     isBanned: boolean;
     sessionVersion: number;
@@ -48,8 +50,9 @@ export class Admin extends SoftDeletableAggregateRoot {
     }
 
     /**
-     * Creates a new Admin with a fresh lifecycle state. Emits no event: the sole creation path is
-     * the seed script, which has no reaction to trigger.
+     * Creates a new Admin with a fresh lifecycle state. A passwordless account is pending activation
+     * and emits an INVITED event; one created with a password (the seed script) is active from the
+     * start and emits nothing.
      *
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
@@ -57,16 +60,21 @@ export class Admin extends SoftDeletableAggregateRoot {
     static create(
         props: { id: string } & Omit<AdminProps, 'isBanned' | 'sessionVersion' | 'createdAt' | 'updatedAt'>,
     ): Admin {
-        const now = new Date();
+        const now = new Date(),
+            admin = new Admin({
+                ...props,
+                isBanned: false,
+                deletedAt: null,
+                sessionVersion: 0,
+                createdAt: now,
+                updatedAt: now,
+            });
 
-        return new Admin({
-            ...props,
-            isBanned: false,
-            deletedAt: null,
-            sessionVersion: 0,
-            createdAt: now,
-            updatedAt: now,
-        });
+        if (!props.password) {
+            admin.addDomainEvent(new DomainEvent(AdminEvent.INVITED, admin.id));
+        }
+
+        return admin;
     }
 
     /**
@@ -119,6 +127,27 @@ export class Admin extends SoftDeletableAggregateRoot {
         }
 
         return isUpdated;
+    }
+
+    /**
+     * Activates a pending account by setting its first password. The transition itself spends the
+     * invitation: once a password exists, every outstanding invite token is rejected.
+     *
+     * @param password The Argon2-hashed initial password
+     * @throws {SystemException} When the account is soft-deleted or already active — the activation
+     * flow filters both, so reaching either here is a broken code path
+     */
+    activate(password: string) {
+        this.assertNotDeleted(this.activate.name);
+
+        if (this.props.password !== null) {
+            throw new SystemException('An already-active account cannot be activated again.', {
+                context: { class: Admin.name, method: this.activate.name, id: this.id },
+            });
+        }
+
+        this.props.password = password;
+        this.props.updatedAt = new Date();
     }
 
     /**
@@ -232,8 +261,8 @@ export class Admin extends SoftDeletableAggregateRoot {
         return this.props.name;
     }
 
-    /** The hashed password. */
-    get password(): string {
+    /** The hashed password, or null while the account is pending activation. */
+    get password(): string | null {
         return this.props.password;
     }
 

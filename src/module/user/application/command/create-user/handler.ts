@@ -1,7 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles CreateUserCommand. Creates and persists a new User aggregate root,
- * returning only the generated ID so the presentation layer can re-query via the read path.
+ * @description Handles CreateUserCommand. Creates and persists a new User aggregate root.
  */
 
 import { Inject } from '@nestjs/common';
@@ -16,10 +15,10 @@ import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { uuidv7 } from 'uuidv7';
 
 /**
- * Creates a new user account and returns the generated entity ID.
+ * Creates a new user account.
  */
 @CommandHandler(CreateUserCommand)
-export class CreateUserCommandHandler implements ICommandHandler<CreateUserCommand, string> {
+export class CreateUserCommandHandler implements ICommandHandler<CreateUserCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
@@ -35,7 +34,6 @@ export class CreateUserCommandHandler implements ICommandHandler<CreateUserComma
      * Executes the create user command.
      *
      * @param command The command payload
-     * @returns The unique identifier of the newly created user
      * @throws {ResourceConflictException} When the email address is already in use
      */
     async execute(command: CreateUserCommand) {
@@ -48,7 +46,5 @@ export class CreateUserCommandHandler implements ICommandHandler<CreateUserComma
             });
 
         await this.userWriterPort.save(user);
-
-        return user.id;
     }
 }

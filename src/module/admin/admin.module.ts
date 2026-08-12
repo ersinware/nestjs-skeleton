@@ -11,15 +11,21 @@ import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
+import { TokenModule } from 'src/core/security/token';
 import { AdminFacade } from 'src/module/admin/admin.facade';
+import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin/handler';
 import { ChangeAdminPasswordCommandHandler } from 'src/module/admin/application/command/change-admin-password/handler';
+import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
+import { ReInviteAdminCommandHandler } from 'src/module/admin/application/command/re-invite-admin/handler';
 import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
+import { SendAdminInviteCommandHandler } from 'src/module/admin/application/command/send-admin-invite/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
 import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
+import { AdminInviteListener } from 'src/module/admin/application/event/admin-invite.listener';
 import { AdminSessionListener } from 'src/module/admin/application/event/admin-session.listener';
 import { AdminTokenReuseListener } from 'src/module/admin/application/event/admin-token-reuse.listener';
 import { GetAdminAuthStateQueryHandler } from 'src/module/admin/application/query/get-admin-auth-state/handler';
@@ -46,12 +52,17 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         EventBusModule,
         HashingModule,
         SessionModule,
+        TokenModule,
         EmailModule,
         CqrsPipelineModule,
     ],
     controllers: [AdminController],
     providers: [
         AdminFacade,
+        CreateAdminCommandHandler,
+        SendAdminInviteCommandHandler,
+        ActivateAdminCommandHandler,
+        ReInviteAdminCommandHandler,
         UpdateAdminCommandHandler,
         ChangeAdminPasswordCommandHandler,
         DeleteAdminCommandHandler,
@@ -65,6 +76,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         GetAdminAuthStateQueryHandler,
         AdminTokenReuseListener,
         AdminSessionListener,
+        AdminInviteListener,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
         { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useClass: AdminReaderAdapter },

@@ -41,9 +41,10 @@ export const admin = adminSchema.table(
         name: text('name').notNull(),
 
         /**
-         * The Argon2-hashed password.
+         * The Argon2-hashed password; null until the invited admin activates the account, which also
+         * keeps a pending account unable to authenticate.
          */
-        password: text('password').notNull(),
+        password: text('password'),
 
         /**
          * The authorization role.
