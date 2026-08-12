@@ -8,7 +8,6 @@
  * command to record anything, so this single reviewable list is the mitigation.
  */
 export enum AuditAction {
-    // Authentication
     /** Successful credential login. */
     LOGIN_SUCCESS = 'LOGIN_SUCCESS',
 
@@ -27,11 +26,12 @@ export enum AuditAction {
     /** Self-service password change; every previously minted token is revoked. */
     PASSWORD_CHANGED = 'PASSWORD_CHANGED',
 
-    // Authorization refusals — recorded by the exception filter.
     /** An authenticated caller was refused by the roles guard — written by the global filter on 403. */
     ACCESS_DENIED = 'ACCESS_DENIED',
 
-    // Privileged actions on users
+    /** A user registered their own account — the birth of the trail's subject; public route, so unattributed. */
+    USER_REGISTERED = 'USER_REGISTERED',
+
     /** A change to profile identity, chiefly the email — an account-takeover vector even when self-service. */
     USER_UPDATED = 'USER_UPDATED',
 
@@ -72,7 +72,6 @@ export enum AuditAction {
     /** Every session of an admin was revoked after refresh-token reuse. */
     ADMIN_SESSIONS_REVOKED = 'ADMIN_SESSIONS_REVOKED',
 
-    // Personal-data disclosure — written by the interceptor on `@Audited` reads.
     /** A read endpoint disclosed another principal's personal data. */
     PERSONAL_DATA_ACCESSED = 'PERSONAL_DATA_ACCESSED',
 }

@@ -1,14 +1,14 @@
 /**
  * @file command.ts
- * @description Defines the CreateUserCommand for creating a new user.
+ * @description Defines the RegisterUserCommand for self-service user registration.
  */
 
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Command to create a new user.
+ * Command to register a new user account on their own behalf.
  */
-export class CreateUserCommand extends Command<void> {
+export class RegisterUserCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
