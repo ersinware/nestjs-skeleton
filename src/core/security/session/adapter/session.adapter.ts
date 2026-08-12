@@ -61,12 +61,14 @@ return -1
 /**
  * Monotonic-max write of the session version: advances the stored value only when the incoming one
  * is strictly greater, so it never regresses under out-of-order or concurrent writes. Atomic across
- * the read-compare-write.
+ * the read-compare-write. Both branches renew the TTL, so a live session's key cannot expire under
+ * the fail-closed guard.
  * KEYS[1] = version key; ARGV[1] = version; ARGV[2] = ttl seconds.
  */
 const VERSION_LUA = `
 local stored = redis.call('GET', KEYS[1])
 if stored and tonumber(stored) >= tonumber(ARGV[1]) then
+  redis.call('EXPIRE', KEYS[1], ARGV[2])
   return 0
 end
 redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
@@ -202,15 +204,16 @@ export class SessionAdapter implements ISessionPort {
     }
 
     /**
-     * Reads the cached session version.
+     * Reads the cached session version. Absence is returned as null, never coerced to a permissive
+     * default — the guard fails closed on it.
      *
      * @param id The principal identifier.
-     * @returns The version, or 0 when none is set.
+     * @returns The version, or null when no live session exists.
      */
-    async getVersion(id: string): Promise<number> {
+    async getVersion(id: string): Promise<number | null> {
         const version = await this.run(() => this.redis.get(SessionKeys.version(id)));
 
-        return version ? Number(version) : 0;
+        return version === null ? null : Number(version);
     }
 
     /**

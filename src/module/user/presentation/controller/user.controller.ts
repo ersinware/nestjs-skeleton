@@ -48,7 +48,7 @@ import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-use
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
-import { AdminRole } from 'src/shared/domain/admin';
+import { ADMIN_ROLES } from 'src/shared/domain/auth-role';
 import { ResourceConflictMessage } from 'src/shared/exception';
 
 /**
@@ -109,7 +109,7 @@ export class UserController {
      * @returns The paginated list of user profiles
      */
     @Get()
-    @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @Roles(...ADMIN_ROLES)
     @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
@@ -162,7 +162,7 @@ export class UserController {
      * @returns The serialized profile of the requested user
      */
     @Get(ROUTE_PARAM_ID)
-    @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @Roles(...ADMIN_ROLES)
     @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
@@ -268,7 +268,7 @@ export class UserController {
      * @param params The path parameters carrying the target user ID
      */
     @Post(`${ROUTE_PARAM_ID}/ban`)
-    @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @Roles(...ADMIN_ROLES)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
@@ -290,7 +290,7 @@ export class UserController {
      * @param params The path parameters carrying the target user ID
      */
     @Post(`${ROUTE_PARAM_ID}/unban`)
-    @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    @Roles(...ADMIN_ROLES)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
