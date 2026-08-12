@@ -101,25 +101,23 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw error;
         }
 
-        // The three rejections below leave no audit record on purpose: each is the CONSEQUENCE of an
-        // act that is itself audited where it happened — the deletion, the ban, or whatever advanced
-        // the version. Recording the refusal too would file the same event twice under a weaker name,
-        // and the client's only correct response to all three is to authenticate again.
         if (identity.isBanned) {
             throw new UnauthenticatedException();
         }
 
-        // Version is read from the DB (the authority), so a ban/password-change/delete that advanced
-        // the version rejects the refresh before it can mint a fresh token.
+        // The DB is the authority, so a mutation that advanced the version rejects the refresh
+        // before it can mint a fresh token.
         if (payload.sessionVersion < identity.sessionVersion) {
             throw new UnauthenticatedException();
         }
 
+        // Heals any drift the best-effort bumps left in the store and renews the key's TTL for the
+        // fail-closed guard. Uncaught — the rotation below needs the same store anyway.
+        await this.sessionPort.setVersion(sub, identity.sessionVersion);
+
         const tokens = await this.tokenPort.generateTokens(role, sub, identity.sessionVersion),
-            // Single atomic rotation is both the single-use gate and the classifier (see RotateOutcome). The
-            // old session's grace tombstone lets a lost concurrent-refresh race be told apart from a token
-            // replayed after that window — the refresh-token reuse signal (RFC 9700) — so no separate pre-read
-            // of the session is needed.
+            // The atomic rotation is both the single-use gate and the classifier: the grace
+            // tombstone tells a lost concurrent-refresh race apart from post-window reuse (RFC 9700).
             outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.refreshTokenJti);
 
         if (outcome === RotateOutcome.ROTATED) {
@@ -127,43 +125,31 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         }
 
         if (outcome === RotateOutcome.CONCURRENT_REPLAY) {
-            // A legitimate duplicate/concurrent refresh lost the race. Benign — reject only this request
-            // with a 409 and leave the session family untouched. No audit log: this is not an attack.
+            // A duplicate refresh lost the race — benign. 409 for this request only; no audit.
             throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
         }
 
-        // RotateOutcome.REUSE_DETECTED. The record is written FIRST, before any of the remediation
-        // below: the fact is already established by the rotation, and everything that follows can
-        // fail — an unreachable Redis would turn this into a 503 and lose the most serious signal the
-        // system can raise, exactly when an attacker would most like it lost.
-        //
-        // This handler is also the only place that can tell a replayed refresh token apart from any
-        // other 401: the distinction lives in RotateOutcome and never leaves this method. Left to the
-        // filter, which sees only a status code, the most serious signal here would be filed as one
-        // more expired token.
+        // RotateOutcome.REUSE_DETECTED. Recorded FIRST: everything below can fail, and only this
+        // handler can tell a replayed refresh token apart from any other 401 — left to the filter,
+        // the signal would be filed as one more expired token.
         this.auditPort.record({
             action: AuditAction.REFRESH_REUSE_DETECTED,
             targetId: sub,
         });
 
-        // Per the BCP, revoke the entire refresh family so a stolen token
-        // cannot keep minting sessions. This immediate Redis eviction is the fast path; the follow-up
-        // (a cross-module session-version bump that also kills outstanding access tokens, plus a security
-        // email) is driven by the reuse integration event emitted below.
+        // Revoke the whole refresh family (RFC 9700) so a stolen token cannot keep minting sessions.
+        // The version bump that also kills outstanding access tokens is driven by the event below.
         await this.sessionPort.closeAllSessions(sub);
 
-        // The owning module (user or admin) can only be reached asynchronously (§5 forbids cross-module
-        // transactions), so the trigger is emitted on the in-process bus. Auth raises no aggregate of its
-        // own, so the event is dispatched here rather than from a writer adapter. Fire-and-forget: the
-        // sessions are already evicted and the caller must still get the 401 below, so a failing listener
-        // must not turn this into a 503. A rejected dispatch is swallowed — the family is already
-        // revoked above; the catch only stops an unhandled rejection.
+        // The owning module is reachable only asynchronously; auth has no aggregate, so the event is
+        // emitted here. Fire-and-forget: the family is already revoked and the caller must still get
+        // the 401 — a failing listener must not turn this into a 503.
         this.eventPublisherPort
             .emitAsync(REFRESH_REUSE_EVENT_BY_REALM[realm], { aggregateId: sub, eventId: uuidv7() })
             .catch(() => {});
 
-        // No context: the event has an audit record of its own, and the response must stay
-        // indistinguishable from every other rejected refresh so a probe learns nothing from it.
+        // No context: the reuse is audited above, and the response must stay indistinguishable from
+        // every other rejected refresh.
         throw new UnauthenticatedException();
     }
 }

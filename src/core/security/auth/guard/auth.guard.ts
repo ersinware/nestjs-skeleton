@@ -75,7 +75,10 @@ export class AuthGuard implements CanActivate {
         // rejecting with a retryable 503 beats admitting a possibly-revoked token.
         const currentVersion = await this.sessionPort.getVersion(payload.sub);
 
-        if (payload.sessionVersion < currentVersion) {
+        // Login and refresh keep every live session's version key alive, so a missing key means the
+        // session is dead: fail closed. 401 rather than 503 — the store answered definitively, and
+        // re-authenticating rewrites the key.
+        if (currentVersion === null || payload.sessionVersion < currentVersion) {
             throw new UnauthenticatedException();
         }
 

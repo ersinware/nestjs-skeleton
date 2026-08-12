@@ -16,6 +16,13 @@ import { UserRole } from 'src/shared/domain/user';
 import { SystemException } from 'src/shared/exception';
 
 /**
+ * The single role every user-realm identity holds — that realm's read model has no role column.
+ * Closed over {@link UserRole} so a second member fails compilation here, forcing the role to come
+ * from the read model instead of this stamp.
+ */
+const SOLE_USER_ROLE = { [UserRole.USER]: UserRole.USER } as const satisfies Record<UserRole, UserRole>;
+
+/**
  * Adapter that gives the Auth module a single read surface over both identity realms.
  *
  * The realm-to-facade routing lives here rather than in the handlers: composing several sources
@@ -50,9 +57,7 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
             case IdentityRealm.ADMIN:
                 return this.adminFacade.getCredentialsByEmail(email);
             case IdentityRealm.USER:
-                // The user context has no role column — every one of its identities holds the single
-                // USER role, so the realm supplies what the read model cannot.
-                return { ...(await this.userFacade.getCredentialsByEmail(email)), role: UserRole.USER };
+                return { ...(await this.userFacade.getCredentialsByEmail(email)), role: SOLE_USER_ROLE[UserRole.USER] };
             default:
                 return assertRealmExhausted(realm);
         }

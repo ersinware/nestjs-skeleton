@@ -72,8 +72,9 @@ export interface ISessionPort {
 
     /**
      * Advances the cached session version with a monotonic-max write: the stored value moves only
-     * when `version` is strictly greater, so it never regresses regardless of delivery order. The DB
-     * is the authority; this mirrors it for the guard's hot path.
+     * when `version` is strictly greater, so a racing stale write cannot resurrect revoked tokens.
+     * Every write renews the key's TTL, keeping a live session's key alive for the fail-closed
+     * guard. The DB is the authority; this mirrors it for the guard's hot path.
      *
      * @param id The principal identifier.
      * @param version The candidate session version (the aggregate's monotonic counter).
@@ -83,10 +84,12 @@ export interface ISessionPort {
 
     /**
      * Reads the cached session version: the minimum version a token must carry to be accepted.
+     * Login and refresh keep every live session's key alive, so a missing key means no live
+     * session — the caller must fail closed, never substitute a permissive default.
      *
      * @param id The principal identifier.
-     * @returns The version, or 0 when none is set.
+     * @returns The version, or null when no live session exists.
      * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
-    getVersion(id: string): Promise<number>;
+    getVersion(id: string): Promise<number | null>;
 }
