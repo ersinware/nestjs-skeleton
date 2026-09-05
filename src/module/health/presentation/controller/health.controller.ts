@@ -20,6 +20,7 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
+import { HttpCache, HttpCachePolicy } from 'src/core/http';
 import { Public, Roles } from 'src/core/security/auth';
 import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
@@ -54,6 +55,7 @@ export class HealthController {
      */
     @Get(ROUTE_HEALTH_LIVE)
     @Public()
+    @HttpCache(HttpCachePolicy.NO_STORE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Liveness probe',
@@ -70,6 +72,7 @@ export class HealthController {
      */
     @Get(ROUTE_HEALTH_READY)
     @Public()
+    @HttpCache(HttpCachePolicy.NO_STORE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Readiness probe',
@@ -91,6 +94,7 @@ export class HealthController {
      */
     @Get()
     @Roles(AdminRole.SUPER_ADMIN)
+    @HttpCache(HttpCachePolicy.NO_STORE)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Detailed health status',

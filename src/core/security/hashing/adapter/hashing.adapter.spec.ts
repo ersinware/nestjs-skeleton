@@ -44,12 +44,16 @@ describe('HashingAdapter', () => {
         const plainText = 'my-secure-password',
             expectedHash = '$argon2id$v=19$m=65536,t=3,p=4$somehashedstring';
 
-        it('should successfully hash plain text using default argon2 config in non-test env', async () => {
+        it('should hash plain text with the OWASP minimum argon2 profile in non-test env', async () => {
             const adapter = await createAdapter(Environment.PRODUCTION);
             mockedHash.mockResolvedValueOnce(expectedHash);
 
             await expect(adapter.hash(plainText)).resolves.toBe(expectedHash);
-            expect(mockedHash).toHaveBeenCalledWith(plainText);
+            expect(mockedHash).toHaveBeenCalledWith(plainText, {
+                timeCost: 2,
+                memoryCost: 19456,
+                parallelism: 1,
+            });
         });
 
         it('should use weak argon2 settings in test env to optimize performance', async () => {
@@ -69,7 +73,7 @@ describe('HashingAdapter', () => {
             mockedHash.mockRejectedValueOnce(new Error());
 
             await expect(adapter.hash(plainText)).rejects.toThrow(Error);
-            expect(mockedHash).toHaveBeenCalledWith(plainText);
+            expect(mockedHash).toHaveBeenCalledWith(plainText, expect.any(Object));
         });
     });
 
