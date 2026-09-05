@@ -19,6 +19,8 @@ import {
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import {
+    HttpCache,
+    HttpCachePolicy,
     NotEmptyBodyPipe,
     ParamIdDto,
     QuerySearchDto,
@@ -94,6 +96,7 @@ export class UserController {
      */
     @Get()
     @Roles(...ADMIN_ROLES)
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
@@ -124,6 +127,7 @@ export class UserController {
      * @returns The serialized profile of the current user
      */
     @Get('me')
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get current user profile',
@@ -147,6 +151,7 @@ export class UserController {
      */
     @Get(ROUTE_PARAM_ID)
     @Roles(...ADMIN_ROLES)
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({

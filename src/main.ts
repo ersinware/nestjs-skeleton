@@ -28,11 +28,12 @@ import {
     VERSION_PREFIX,
 } from 'src/core/config';
 import { createSwaggerDocument } from 'src/core/doc';
+import { httpCacheHook } from 'src/core/http';
 import { auditContextHook } from 'src/core/observability/audit';
 
 /**
  * Bootstraps the application: URI versioning, global prefix, Pino logger, graceful shutdown hooks,
- * and the audit context hook, then starts listening.
+ * and the raw Fastify hooks (audit context, HTTP cache), then starts listening.
  */
 async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(
@@ -46,6 +47,10 @@ async function bootstrap() {
     // A raw Fastify hook, not a provider: it must run ahead of the entire Nest pipeline so a
     // request refused by a guard still carries the address it came from.
     app.getHttpAdapter().getInstance().addHook('onRequest', auditContextHook);
+
+    // Raw for the same reason: the `no-store` fallback must reach replies no interceptor sees, and
+    // the ETag needs the serialized body.
+    app.getHttpAdapter().getInstance().addHook('onSend', httpCacheHook);
 
     app.enableShutdownHooks()
         .enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1, prefix: VERSION_PREFIX })

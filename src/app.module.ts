@@ -13,7 +13,7 @@ import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { GlobalExceptionFilter } from 'src/core/exception';
-import { NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
+import { HttpCacheInterceptor, NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
 import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { ExceptionTrackerModule } from 'src/core/observability/exception-tracker';
 import { LoggerModule } from 'src/core/observability/logger';
@@ -75,6 +75,12 @@ import { UserModule } from 'src/module/user';
                 },
                 transform: true,
             }),
+        },
+        // Outermost: a missing or misplaced cache policy is a wiring bug and must fail before any
+        // other interceptor or the handler runs.
+        {
+            provide: APP_INTERCEPTOR,
+            useClass: HttpCacheInterceptor,
         },
         // The ambient audit context is seeded by `auditContextHook` and completed by `AuthGuard`,
         // both of which run before any interceptor — so the actor is already in scope when this

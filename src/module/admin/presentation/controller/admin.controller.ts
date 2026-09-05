@@ -19,6 +19,8 @@ import {
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import {
+    HttpCache,
+    HttpCachePolicy,
     NotEmptyBodyPipe,
     ParamIdDto,
     QuerySearchDto,
@@ -103,6 +105,7 @@ export class AdminController {
      */
     @Get()
     @Roles(AdminRole.SUPER_ADMIN)
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
@@ -134,6 +137,7 @@ export class AdminController {
      */
     @Get('me')
     @Roles(...ADMIN_ROLES)
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get current admin profile',
