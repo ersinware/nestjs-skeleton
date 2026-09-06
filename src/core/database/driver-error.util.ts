@@ -3,18 +3,15 @@
  * @description Predicates classifying raw PostgreSQL driver errors — plus the shared connection-failure translation — so database adapters can translate them into the exception taxonomy at the port boundary.
  */
 
+import { DatabaseError } from 'pg';
 import { DependencyUnavailableException, DependencyUnavailableMessage } from 'src/shared/exception';
 
 /**
- * Every code that means "the database is unreachable" rather than "this query is wrong": postgres.js
- * connection-lifecycle codes, Node socket errno codes, and the PostgreSQL SQLSTATEs for connection
- * exceptions (class 08), operator-initiated shutdown (57Pxx), and connection-slot exhaustion (53300).
+ * Every code that means "the database is unreachable" rather than "this query is wrong": Node socket
+ * errno codes, and the PostgreSQL SQLSTATEs for connection exceptions (class 08), operator-initiated
+ * shutdown (57Pxx), and connection-slot exhaustion (53300).
  */
 const CONNECTION_FAILURE_CODES = new Set([
-    'CONNECTION_CLOSED',
-    'CONNECTION_ENDED',
-    'CONNECTION_DESTROYED',
-    'CONNECT_TIMEOUT',
     'ECONNREFUSED',
     'ECONNRESET',
     'ENOTFOUND',
@@ -35,6 +32,12 @@ const CONNECTION_FAILURE_CODES = new Set([
 ]);
 
 /**
+ * The driver's own connection-lifecycle failures carry no code, only a message: the pool's
+ * checkout timeout, and a socket the server closed mid-query.
+ */
+const CONNECTION_FAILURE_MESSAGES = ['timeout exceeded when trying to connect', 'Connection terminated'];
+
+/**
  * Reports whether the given error is (or wraps) a PostgreSQL unique-constraint violation. Walks the
  * `cause` chain because Drizzle wraps the driver error in its own query error before rethrowing.
  *
@@ -43,7 +46,7 @@ const CONNECTION_FAILURE_CODES = new Set([
  */
 export function isUniqueViolation(error: unknown): boolean {
     for (let current = error; current instanceof Error; current = current.cause) {
-        if (current.name === 'PostgresError' && (current as { code?: unknown }).code === '23505') {
+        if (current instanceof DatabaseError && current.code === '23505') {
             return true;
         }
     }
@@ -82,6 +85,10 @@ function isConnectionFailure(error: unknown): boolean {
         const code = (current as { code?: unknown }).code;
 
         if (typeof code === 'string' && CONNECTION_FAILURE_CODES.has(code)) {
+            return true;
+        }
+
+        if (CONNECTION_FAILURE_MESSAGES.some((message) => current.message.startsWith(message))) {
             return true;
         }
     }

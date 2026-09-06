@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import type { IDatabaseCleanerPort } from 'src/core/database/port/database-cleaner.port';
 
@@ -17,9 +17,9 @@ export class DatabaseCleanerAdapter implements IDatabaseCleanerPort {
     /**
      * Initializes the cleaner with the database connection.
      *
-     * @param db The PostgresJs database instance
+     * @param db The Drizzle database instance
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
 
     /**
      * Truncates every table outside the PostgreSQL system schemas and Drizzle's migration
