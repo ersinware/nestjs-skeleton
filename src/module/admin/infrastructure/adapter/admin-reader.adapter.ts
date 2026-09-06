@@ -1,10 +1,10 @@
 /**
  * @file admin-reader.adapter.ts
- * @description Drizzle implementation of every admin query port.
+ * @description Drizzle implementation of the admin query ports that must read the primary.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
@@ -15,45 +15,42 @@ import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/applicati
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
 import { type GetAdminSessionVersionResult } from 'src/module/admin/application/query/get-admin-session-version/query';
-import { type IListAdminsPort } from 'src/module/admin/application/query/list-admins/port';
-import { type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
-import { PaginationParams } from 'src/shared/pagination';
-import type { SearchParams } from 'src/shared/search';
 
 /**
- * Implements the admin query ports with direct projection queries: selects only each read-model's
- * columns and maps rows straight to flat results, never through the aggregate. Methods are ordered
- * by expected call frequency.
+ * Implements the admin query ports on the primary connection with direct projection queries: selects
+ * only each read-model's columns and maps rows straight to flat results, never through the
+ * aggregate. Every port here feeds a write decision (login, refresh, session reconciliation) or a
+ * read-your-own-writes lookup, so a replica's lag is not acceptable; lag-tolerant reads live in the
+ * replica reader. Methods are ordered by expected call frequency.
  */
 @Injectable()
 export class AdminReaderAdapter
-    implements
-        IGetAdminAuthStatePort,
-        IGetAdminCredentialsByEmailPort,
-        IGetAdminByIdPort,
-        IListAdminsPort,
-        IGetAdminSessionVersionPort
+    implements IGetAdminAuthStatePort, IGetAdminCredentialsByEmailPort, IGetAdminByIdPort, IGetAdminSessionVersionPort
 {
     /**
-     * Injects the database connection all reads run on.
-     *
-     * @param db The Drizzle database client
+     * @param db The Drizzle client on the primary connection
      */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
 
     /**
-     * Reads an admin's ban status and current session version.
+     * Reads an admin's public read-model by identifier.
      *
      * @param id The unique identifier of the target admin
-     * @returns The auth state, or null when no non-deleted admin exists
+     * @returns The admin projection, or null when no non-deleted admin exists
      */
-    async getAuthState(id: string): Promise<GetAdminAuthStateResult | null> {
+    async getById(id: string): Promise<GetAdminByIdResult | null> {
         try {
             return (
                 (
                     await this.db
-                        .select({ isBanned: admin.isBanned, sessionVersion: admin.sessionVersion })
+                        .select({
+                            id: admin.id,
+                            email: admin.email,
+                            name: admin.name,
+                            role: admin.role,
+                            isBanned: admin.isBanned,
+                        })
                         .from(admin)
                         .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
                         .limit(1)
@@ -93,74 +90,6 @@ export class AdminReaderAdapter
     }
 
     /**
-     * Reads an admin's public read-model by identifier.
-     *
-     * @param id The unique identifier of the target admin
-     * @returns The admin projection, or null when no non-deleted admin exists
-     */
-    async getById(id: string): Promise<GetAdminByIdResult | null> {
-        try {
-            return (
-                (
-                    await this.db
-                        .select({
-                            id: admin.id,
-                            email: admin.email,
-                            name: admin.name,
-                            role: admin.role,
-                            isBanned: admin.isBanned,
-                        })
-                        .from(admin)
-                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
-                        .limit(1)
-                )[0] ?? null
-            );
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
-
-    /**
-     * Reads one page of non-deleted admin read-models.
-     *
-     * @param params The pagination and search parameters
-     * @returns The page of admins plus the total row count
-     */
-    async listAdmins(params: SearchParams & PaginationParams): Promise<ListAdminsResult> {
-        let searchFilter: SQL | undefined;
-
-        if (params.search) {
-            const pattern = `%${params.search}%`;
-            searchFilter = or(ilike(admin.name, pattern), ilike(admin.email, pattern));
-        }
-
-        const conditions = and(searchFilter, isNull(admin.deletedAt));
-
-        try {
-            const [data, countResult] = await Promise.all([
-                this.db
-                    .select({
-                        id: admin.id,
-                        email: admin.email,
-                        name: admin.name,
-                        role: admin.role,
-                        isBanned: admin.isBanned,
-                    })
-                    .from(admin)
-                    .where(conditions)
-                    .orderBy(desc(admin.id))
-                    .limit(params.limit)
-                    .offset((params.page - 1) * params.limit),
-                this.db.select({ total: count() }).from(admin).where(conditions),
-            ]);
-
-            return { data, total: countResult[0]?.total ?? 0 };
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
-
-    /**
      * Reads an admin's session version. Deliberately omits the soft-delete filter so a deleted admin
      * resolves to its (revoked) version and reconciliation can still converge.
      *
@@ -175,6 +104,28 @@ export class AdminReaderAdapter
                         .select({ sessionVersion: admin.sessionVersion })
                         .from(admin)
                         .where(eq(admin.id, id))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads an admin's ban status and current session version.
+     *
+     * @param id The unique identifier of the target admin
+     * @returns The auth state, or null when no non-deleted admin exists
+     */
+    async getAuthState(id: string): Promise<GetAdminAuthStateResult | null> {
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ isBanned: admin.isBanned, sessionVersion: admin.sessionVersion })
+                        .from(admin)
+                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
                         .limit(1)
                 )[0] ?? null
             );

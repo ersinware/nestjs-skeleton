@@ -3,13 +3,13 @@
  * @description Unit tests for the PostgreSQL database health adapter.
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health.adapter';
-import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
-import { ConnectionLogMessage, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { DatabaseRole } from 'src/core/database/database-role.enum';
+import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-describe('PostgresHealthIndicatorAdapter', () => {
+describe('DatabaseHealthAdapter', () => {
     const mockDb = {
         execute: vi.fn(),
     };
@@ -22,22 +22,8 @@ describe('PostgresHealthIndicatorAdapter', () => {
 
     let adapter: DatabaseHealthAdapter;
 
-    beforeEach(async () => {
-        const module: TestingModule = await Test.createTestingModule({
-            providers: [
-                DatabaseHealthAdapter,
-                {
-                    provide: TOKEN_DATABASE_CLIENT,
-                    useValue: mockDb,
-                },
-                {
-                    provide: TOKEN_LOGGER_PORT,
-                    useValue: mockLoggerPort,
-                },
-            ],
-        }).compile();
-
-        adapter = module.get<DatabaseHealthAdapter>(DatabaseHealthAdapter);
+    beforeEach(() => {
+        adapter = new DatabaseHealthAdapter(mockDb as unknown as NodePgDatabase, mockLoggerPort, DatabaseRole.PRIMARY);
     });
 
     it('should be defined', () => {
@@ -66,7 +52,7 @@ describe('PostgresHealthIndicatorAdapter', () => {
 
             expect(mockLoggerPort.warn).toHaveBeenCalledTimes(1);
             expect(mockLoggerPort.warn).toHaveBeenCalledWith(
-                expect.objectContaining({ message: ConnectionLogMessage.LOST }),
+                expect.objectContaining({ message: ConnectionLogMessage.LOST, data: { role: DatabaseRole.PRIMARY } }),
             );
 
             await expect(adapter.ping()).rejects.toThrow(Error);
@@ -83,7 +69,10 @@ describe('PostgresHealthIndicatorAdapter', () => {
 
             expect(mockLoggerPort.info).toHaveBeenCalledTimes(1);
             expect(mockLoggerPort.info).toHaveBeenCalledWith(
-                expect.objectContaining({ message: ConnectionLogMessage.RESTORED }),
+                expect.objectContaining({
+                    message: ConnectionLogMessage.RESTORED,
+                    data: { role: DatabaseRole.PRIMARY },
+                }),
             );
 
             await expect(adapter.ping()).resolves.toBeUndefined();

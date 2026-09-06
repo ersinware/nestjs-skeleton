@@ -6,7 +6,18 @@
 
 import { applyDecorators } from '@nestjs/common';
 import { plainToInstance, Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsIn, IsNumber, IsString, Matches, Max, Min, validateSync } from 'class-validator';
+import {
+    IsBoolean,
+    IsEnum,
+    IsIn,
+    IsNumber,
+    IsOptional,
+    IsString,
+    Matches,
+    Max,
+    Min,
+    validateSync,
+} from 'class-validator';
 import { Environment } from 'src/core/config/environment/node-env.enum';
 import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 
@@ -48,6 +59,17 @@ function transformToBoolean<T>({ value }: { value: T }): boolean | T {
     }
 
     return value;
+}
+
+/**
+ * Maps an empty string to `undefined`, so an optional variable left as `NAME=` in an env file counts
+ * as unset — `@IsOptional` skips `undefined`, not ''.
+ *
+ * @param params The transform parameter object.
+ * @returns `undefined` for an empty string, the original value otherwise.
+ */
+function emptyToUndefined<T>({ value }: { value: T }): T | undefined {
+    return value === '' ? undefined : value;
 }
 
 /**
@@ -106,10 +128,19 @@ export class EnvironmentVariables {
     readonly TRUST_PROXY!: string;
 
     /**
-     * PostgreSQL database connection URL.
+     * Connection URL of the primary (writer) PostgreSQL endpoint.
      */
     @IsString()
     readonly DATABASE_URL!: string;
+
+    /**
+     * Connection URL of the read-replica (reader) PostgreSQL endpoint. Unset or empty means no
+     * replica: replica-bound reads then run on the primary.
+     */
+    @Transform(emptyToUndefined)
+    @IsOptional()
+    @IsString()
+    readonly DATABASE_REPLICA_URL?: string;
 
     /**
      * Maximum number of connections in the database connection pool.

@@ -107,6 +107,10 @@ function createUnhealthyErrorSchema(description: string): Record<string, unknown
                 status: 'down',
                 message: UnhealthyIndicatorMessage.database,
             },
+            database_replica: {
+                status: 'down',
+                message: UnhealthyIndicatorMessage.database_replica,
+            },
             cache: {
                 status: 'down',
                 message: UnhealthyIndicatorMessage.cache,
@@ -163,6 +167,7 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
             memory_heap: createHealthyOrUnhealthyIndicator('memory_heap', 'up'),
             memory_rss: createHealthyOrUnhealthyIndicator('memory_rss', 'up'),
             database: createHealthyOrUnhealthyIndicator('database', 'down'),
+            database_replica: createHealthyOrUnhealthyIndicator('database_replica', 'down'),
             cache: createHealthyOrUnhealthyIndicator('cache', 'down'),
             session: createHealthyOrUnhealthyIndicator('session', 'up'),
         },
@@ -177,6 +182,10 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
             database: {
                 status: 'down',
                 message: UnhealthyIndicatorMessage.database,
+            },
+            database_replica: {
+                status: 'down',
+                message: UnhealthyIndicatorMessage.database_replica,
             },
             cache: {
                 status: 'down',

@@ -1,20 +1,20 @@
 /**
  * @file database-health.adapter.ts
  * @description PostgreSQL adapter of the database health port, doubling as the outage-transition
- * logging site.
+ * logging site of the connection it probes.
  */
 
-import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
+import { DatabaseRole } from 'src/core/database/database-role.enum';
 import type { IDatabaseHealthPort } from 'src/core/database/port/database-health.port';
-import { ConnectionLogMessage, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
- * PostgreSQL implementation of the database health port, verifying connectivity via Drizzle.
+ * PostgreSQL implementation of the database health port. One instance per connection, constructed
+ * by the database module's factories: the outage flag is per connection, and the role names the
+ * connection in the logs.
  */
-@Injectable()
 export class DatabaseHealthAdapter implements IDatabaseHealthPort {
     /**
      * Outage-transition flag. The driver's pool reports only dropped idle clients, never a state, so
@@ -24,20 +24,22 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
     private isDown = false;
 
     /**
-     * Initializes the probe with the database connection and the logger.
+     * Initializes the probe with the connection it verifies and the logger.
      *
-     * @param db The Drizzle database instance
+     * @param db The Drizzle client on the probed connection
      * @param loggerPort The port the outage transitions are logged on
+     * @param role The probed connection's role, named in the transition logs
      */
     constructor(
-        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
+        private readonly db: NodePgDatabase,
+        private readonly loggerPort: ILoggerPort,
+        private readonly role: DatabaseRole,
     ) {}
 
     /**
      * Verifies connectivity with a `SELECT 1` query. On failure the driver error is logged once per
      * outage episode — the health alarm brings the operator in, this warn names the cause — and then
-     * rethrown so the health indicator reports the database as down.
+     * rethrown so the health indicator reports the connection as down.
      *
      * @throws {Error} If the connectivity query fails.
      */
@@ -52,6 +54,7 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
                     method: this.ping.name,
                     message: ConnectionLogMessage.LOST,
                     error,
+                    data: { role: this.role },
                 });
             }
 
@@ -64,6 +67,7 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
                 class: this.constructor.name,
                 method: this.ping.name,
                 message: ConnectionLogMessage.RESTORED,
+                data: { role: this.role },
             });
         }
     }

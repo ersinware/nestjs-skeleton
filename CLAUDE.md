@@ -87,6 +87,7 @@ What the table alone does not say:
 - **Soft links only**: store the UUID as a plain string column — no FK constraints.
 - **No synchronous cross-module transaction.** Cross-module state is reconciled asynchronously (§ Events).
 - **Stateless**: never store session data in local memory — use Redis.
+- **Two database connections; the primary is the default, the replica an opt-in.** `core/database` provides `TOKEN_DATABASE_CLIENT` (primary) and `TOKEN_DATABASE_REPLICA_CLIENT` (`DATABASE_REPLICA_URL`, resolving to the primary client when unset). Primary: every write, every read that feeds a write decision (login, refresh, session reconciliation), and every `ICacheableQuery` — a cache populated from a lagging replica pins the stale row for the whole TTL. Replica: presentational reads that tolerate replication lag (lists, searches). The adapter makes the choice, never the handler.
 
 ### 5. Events & Messaging
 
@@ -116,6 +117,8 @@ Always use NestJS Custom Providers (TS interfaces are erased at runtime):
 1. Define the Symbol token in the same file as its port interface.
 2. Inject with `@Inject(TOKEN_NAME)` in `application/`.
 3. Bind with `{ provide: TOKEN_NAME, useClass: SomeAdapter }` in the module — several tokens may bind to the same adapter class.
+
+**An adapter parameterized by a VALUE (which connection, which role) is a plain class built by a `useFactory` provider, with no Nest decorators** (`DatabaseHealthAdapter`, one instance per connection). Adding `@Injectable`/`@Inject` there is not a fix: the container cannot supply the value, and the instances must stay distinct.
 
 **Extending a framework class that injects its own constructor params (any library-provided guard, interceptor or service): re-declare ITS `@Inject`s alongside yours.** Any `@Inject` on the subclass writes that class's own dependency metadata, SHADOWING the base class's rather than extending it — so adding one token silently makes the inherited ones unresolvable at boot.
 
@@ -225,7 +228,7 @@ Do NOT impose one uniform adapter split everywhere. Ask per concern: **do the re
 
 - **Inside a module: YES → split reader / writer** (CQRS projected onto infrastructure). The writer injects DB + event bus + logger, takes the Aggregate, and `implements` exactly one write port; the reader injects the data source only, returns read-models, and accretes an `implements` clause per query. They change at different rates, so must not share a class.
 - **Inside `core/`: NO → split by CAPABILITY instead** (`cache` / `cache-health` / `cache-cleaner`). A capability's get and set change for the same reason, over the same connection — `CacheReaderAdapter`/`CacheWriterAdapter` would be pure ceremony, and some concerns have no read side (`IEmailerPort.sendEmail`). If a core concern's read and write sides diverge, split the **concern** into sub-concepts, not the adapter.
-- **Adapter count = data source × (read/write).** A module reading from a second source (e.g. cache) gets its own reader for THAT source — the axis is the source, not read/write. Never bolt a second data source onto an existing reader.
+- **Adapter count = data source × (read/write).** A module reading from a second source (e.g. cache) gets its own reader for THAT source — the axis is the source, not read/write. Never bolt a second data source onto an existing reader. **The replica is a source of its own**: `<module>-reader.adapter.ts` injects the primary, `<module>-replica-reader.adapter.ts` the replica, and a port sits in one or the other by the consistency test (§ Data & State Boundaries).
 - **One reader per data source implements every thin read-port of that source** (`AdminReaderAdapter` — one `*-reader.adapter.ts`, injecting the data source once), never one adapter per port; handlers still see only their thin port.
 - **Readers consolidate, writers are singular, and a module that never writes has no writer** — do not open an empty box.
 - **Writers own driver-error translation.** A constraint violation is meaningful only to the schema's owner, so the writer catches the driver error at the port boundary and rethrows the matching taxonomy exception with `{ cause }` (unique-violation on `email` → `ResourceConflictException(EMAIL_IN_USE)`). Classification predicates live in `core/database` (`isUniqueViolation`); a raw driver error never escapes infrastructure.
@@ -303,6 +306,7 @@ Three endpoints split by AUDIENCE, and the split is load-bearing:
 - **`/health/live`** — public, `204`, checks **nothing**. A dependency check here would let one Redis/Postgres outage restart every otherwise-healthy instance. It is the sole edge that dispatches no use case (§ CQRS).
 - **`/health/ready`** — public, checks every dependency, answers `204`/`503` with **no body**. The caller is a load balancer branching on the status code; a body would disclose the dependency topology to anonymous callers. The container `HEALTHCHECK` and a k8s `readinessProbe` point here, never at liveness.
 - **`/health`** — the per-indicator detail, `@Roles(AdminRole.SUPER_ADMIN)`: naming which dependency is down is reconnaissance material.
+- **`database` and `database_replica` are two indicators, always both present** — the set is fixed at compile time (`HEALTH_INDICATOR_KEYS`), and readiness must fail when replica-bound reads would 503. Without a replica, `TOKEN_DATABASE_REPLICA_HEALTH_PORT` is the primary's own probe object, so the indicator reports the connection those reads run on and one outage logs one episode.
 
 Two consequences look like defects and MUST NOT be "fixed":
 
@@ -349,7 +353,7 @@ An audit record answers "who did what, when, from where" to an auditor; a log an
 
 A downed dependency (Redis, Postgres) fails every call until it recovers, so the question is not _whether_ the cause is worth a breadcrumb but _where_ it is recorded. **The breadcrumb belongs at the CONNECTION level, gated on a state-transition flag; every per-call and per-request failure path stays silent.**
 
-- **The transition site logs** — a `warn` with the driver error and `ConnectionLogMessage.LOST` on the way down, an `info` with `RESTORED` on the way back — once per episode, guarded by an `isDown` flag. The site depends on the driver: ioredis exposes connection events (`core/cache/redis-client.factory.ts`, shared by every Redis-owning concern); `pg`'s pool reports only dropped idle clients (swallowed in `core/database/module.ts`), so the periodic health probe is the transition site (`core/database/adapter/database-health.adapter.ts`).
+- **The transition site logs** — a `warn` with the driver error and `ConnectionLogMessage.LOST` on the way down, an `info` with `RESTORED` on the way back — once per episode, guarded by an `isDown` flag. The site depends on the driver: ioredis exposes connection events (`core/cache/redis-client.factory.ts`, shared by every Redis-owning concern); `pg`'s pool reports only dropped idle clients (swallowed in `core/database/database-pool.factory.ts`), so the periodic health probe is the transition site (`core/database/adapter/database-health.adapter.ts`) — one instance per connection, each with its own flag, `data.role` naming the connection.
 - **Everything downstream is silent** — fail-open cache reads, best-effort session writes, the global filter's `503`. Detection is the health alarm's job and the cause is already named once; per-call records flood exactly when the logs matter most.
 - **`ConnectionLogMessage` is shared vocabulary on purpose** (`core/observability/logger`) — an outage reads identically across dependencies, so the two transitions are greppable as one thing.
 
@@ -384,6 +388,8 @@ Never use `process.env` directly — always `ConfigService` with the `ENV` const
 configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
 ```
 
+**An OPTIONAL variable** (`DATABASE_REPLICA_URL`) is declared `?:` with `@IsOptional()` and `@Transform(emptyToUndefined)` — an empty `NAME=` line arrives as '' and must count as unset — and is read with `get`, never `getOrThrow`; the reader treats '' as unset too, because `ConfigService` falls back to raw `process.env` when validation dropped the key.
+
 **A variable read more than once in a class goes into a `private readonly` field assigned in the constructor** (§ Variable Inlining projected onto env reads) — one place holds the key + generic, and `getOrThrow` fails at boot instead of first use; a single read stays inline.
 
 **The sole exception is code that runs before the DI container exists**: `src/instrument.ts`, `src/tracing.ts`, and the `core/config` resolvers for the HTTP adapter's `trustProxy` and `ConfigModule`'s `envFilePath` (arguments to `NestFactory.create` / `ConfigModule.forRoot`, so they precede `ConfigService`). Structural, not a shortcut — it changes only WHERE the value is read, never where its contract lives: the variable is still declared on `EnvironmentVariables` with its constraints, so boot validation covers it. Such a reader validates nothing itself; it INTERPRETS, and fails SAFE on anything it cannot interpret, because it runs before validation would have rejected it.
@@ -414,7 +420,7 @@ Used once → inline. Used more than once → extract to a named variable.
 | ------------- | --------------------------------------------------------------------------------------- |
 | Framework     | NestJS v11+ with SWC builder                                                            |
 | HTTP          | Fastify (`@nestjs/platform-fastify`)                                                    |
-| Database      | Drizzle ORM + PostgreSQL (`pg` client)                                                  |
+| Database      | Drizzle ORM + PostgreSQL (`pg` client) + optional read replica                          |
 | Cache         | Redis (`ioredis`)                                                                       |
 | Events        | `@nestjs/event-emitter` — in-process, behind `IEventPublisherPort`                      |
 | Queue         | none yet — see **Events & Messaging**                                                   |

@@ -2,8 +2,8 @@
 #
 # The source tree is bind-mounted and the container runs `nest start --watch`, so a CODE change needs
 # no image rebuild — which is why `docker:dev:up` deliberately does NOT pass `--build`. Only a
-# dependency change does, and that is what `docker:dev:build` (and the `develop.watch` rules below)
-# are for.
+# dependency change does, and that is what `docker:dev:build` is for. An `.env` change needs a
+# container restart: Compose injects the file at start, so the running process never sees an edit.
 services:
     api:
         build:
@@ -20,10 +20,3 @@ services:
             # Anonymous volume so the image's own node_modules (built against Alpine/musl) survive
             # the bind mount above — the host's native builds (e.g. argon2) do not run on musl.
             - /app/node_modules
-
-        develop:
-            watch:
-                - path: package.json
-                  action: rebuild
-                - path: package-lock.json
-                  action: rebuild

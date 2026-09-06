@@ -80,6 +80,7 @@ function createHealthyDetailsSchema(description: string): Record<string, unknown
             memory_heap: { status: 'up' },
             memory_rss: { status: 'up' },
             database: { status: 'up' },
+            database_replica: { status: 'up' },
             cache: { status: 'up' },
             session: { status: 'up' },
         } satisfies Record<HealthIndicatorKey, HealthyIndicatorState>,

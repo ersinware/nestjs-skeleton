@@ -34,6 +34,7 @@ import { TOKEN_GET_USER_SESSION_VERSION_PORT } from 'src/module/user/application
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
+import { UserReplicaReaderAdapter } from 'src/module/user/infrastructure/adapter/user-replica-reader.adapter';
 import { UserWriterAdapter } from 'src/module/user/infrastructure/adapter/user-writer.adapter';
 import { UserController } from 'src/module/user/presentation/controller/user.controller';
 import { UserFacade } from 'src/module/user/user.facade';
@@ -76,7 +77,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_BY_ID_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useClass: UserReaderAdapter },
-        { provide: TOKEN_LIST_USERS_PORT, useClass: UserReaderAdapter },
+        { provide: TOKEN_LIST_USERS_PORT, useClass: UserReplicaReaderAdapter },
     ],
     exports: [UserFacade],
 })

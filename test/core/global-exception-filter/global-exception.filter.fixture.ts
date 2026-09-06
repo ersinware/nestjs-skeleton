@@ -31,6 +31,7 @@ export class HealthExceptionTriggerController {
             },
             error: {
                 database: { status: 'down', message: 'Database connection failed.' },
+                database_replica: { status: 'down', message: 'Database replica connection failed.' },
                 cache: { status: 'down', message: 'Cache connection failed.' },
             },
             details: {
@@ -38,6 +39,7 @@ export class HealthExceptionTriggerController {
                 memory_rss: { status: 'up' },
                 session: { status: 'up' },
                 database: { status: 'down', message: 'Database connection failed.' },
+                database_replica: { status: 'down', message: 'Database replica connection failed.' },
                 cache: { status: 'down', message: 'Cache connection failed.' },
             },
         } satisfies ResponseUnhealthyDto);

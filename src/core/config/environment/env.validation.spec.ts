@@ -17,6 +17,7 @@ describe('env.validation.config', () => {
         NODE_ENV: Environment.DEVELOPMENT,
         TRUST_PROXY: 'false',
         DATABASE_URL: 'postgres://localhost:5432/db',
+        DATABASE_REPLICA_URL: undefined,
         DATABASE_POOL_SIZE: 10,
         DATABASE_CONNECT_TIMEOUT: 5000,
         DATABASE_IDLE_TIMEOUT: 10000,
