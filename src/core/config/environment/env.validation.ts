@@ -274,6 +274,12 @@ export class EnvironmentVariables {
     readonly HEALTH_RSS_LIMIT_MB!: number;
 
     /**
+     * Sender email address for Gmail API.
+     */
+    @IsString()
+    readonly GMAIL_USER_EMAIL!: string;
+
+    /**
      * Google OAuth2 client ID for Gmail API.
      */
     @IsString()
@@ -290,12 +296,6 @@ export class EnvironmentVariables {
      */
     @IsString()
     readonly GMAIL_REFRESH_TOKEN!: string;
-
-    /**
-     * Sender email address for Gmail API.
-     */
-    @IsString()
-    readonly GMAIL_USER_EMAIL!: string;
 
     /**
      * Sentry DSN (Data Source Name) for error tracking.
@@ -328,6 +328,14 @@ export class EnvironmentVariables {
     readonly OTEL_SERVICE_NAME!: string;
 
     /**
+     * Comma-separated `key=value` resource attributes (`service.namespace`,
+     * `deployment.environment.name`). Read natively by the OTel SDK; declared here so a missing value
+     * fails at boot instead of leaving the telemetry unlabelled.
+     */
+    @IsString()
+    readonly OTEL_RESOURCE_ATTRIBUTES!: string;
+
+    /**
      * OpenTelemetry trace sampler strategy (e.g. `parentbased_traceidratio`). Read natively by the
      * OTel SDK; declared here only so an unknown value fails fast at boot instead of silently falling
      * back to the SDK default.
@@ -337,8 +345,8 @@ export class EnvironmentVariables {
 
     /**
      * Keep-ratio for the `*traceidratio` sampler: 1 records every trace, 0.1 one in ten. Ignored by
-     * `always_on`/`always_off`. This is the single knob to turn down to shed trace volume at scale —
-     * the access log remains the unsampled ground truth, so lowering it never loses request evidence.
+     * `always_on`/`always_off`. Stays at 1: the collector's tail sampling judges a trace on its
+     * outcome, which it cannot do for a trace the app never recorded.
      */
     @IsNumber()
     @Min(0)

@@ -322,6 +322,10 @@ Who owns what, from throw to HTTP response — each concern lives in exactly one
 
 ## Observability (Logging, Exception Tracking & Audit)
 
+**The app emits telemetry two ways only: OTLP push to the OpenTelemetry Collector, and JSON logs on stdout.** It never names a store or vendor — where the collector ships is deployment configuration (`docker/otel-collector/`), so a backend swap touches no code. Compose files are local tooling and never reach an external service; the ECS task definition carries the same pieces (`docker-compose.observability.yml` header).
+
+**Sentry is the exception tracker only and never owns OpenTelemetry.** `instrument.ts` inits it with `skipOpenTelemetrySetup: true`; otherwise its own tracer provider registers first, samples nothing (no `tracesSampleRate`), and the OTLP exporter in `tracing.ts` never sees a span. `tracing.ts` installs `SentryContextManager` so captured exceptions keep their request scope. Sampling is the OTel SDK's (`OTEL_TRACES_SAMPLER*`, head) plus the collector's tail policies; the Tempo generator's `metrics_ingestion_time_range_slack` must exceed the collector's `decision_wait`, or every span reaches it too old to count.
+
 Decide per catch/branch by asking **"who acts on this, and does the system fix itself?"** — never log or capture reflexively. A raised exception is logged by the global filter alone (§ Exceptions); command/query handlers never call `ILoggerPort`/`IExceptionTrackerPort` at all.
 
 - **Sentry (`IExceptionTrackerPort.captureException`) → only when a human must intervene and it will NOT self-heal.**
@@ -405,17 +409,17 @@ Used once → inline. Used more than once → extract to a named variable.
 
 ### Tech Stack
 
-| Concern       | Technology                                                         |
-| ------------- | ------------------------------------------------------------------ |
-| Framework     | NestJS v11+ with SWC builder                                       |
-| HTTP          | Fastify (`@nestjs/platform-fastify`)                               |
-| Database      | Drizzle ORM + PostgreSQL (`postgres` client)                       |
-| Cache         | Redis (`ioredis`)                                                  |
-| Events        | `@nestjs/event-emitter` — in-process, behind `IEventPublisherPort` |
-| Queue         | none yet — see **Events & Messaging**                              |
-| Rate Limit    | none yet — see **Guards & Auth**                                   |
-| Email         | Google APIs (Gmail)                                                |
-| Hashing       | Argon2                                                             |
-| Validation    | `class-validator` + `class-transformer`                            |
-| Observability | Sentry, Pino, OpenTelemetry, Prometheus, Jaeger, Grafana Loki      |
-| Testing       | Vitest, Supertest, Spectral, Schemathesis                          |
+| Concern       | Technology                                                                              |
+| ------------- | --------------------------------------------------------------------------------------- |
+| Framework     | NestJS v11+ with SWC builder                                                            |
+| HTTP          | Fastify (`@nestjs/platform-fastify`)                                                    |
+| Database      | Drizzle ORM + PostgreSQL (`postgres` client)                                            |
+| Cache         | Redis (`ioredis`)                                                                       |
+| Events        | `@nestjs/event-emitter` — in-process, behind `IEventPublisherPort`                      |
+| Queue         | none yet — see **Events & Messaging**                                                   |
+| Rate Limit    | none yet — see **Guards & Auth**                                                        |
+| Email         | Google APIs (Gmail)                                                                     |
+| Hashing       | Argon2                                                                                  |
+| Validation    | `class-validator` + `class-transformer`                                                 |
+| Observability | Sentry, Pino, OpenTelemetry Collector, Tempo, Prometheus, Loki, Grafana / Grafana Cloud |
+| Testing       | Vitest, Supertest, Spectral, Schemathesis                                               |

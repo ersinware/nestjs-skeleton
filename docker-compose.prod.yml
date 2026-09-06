@@ -1,3 +1,7 @@
+# Local production rehearsal: the `production` image against the same self-hosted datastores as
+# dev. `docker:prod:*` also starts and stops the observability stack, so everything production has
+# is present and nothing reaches an external service. The real deployment is an ECS task
+# definition, not this file.
 services:
     api:
         build:

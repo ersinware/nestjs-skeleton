@@ -1,13 +1,17 @@
-# OpenTelemetry Collector — tail-sampling gateway between the API and Jaeger.
+# OpenTelemetry Collector — the single telemetry gateway. The app pushes traces and metrics here
+# over OTLP and writes logs to stdout; where the collector ships them is decided by the
+# OTEL_COLLECTOR_* variables it starts with, so a backend swap never touches the app.
 #
-# The app exports 100% of its spans here; the keep/drop decision is made after each trace completes,
-# on its OUTCOME (error / latency) — which head sampling in the app cannot see.
+# Portable base: nothing here assumes a host, so it runs as-is in compose, on a VM, or as a Fargate
+# sidecar. Docker-host concerns are separate `--config` overlays (merged; lists replace):
+#   docker-logs.yml — container stdout from Docker's json-file logs (a Fargate task has none)
+#   scrape.yml      — self-hosted Postgres/Redis exporters (RDS/ElastiCache report to CloudWatch)
 #
-# One knob, OTEL_TAIL_SAMPLING_PERCENTAGE (passed in by docker-compose):
-#   100 -> keep every trace = tail sampling OFF (the default)
-#    10 -> keep 1 in 10 of the ordinary traces
-# Errors and slow traces are ALWAYS kept regardless — turning the knob down never costs the traces
-# worth reading.
+# Every backend (Tempo, Prometheus, Loki, Grafana Cloud) ingests OTLP/HTTP, so one exporter with
+# per-signal endpoints covers dev and prod.
+#
+# OTEL_TAIL_SAMPLING_PERCENTAGE: 100 keeps every trace (default), 10 keeps 1 in 10 of the ordinary
+# ones. Errors and slow traces are always kept.
 
 receivers:
     otlp:
@@ -18,13 +22,22 @@ receivers:
                 endpoint: 0.0.0.0:4317
 
 processors:
-    # Policies are OR-ed: a trace is kept if ANY policy elects it.
+    # Above the soft limit new data is refused (the app's exporters fail open),
+    # above soft + spike GC is forced. Both are set beside the container's memory limit.
+    memory_limiter:
+        check_interval: 1s
+        limit_mib: ${env:OTEL_COLLECTOR_MEMORY_LIMIT_MIB}
+        spike_limit_mib: ${env:OTEL_COLLECTOR_MEMORY_SPIKE_LIMIT_MIB}
+
+    # Policies are OR-ed: a trace is kept if any policy elects it.
     tail_sampling:
-        # Wait before deciding — must exceed the slowest expected request, or late spans are judged
-        # as a truncated (and misleadingly fast) trace.
-        decision_wait: 10s
-        num_traces: 50000
-        expected_new_traces_per_sec: 100
+        # Longest expected request plus the SDK's export interval, or late spans are judged as a
+        # truncated trace.
+        decision_wait: 30s
+        # Traces held in memory while waiting: at least rate x decision_wait, with headroom for bursts.
+        # Scale these two together with traffic; decision_wait stays.
+        num_traces: 100000
+        expected_new_traces_per_sec: 1000
         policies:
             - name: keep-errors
               type: status_code
@@ -37,20 +50,28 @@ processors:
             - name: sample-the-rest
               type: probabilistic
               probabilistic:
-                  # The single knob. 100 = keep all (OFF), lower = shed ordinary-traffic volume.
                   sampling_percentage: ${env:OTEL_TAIL_SAMPLING_PERCENTAGE}
 
-    # Batches AFTER the sampling decision so only kept traces are shipped onward.
+    # After sampling, so only kept traces are batched.
     batch: {}
 
 exporters:
-    # Forward the surviving traces to Jaeger over OTLP/HTTP.
-    otlphttp/jaeger:
-        endpoint: http://jaeger:4318
+    # Local: the three stores, empty Authorization (ignored by unauthenticated backends).
+    # Grafana Cloud: all three on the gateway, Authorization = `Basic <base64 instance:token>`.
+    otlp_http:
+        traces_endpoint: ${env:OTEL_COLLECTOR_TRACES_ENDPOINT}
+        metrics_endpoint: ${env:OTEL_COLLECTOR_METRICS_ENDPOINT}
+        logs_endpoint: ${env:OTEL_COLLECTOR_LOGS_ENDPOINT}
+        headers:
+            Authorization: ${env:OTEL_COLLECTOR_AUTHORIZATION}
 
 service:
     pipelines:
         traces:
             receivers: [otlp]
-            processors: [tail_sampling, batch]
-            exporters: [otlphttp/jaeger]
+            processors: [memory_limiter, tail_sampling, batch]
+            exporters: [otlp_http]
+        metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [otlp_http]

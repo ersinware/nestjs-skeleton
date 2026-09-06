@@ -21,5 +21,10 @@ if (
     Sentry.init({
         dsn: SENTRY_DSN,
         environment: SENTRY_ENVIRONMENT,
+        // Sentry is the exception tracker only: tracing belongs to the OTel SDK in `tracing.ts`.
+        // Left on, Sentry registers its own tracer provider first — sampling nothing, since no
+        // `tracesSampleRate` is set — and the OTLP exporter never sees a span. `tracing.ts` keeps
+        // Sentry's request isolation by installing its context manager.
+        skipOpenTelemetrySetup: true,
     });
 }
