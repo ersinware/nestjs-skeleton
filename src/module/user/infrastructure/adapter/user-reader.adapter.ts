@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
-import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
 import { type GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
@@ -39,7 +39,7 @@ export class UserReaderAdapter
      *
      * @param db The Drizzle database client
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
 
     /**
      * Reads a user's active status and current session version by ID.

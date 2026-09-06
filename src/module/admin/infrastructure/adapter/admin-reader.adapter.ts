@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
-import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
@@ -40,7 +40,7 @@ export class AdminReaderAdapter
      *
      * @param db The Drizzle database client
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
 
     /**
      * Reads an admin's ban status and current session version.

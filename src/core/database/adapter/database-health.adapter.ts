@@ -6,7 +6,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
 import type { IDatabaseHealthPort } from 'src/core/database/port/database-health.port';
 import { ConnectionLogMessage, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
@@ -17,20 +17,20 @@ import { ConnectionLogMessage, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/c
 @Injectable()
 export class DatabaseHealthAdapter implements IDatabaseHealthPort {
     /**
-     * Outage-transition flag. postgres.js exposes no connection-state events, so this periodic probe
-     * is the one place a database outage's root cause is recorded — once per episode, never per
-     * failing request.
+     * Outage-transition flag. The driver's pool reports only dropped idle clients, never a state, so
+     * this periodic probe is the one place a database outage's root cause is recorded — once per
+     * episode, never per failing request.
      */
     private isDown = false;
 
     /**
      * Initializes the probe with the database connection and the logger.
      *
-     * @param db The PostgresJs database instance
+     * @param db The Drizzle database instance
      * @param loggerPort The port the outage transitions are logged on
      */
     constructor(
-        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: PostgresJsDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
         @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
     ) {}
 
