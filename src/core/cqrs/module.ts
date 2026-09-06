@@ -12,6 +12,7 @@ import { CacheInvalidationBehavior } from 'src/core/cqrs/cache-invalidation.beha
 import { CommandPipeline, TOKEN_COMMAND_BEHAVIORS, type ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 import { QueryCachingBehavior } from 'src/core/cqrs/query-caching.behavior';
 import { QueryPipeline, TOKEN_QUERY_BEHAVIORS, type IQueryBehavior } from 'src/core/cqrs/query.pipeline';
+import { TracingBehavior } from 'src/core/cqrs/tracing.behavior';
 
 /**
  * The composition point for the CQRS pipelines. The behavior order lives here and nowhere else: a
@@ -22,17 +23,25 @@ import { QueryPipeline, TOKEN_QUERY_BEHAVIORS, type IQueryBehavior } from 'src/c
     providers: [
         QueryPipeline,
         CommandPipeline,
+        TracingBehavior,
         QueryCachingBehavior,
         CacheInvalidationBehavior,
+        // Tracing first on both: the span must enclose the cache lookup and the eviction.
         {
             provide: TOKEN_QUERY_BEHAVIORS,
-            useFactory: (caching: QueryCachingBehavior): IQueryBehavior[] => [caching],
-            inject: [QueryCachingBehavior],
+            useFactory: (tracing: TracingBehavior, caching: QueryCachingBehavior): IQueryBehavior[] => [
+                tracing,
+                caching,
+            ],
+            inject: [TracingBehavior, QueryCachingBehavior],
         },
         {
             provide: TOKEN_COMMAND_BEHAVIORS,
-            useFactory: (invalidation: CacheInvalidationBehavior): ICommandBehavior[] => [invalidation],
-            inject: [CacheInvalidationBehavior],
+            useFactory: (tracing: TracingBehavior, invalidation: CacheInvalidationBehavior): ICommandBehavior[] => [
+                tracing,
+                invalidation,
+            ],
+            inject: [TracingBehavior, CacheInvalidationBehavior],
         },
     ],
     exports: [QueryPipeline, CommandPipeline, CqrsModule],

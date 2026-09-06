@@ -1,7 +1,7 @@
 /**
  * @file query.pipeline.ts
  * @description Wraps the framework QueryBus in a behavior chain so cross-cutting read concerns
- * (caching today; metrics/tracing later) apply uniformly to every dispatched query without a
+ * (tracing and caching today; metrics later) apply uniformly to every dispatched query without a
  * handler ever knowing they exist.
  */
 

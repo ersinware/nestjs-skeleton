@@ -6,7 +6,7 @@
 
 import { applyDecorators } from '@nestjs/common';
 import { plainToInstance, Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNumber, IsString, Matches, Max, Min, validateSync } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsNumber, IsString, Matches, Max, Min, validateSync } from 'class-validator';
 import { Environment } from 'src/core/config/environment/node-env.enum';
 import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 
@@ -342,6 +342,14 @@ export class EnvironmentVariables {
      */
     @IsString()
     readonly OTEL_TRACES_SAMPLER!: string;
+
+    /**
+     * Semantic-convention generation the HTTP instrumentation emits: `http` for the stable names
+     * (`http.route`, `http_server_request_duration_seconds`), `http/dup` for both during a migration.
+     * Read natively by the OTel SDK; declared so the metric names cannot silently change per env.
+     */
+    @IsIn(['http', 'http/dup'])
+    readonly OTEL_SEMCONV_STABILITY_OPT_IN!: string;
 
     /**
      * Keep-ratio for the `*traceidratio` sampler: 1 records every trace, 0.1 one in ten. Ignored by
