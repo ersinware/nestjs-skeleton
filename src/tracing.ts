@@ -10,6 +10,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { HostMetrics } from '@opentelemetry/host-metrics';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
+import { SentryContextManager } from '@sentry/nestjs';
 import { ENV, Environment, RUNTIME_FLAG } from 'src/core/config';
 
 if (
@@ -18,6 +19,9 @@ if (
     process.env[RUNTIME_FLAG.CI] !== 'true'
 ) {
     const otelSDK = new NodeSDK({
+        // Sentry's AsyncLocalStorage manager, so each request's Sentry scope (request data on a
+        // captured exception) follows the OTel context that this SDK owns (`instrument.ts`).
+        contextManager: new SentryContextManager(),
         traceExporter: new OTLPTraceExporter(),
         metricReader: new PeriodicExportingMetricReader({
             exporter: new OTLPMetricExporter(),

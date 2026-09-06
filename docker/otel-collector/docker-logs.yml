@@ -1,0 +1,57 @@
+# Overlay for a Docker host: the `logs` pipeline, reading every container's stdout from the
+# json-file driver's files. Each compose service sets `logging.options.labels`, which makes the
+# driver stamp the service name into `attrs` — the path holds only the container id.
+#
+# Not loaded on Fargate: the task's log driver (FireLens) ships stdout instead.
+extensions:
+    # Persists read offsets across collector restarts.
+    file_storage:
+        directory: /var/lib/otelcol
+        create_directory: true
+
+receivers:
+    file_log:
+        include:
+            - /var/lib/docker/containers/*/*-json.log
+        start_at: end
+        storage: file_storage
+        operators:
+            # {"log":"<line>\n","stream":"stdout","time":"2026-01-01T00:00:00.000000000Z","attrs":{...}}
+            - type: json_parser
+              timestamp:
+                  parse_from: attributes.time
+                  layout_type: gotime
+                  layout: '2006-01-02T15:04:05.999999999Z07:00'
+            # Only compose-managed containers carry the label; anything else on the host (a one-off
+            # `docker run`) has no owner to attribute to and is dropped.
+            - type: filter
+              expr: 'attributes?.attrs?.["com.docker.compose.service"] == nil'
+            - type: move
+              from: attributes.log
+              to: body
+            - type: move
+              from: attributes.stream
+              to: attributes["log.iostream"]
+            - type: move
+              from: attributes.attrs["com.docker.compose.service"]
+              to: resource["service.name"]
+            # A container that names itself (the API's OTEL_SERVICE_NAME label) overrides that, so
+            # its logs and traces share one service.name.
+            - type: move
+              if: 'attributes.attrs["service.name"] != nil'
+              from: attributes.attrs["service.name"]
+              to: resource["service.name"]
+            - type: remove
+              field: attributes.time
+            - type: remove
+              field: attributes.attrs
+            # The body stays the raw pino JSON line; Loki parses it at query time, and its `traceId`
+            # links the line to its trace.
+
+service:
+    extensions: [file_storage]
+    pipelines:
+        logs:
+            receivers: [file_log]
+            processors: [memory_limiter, batch]
+            exporters: [otlp_http]

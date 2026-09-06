@@ -4,6 +4,14 @@
 # stacks meet only on the `api-network` bridge, owned by neither: it is declared `external` in both
 # and created by `npm run docker:network`, so each stack starts, restarts and stops without the
 # other (the OTLP exporters fail open; set OTEL_SDK_DISABLED=true to silence them).
+
+# Stamps the compose service name — and, where a container carries one, its `service.name` label —
+# into each log line; the collector names the source from them (docker-logs.yml).
+x-logging: &logging
+    driver: json-file
+    options:
+        labels: com.docker.compose.service,service.name
+
 services:
     postgres:
         image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
@@ -17,6 +25,7 @@ services:
             - '5432:5432'
         volumes:
             - pg_data_vol:/var/lib/postgresql
+        logging: *logging
         networks:
             - api-network
 
@@ -27,6 +36,7 @@ services:
         command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --loglevel warning --requirepass "password"
         ports:
             - '6379:6379'
+        logging: *logging
         networks:
             - api-network
 
@@ -39,6 +49,7 @@ services:
             - '6380:6379'
         volumes:
             - redis_session_data:/data
+        logging: *logging
         networks:
             - api-network
 
@@ -46,6 +57,11 @@ services:
         # Build context is common for both envs
         build:
             context: .
+        # The app's own service name on its log lines, so a log and the trace it belongs to share
+        # one `service.name` in Grafana.
+        labels:
+            service.name: ${OTEL_SERVICE_NAME:?}
+        logging: *logging
         networks:
             - api-network
 

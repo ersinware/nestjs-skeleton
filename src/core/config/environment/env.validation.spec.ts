@@ -56,6 +56,7 @@ describe('env.validation.config', () => {
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://localhost:4318/v1/traces',
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://localhost:4318/v1/metrics',
         OTEL_SERVICE_NAME: 'nestjs-skeleton',
+        OTEL_RESOURCE_ATTRIBUTES: 'service.namespace=nestjs-skeleton,deployment.environment.name=test',
         OTEL_TRACES_SAMPLER: 'parentbased_traceidratio',
         OTEL_TRACES_SAMPLER_ARG: 1,
     } satisfies Record<keyof EnvironmentVariables, unknown>;

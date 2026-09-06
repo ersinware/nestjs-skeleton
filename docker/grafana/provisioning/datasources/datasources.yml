@@ -12,17 +12,29 @@ datasources:
       uid: Loki
       url: http://loki:3100
       jsonData:
-          # Extracts `traceId` from JSON log lines and links each log to its Jaeger trace.
+          # Extracts `traceId` from JSON log lines and links each log to its Tempo trace.
           derivedFields:
-              - datasourceUid: Jaeger
+              - datasourceUid: Tempo
                 matcherRegex: '"traceId":"(\w+)"'
                 name: TraceID
                 url: '$${__value.raw}'
 
-    - name: Jaeger
-      type: jaeger
-      uid: Jaeger
-      url: http://jaeger:16686
+    - name: Tempo
+      type: tempo
+      uid: Tempo
+      url: http://tempo:3200
       jsonData:
           nodeGraph:
               enabled: true
+          # Service map from Tempo's generated metrics.
+          serviceMap:
+              datasourceUid: Prometheus
+          # Trace -> logs: Loki lines with the same service name around the span. Loki's OTLP
+          # ingest stores the attribute as `service_name`, hence the mapping.
+          tracesToLogsV2:
+              datasourceUid: Loki
+              spanStartTimeShift: '-5m'
+              spanEndTimeShift: '5m'
+              tags:
+                  - key: service.name
+                    value: service_name
