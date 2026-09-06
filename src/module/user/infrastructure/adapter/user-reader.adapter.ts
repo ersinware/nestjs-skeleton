@@ -1,10 +1,10 @@
 /**
  * @file user-reader.adapter.ts
- * @description Drizzle implementation of every user query port.
+ * @description Drizzle implementation of the user query ports that must read the primary.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
@@ -15,53 +15,23 @@ import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application
 import { type GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
-import { type IListUsersPort } from 'src/module/user/application/query/list-users/port';
-import { type ListUsersResult } from 'src/module/user/application/query/list-users/query';
 import { user } from 'src/module/user/infrastructure/user.schema';
-import type { PaginationParams } from 'src/shared/pagination';
-import type { SearchParams } from 'src/shared/search';
 
 /**
- * Implements the user query ports with direct projection queries: selects only each read-model's
- * columns and maps rows straight to flat results, never through the aggregate.
+ * Implements the user query ports on the primary connection with direct projection queries: selects
+ * only each read-model's columns and maps rows straight to flat results, never through the
+ * aggregate. Every port here feeds a write decision (login, refresh, session reconciliation) or
+ * populates the read cache, so a replica's lag is not acceptable; lag-tolerant reads live in the
+ * replica reader.
  */
 @Injectable()
 export class UserReaderAdapter
-    implements
-        IGetUserAuthStatePort,
-        IGetUserByIdPort,
-        IGetUserCredentialsByEmailPort,
-        IListUsersPort,
-        IGetUserSessionVersionPort
+    implements IGetUserAuthStatePort, IGetUserByIdPort, IGetUserCredentialsByEmailPort, IGetUserSessionVersionPort
 {
     /**
-     * Injects the database connection all reads run on.
-     *
-     * @param db The Drizzle database client
+     * @param db The Drizzle client on the primary connection
      */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
-
-    /**
-     * Reads a user's active status and current session version by ID.
-     *
-     * @param id The unique identifier
-     * @returns The auth state, or null if not found
-     */
-    async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
-        try {
-            return (
-                (
-                    await this.db
-                        .select({ isBanned: user.isBanned, sessionVersion: user.sessionVersion })
-                        .from(user)
-                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
-                        .limit(1)
-                )[0] ?? null
-            );
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
 
     /**
      * Retrieves a non-deleted user's read-model by ID.
@@ -118,46 +88,6 @@ export class UserReaderAdapter
     }
 
     /**
-     * Retrieves a paginated list of non-deleted user read-models, optionally filtered by a
-     * case-insensitive name/email search.
-     *
-     * @param params The search filter and pagination limits
-     * @returns Paginated list of users
-     */
-    async listUsers(params: SearchParams & PaginationParams): Promise<ListUsersResult> {
-        let searchFilter: SQL | undefined;
-
-        if (params.search) {
-            const pattern = `%${params.search}%`;
-            searchFilter = or(ilike(user.name, pattern), ilike(user.email, pattern));
-        }
-
-        const conditions = and(searchFilter, isNull(user.deletedAt));
-
-        try {
-            const [data, countResult] = await Promise.all([
-                this.db
-                    .select({
-                        id: user.id,
-                        email: user.email,
-                        name: user.name,
-                        isBanned: user.isBanned,
-                    })
-                    .from(user)
-                    .where(conditions)
-                    .orderBy(desc(user.id))
-                    .limit(params.limit)
-                    .offset((params.page - 1) * params.limit),
-                this.db.select({ total: count() }).from(user).where(conditions),
-            ]);
-
-            return { data, total: countResult[0]?.total ?? 0 };
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
-
-    /**
      * Retrieves the session-version projection by ID. Deliberately ignores soft deletion so a
      * deleted user still resolves, letting session reconciliation converge instead of throwing and
      * looping.
@@ -173,6 +103,28 @@ export class UserReaderAdapter
                         .select({ sessionVersion: user.sessionVersion })
                         .from(user)
                         .where(eq(user.id, id))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads a user's active status and current session version by ID.
+     *
+     * @param id The unique identifier
+     * @returns The auth state, or null if not found
+     */
+    async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ isBanned: user.isBanned, sessionVersion: user.sessionVersion })
+                        .from(user)
+                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
                         .limit(1)
                 )[0] ?? null
             );

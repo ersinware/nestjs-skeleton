@@ -11,7 +11,8 @@ import { HealthIndicatorKey, HealthyIndicatorState } from 'src/module/health/app
 export const HealthIndicatorDescription = {
     memory_heap: 'Heap memory usage indicator status.',
     memory_rss: 'Resident set size memory usage indicator status.',
-    database: 'Database connection indicator status.',
+    database: 'Database (primary) connection indicator status.',
+    database_replica: 'Database read-replica connection indicator status; the primary when no replica is configured.',
     cache: 'Cache connection indicator status.',
     session: 'Session store connection indicator status.',
 } as const satisfies Record<HealthIndicatorKey, string>;
@@ -26,6 +27,7 @@ export function createHealthyIndicatorProperties(): Record<HealthIndicatorKey, R
         memory_heap: createHealthyIndicator(HealthIndicatorDescription.memory_heap),
         memory_rss: createHealthyIndicator(HealthIndicatorDescription.memory_rss),
         database: createHealthyIndicator(HealthIndicatorDescription.database),
+        database_replica: createHealthyIndicator(HealthIndicatorDescription.database_replica),
         cache: createHealthyIndicator(HealthIndicatorDescription.cache),
         session: createHealthyIndicator(HealthIndicatorDescription.session),
     };

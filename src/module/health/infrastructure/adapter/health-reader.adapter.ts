@@ -16,7 +16,7 @@ import type { ICacheHealthPort } from 'src/core/cache';
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import type { IDatabaseHealthPort } from 'src/core/database';
-import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
+import { TOKEN_DATABASE_HEALTH_PORT, TOKEN_DATABASE_REPLICA_HEALTH_PORT } from 'src/core/database';
 import type { ISessionHealthPort } from 'src/core/security/session';
 import { TOKEN_SESSION_HEALTH_PORT } from 'src/core/security/session';
 import type { IGetHealthStatusPort } from 'src/module/health/application/query/get-health-status/port';
@@ -39,7 +39,8 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
      * @param memory Terminus memory indicator.
      * @param healthIndicatorService Terminus factory for custom indicators.
      * @param configService Source of the memory limits.
-     * @param databaseHealthIndicatorPort Database ping.
+     * @param databaseHealthIndicatorPort Primary database ping.
+     * @param databaseReplicaHealthIndicatorPort Replica database ping.
      * @param cacheHealthIndicatorPort Cache ping.
      * @param sessionHealthIndicatorPort Session store ping.
      */
@@ -50,6 +51,8 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
         private readonly configService: ConfigService,
         @Inject(TOKEN_DATABASE_HEALTH_PORT)
         private readonly databaseHealthIndicatorPort: IDatabaseHealthPort,
+        @Inject(TOKEN_DATABASE_REPLICA_HEALTH_PORT)
+        private readonly databaseReplicaHealthIndicatorPort: IDatabaseHealthPort,
         @Inject(TOKEN_CACHE_HEALTH_PORT) private readonly cacheHealthIndicatorPort: ICacheHealthPort,
         @Inject(TOKEN_SESSION_HEALTH_PORT) private readonly sessionHealthIndicatorPort: ISessionHealthPort,
     ) {}
@@ -76,6 +79,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
                         this.configService.getOrThrow<number>(ENV.HEALTH_RSS_LIMIT_MB) * 1024 * 1024,
                     ),
                 () => this.checkDependency('database', this.databaseHealthIndicatorPort),
+                () => this.checkDependency('database_replica', this.databaseReplicaHealthIndicatorPort),
                 () => this.checkDependency('cache', this.cacheHealthIndicatorPort),
                 () => this.checkDependency('session', this.sessionHealthIndicatorPort),
             ]),
@@ -123,6 +127,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
             memory_heap: this.assertHealthy(result, 'memory_heap'),
             memory_rss: this.assertHealthy(result, 'memory_rss'),
             database: this.assertHealthy(result, 'database'),
+            database_replica: this.assertHealthy(result, 'database_replica'),
             cache: this.assertHealthy(result, 'cache'),
             session: this.assertHealthy(result, 'session'),
         };

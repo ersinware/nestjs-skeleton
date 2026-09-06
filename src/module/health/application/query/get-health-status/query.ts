@@ -14,7 +14,14 @@ export class GetHealthStatusQuery extends Query<GetHealthStatusResult> {}
  * Every indicator the query reports on. Single source of the indicator names: the adapter produces
  * the report under these keys and the Swagger schemas document them, so the two cannot drift.
  */
-export const HEALTH_INDICATOR_KEYS = ['memory_heap', 'memory_rss', 'database', 'cache', 'session'] as const;
+export const HEALTH_INDICATOR_KEYS = [
+    'memory_heap',
+    'memory_rss',
+    'database',
+    'database_replica',
+    'cache',
+    'session',
+] as const;
 
 /**
  * One indicator name from the vocabulary.
@@ -29,6 +36,7 @@ export const UnhealthyIndicatorMessage = {
     memory_heap: 'Heap memory usage exceeded the limit.',
     memory_rss: 'RSS memory usage exceeded the limit.',
     database: 'Database connection failed.',
+    database_replica: 'Database replica connection failed.',
     cache: 'Cache connection failed.',
     session: 'Session store connection failed.',
 } as const satisfies Record<HealthIndicatorKey, string>;

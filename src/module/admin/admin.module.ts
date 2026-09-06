@@ -38,6 +38,7 @@ import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/applicati
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
 import { AdminReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-reader.adapter';
+import { AdminReplicaReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-replica-reader.adapter';
 import { AdminWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-writer.adapter';
 import { AdminController } from 'src/module/admin/presentation/controller/admin.controller';
 
@@ -82,7 +83,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReaderAdapter },
+        { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReplicaReaderAdapter },
     ],
     exports: [AdminFacade],
 })

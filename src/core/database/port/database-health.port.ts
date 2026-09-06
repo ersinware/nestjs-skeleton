@@ -1,15 +1,22 @@
 /**
  * @file database-health.port.ts
- * @description Outbound port for verifying database connectivity.
+ * @description Outbound port for verifying database connectivity, one token per connection.
  */
 
 /**
- * Dependency injection token representing the {@link IDatabaseHealthPort} contract.
+ * Dependency injection token representing the {@link IDatabaseHealthPort} contract for the primary
+ * connection.
  */
 export const TOKEN_DATABASE_HEALTH_PORT = Symbol('TOKEN_DATABASE_HEALTH_PORT');
 
 /**
- * Outbound port for verifying that the database accepts queries.
+ * Dependency injection token representing the {@link IDatabaseHealthPort} contract for the replica
+ * connection. Resolves to the primary's probe when no replica is configured.
+ */
+export const TOKEN_DATABASE_REPLICA_HEALTH_PORT = Symbol('TOKEN_DATABASE_REPLICA_HEALTH_PORT');
+
+/**
+ * Outbound port for verifying that a database connection accepts queries.
  */
 export interface IDatabaseHealthPort {
     /**

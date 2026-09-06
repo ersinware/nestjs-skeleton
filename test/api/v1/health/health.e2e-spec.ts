@@ -29,8 +29,10 @@ describe('HealthController', () => {
         const cacheHealthIndicator = app.get<ICacheHealthPort>(TOKEN_CACHE_HEALTH_PORT);
         const databaseHealthIndicator = app.get<IDatabaseHealthPort>(TOKEN_DATABASE_HEALTH_PORT);
 
-        const spyCache = vi.spyOn(cacheHealthIndicator, 'ping').mockResolvedValueOnce(undefined);
-        const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockResolvedValueOnce(undefined);
+        // With no replica configured the replica health port is the primary's probe, so its ping
+        // runs twice per check.
+        const spyCache = vi.spyOn(cacheHealthIndicator, 'ping').mockResolvedValue(undefined);
+        const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockResolvedValue(undefined);
 
         await request(app.getHttpServer())
             .get('/api/health')
@@ -45,6 +47,7 @@ describe('HealthController', () => {
                             memory_heap: { status: 'up' },
                             memory_rss: { status: 'up' },
                             database: { status: 'up' },
+                            database_replica: { status: 'up' },
                             cache: { status: 'up' },
                             session: { status: 'up' },
                         },
@@ -53,6 +56,7 @@ describe('HealthController', () => {
                             memory_heap: { status: 'up' },
                             memory_rss: { status: 'up' },
                             database: { status: 'up' },
+                            database_replica: { status: 'up' },
                             cache: { status: 'up' },
                             session: { status: 'up' },
                         },
@@ -61,15 +65,15 @@ describe('HealthController', () => {
             });
 
         expect(spyCache).toHaveBeenCalledTimes(1);
-        expect(spyDb).toHaveBeenCalledTimes(1);
+        expect(spyDb).toHaveBeenCalledTimes(2);
     });
 
     it('GET /health - should return 503 service unavailable when both Database and Cache are down', async () => {
         const cacheHealthIndicator = app.get<ICacheHealthPort>(TOKEN_CACHE_HEALTH_PORT);
         const databaseHealthIndicator = app.get<IDatabaseHealthPort>(TOKEN_DATABASE_HEALTH_PORT);
 
-        const spyCache = vi.spyOn(cacheHealthIndicator, 'ping').mockRejectedValueOnce(new Error('Cache failed'));
-        const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockRejectedValueOnce(new Error('DB failed'));
+        const spyCache = vi.spyOn(cacheHealthIndicator, 'ping').mockRejectedValue(new Error('Cache failed'));
+        const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockRejectedValue(new Error('DB failed'));
 
         await request(app.getHttpServer())
             .get('/api/health')
@@ -90,6 +94,10 @@ describe('HealthController', () => {
                                 status: 'down',
                                 message: 'Database connection failed.',
                             },
+                            database_replica: {
+                                status: 'down',
+                                message: 'Database replica connection failed.',
+                            },
                             cache: {
                                 status: 'down',
                                 message: 'Cache connection failed.',
@@ -102,6 +110,10 @@ describe('HealthController', () => {
                                 status: 'down',
                                 message: 'Database connection failed.',
                             },
+                            database_replica: {
+                                status: 'down',
+                                message: 'Database replica connection failed.',
+                            },
                             cache: {
                                 status: 'down',
                                 message: 'Cache connection failed.',
@@ -113,6 +125,6 @@ describe('HealthController', () => {
             });
 
         expect(spyCache).toHaveBeenCalledTimes(1);
-        expect(spyDb).toHaveBeenCalledTimes(1);
+        expect(spyDb).toHaveBeenCalledTimes(2);
     });
 });
