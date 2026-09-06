@@ -1,7 +1,7 @@
 /**
  * @file command.pipeline.ts
  * @description Wraps the framework CommandBus in a behavior chain so cross-cutting write concerns
- * (cache invalidation today; transaction/outbox/metrics later) apply uniformly to every dispatched
+ * (tracing and cache invalidation today; transaction/outbox later) apply uniformly to every dispatched
  * command without a handler ever knowing they exist.
  */
 

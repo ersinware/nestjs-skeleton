@@ -54,6 +54,7 @@
         "db:studio": "drizzle-kit studio"
     },
     "dependencies": {
+        "@fastify/otel": "^0.20.1",
         "@nestjs/common": "^11.0.1",
         "@nestjs/config": "^4.0.4",
         "@nestjs/core": "^11.0.1",
