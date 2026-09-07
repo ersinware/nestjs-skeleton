@@ -71,7 +71,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
      * @throws {ResourceConflictException} When a concurrent refresh already rotated the session (benign — the client should retry with its latest token pair).
-     * @throws {DependencyUnavailableException} When the session cache is unreachable while rotating the session or revoking the family.
+     * @throws {DependencyUnavailableException} When the session cache is unreachable while syncing the version or rotating the session.
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
@@ -125,24 +125,25 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
         }
 
-        // RotateOutcome.REUSE_DETECTED. Recorded FIRST: everything below can fail, and only this
-        // handler can tell a replayed refresh token apart from any other 401 — left to the filter,
-        // the signal would be filed as one more expired token.
-        this.auditPort.record({
+        // RotateOutcome.REUSE_DETECTED. The event and the record are one act — the fact and the
+        // reaction it schedules — kept adjacent and first, because everything below can fail. Only
+        // this handler can tell a replayed refresh token from any other 401; left to the filter it
+        // would be filed as one more expired token. The owning module is reachable only
+        // asynchronously and auth has no aggregate, so the event is emitted here. The emit is
+        // fire-and-forget: a failing listener must not turn the 401 into a 503.
+        this.eventPublisherPort
+            .emitAsync(REFRESH_REUSE_EVENT_BY_REALM[realm], { aggregateId: sub, eventId: uuidv7() })
+            .catch(() => {});
+        await this.auditPort.record({
             action: AuditAction.REFRESH_REUSE_DETECTED,
             targetId: sub,
         });
 
         // Revoke the whole refresh family (RFC 9700) so a stolen token cannot keep minting sessions.
-        // The version bump that also kills outstanding access tokens is driven by the event below.
-        await this.sessionPort.closeAllSessions(sub);
-
-        // The owning module is reachable only asynchronously; auth has no aggregate, so the event is
-        // emitted here. Fire-and-forget: the family is already revoked and the caller must still get
-        // the 401 — a failing listener must not turn this into a 503.
-        this.eventPublisherPort
-            .emitAsync(REFRESH_REUSE_EVENT_BY_REALM[realm], { aggregateId: sub, eventId: uuidv7() })
-            .catch(() => {});
+        // Best-effort, fire-and-forget: the durable cut-off is the version bump the event drives,
+        // so a failed sweep delays the cut rather than defeating it and must not turn the reply
+        // into a 503. The catch only stops an unhandled rejection.
+        this.sessionPort.closeAllSessions(sub).catch(() => {});
 
         // No context: the reuse is audited above, and the response must stay indistinguishable from
         // every other rejected refresh.

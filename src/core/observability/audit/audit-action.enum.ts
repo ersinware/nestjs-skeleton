@@ -57,6 +57,9 @@ export enum AuditAction {
     /** A pending admin account was activated by its owner setting the first password. */
     ADMIN_ACTIVATED = 'ADMIN_ACTIVATED',
 
+    /** Rejected admin activation; the record carries the reason the client never sees. */
+    ADMIN_ACTIVATION_FAILED = 'ADMIN_ACTIVATION_FAILED',
+
     /** A change to an admin's profile identity, chiefly the email — an account-takeover vector even when self-service. */
     ADMIN_UPDATED = 'ADMIN_UPDATED',
 

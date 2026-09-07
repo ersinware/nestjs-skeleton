@@ -63,24 +63,24 @@ export async function login(
         identity = await ports.identityReaderPort.getCredentialsByEmail(realm, email);
     } catch (error) {
         if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
-            throw denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND);
+            throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND);
         }
 
         throw error;
     }
 
     if (identity.isBanned) {
-        throw denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, identity.id);
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, identity.id);
     }
 
     // A pending account has no password yet, so there is nothing to verify against until its owner
     // activates it.
     if (!identity.password) {
-        throw denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
     }
 
     if (!(await ports.hashingPort.verify(identity.password, password))) {
-        throw denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, identity.id);
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, identity.id);
     }
 
     const id = identity.id,
@@ -90,7 +90,7 @@ export async function login(
     // write it must 503 instead of minting dead-on-arrival tokens.
     await ports.sessionPort.setVersion(id, identity.sessionVersion);
     await ports.sessionPort.openSession(id, tokens.refreshTokenJti);
-    ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
+    await ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
 
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
 }
@@ -112,8 +112,12 @@ export async function login(
  * @param targetId The rejected account's id, absent when no account matched the email
  * @returns The exception the caller throws
  */
-function denyLogin(auditPort: IAuditPort, reason: AuthRejectionReason, targetId?: string): UnauthenticatedException {
-    auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, ...(targetId && { targetId }) });
+async function denyLogin(
+    auditPort: IAuditPort,
+    reason: AuthRejectionReason,
+    targetId?: string,
+): Promise<UnauthenticatedException> {
+    await auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, ...(targetId && { targetId }) });
 
     return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
 }

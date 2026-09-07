@@ -55,11 +55,12 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
         // authority every later refresh is checked against. The audit record follows while the fact
         // is established.
         await this.adminWriterPort.save(admin);
-        this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id });
+        await this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id });
 
-        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
-        // refresh, so Redis being unreachable delays the cut-off rather than defeating it. The catch
-        // only stops an unhandled rejection.
+        // Best-effort instant eviction, fire-and-forget, ahead of the email so outstanding access
+        // tokens die before the notice round-trip: the DB version already denies the next refresh,
+        // so Redis being unreachable delays the cut-off rather than defeating it. The catch only
+        // stops an unhandled rejection.
         this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch(() => {});
 
         await this.emailerPort.sendEmail(this.buildSecurityEmail(admin.email, admin.name));

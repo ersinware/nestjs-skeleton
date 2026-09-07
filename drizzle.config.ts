@@ -20,11 +20,12 @@ if (!fs.existsSync('/.dockerenv') && databaseUrl.includes('@postgres:')) {
 }
 
 export default defineConfig({
-    schema: ['./src/module/*/infrastructure/*.schema.ts'],
+    // The audit trail is the only core-owned schema; every other table belongs to a bounded context.
+    schema: ['./src/module/*/infrastructure/*.schema.ts', './src/core/observability/audit/audit.schema.ts'],
     out: './drizzle',
     dialect: 'postgresql',
     // push only touches schemas listed here (default: public only); every bounded context's logical schema must be listed.
-    schemaFilter: ['public', 'admin', 'user'],
+    schemaFilter: ['public', 'admin', 'audit', 'user'],
     dbCredentials: {
         url: databaseUrl,
     },

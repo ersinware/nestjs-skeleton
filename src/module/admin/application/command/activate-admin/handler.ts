@@ -11,6 +11,7 @@ import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     ActivateAdminCommand,
     ActivateAdminMessage,
+    ActivateAdminRejectionReason,
 } from 'src/module/admin/application/command/activate-admin/command';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -31,7 +32,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param tokenPort The port used to verify the invite token
      * @param hashingPort The port used to hash the initial password
-     * @param auditPort The port used to record the activation for the audit trail
+     * @param auditPort The port used to record the activation, or its rejection, for the audit trail
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
@@ -54,17 +55,44 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             payload = await this.tokenPort.verifyInviteToken(command.token);
         } catch {
             // The port error names the cause; the response deliberately does not.
-            throw new InvalidInputException(ActivateAdminMessage.INVALID_INVITE);
+            throw await this.deny(ActivateAdminRejectionReason.INVALID_TOKEN);
         }
 
         const admin = await this.adminWriterPort.load(payload.sub);
 
-        if (!admin || admin.isBanned || admin.password !== null) {
-            throw new InvalidInputException(ActivateAdminMessage.INVALID_INVITE);
+        if (!admin) {
+            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_NOT_FOUND, payload.sub);
+        }
+
+        if (admin.isBanned) {
+            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_BANNED, admin.id);
+        }
+
+        if (admin.password !== null) {
+            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_ALREADY_ACTIVE, admin.id);
         }
 
         admin.activate(await this.hashingPort.hash(command.password));
         await this.adminWriterPort.save(admin);
-        this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });
+        await this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });
+    }
+
+    /**
+     * Records the rejection and builds the uniform exception. A rejected invite is the same
+     * guessing signal as a failed login: only this handler knows the cause, and it names it to the
+     * auditor alone.
+     *
+     * @param reason Why the attempt was rejected
+     * @param targetId The account the token named, absent when the token could not be read
+     * @returns The exception the caller throws
+     */
+    private async deny(reason: ActivateAdminRejectionReason, targetId?: string): Promise<InvalidInputException> {
+        await this.auditPort.record({
+            action: AuditAction.ADMIN_ACTIVATION_FAILED,
+            reason,
+            ...(targetId && { targetId }),
+        });
+
+        return new InvalidInputException(ActivateAdminMessage.INVALID_INVITE);
     }
 }

@@ -14,6 +14,17 @@ export enum ActivateAdminMessage {
 }
 
 /**
+ * Why the activation flow rejected an attempt. Reaches the auditor alone, as the audit record's
+ * `reason`; the client always sees {@link ActivateAdminMessage.INVALID_INVITE}.
+ */
+export enum ActivateAdminRejectionReason {
+    INVALID_TOKEN = 'INVALID_TOKEN',
+    ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
+    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
+    ACCOUNT_ALREADY_ACTIVE = 'ACCOUNT_ALREADY_ACTIVE',
+}
+
+/**
  * Activates a pending admin account: verifies the invite token and sets the first password, which
  * also kills every outstanding invite link.
  */

@@ -15,6 +15,13 @@
             "when": 1786542907772,
             "tag": "0001_silky_vision",
             "breakpoints": true
+        },
+        {
+            "idx": 2,
+            "version": "7",
+            "when": 1788772354399,
+            "tag": "0002_audit",
+            "breakpoints": true
         }
     ]
 }

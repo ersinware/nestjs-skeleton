@@ -51,6 +51,6 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
         }
 
         await this.userWriterPort.save(user);
-        this.auditPort.record({ action: AuditAction.USER_UNBANNED, targetId: user.id });
+        await this.auditPort.record({ action: AuditAction.USER_UNBANNED, targetId: user.id });
     }
 }

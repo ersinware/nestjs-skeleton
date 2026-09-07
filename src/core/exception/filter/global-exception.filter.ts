@@ -56,7 +56,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * Intercepts every exception, decides its record (log/Sentry/audit), and replies with the
      * standardized error body — or lets a health-probe 503 pass through unnormalized.
      */
-    catch(exception: unknown, host: ArgumentsHost) {
+    async catch(exception: unknown, host: ArgumentsHost) {
         const ctx = host.switchToHttp(),
             response = ctx.getResponse<unknown>(),
             healthProbePassthrough = this.resolveHealthProbePassthrough(exception, ctx.getRequest<{ url?: string }>());
@@ -73,7 +73,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         const errorDefaultDto = this.normalizeException(exception);
 
-        this.logException(exception, errorDefaultDto);
+        await this.logException(exception, errorDefaultDto);
         this.httpAdapterHost.httpAdapter.reply(response, { error: errorDefaultDto }, errorDefaultDto.statusCode);
     }
 
@@ -231,8 +231,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      *
      * No `targetId` is passed: the actor is already in the ambient audit context, and naming the
      * same principal again would file the refusal's subject as its object.
+     *
+     * A failed audit write re-enters this decision (silent on an outage, error log + Sentry
+     * otherwise) and never changes the reply: the filter must not throw, so the 403 stands.
      */
-    private logException(exception: unknown, errorDefaultDto: ErrorDefaultDto) {
+    private async logException(exception: unknown, errorDefaultDto: ErrorDefaultDto) {
         const { statusCode, message } = errorDefaultDto;
 
         if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
@@ -247,7 +250,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         }
 
         if (statusCode === HttpStatus.FORBIDDEN) {
-            this.auditPort.record({ action: AuditAction.ACCESS_DENIED, reason: message.join(', ') });
+            try {
+                await this.auditPort.record({ action: AuditAction.ACCESS_DENIED, reason: message.join(', ') });
+            } catch (error) {
+                await this.logException(error, this.normalizeException(error));
+            }
         }
     }
 

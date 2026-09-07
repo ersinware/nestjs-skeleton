@@ -1,20 +1,18 @@
 /**
  * @file module.ts
- * @description NestJS module wiring the audit port to its pino-backed adapter.
+ * @description NestJS module wiring the audit port to its database-backed adapter.
  */
 
 import { Module } from '@nestjs/common';
+import { DatabaseModule } from 'src/core/database';
 import { AuditAdapter } from 'src/core/observability/audit/adapter/audit.adapter';
 import { TOKEN_AUDIT_PORT } from 'src/core/observability/audit/port/audit.port';
-import { LoggerModule } from 'src/core/observability/logger';
 
 /**
- * Provides the audit port backed by the pino adapter.
+ * Provides the audit port backed by the database adapter.
  */
 @Module({
-    // The adapter injects `PinoLogger`, whose configured instance `LoggerModule` provides; the
-    // manifest names the dependency even though nestjs-pino is global.
-    imports: [LoggerModule],
+    imports: [DatabaseModule],
     providers: [
         {
             provide: TOKEN_AUDIT_PORT,

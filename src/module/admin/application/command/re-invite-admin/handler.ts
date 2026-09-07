@@ -62,7 +62,7 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
             throw new ResourceConflictException(ReInviteAdminMessage.BANNED);
         }
 
-        this.auditPort.record({ action: AuditAction.ADMIN_INVITED, targetId: admin.id });
+        await this.auditPort.record({ action: AuditAction.ADMIN_INVITED, targetId: admin.id });
 
         this.eventPublisherPort
             .emitAsync(AdminEvent.INVITED, { aggregateId: admin.id, eventId: uuidv7() })

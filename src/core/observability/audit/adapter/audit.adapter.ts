@@ -1,46 +1,49 @@
 /**
  * @file audit.adapter.ts
- * @description Pino-backed implementation of the audit port.
+ * @description Drizzle-backed implementation of the audit port, appending to the `audit.audit` table.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { trace } from '@opentelemetry/api';
-import { PinoLogger } from 'nestjs-pino';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { getAuditContext } from 'src/core/observability/audit/audit-context';
+import { audit } from 'src/core/observability/audit/audit.schema';
 import { AuditRecordInput, IAuditPort } from 'src/core/observability/audit/port/audit.port';
+import { uuidv7 } from 'uuidv7';
 
 /**
- * Pino-backed audit writer. Writes through a child logger with a pinned level, so neither the
- * configured log level nor `NODE_ENV=test` silencing can drop a record; reads `traceId` from the
- * active span itself so correlation survives a non-pino destination.
+ * Appends audit records on the primary connection. Never fail-open: a record that cannot be
+ * written fails the caller.
  */
 @Injectable()
 export class AuditAdapter implements IAuditPort {
     /**
      * Creates an instance of AuditAdapter.
      *
-     * @param pino The request-scoped-aware pino logger provided by nestjs-pino.
+     * @param db The Drizzle client on the primary connection
      */
-    constructor(private readonly pino: PinoLogger) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
 
     /**
-     * Completes the input with the ambient audit context and writes the entry; outside a request
-     * the entry is unattributed. The context is spread BEFORE the input so an ambient value never
-     * overwrites a stated one. The child logger is derived per call — the source logger is
-     * request-scoped, so memoizing would pin later entries to the first request's bindings.
+     * Completes the input with the ambient audit context and inserts the row; outside a request
+     * the row is unattributed. Id, time and context are fixed here so a deferred write would carry
+     * the same fact. The context is spread BEFORE the input so an ambient value never overwrites a
+     * stated one.
      *
      * @param input What happened and to whom.
      */
-    record(input: AuditRecordInput) {
-        this.pino.logger.child({}, { level: 'info' }).info(
-            {
+    async record(input: AuditRecordInput) {
+        try {
+            await this.db.insert(audit).values({
+                id: uuidv7(),
                 ...getAuditContext(),
                 ...input,
+                traceId: trace.getActiveSpan()?.spanContext().traceId ?? null,
                 occurredAt: new Date(),
-                traceId: trace.getActiveSpan()?.spanContext().traceId,
-                type: 'AUDIT',
-            },
-            input.action,
-        );
+            });
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
     }
 }

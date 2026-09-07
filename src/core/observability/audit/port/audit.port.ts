@@ -29,9 +29,11 @@ export type AuditRecordInput = {
 export interface IAuditPort {
     /**
      * Records one audit entry, completing the input with the identity, transport and correlation
-     * data the caller cannot see.
+     * data the caller cannot see. Resolves only once the record is durable; a failed write fails
+     * the caller.
      *
      * @param input What happened and to whom.
+     * @throws {DependencyUnavailableException} When the audit store is unreachable
      */
-    record(input: AuditRecordInput): void;
+    record(input: AuditRecordInput): Promise<void>;
 }
