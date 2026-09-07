@@ -10,7 +10,6 @@ import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/data
 import { getAuditContext } from 'src/core/observability/audit/audit-context';
 import { audit } from 'src/core/observability/audit/audit.schema';
 import { AuditRecordInput, IAuditPort } from 'src/core/observability/audit/port/audit.port';
-import { uuidv7 } from 'uuidv7';
 
 /**
  * Appends audit records on the primary connection. Never fail-open: a record that cannot be
@@ -27,16 +26,15 @@ export class AuditAdapter implements IAuditPort {
 
     /**
      * Completes the input with the ambient audit context and inserts the row; outside a request
-     * the row is unattributed. Id, time and context are fixed here so a deferred write would carry
-     * the same fact. The context is spread BEFORE the input so an ambient value never overwrites a
-     * stated one.
+     * the row is unattributed. Time and context are fixed here (the id by the schema) so a
+     * deferred write would carry the same fact. The context is spread BEFORE the input so an
+     * ambient value never overwrites a stated one.
      *
      * @param input What happened and to whom.
      */
     async record(input: AuditRecordInput) {
         try {
             await this.db.insert(audit).values({
-                id: uuidv7(),
                 ...getAuditContext(),
                 ...input,
                 traceId: trace.getActiveSpan()?.spanContext().traceId ?? null,

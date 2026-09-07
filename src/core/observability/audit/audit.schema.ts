@@ -7,6 +7,7 @@
 import { index, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 import type { AuthRole } from 'src/shared/domain/auth-role';
+import { uuidv7 } from 'uuidv7';
 
 /**
  * The PostgreSQL logical schema of the audit concern. Core owns it because audit is cross-cutting
@@ -22,9 +23,12 @@ export const audit = auditSchema.table(
     'audit',
     {
         /**
-         * Primary key as UUID v7, so id order is time order.
+         * Primary key as UUID v7, so id order is time order. Generated here, not by the database:
+         * `gen_random_uuid()` is v4 and would lose the ordering.
          */
-        id: uuid('id').primaryKey(),
+        id: uuid('id')
+            .primaryKey()
+            .$defaultFn(() => uuidv7()),
 
         /**
          * What happened; each action states its own outcome.
@@ -84,9 +88,17 @@ export const audit = auditSchema.table(
         occurredAt: timestamp('occurred_at').notNull(),
     },
     (table) => [
+        // Every index ends in `(occurred_at DESC, id DESC)`, the listing's exact ORDER BY, so a page is
+        // read in index order with no sort step; `id` (UUID v7) breaks same-millisecond ties, keeping
+        // page boundaries deterministic.
+
+        // The unfiltered listing and the time-range filter.
         index('audit_occurred_at_idx').on(table.occurredAt.desc(), table.id.desc()),
-        index('audit_actor_idx').on(table.actorId, table.occurredAt.desc()),
-        index('audit_target_idx').on(table.targetId, table.occurredAt.desc()),
-        index('audit_action_idx').on(table.action, table.occurredAt.desc()),
+
+        // One equality filter each; the leading column lands the planner on that slice already in
+        // listing order. Combined filters use the most selective index and check the rest on the rows.
+        index('audit_actor_idx').on(table.actorId, table.occurredAt.desc(), table.id.desc()),
+        index('audit_target_idx').on(table.targetId, table.occurredAt.desc(), table.id.desc()),
+        index('audit_action_idx').on(table.action, table.occurredAt.desc(), table.id.desc()),
     ],
 );

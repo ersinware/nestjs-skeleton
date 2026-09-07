@@ -5,7 +5,7 @@
 
 import { Inject, Injectable, type CallHandler, type ExecutionContext, type NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Observable, concatMap, of } from 'rxjs';
+import { Observable, concatMap } from 'rxjs';
 import { PARAM_ID } from 'src/core/http';
 import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 import { KEY_DECORATOR_AUDITED } from 'src/core/observability/audit/decorator/audited.decorator';
@@ -57,10 +57,10 @@ export class AuditInterceptor implements NestInterceptor {
         ];
 
         return next.handle().pipe(
-            concatMap(async (data) => {
+            concatMap(async (data: unknown) => {
                 await this.auditPort.record({ action, ...(targetId && { targetId }) });
 
-                return of(data);
+                return data;
             }),
         );
     }

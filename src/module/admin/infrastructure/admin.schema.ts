@@ -70,6 +70,9 @@ export const admin = adminSchema.table(
         ...aggregateTimestamps,
     },
     (table) => [
+        // Partial index over live rows: serves every `id = ? AND deleted_at IS NULL` lookup and the
+        // listing's `ORDER BY id DESC` (UUID v7, so creation order) with no sort step. The email lookup
+        // uses the `unique` index instead.
         index('admin_id_live_idx')
             .on(table.id)
             .where(sql`deleted_at IS NULL`),

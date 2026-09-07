@@ -6,6 +6,7 @@
 export { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 export { publishAuditActor } from 'src/core/observability/audit/audit-context';
 export type { AuditContext } from 'src/core/observability/audit/audit-context';
+export { audit } from 'src/core/observability/audit/audit.schema';
 export { Audited } from 'src/core/observability/audit/decorator/audited.decorator';
 export { auditContextHook } from 'src/core/observability/audit/hook/audit-context.hook';
 export { AuditInterceptor } from 'src/core/observability/audit/interceptor/audit.interceptor';
