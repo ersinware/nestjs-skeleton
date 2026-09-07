@@ -33,9 +33,9 @@ export class AuditInterceptor implements NestInterceptor {
 
     /**
      * Writes the audited action once the handler has produced a result, before it is emitted to
-     * the client. `concatMap` rather than `tap` orders the write ahead of the response — a
-     * delivered body without a record is the gap this closes. A throwing handler produces no
-     * entry: nothing was disclosed.
+     * the client. `concatMap` rather than `tap` sequences the write ahead of the response, so a
+     * body is never delivered without its record and a failed write fails the response. A throwing
+     * handler produces no entry: nothing was disclosed.
      *
      * @param context The current execution context, used to read the route's audit metadata.
      * @param next The remainder of the request pipeline.
@@ -57,8 +57,8 @@ export class AuditInterceptor implements NestInterceptor {
         ];
 
         return next.handle().pipe(
-            concatMap((data) => {
-                this.auditPort.record({ action, ...(targetId && { targetId }) });
+            concatMap(async (data) => {
+                await this.auditPort.record({ action, ...(targetId && { targetId }) });
 
                 return of(data);
             }),

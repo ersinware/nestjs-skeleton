@@ -155,6 +155,30 @@ export class AdminController {
     }
 
     /**
+     * Retrieves an admin's profile by id. Super-admin only.
+     *
+     * @param params The path parameters carrying the target admin id
+     * @returns The serialized profile of the requested admin
+     */
+    @Get(ROUTE_PARAM_ID)
+    @Roles(AdminRole.SUPER_ADMIN)
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
+    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Get admin by ID',
+        description: 'Retrieves a specific admin account. Requires super administrator authorization.',
+    })
+    @ApiOkResponse({ description: 'Admin details successfully retrieved.', type: ResponseAdminDto })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    async findById(@Param() params: ParamIdDto): Promise<ResponseAdminDto> {
+        return plainToInstance(ResponseAdminDto, await this.queryPipeline.execute(new GetAdminByIdQuery(params.id)));
+    }
+
+    /**
      * Updates the currently authenticated admin's profile; the target id comes from the verified
      * token, never from the client.
      *

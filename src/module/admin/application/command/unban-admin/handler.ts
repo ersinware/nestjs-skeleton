@@ -57,6 +57,6 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
         }
 
         await this.adminWriterPort.save(admin);
-        this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: admin.id });
+        await this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: admin.id });
     }
 }

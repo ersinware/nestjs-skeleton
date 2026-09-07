@@ -47,6 +47,6 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
         });
 
         await this.adminWriterPort.save(admin);
-        this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id });
+        await this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id });
     }
 }

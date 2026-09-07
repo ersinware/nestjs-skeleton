@@ -49,7 +49,6 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             });
 
         await this.userWriterPort.save(user);
-
-        this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id });
+        await this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id });
     }
 }

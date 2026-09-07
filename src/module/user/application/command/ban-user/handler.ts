@@ -53,7 +53,7 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, vo
         }
 
         await this.userWriterPort.save(user);
-        this.auditPort.record({ action: AuditAction.USER_BANNED, targetId: user.id });
+        await this.auditPort.record({ action: AuditAction.USER_BANNED, targetId: user.id });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.

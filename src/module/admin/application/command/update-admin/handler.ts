@@ -57,6 +57,6 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
         }
 
         await this.adminWriterPort.save(admin);
-        this.auditPort.record({ action: AuditAction.ADMIN_UPDATED });
+        await this.auditPort.record({ action: AuditAction.ADMIN_UPDATED });
     }
 }

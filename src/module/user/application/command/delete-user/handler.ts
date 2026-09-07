@@ -47,7 +47,7 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
 
         user.markAsDeleted();
         await this.userWriterPort.save(user);
-        this.auditPort.record({ action: AuditAction.USER_DELETED });
+        await this.auditPort.record({ action: AuditAction.USER_DELETED });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.

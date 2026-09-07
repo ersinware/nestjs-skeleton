@@ -53,6 +53,6 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
         // token in the body, not from the access token the guard verified, so it is not guaranteed to
         // be the actor. On the request where they differ — a principal closing a session that belongs
         // to someone else — that divergence is the whole of what the record is worth.
-        this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
+        await this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
     }
 }
