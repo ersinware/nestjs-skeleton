@@ -77,4 +77,7 @@ export enum AuditAction {
 
     /** A read endpoint disclosed another principal's personal data. */
     PERSONAL_DATA_ACCESSED = 'PERSONAL_DATA_ACCESSED',
+
+    /** An operator read the audit trail; who inspects the evidence is evidence too. */
+    AUDIT_TRAIL_ACCESSED = 'AUDIT_TRAIL_ACCESSED',
 }

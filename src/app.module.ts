@@ -21,6 +21,7 @@ import { AuthGuard, AuthRolesGuard } from 'src/core/security/auth';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
 import { AdminModule } from 'src/module/admin';
+import { AuditTrailModule } from 'src/module/audit-trail';
 import { AuthModule } from 'src/module/auth';
 import { HealthModule } from 'src/module/health';
 import { UserModule } from 'src/module/user';
@@ -49,6 +50,7 @@ import { UserModule } from 'src/module/user';
         AuthModule,
         UserModule,
         AdminModule,
+        AuditTrailModule,
     ],
     providers: [
         {

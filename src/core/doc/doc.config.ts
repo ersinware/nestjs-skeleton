@@ -32,7 +32,7 @@ export const DOC_SERVERS = [{ url: 'http://localhost:3000', description: 'Develo
 /**
  * Type representing allowed OpenAPI tag names.
  */
-type APITag = 'health' | 'auth' | 'user' | 'admin';
+type APITag = 'health' | 'auth' | 'user' | 'admin' | 'audit-trail';
 
 /**
  * OpenAPI configuration details for each active version. Keyed by APIVersion, so activating a new
@@ -54,6 +54,7 @@ export const VERSION_CONFIG: Record<
             auth: 'Authentication and session operations.',
             user: 'User management and profile operations.',
             admin: 'Administrative operations.',
+            'audit-trail': 'Read-only operator view of the audit trail.',
         },
     },
 } as const;
