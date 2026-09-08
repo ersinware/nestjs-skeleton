@@ -29,8 +29,8 @@ export class UserCacheListener {
 
     /**
      * Evicts the public profile projection when an event changes any of its fields (email/name on
-     * update, ban status on ban/unban, existence on delete). A password change is intentionally absent:
-     * it does not touch this projection.
+     * update, ban status on ban/unban, permissions on a permission change, existence on delete). A
+     * password change is intentionally absent: it does not touch this projection.
      *
      * @param event The event carrying the user id
      */
@@ -38,6 +38,7 @@ export class UserCacheListener {
     @OnAppEvent(UserEvent.BANNED)
     @OnAppEvent(UserEvent.UNBANNED)
     @OnAppEvent(UserEvent.DELETED)
+    @OnAppEvent(UserEvent.PERMISSIONS_CHANGED)
     async invalidateProfile(event: DispatchedDomainEvent) {
         await this.cachePort.delete(CacheKeys.userById(event.aggregateId));
     }

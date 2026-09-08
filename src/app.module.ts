@@ -17,7 +17,7 @@ import { HttpCacheInterceptor, NotEmptyBodyPipe, ResponseInterceptor } from 'src
 import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { ExceptionTrackerModule } from 'src/core/observability/exception-tracker';
 import { LoggerModule } from 'src/core/observability/logger';
-import { AuthGuard, AuthRolesGuard } from 'src/core/security/auth';
+import { AuthenticationGuard, AuthorizationGuard } from 'src/core/security/auth';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
 import { AdminModule } from 'src/module/admin';
@@ -55,11 +55,11 @@ import { UserModule } from 'src/module/user';
     providers: [
         {
             provide: APP_GUARD,
-            useClass: AuthGuard,
+            useClass: AuthenticationGuard,
         },
         {
             provide: APP_GUARD,
-            useClass: AuthRolesGuard,
+            useClass: AuthorizationGuard,
         },
         {
             provide: APP_PIPE,
@@ -84,7 +84,7 @@ import { UserModule } from 'src/module/user';
             provide: APP_INTERCEPTOR,
             useClass: HttpCacheInterceptor,
         },
-        // The ambient audit context is seeded by `auditContextHook` and completed by `AuthGuard`,
+        // The ambient audit context is seeded by `auditContextHook` and completed by `AuthenticationGuard`,
         // both of which run before any interceptor — so the actor is already in scope when this
         // records an `@Audited` disclosure.
         {

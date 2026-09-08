@@ -48,6 +48,7 @@ export class UserReaderAdapter
                             id: user.id,
                             email: user.email,
                             name: user.name,
+                            permissions: user.permissions,
                             isBanned: user.isBanned,
                         })
                         .from(user)
@@ -74,6 +75,7 @@ export class UserReaderAdapter
                         .select({
                             id: user.id,
                             password: user.password,
+                            permissions: user.permissions,
                             isBanned: user.isBanned,
                             sessionVersion: user.sessionVersion,
                         })
@@ -112,7 +114,7 @@ export class UserReaderAdapter
     }
 
     /**
-     * Reads a user's active status and current session version by ID.
+     * Reads a user's ban status, session counters and permissions by ID.
      *
      * @param id The unique identifier
      * @returns The auth state, or null if not found
@@ -122,7 +124,12 @@ export class UserReaderAdapter
             return (
                 (
                     await this.db
-                        .select({ isBanned: user.isBanned, sessionVersion: user.sessionVersion })
+                        .select({
+                            isBanned: user.isBanned,
+                            sessionVersion: user.sessionVersion,
+                            revocationVersion: user.revocationVersion,
+                            permissions: user.permissions,
+                        })
                         .from(user)
                         .where(and(eq(user.id, id), isNull(user.deletedAt)))
                         .limit(1)

@@ -16,6 +16,7 @@ import { AdminFacade } from 'src/module/admin/admin.facade';
 import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin/handler';
 import { ChangeAdminPasswordCommandHandler } from 'src/module/admin/application/command/change-admin-password/handler';
+import { ChangeAdminPermissionsCommandHandler } from 'src/module/admin/application/command/change-admin-permissions/handler';
 import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
@@ -35,6 +36,7 @@ import { TOKEN_GET_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/g
 import { GetAdminCredentialsByEmailQueryHandler } from 'src/module/admin/application/query/get-admin-credentials-by-email/handler';
 import { TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/application/query/get-admin-session-version/port';
+import { ListAdminPermissionCatalogQueryHandler } from 'src/module/admin/application/query/list-admin-permission-catalog/handler';
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
 import { AdminReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-reader.adapter';
@@ -69,9 +71,11 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         DeleteAdminCommandHandler,
         BanAdminCommandHandler,
         UnbanAdminCommandHandler,
+        ChangeAdminPermissionsCommandHandler,
         RevokeAdminSessionsCommandHandler,
         ReconcileAdminSessionCommandHandler,
         ListAdminsQueryHandler,
+        ListAdminPermissionCatalogQueryHandler,
         GetAdminByIdQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,

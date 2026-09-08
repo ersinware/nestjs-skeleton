@@ -11,8 +11,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
-import { AdminRole } from 'src/shared/domain/admin';
-import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
  * Lifts the ban on the admin account. Unlike banning, no session eviction is needed: the session
@@ -36,7 +35,7 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
-     * @throws {AccessDeniedException} When the target is a super-admin.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
      */
     async execute(command: UnbanAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -45,14 +44,10 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
             throw new ResourceNotFoundException();
         }
 
-        if (admin.role === AdminRole.SUPER_ADMIN) {
-            throw new AccessDeniedException();
-        }
-
         // `unban()` reports whether the account actually transitioned. On an account that is not
         // banned there is nothing to persist or audit — an entry for a ban that was never in place
         // would fabricate a fact.
-        if (!admin.unban()) {
+        if (!admin.unban(command.actor)) {
             return;
         }
 

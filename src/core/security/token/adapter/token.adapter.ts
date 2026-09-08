@@ -13,7 +13,7 @@ import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { GeneratedTokens, ITokenPort } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
-import type { AuthRole } from 'src/shared/domain/auth-role';
+import type { Principal } from 'src/shared/domain/principal';
 
 /**
  * Implements {@link ITokenPort} with signed JWTs, using separate secrets and lifetimes
@@ -61,31 +61,35 @@ export class TokenAdapter implements ITokenPort {
     /**
      * Generates a signed access/refresh token pair, minting the refresh token's JTI.
      *
-     * @param role The principal's authentication role, embedded into both tokens
-     * @param id The principal identifier, embedded as the subject of both tokens
+     * @param principal The verified principal, embedded as the subject and kind of both tokens; its permissions go into the access token only
      * @param sessionVersion The session version to stamp into both tokens
      * @returns The signed token pair and the refresh token's JTI
      */
-    async generateTokens(role: AuthRole, id: string, sessionVersion: number): Promise<GeneratedTokens> {
+    async generateTokens(principal: Principal, sessionVersion: number): Promise<GeneratedTokens> {
         const refreshTokenJti = crypto.randomUUID();
 
         return Promise.all([
-            this.generateAccessToken(role, id, sessionVersion),
-            this.generateRefreshToken(role, id, refreshTokenJti, sessionVersion),
+            this.generateAccessToken(principal, sessionVersion),
+            this.generateRefreshToken(principal, refreshTokenJti, sessionVersion),
         ]).then(([accessToken, refreshToken]) => ({ accessToken, refreshToken, refreshTokenJti }));
     }
 
     /**
-     * Signs an access token carrying the principal, role, and session version.
+     * Signs an access token carrying the principal, its kind, its permissions, and the session version.
      *
-     * @param role The principal's authentication role
-     * @param id The principal identifier, embedded as the subject
+     * @param principal The verified principal the token is minted for
      * @param sessionVersion The session version the token is minted at
      * @returns The signed access token
      */
-    private async generateAccessToken(role: AuthRole, id: string, sessionVersion: number): Promise<string> {
+    private async generateAccessToken(principal: Principal, sessionVersion: number): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, role, sessionVersion, type: AuthTokenType.ACCESS },
+            {
+                sub: principal.id,
+                principalType: principal.type,
+                permissions: principal.permissions,
+                sessionVersion,
+                type: AuthTokenType.ACCESS,
+            },
             {
                 secret: this.accessSecret,
                 expiresIn: this.accessTtl,
@@ -94,23 +98,17 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Signs a refresh token carrying the principal, role, session version, and the JTI
-     * that session storage tracks for rotation and reuse detection.
+     * Signs a refresh token carrying the principal, its kind, the session version, and the JTI that
+     * session storage tracks for rotation and reuse detection. No permissions: a refresh re-reads them.
      *
-     * @param role The principal's authentication role
-     * @param id The principal identifier, embedded as the subject
+     * @param principal The verified principal the token is minted for
      * @param jti The unique token identifier session storage tracks
      * @param sessionVersion The session version the token is minted at
      * @returns The signed refresh token
      */
-    private async generateRefreshToken(
-        role: AuthRole,
-        id: string,
-        jti: string,
-        sessionVersion: number,
-    ): Promise<string> {
+    private async generateRefreshToken(principal: Principal, jti: string, sessionVersion: number): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, role, jti, sessionVersion, type: AuthTokenType.REFRESH },
+            { sub: principal.id, principalType: principal.type, jti, sessionVersion, type: AuthTokenType.REFRESH },
             {
                 secret: this.refreshSecret,
                 expiresIn: this.refreshTtl,

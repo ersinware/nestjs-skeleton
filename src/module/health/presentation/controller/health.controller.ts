@@ -21,11 +21,11 @@ import {
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { HttpCache, HttpCachePolicy } from 'src/core/http';
-import { Public, Roles } from 'src/core/security/auth';
+import { Permissions, Public } from 'src/core/security/auth';
 import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
-import { AdminRole } from 'src/shared/domain/admin';
+import { Permission } from 'src/shared/domain/principal';
 import { DependencyUnavailableMessage } from 'src/shared/exception';
 
 /**
@@ -33,7 +33,7 @@ import { DependencyUnavailableMessage } from 'src/shared/exception';
  * process?") and readiness ("route traffic here?") must never share an answer, or a dependency
  * outage restarts every healthy instance. Both probes are public and body-less — a body would
  * disclose the dependency topology to anonymous callers; the detailed view carries exactly that
- * information and is therefore restricted to super admins.
+ * information and is therefore gated by its own permission.
  */
 @Controller({
     path: ROUTE_HEALTH,
@@ -86,20 +86,19 @@ export class HealthController {
     }
 
     /**
-     * Per-indicator health detail, naming which dependency failed. Restricted to super admins —
+     * Per-indicator health detail, naming which dependency failed. Gated by its own permission —
      * the payload is reconnaissance material for anyone else.
      *
      * @returns The status of every indicator.
      * @throws {ServiceUnavailableException} When any indicator fails; the global filter passes the indicator report through.
      */
     @Get()
-    @Roles(AdminRole.SUPER_ADMIN)
+    @Permissions(Permission.HEALTH_DETAIL_READ)
     @HttpCache(HttpCachePolicy.NO_STORE)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Detailed health status',
-        description:
-            'Returns the per-indicator health status of the service and its dependencies. Requires super-administrator authorization.',
+        description: `Returns the per-indicator health status of the service and its dependencies. Requires the '${Permission.HEALTH_DETAIL_READ}' permission. A 503 carries the indicator report below, except while the session store is unreachable: authentication then fails closed ahead of the check, and the 503 carries the standard error body instead.`,
     })
     @ApiOkResponse({
         description: 'Service is fully healthy.',

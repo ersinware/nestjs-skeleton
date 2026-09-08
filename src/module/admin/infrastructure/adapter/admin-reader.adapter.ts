@@ -48,7 +48,7 @@ export class AdminReaderAdapter
                             id: admin.id,
                             email: admin.email,
                             name: admin.name,
-                            role: admin.role,
+                            permissions: admin.permissions,
                             isBanned: admin.isBanned,
                         })
                         .from(admin)
@@ -75,7 +75,7 @@ export class AdminReaderAdapter
                         .select({
                             id: admin.id,
                             password: admin.password,
-                            role: admin.role,
+                            permissions: admin.permissions,
                             isBanned: admin.isBanned,
                             sessionVersion: admin.sessionVersion,
                         })
@@ -113,7 +113,7 @@ export class AdminReaderAdapter
     }
 
     /**
-     * Reads an admin's ban status and current session version.
+     * Reads an admin's ban status, session counters and permissions.
      *
      * @param id The unique identifier of the target admin
      * @returns The auth state, or null when no non-deleted admin exists
@@ -123,7 +123,12 @@ export class AdminReaderAdapter
             return (
                 (
                     await this.db
-                        .select({ isBanned: admin.isBanned, sessionVersion: admin.sessionVersion })
+                        .select({
+                            isBanned: admin.isBanned,
+                            sessionVersion: admin.sessionVersion,
+                            revocationVersion: admin.revocationVersion,
+                            permissions: admin.permissions,
+                        })
                         .from(admin)
                         .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
                         .limit(1)

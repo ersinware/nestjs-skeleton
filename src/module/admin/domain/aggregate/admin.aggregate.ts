@@ -4,10 +4,10 @@
  */
 
 import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
-import { AdminRole } from 'src/shared/domain/admin';
-import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root';
+import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
-import { SystemException } from 'src/shared/exception';
+import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
+import { AccessDeniedException, SystemException } from 'src/shared/exception';
 
 /**
  * The module-owned state of an Admin aggregate.
@@ -17,55 +17,68 @@ type AdminProps = {
     name: string;
     /** Null until the invited admin activates the account by setting a password. */
     password: string | null;
-    role: AdminRole;
     isBanned: boolean;
-    sessionVersion: number;
     createdAt: Date;
     updatedAt: Date;
 };
 
 /**
- * The full persistable state of an Admin: the module-owned props plus the identity and deletion
- * timestamp owned by the aggregate-root bases. Consumed by reconstitution, produced by
- * {@link Admin.toSnapshot}.
+ * The full persistable state of an Admin: the module-owned props plus the identity, deletion
+ * timestamp, permissions and session counters owned by the aggregate-root bases. Consumed by
+ * reconstitution, produced by {@link Admin.toSnapshot}.
  */
-type AdminSnapshot = { id: string; deletedAt: Date | null } & AdminProps;
+type AdminSnapshot = {
+    id: string;
+    deletedAt: Date | null;
+    permissions: Permission[];
+    sessionVersion: number;
+    revocationVersion: number;
+} & AdminProps;
 
 /**
  * The Admin aggregate root. Owns every admin invariant: profile updates, ban/unban transitions,
- * session revocation through the monotonic version counter, and soft-delete immutability.
+ * session revocation through the monotonic version counter, permission changes, soft-delete
+ * immutability, and the administration hierarchy among admins.
+ *
+ * The hierarchy has three tiers. ROOT (one account, `admin:root`) appoints and dismisses MANAGERS
+ * (the manage permission) and may administer anyone; nobody administers root. A manager
+ * administers ORDINARY admins only — gives and takes every ordinary permission, bans, deletes; a
+ * manager is administered by root alone, in every respect. Nobody administers their own account.
+ * Every administrative mutation takes the acting principal so these rules can decide.
  */
-export class Admin extends SoftDeletableAggregateRoot {
+export class Admin extends PrincipalAggregateRoot {
+    protected readonly principalType = PrincipalType.ADMIN;
+
     private props: AdminProps;
 
     /**
-     * Splits the snapshot along the ownership boundary: id and deletedAt go to the aggregate-root
-     * bases that own them, the rest becomes the module-owned state.
+     * Splits the snapshot along the ownership boundary: id, deletedAt, permissions and the session
+     * counters go to the aggregate-root bases that own them, the rest becomes the module-owned state.
      *
      * @param snapshot The full aggregate state
      */
-    private constructor({ id, deletedAt, ...props }: AdminSnapshot) {
-        super(id, deletedAt);
+    private constructor({ id, deletedAt, permissions, sessionVersion, revocationVersion, ...props }: AdminSnapshot) {
+        super(id, deletedAt, permissions, sessionVersion, revocationVersion);
         this.props = props;
     }
 
     /**
-     * Creates a new Admin with a fresh lifecycle state. A passwordless account is pending activation
-     * and emits an INVITED event; one created with a password (the seed script) is active from the
-     * start and emits nothing.
+     * Creates a new Admin with a fresh lifecycle state and no permissions — authority is granted
+     * afterwards, by an admin who holds it. A passwordless account is pending activation and emits
+     * an INVITED event; one created with a password is active from the start and emits nothing.
      *
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(
-        props: { id: string } & Omit<AdminProps, 'isBanned' | 'sessionVersion' | 'createdAt' | 'updatedAt'>,
-    ): Admin {
+    static create(props: { id: string } & Omit<AdminProps, 'isBanned' | 'createdAt' | 'updatedAt'>): Admin {
         const now = new Date(),
             admin = new Admin({
                 ...props,
                 isBanned: false,
                 deletedAt: null,
+                permissions: [],
                 sessionVersion: 0,
+                revocationVersion: 0,
                 createdAt: now,
                 updatedAt: now,
             });
@@ -94,6 +107,9 @@ export class Admin extends SoftDeletableAggregateRoot {
         return {
             id: this.id,
             deletedAt: this.deletedAt,
+            permissions: [...this.permissions],
+            sessionVersion: this.sessionVersion,
+            revocationVersion: this.revocationVersion,
             ...this.props,
         };
     }
@@ -160,29 +176,74 @@ export class Admin extends SoftDeletableAggregateRoot {
         this.assertNotDeleted(this.changePassword.name);
 
         this.props.password = password;
-        this.props.sessionVersion++;
+        this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.PASSWORD_CHANGED, this.id));
     }
 
     /**
+     * Replaces the admin's permission set, retiring the access tokens that carried the old set while
+     * refresh tokens survive to fetch the new one, and emits a PERMISSIONS_CHANGED event. A no-op when the
+     * requested set already holds.
+     *
+     * @param permissions The complete set the admin should hold afterwards
+     * @param actor The verified principal making the change
+     * @returns What was granted and revoked, or null when nothing changed — the caller persists and
+     * audits only on a real transition
+     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root, grants the root marker, or appoints a manager without being root
+     * @throws {InvalidInputException} When the set holds a permission an admin may not hold
+     */
+    changePermissions(permissions: readonly Permission[], actor: Principal): PermissionChange | null {
+        this.assertNotDeleted(this.changePermissions.name);
+        this.assertAdministrableBy(actor);
+
+        // Root is never in a requested set: the root account itself is not administrable, so a set
+        // carrying the marker can only be an attempt to grant it.
+        if (permissions.includes(Permission.ADMIN_ROOT)) {
+            throw new AccessDeniedException('The root permission is held by exactly one account and is never granted.');
+        }
+
+        // A set carrying the manage marker is root's alone: from a non-root actor it is either an
+        // appointment, or a change on a manager that assertAdministrableBy refused already.
+        if (
+            permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
+            !actor.permissions.includes(Permission.ADMIN_ROOT)
+        ) {
+            throw new AccessDeniedException('Only root may appoint a permission manager.');
+        }
+
+        const change = this.applyPermissions(permissions);
+
+        if (change) {
+            this.props.updatedAt = new Date();
+            this.addDomainEvent(new DomainEvent(AdminEvent.PERMISSIONS_CHANGED, this.id));
+        }
+
+        return change;
+    }
+
+    /**
      * Bans the admin. Bumps the session version to instantly evict existing tokens, and emits a
      * BANNED event. A no-op when the account is already banned.
      *
+     * @param actor The verified principal imposing the ban
      * @returns Whether the account actually transitioned — the caller persists, audits, and evicts
      * only on a real ban, so a repeated request triggers none of them.
      * @throws {SystemException} When the account has been soft-deleted
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root
      */
-    ban(): boolean {
+    ban(actor: Principal): boolean {
         this.assertNotDeleted(this.ban.name);
+        this.assertAdministrableBy(actor);
 
         if (this.props.isBanned) {
             return false;
         }
 
         this.props.isBanned = true;
-        this.props.sessionVersion++;
+        this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.BANNED, this.id));
@@ -195,12 +256,15 @@ export class Admin extends SoftDeletableAggregateRoot {
      * monotonic and re-login mints a token at the current version. A no-op when the account is not
      * banned.
      *
+     * @param actor The verified principal lifting the ban
      * @returns Whether the account actually transitioned — the caller persists and audits only on a
      * real unban, so lifting a ban that was never in place triggers neither.
      * @throws {SystemException} When the account has been soft-deleted
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root
      */
-    unban(): boolean {
+    unban(actor: Principal): boolean {
         this.assertNotDeleted(this.unban.name);
+        this.assertAdministrableBy(actor);
 
         if (!this.props.isBanned) {
             return false;
@@ -225,7 +289,7 @@ export class Admin extends SoftDeletableAggregateRoot {
     revokeSessions() {
         this.assertNotDeleted(this.revokeSessions.name);
 
-        this.props.sessionVersion++;
+        this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
         this.addDomainEvent(new DomainEvent(AdminEvent.SESSIONS_REVOKED, this.id));
@@ -235,8 +299,13 @@ export class Admin extends SoftDeletableAggregateRoot {
      * Soft-deletes the admin account: sets the deletion timestamp, bans the account, bumps the
      * session version for a permanent cut-off, and emits a DELETED event. A no-op when already
      * deleted.
+     *
+     * @param actor The verified principal deleting the account
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root
      */
-    markAsDeleted() {
+    markAsDeleted(actor: Principal) {
+        this.assertAdministrableBy(actor);
+
         if (this.deletedAt) {
             return;
         }
@@ -245,10 +314,38 @@ export class Admin extends SoftDeletableAggregateRoot {
 
         this.setDeletedAt(now);
         this.props.isBanned = true;
-        this.props.sessionVersion++;
+        this.revokeAllSessions();
         this.props.updatedAt = now;
 
         this.addDomainEvent(new DomainEvent(AdminEvent.DELETED, this.id));
+    }
+
+    /**
+     * Refines the universal rule with the rank hierarchy: never one's own account; never root; a
+     * manager by root alone — managers hold no rank over each other, so the only answer to one
+     * administering another is root.
+     *
+     * @param actor The verified principal performing the administration
+     * @throws {SystemException} When a non-admin actor reaches the mutation
+     * @throws {AccessDeniedException} When the actor targets themselves, root, or a manager without being root
+     */
+    protected override assertAdministrableBy(actor: Principal) {
+        super.assertAdministrableBy(actor);
+
+        if (actor.id === this.id) {
+            throw new AccessDeniedException('An admin cannot administer their own account.');
+        }
+
+        if (this.permissions.includes(Permission.ADMIN_ROOT)) {
+            throw new AccessDeniedException('The root account cannot be administered.');
+        }
+
+        if (
+            this.permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
+            !actor.permissions.includes(Permission.ADMIN_ROOT)
+        ) {
+            throw new AccessDeniedException('A permission manager is administered by root alone.');
+        }
     }
 
     /** The email address. */
@@ -266,19 +363,9 @@ export class Admin extends SoftDeletableAggregateRoot {
         return this.props.password;
     }
 
-    /** The administrative role. */
-    get role(): AdminRole {
-        return this.props.role;
-    }
-
     /** Whether the account is banned. */
     get isBanned(): boolean {
         return this.props.isBanned;
-    }
-
-    /** The monotonic session-version counter. */
-    get sessionVersion(): number {
-        return this.props.sessionVersion;
     }
 
     /** The creation timestamp. */

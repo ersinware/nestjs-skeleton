@@ -3,10 +3,7 @@
  * @description Contract for looking up an authenticatable identity, from whichever bounded context owns it.
  */
 
-import { AdminRole } from 'src/shared/domain/admin';
-import type { AuthRole } from 'src/shared/domain/auth-role';
-import { UserRole } from 'src/shared/domain/user';
-import { SystemException } from 'src/shared/exception';
+import type { Permission, PrincipalType } from 'src/shared/domain/principal';
 
 /**
  * Dependency injection token representing the {@link IIdentityReaderPort} contract.
@@ -14,104 +11,65 @@ import { SystemException } from 'src/shared/exception';
 export const TOKEN_IDENTITY_READER_PORT = Symbol('TOKEN_IDENTITY_READER_PORT');
 
 /**
- * Which bounded context an identity is read from.
- *
- * This is the INPUT that selects the source, and it is deliberately not `AuthRole`: a login knows
- * the realm it authenticates against but not the role the account turns out to hold — an admin may
- * be `ADMIN` or `SUPER_ADMIN`. The role is what the realm REPORTS back, never what selects it.
- */
-export enum IdentityRealm {
-    USER = 'user',
-    ADMIN = 'admin',
-}
-
-/**
- * Maps an authorization role back to the realm that owns its credentials — the inverse of what the
- * realm reports. Exhaustive over {@link AuthRole} so a newly added role fails compilation here
- * instead of silently routing to the wrong realm.
- *
- * @throws {SystemException} When the role is unroutable — a token minted with a role the enum no
- * longer (or never) carried, reachable only through a broken code path.
- */
-export function realmOfRole(role: AuthRole): IdentityRealm {
-    switch (role) {
-        case UserRole.USER:
-            return IdentityRealm.USER;
-        case AdminRole.ADMIN:
-        case AdminRole.SUPER_ADMIN:
-            return IdentityRealm.ADMIN;
-        default:
-            return assertRoleExhausted(role);
-    }
-}
-
-/**
- * Compile-time exhaustiveness guard for {@link realmOfRole}: reachable at runtime only through a
- * token minted with a role the enum no longer (or never) carried.
- *
- * @throws {SystemException} Always — an unroutable role is a broken code path, not a client fault.
- */
-function assertRoleExhausted(role: never): never {
-    throw new SystemException(`Unroutable authorization role: ${String(role)}`, {
-        context: { class: realmOfRole.name, method: assertRoleExhausted.name },
-    });
-}
-
-/**
  * The identity contract required by the AuthModule.
  * Decouples authentication logic from specific domain entities.
  */
 export type AuthIdentity = {
     /** The unique identifier of the identity */
-    id: string;
+    readonly id: string;
 
     /** The hashed password of the identity, or null while the account is pending activation */
-    password: string | null;
+    readonly password: string | null;
 
-    /** The authorization role the owning realm reports, embedded into freshly minted tokens */
-    role: AuthRole;
+    /** The permissions the identity currently holds, embedded into freshly minted access tokens */
+    readonly permissions: readonly Permission[];
 
     /** The ban status of the identity */
-    isBanned: boolean;
+    readonly isBanned: boolean;
 
     /** The current session version, embedded into freshly minted tokens */
-    sessionVersion: number;
+    readonly sessionVersion: number;
 };
 
 /**
- * The slice of an identity the refresh flow re-reads on every rotation: just enough to reject a
- * banned account or a token carrying a stale version. Derived from {@link AuthIdentity} so the two
- * contracts cannot drift apart.
+ * The slice of an identity the refresh flow re-reads on every rotation: enough to reject a banned
+ * account or a refresh token minted before the last full revocation, plus the version to mint the
+ * new pair at and the permissions the fresh access token must carry. Derived from
+ * {@link AuthIdentity} so the two contracts cannot drift apart; `revocationVersion` is refresh's
+ * alone, since login always mints at the current version.
  */
-export type AuthState = Pick<AuthIdentity, 'isBanned' | 'sessionVersion'>;
+export type AuthState = Pick<AuthIdentity, 'permissions' | 'isBanned' | 'sessionVersion'> & {
+    /** The session version of the last full revocation; a refresh token below it is dead */
+    readonly revocationVersion: number;
+};
 
 /**
- * The single read surface authentication needs over every identity realm.
+ * The single read surface authentication needs over every kind of principal.
  *
- * One port rather than one per realm: the realm is a parameter of the lookup, so a handler that
+ * One port rather than one per kind: the kind is a parameter of the lookup, so a handler that
  * resolves it at runtime (token refresh) depends on one contract instead of branching across two,
- * and a new realm is added in the adapter rather than in every handler.
+ * and a new kind is added in the adapter rather than in every handler.
  */
 export interface IIdentityReaderPort {
     /**
-     * Looks up an identity in the given realm strictly by its email address.
+     * Looks up an identity of the given kind strictly by its email address.
      *
-     * @param realm The bounded context that owns the identity
+     * @param principalType The bounded context that owns the identity
      * @param email The email address to search for
      * @returns The associated identity
      * @throws {ResourceNotFoundException} If no identity is found
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    getCredentialsByEmail(realm: IdentityRealm, email: string): Promise<AuthIdentity>;
+    getCredentialsByEmail(principalType: PrincipalType, email: string): Promise<AuthIdentity>;
 
     /**
-     * Retrieves an identity's ban status and current session version by its unique identifier.
+     * Retrieves an identity's ban status, session counters and permissions by its unique identifier.
      *
-     * @param realm The bounded context that owns the identity
+     * @param principalType The bounded context that owns the identity
      * @param id The unique identifier of the target identity
-     * @returns The ban status and current session version
+     * @returns The ban status, session counters and permissions
      * @throws {ResourceNotFoundException} If no identity is found
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    getAuthState(realm: IdentityRealm, id: string): Promise<AuthState>;
+    getAuthState(principalType: PrincipalType, id: string): Promise<AuthState>;
 }

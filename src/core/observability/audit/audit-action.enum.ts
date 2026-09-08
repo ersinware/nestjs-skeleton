@@ -26,7 +26,7 @@ export enum AuditAction {
     /** Self-service password change; every previously minted token is revoked. */
     PASSWORD_CHANGED = 'PASSWORD_CHANGED',
 
-    /** An authenticated caller was refused by the roles guard — written by the global filter on 403. */
+    /** An authenticated caller was refused by the authorization guard or a domain administration rule — written by the global filter on 403. */
     ACCESS_DENIED = 'ACCESS_DENIED',
 
     /** A user registered their own account — the birth of the trail's subject; public route, so unattributed. */
@@ -46,6 +46,9 @@ export enum AuditAction {
 
     /** Every session of a user was revoked after refresh-token reuse. */
     USER_SESSIONS_REVOKED = 'USER_SESSIONS_REVOKED',
+
+    /** A user's permission set was changed; `detail` names what was granted and revoked. */
+    USER_PERMISSIONS_CHANGED = 'USER_PERMISSIONS_CHANGED',
 
     // Privileged actions on admins — kept apart so the trail names the subject's kind.
     /** An admin account was created, pending activation by its owner. */
@@ -74,6 +77,9 @@ export enum AuditAction {
 
     /** Every session of an admin was revoked after refresh-token reuse. */
     ADMIN_SESSIONS_REVOKED = 'ADMIN_SESSIONS_REVOKED',
+
+    /** An admin's permission set was changed; `detail` names what was granted and revoked. */
+    ADMIN_PERMISSIONS_CHANGED = 'ADMIN_PERMISSIONS_CHANGED',
 
     /** A read endpoint disclosed another principal's personal data. */
     PERSONAL_DATA_ACCESSED = 'PERSONAL_DATA_ACCESSED',

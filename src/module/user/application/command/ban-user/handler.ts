@@ -48,7 +48,7 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, vo
 
         // On an already-banned account `ban()` is a no-op: nothing changed, so there is nothing to
         // persist, audit, or evict.
-        if (!user.ban()) {
+        if (!user.ban(command.actor)) {
             return;
         }
 

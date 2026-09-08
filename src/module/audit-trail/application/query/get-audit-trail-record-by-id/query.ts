@@ -4,8 +4,8 @@
  */
 
 import { Query } from '@nestjs/cqrs';
-import { AuditAction } from 'src/core/observability/audit';
-import { AuthRole } from 'src/shared/domain/auth-role';
+import { AuditAction, type AuditDetail } from 'src/core/observability/audit';
+import type { PrincipalType } from 'src/shared/domain/principal';
 
 /**
  * Fetches one audit trail record by ID.
@@ -25,16 +25,17 @@ export class GetAuditTrailRecordByIdQuery extends Query<GetAuditTrailRecordByIdR
  * The full record read-model: every column, since all of it is evidence.
  */
 export type GetAuditTrailRecordByIdResult = {
-    id: string;
-    action: AuditAction;
-    reason: string | null;
-    targetId: string | null;
-    actorId: string | null;
-    actorRole: AuthRole | null;
-    remoteAddress: string | null;
-    route: string | null;
-    method: string | null;
-    userAgent: string | null;
-    traceId: string | null;
-    occurredAt: Date;
+    readonly id: string;
+    readonly action: AuditAction;
+    readonly reason: string | null;
+    readonly detail: AuditDetail | null;
+    readonly targetId: string | null;
+    readonly actorId: string | null;
+    readonly actorType: PrincipalType | null;
+    readonly remoteAddress: string | null;
+    readonly route: string | null;
+    readonly method: string | null;
+    readonly userAgent: string | null;
+    readonly traceId: string | null;
+    readonly occurredAt: Date;
 };

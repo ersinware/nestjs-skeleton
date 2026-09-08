@@ -8,7 +8,7 @@ import type { FastifyReply, FastifyRequest, HookHandlerDoneFunction } from 'fast
 import { runWithAuditContext } from 'src/core/observability/audit/audit-context';
 
 /**
- * Establishes the audit context and fills in the transport half; the actor is added by `AuthGuard`
+ * Establishes the audit context and fills in the transport half; the actor is added by `AuthenticationGuard`
  * once a verified identity exists — see {@link AuditContext}.
  *
  * A Fastify `onRequest` hook on purpose: only a hook runs ahead of guards, making a guard-raised

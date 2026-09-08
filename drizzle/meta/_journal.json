@@ -5,22 +5,8 @@
         {
             "idx": 0,
             "version": "7",
-            "when": 1786442334619,
-            "tag": "0000_jittery_toro",
-            "breakpoints": true
-        },
-        {
-            "idx": 1,
-            "version": "7",
-            "when": 1786542907772,
-            "tag": "0001_silky_vision",
-            "breakpoints": true
-        },
-        {
-            "idx": 2,
-            "version": "7",
-            "when": 1788772354399,
-            "tag": "0002_audit",
+            "when": 1788809441559,
+            "tag": "0000_init",
             "breakpoints": true
         }
     ]

@@ -27,4 +27,7 @@ export enum AdminEvent {
 
     /** Every session revoked after refresh-token reuse; the session version was bumped. */
     SESSIONS_REVOKED = 'admin.sessions_revoked',
+
+    /** Permission set changed; the session version was bumped so the old token's claims die with it. */
+    PERMISSIONS_CHANGED = 'admin.permissions_changed',
 }

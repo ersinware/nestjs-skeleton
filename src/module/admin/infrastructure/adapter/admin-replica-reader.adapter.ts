@@ -48,7 +48,7 @@ export class AdminReplicaReaderAdapter implements IListAdminsPort {
                         id: admin.id,
                         email: admin.email,
                         name: admin.name,
-                        role: admin.role,
+                        permissions: admin.permissions,
                         isBanned: admin.isBanned,
                     })
                     .from(admin)

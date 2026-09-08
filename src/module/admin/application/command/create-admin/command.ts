@@ -7,8 +7,8 @@ import { Command } from '@nestjs/cqrs';
 
 /**
  * Creates a new admin account pending activation: it starts without a password and its owner
- * activates it through the emailed invitation. The role is always ADMIN — super-admins are minted
- * by the seed script only.
+ * activates it through the emailed invitation. It starts with no permissions: authority is granted
+ * afterwards, by an admin who holds it.
  */
 export class CreateAdminCommand extends Command<void> {
     /**

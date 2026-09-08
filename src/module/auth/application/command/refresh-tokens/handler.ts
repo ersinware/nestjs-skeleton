@@ -10,9 +10,7 @@ import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observa
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
-    IdentityRealm,
     TOKEN_IDENTITY_READER_PORT,
-    realmOfRole,
     type IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import {
@@ -21,6 +19,7 @@ import {
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
+import { PrincipalType } from 'src/shared/domain/principal';
 import { UserIntegrationEvent } from 'src/shared/domain/user';
 import {
     ExceptionKind,
@@ -31,14 +30,14 @@ import {
 import { uuidv7 } from 'uuidv7';
 
 /**
- * The reuse integration event each realm's owning module listens for. Exhaustive over
- * {@link IdentityRealm} (a new realm fails compilation here) so the remediation cannot silently
+ * The reuse integration event each kind's owning module listens for. Exhaustive over
+ * {@link PrincipalType} (a new kind fails compilation here) so the remediation cannot silently
  * route to the wrong module.
  */
-const REFRESH_REUSE_EVENT_BY_REALM = {
-    [IdentityRealm.USER]: UserIntegrationEvent.REFRESH_REUSE_DETECTED,
-    [IdentityRealm.ADMIN]: AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
-} as const satisfies Record<IdentityRealm, string>;
+const REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE = {
+    [PrincipalType.USER]: UserIntegrationEvent.REFRESH_REUSE_DETECTED,
+    [PrincipalType.ADMIN]: AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
+} as const satisfies Record<PrincipalType, string>;
 
 /**
  * Handler for the RefreshTokensCommand.
@@ -82,13 +81,11 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new UnauthenticatedException();
         }
 
-        const role = payload.role,
-            sub = payload.sub,
-            realm = realmOfRole(role);
+        const { sub, principalType } = payload;
 
         let identity;
         try {
-            identity = await this.identityReaderPort.getAuthState(realm, sub);
+            identity = await this.identityReaderPort.getAuthState(principalType, sub);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw new UnauthenticatedException();
@@ -101,9 +98,11 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new UnauthenticatedException();
         }
 
-        // The DB is the authority, so a mutation that advanced the version rejects the refresh
-        // before it can mint a fresh token.
-        if (payload.sessionVersion < identity.sessionVersion) {
+        // The DB is the authority. The floor is the last FULL revocation, not the current version:
+        // a permission change advances the version alone, so the access tokens it retired are
+        // refreshed here into ones carrying the new set, while a ban or password change moves the
+        // floor and kills this refresh token too.
+        if (payload.sessionVersion < identity.revocationVersion) {
             throw new UnauthenticatedException();
         }
 
@@ -111,7 +110,12 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // fail-closed guard. Uncaught — the rotation below needs the same store anyway.
         await this.sessionPort.setVersion(sub, identity.sessionVersion);
 
-        const tokens = await this.tokenPort.generateTokens(role, sub, identity.sessionVersion),
+        // The access token is minted from the freshly read permissions, never from the old token:
+        // a refresh is exactly where a permission change reaches the client.
+        const tokens = await this.tokenPort.generateTokens(
+                { id: sub, type: principalType, permissions: identity.permissions },
+                identity.sessionVersion,
+            ),
             // The atomic rotation is both the single-use gate and the classifier: the grace
             // tombstone tells a lost concurrent-refresh race apart from post-window reuse (RFC 9700).
             outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.refreshTokenJti);
@@ -132,7 +136,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // asynchronously and auth has no aggregate, so the event is emitted here. The emit is
         // fire-and-forget: a failing listener must not turn the 401 into a 503.
         this.eventPublisherPort
-            .emitAsync(REFRESH_REUSE_EVENT_BY_REALM[realm], { aggregateId: sub, eventId: uuidv7() })
+            .emitAsync(REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE[principalType], { aggregateId: sub, eventId: uuidv7() })
             .catch(() => {});
         await this.auditPort.record({
             action: AuditAction.REFRESH_REUSE_DETECTED,

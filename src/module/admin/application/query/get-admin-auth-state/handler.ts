@@ -14,7 +14,7 @@ import {
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Returns an admin's ban status and current session version.
+ * Returns an admin's ban status, session counters and permissions.
  */
 @QueryHandler(GetAdminAuthStateQuery)
 export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuthStateQuery, GetAdminAuthStateResult> {
@@ -29,7 +29,7 @@ export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuth
      * Executes the query.
      *
      * @param query The query parameters
-     * @returns The admin's ban status and current session version
+     * @returns The admin's ban status, session counters and permissions
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
      */
     async execute(query: GetAdminAuthStateQuery): Promise<GetAdminAuthStateResult> {

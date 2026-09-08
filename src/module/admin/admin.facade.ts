@@ -39,7 +39,7 @@ export class AdminFacade {
     }
 
     /**
-     * Resolves an admin's authentication state (active status + session version) by their unique identifier.
+     * Resolves an admin's authentication state (ban status, session counters, permissions) by their unique identifier.
      *
      * @param id The unique identifier of the target admin
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.

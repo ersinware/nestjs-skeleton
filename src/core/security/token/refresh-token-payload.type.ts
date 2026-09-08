@@ -4,17 +4,18 @@
  */
 
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
-import type { AuthRole } from 'src/shared/domain/auth-role';
+import type { PrincipalType } from 'src/shared/domain/principal';
 
 /**
- * Decoded JWT refresh token payload.
+ * Decoded JWT refresh token payload. Carries no permissions: a refresh re-reads the account from the
+ * primary and mints the access token from that fresh state, so nothing stale can be carried over.
  */
 export type RefreshTokenPayload = {
     /** Principal identifier. */
     sub: string;
 
-    /** Principal's authentication role. */
-    role: AuthRole;
+    /** Which bounded context owns the principal's account. */
+    principalType: PrincipalType;
 
     /** Unique token identifier; session storage tracks it for rotation and reuse detection. */
     jti: string;

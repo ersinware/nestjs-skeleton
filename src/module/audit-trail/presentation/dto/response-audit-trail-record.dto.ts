@@ -6,14 +6,12 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsEntityId } from 'src/core/http';
-import { AuditAction } from 'src/core/observability/audit';
-import { AdminRole } from 'src/shared/domain/admin';
-import type { AuthRole } from 'src/shared/domain/auth-role';
-import { UserRole } from 'src/shared/domain/user';
+import { AuditAction, type AuditDetail } from 'src/core/observability/audit';
+import { PrincipalType } from 'src/shared/domain/principal';
 
 /**
- * Exposes every column of an audit trail record: all of it is evidence, and only a super-admin can
- * read it. Nullable fields are null when the record was written outside an HTTP request or
+ * Exposes every column of an audit trail record: all of it is evidence, and only a holder of the
+ * audit-trail read permission can read it. Nullable fields are null when the record was written outside an HTTP request or
  * without a verified actor.
  */
 @Exclude()
@@ -51,6 +49,20 @@ export class ResponseAuditTrailRecordDto {
     readonly reason!: string | null;
 
     /**
+     * What the action changed, when the ids alone do not say; null on an action whose meaning the
+     * ids carry in full.
+     */
+    @Expose()
+    @ApiProperty({
+        type: 'object',
+        additionalProperties: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        description: 'What the action changed, when the ids alone do not say; null otherwise.',
+        example: { granted: ['user:account:read'], revoked: [] },
+        nullable: true,
+    })
+    readonly detail!: AuditDetail | null;
+
+    /**
      * The subject the action was applied to.
      */
     @Expose()
@@ -77,17 +89,17 @@ export class ResponseAuditTrailRecordDto {
     readonly actorId!: string | null;
 
     /**
-     * The verified principal's role at the time of the action.
+     * The kind of the verified principal, so `actorId` resolves to its owning context.
      */
     @Expose()
     @ApiProperty({
         type: String,
-        enum: [...Object.values(AdminRole), ...Object.values(UserRole)],
-        description: "The verified principal's role at the time of the action.",
-        example: AdminRole.ADMIN,
+        enum: PrincipalType,
+        description: 'The kind of the verified principal who acted, naming the context that owns `actorId`.',
+        example: PrincipalType.ADMIN,
         nullable: true,
     })
-    readonly actorRole!: AuthRole | null;
+    readonly actorType!: PrincipalType | null;
 
     /**
      * The client address as resolved by proxy trust; null outside an HTTP request.

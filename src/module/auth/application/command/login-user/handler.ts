@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles the LoginUserCommand by running the shared credential-login flow against the user realm.
+ * @description Handles the LoginUserCommand by running the shared credential-login flow against user accounts.
  */
 
 import { Inject } from '@nestjs/common';
@@ -12,10 +12,10 @@ import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LoginUserCommand, type LoginUserResult } from 'src/module/auth/application/command/login-user/command';
 import { login } from 'src/module/auth/application/command/login.util';
 import {
-    IdentityRealm,
     TOKEN_IDENTITY_READER_PORT,
     type IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
+import { PrincipalType } from 'src/shared/domain/principal';
 
 /**
  * Handles the LoginUserCommand.
@@ -56,7 +56,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
                 sessionPort: this.sessionPort,
                 auditPort: this.auditPort,
             },
-            IdentityRealm.USER,
+            PrincipalType.USER,
             command.email,
             command.password,
         );

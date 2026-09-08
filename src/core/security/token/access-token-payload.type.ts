@@ -4,17 +4,22 @@
  */
 
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
-import type { AuthRole } from 'src/shared/domain/auth-role';
+import type { Permission, PrincipalType } from 'src/shared/domain/principal';
 
 /**
- * Decoded JWT access token payload.
+ * Decoded JWT access token payload. Carries the permissions the principal held at mint time, so
+ * the authorization guard decides without a store round-trip; a permission change bumps the
+ * session version, which retires every token minted before it.
  */
 export type AccessTokenPayload = {
     /** Principal identifier. */
     sub: string;
 
-    /** Principal's authentication role. */
-    role: AuthRole;
+    /** Which bounded context owns the principal's account. */
+    principalType: PrincipalType;
+
+    /** The permissions the principal held when the token was minted. */
+    permissions: Permission[];
 
     /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
     sessionVersion: number;

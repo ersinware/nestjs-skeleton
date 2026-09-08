@@ -4,9 +4,10 @@
  * append-only record table.
  */
 
-import { index, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
-import type { AuthRole } from 'src/shared/domain/auth-role';
+import type { AuditDetail } from 'src/core/observability/audit/port/audit.port';
+import type { PrincipalType } from 'src/shared/domain/principal';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -41,6 +42,12 @@ export const audit = auditSchema.table(
         reason: text('reason'),
 
         /**
+         * What the action changed, when the ids alone do not say (the permissions a change granted
+         * and revoked); null on an action whose meaning the ids carry in full.
+         */
+        detail: jsonb('detail').$type<AuditDetail>(),
+
+        /**
          * The subject the action was applied to; a soft link, never a foreign key.
          */
         targetId: uuid('target_id'),
@@ -51,9 +58,10 @@ export const audit = auditSchema.table(
         actorId: uuid('actor_id'),
 
         /**
-         * The verified principal's role at the time of the action.
+         * The kind of the verified principal, so `actorId` resolves to its owning context without
+         * probing every table.
          */
-        actorRole: text('actor_role').$type<AuthRole>(),
+        actorType: text('actor_type').$type<PrincipalType>(),
 
         /**
          * The proxy-trust-resolved client address; null, like every transport fact, outside an

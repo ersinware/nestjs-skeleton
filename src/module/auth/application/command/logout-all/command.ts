@@ -12,9 +12,9 @@ export class LogoutAllCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
-     * @param sub The principal identifier whose sessions are all terminated
+     * @param id The principal identifier whose sessions are all terminated
      */
-    constructor(readonly sub: string) {
+    constructor(readonly id: string) {
         super();
     }
 }

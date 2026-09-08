@@ -49,6 +49,7 @@ export class UserReplicaReaderAdapter implements IListUsersPort {
                         id: user.id,
                         email: user.email,
                         name: user.name,
+                        permissions: user.permissions,
                         isBanned: user.isBanned,
                     })
                     .from(user)

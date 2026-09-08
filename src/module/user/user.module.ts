@@ -14,6 +14,7 @@ import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
+import { ChangeUserPermissionsCommandHandler } from 'src/module/user/application/command/change-user-permissions/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
@@ -31,6 +32,7 @@ import { TOKEN_GET_USER_BY_ID_PORT } from 'src/module/user/application/query/get
 import { GetUserCredentialsByEmailQueryHandler } from 'src/module/user/application/query/get-user-credentials-by-email/handler';
 import { TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { TOKEN_GET_USER_SESSION_VERSION_PORT } from 'src/module/user/application/query/get-user-session-version/port';
+import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
@@ -63,9 +65,11 @@ import { UserFacade } from 'src/module/user/user.facade';
         DeleteUserCommandHandler,
         BanUserCommandHandler,
         UnbanUserCommandHandler,
+        ChangeUserPermissionsCommandHandler,
         RevokeUserSessionsCommandHandler,
         ReconcileUserSessionCommandHandler,
         ListUsersQueryHandler,
+        ListUserPermissionCatalogQueryHandler,
         GetUserByIdQueryHandler,
         GetUserCredentialsByEmailQueryHandler,
         GetUserAuthStateQueryHandler,

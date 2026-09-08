@@ -14,7 +14,7 @@ import {
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Returns a user's active status and current session version by ID.
+ * Returns a user's ban status, session counters and permissions by ID.
  */
 @QueryHandler(GetUserAuthStateQuery)
 export class GetUserAuthStateQueryHandler implements IQueryHandler<GetUserAuthStateQuery, GetUserAuthStateResult> {
@@ -29,7 +29,7 @@ export class GetUserAuthStateQueryHandler implements IQueryHandler<GetUserAuthSt
      * Executes the get user auth state query.
      *
      * @param query The query parameters
-     * @returns The user's active status and current session version
+     * @returns The user's ban status, session counters and permissions
      * @throws {ResourceNotFoundException} When no user exists with the given ID
      */
     async execute(query: GetUserAuthStateQuery): Promise<GetUserAuthStateResult> {

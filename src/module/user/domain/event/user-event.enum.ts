@@ -24,4 +24,7 @@ export enum UserEvent {
 
     /** Every session revoked after refresh-token reuse; the session version was bumped. */
     SESSIONS_REVOKED = 'user.sessions_revoked',
+
+    /** Permission set changed; the session version was bumped so the old token's claims die with it. */
+    PERMISSIONS_CHANGED = 'user.permissions_changed',
 }

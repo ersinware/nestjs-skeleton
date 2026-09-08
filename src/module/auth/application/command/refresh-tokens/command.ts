@@ -35,6 +35,6 @@ export class RefreshTokensCommand extends Command<RefreshTokensResult> {
  * Result of the RefreshTokensCommand: the freshly issued token pair.
  */
 export type RefreshTokensResult = {
-    accessToken: string;
-    refreshToken: string;
+    readonly accessToken: string;
+    readonly refreshToken: string;
 };

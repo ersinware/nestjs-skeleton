@@ -45,43 +45,43 @@ export const UnhealthyIndicatorMessage = {
  * State of a healthy indicator.
  */
 export type HealthyIndicatorState = {
-    status: 'up';
+    readonly status: 'up';
 };
 
 /**
  * Read model of a fully healthy system.
  */
 type HealthyReadModel = {
-    status: 'ok';
-    info: Record<HealthIndicatorKey, HealthyIndicatorState>;
-    error: Record<string, never>;
-    details: Record<HealthIndicatorKey, HealthyIndicatorState>;
+    readonly status: 'ok';
+    readonly info: Readonly<Record<HealthIndicatorKey, HealthyIndicatorState>>;
+    readonly error: Readonly<Record<string, never>>;
+    readonly details: Readonly<Record<HealthIndicatorKey, HealthyIndicatorState>>;
 };
 
 /**
  * State of an unhealthy indicator; the message names the failure.
  */
 export type UnhealthyIndicatorState = {
-    status: 'down';
-    message: string;
+    readonly status: 'down';
+    readonly message: string;
 };
 
 /**
  * State of an indicator in either condition; the message is present only when down.
  */
 export type HealthyOrUnhealthyIndicatorState = {
-    status: 'up' | 'down';
-    message?: string;
+    readonly status: 'up' | 'down';
+    readonly message?: string;
 };
 
 /**
  * Read model of a system with at least one failed indicator.
  */
 type UnhealthyReadModel = {
-    status: 'error';
-    info: Partial<Record<HealthIndicatorKey, HealthyIndicatorState>>;
-    error: Partial<Record<HealthIndicatorKey, UnhealthyIndicatorState>>;
-    details: Record<HealthIndicatorKey, HealthyOrUnhealthyIndicatorState>;
+    readonly status: 'error';
+    readonly info: Readonly<Partial<Record<HealthIndicatorKey, HealthyIndicatorState>>>;
+    readonly error: Readonly<Partial<Record<HealthIndicatorKey, UnhealthyIndicatorState>>>;
+    readonly details: Readonly<Record<HealthIndicatorKey, HealthyOrUnhealthyIndicatorState>>;
 };
 
 /**

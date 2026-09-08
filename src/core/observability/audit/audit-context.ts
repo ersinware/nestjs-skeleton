@@ -4,14 +4,14 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { AuthRole } from 'src/shared/domain/auth-role';
+import type { PrincipalType } from 'src/shared/domain/principal';
 
 /**
  * Who is acting and over which transport — request facts kept out of command payloads.
  *
  * The transport half is seeded by `auditContextHook` on arrival, ahead of every guard; the
  * identity half is mutable because it is published later, via {@link publishAuditActor}, once
- * `AuthGuard` verifies a token. Identity is optional: a `@Public()` route has no actor.
+ * `AuthenticationGuard` verifies a token. Identity is optional: a `@Public()` route has no actor.
  */
 export type AuditContext = {
     readonly remoteAddress: string;
@@ -19,7 +19,7 @@ export type AuditContext = {
     readonly method: string;
     readonly userAgent?: string;
     actorId?: string;
-    actorRole?: AuthRole;
+    actorType?: PrincipalType;
 };
 
 /**
@@ -33,15 +33,15 @@ const auditContextStorage = new AsyncLocalStorage<AuditContext>();
  * the trail. No-op outside an HTTP request.
  *
  * @param actorId The verified principal's identifier.
- * @param actorRole The verified principal's role.
+ * @param actorType The kind of the verified principal, so the id resolves to its owning context.
  */
-export function publishAuditActor(actorId: string, actorRole: AuthRole) {
+export function publishAuditActor(actorId: string, actorType: PrincipalType) {
     const context = auditContextStorage.getStore();
 
     if (!context) return;
 
     context.actorId = actorId;
-    context.actorRole = actorRole;
+    context.actorType = actorType;
 }
 
 /**
