@@ -54,6 +54,13 @@ export const admin = adminSchema.table(
         isBanned: boolean('is_banned').notNull().default(false),
 
         /**
+         * Optimistic-lock version, incremented by every write. The writer updates only the row
+         * still carrying the version it loaded, so a handler that decided on stale state is refused
+         * instead of overwriting a concurrent ban, revocation or deletion.
+         */
+        version: integer('version').notNull().default(0),
+
+        /**
          * Soft-delete timestamp; null while the account is live.
          */
         deletedAt: timestamp('deleted_at'),

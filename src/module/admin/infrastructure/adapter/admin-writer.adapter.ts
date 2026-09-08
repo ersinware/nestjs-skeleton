@@ -55,25 +55,35 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Upserts the aggregate's snapshot, then dispatches the domain events it accumulated.
+     * Upserts the aggregate's snapshot under the optimistic lock, then dispatches the domain events
+     * it accumulated.
      *
      * @param admin The aggregate to save
      */
     async save(admin: Admin) {
         const payload = admin.toSnapshot();
 
+        let affected: number | null;
+
         try {
-            await this.db
-                .insert(adminSchema)
-                .values(payload)
-                .onConflictDoUpdate({
-                    target: adminSchema.id,
-                    set: {
-                        ...payload,
-                        id: undefined,
-                        createdAt: undefined,
-                    },
-                });
+            // One conditional upsert covers both paths: a new aggregate inserts at version 0; an
+            // existing one updates only while the row still carries the loaded version, storing it
+            // incremented. A stale aggregate matches neither branch and affects no row.
+            affected = (
+                await this.db
+                    .insert(adminSchema)
+                    .values(payload)
+                    .onConflictDoUpdate({
+                        target: adminSchema.id,
+                        set: {
+                            ...payload,
+                            id: undefined,
+                            createdAt: undefined,
+                            version: payload.version + 1,
+                        },
+                        setWhere: eq(adminSchema.version, payload.version),
+                    })
+            ).rowCount;
         } catch (error) {
             // The id conflict is absorbed by onConflictDoUpdate and email is this table's only other
             // unique constraint, so a unique violation here can only mean the address is taken.
@@ -82,6 +92,12 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             }
 
             throw translateConnectionFailure(error);
+        }
+
+        // The optimistic lock refused: another request wrote the row between this handler's load
+        // and save, so its decision was made on stale state and must not overwrite the newer one.
+        if (affected === 0) {
+            throw new ResourceConflictException(ResourceConflictMessage.CONCURRENT_MODIFICATION);
         }
 
         this.publishDomainEvents(admin);
@@ -93,6 +109,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     private mapToDomain(row: InferSelectModel<typeof adminSchema>): Admin {
         return Admin.reconstitute({
             id: row.id,
+            version: row.version,
             email: row.email,
             name: row.name,
             password: row.password,

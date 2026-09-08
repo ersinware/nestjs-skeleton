@@ -11,13 +11,21 @@ import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
  */
 export enum ResourceConflictMessage {
     /**
-     * Targets generic resource conflict errors.
+     * Targets generic resource conflict errors. Worded to cover every member below, since it is also
+     * the documented example wherever an endpoint can conflict for more than one reason.
      */
-    DEFAULT = 'Resource already exists.',
+    DEFAULT = 'The request conflicts with the current state of the resource.',
+
     /**
      * Targets email conflict errors.
      */
     EMAIL_IN_USE = 'Email address is already in use.',
+
+    /**
+     * Targets a lost optimistic-lock race: the row was written by another request between this
+     * one's load and save, so its decision was made on stale state and was refused.
+     */
+    CONCURRENT_MODIFICATION = 'The resource was modified by another request; reload and retry.',
 }
 
 /**

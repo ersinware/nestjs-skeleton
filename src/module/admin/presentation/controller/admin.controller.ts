@@ -97,6 +97,7 @@ export class AdminController {
     // the status, so naming one cause would document the endpoint as if the others did not exist.
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async delete(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
         await this.commandPipeline.execute(new DeleteAdminCommand(params.id, principal));
     }
@@ -223,7 +224,9 @@ export class AdminController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
+    // Generic 409 on purpose: a taken email address and a concurrent modification share the status,
+    // so naming one cause would document the endpoint as if the other did not exist.
+    @ApiDefaultResourceConflictResponse()
     async updateMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchAdminDto: PatchAdminDto,
@@ -257,6 +260,7 @@ export class AdminController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async changePasswordMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchAdminPasswordDto: PatchAdminPasswordDto,
@@ -310,6 +314,7 @@ export class AdminController {
     // Generic 400 on purpose: payload validation and every invitation failure (bad signature,
     // expired, wrong account state) share the status, and the response must not disclose which.
     @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async activate(@Body() postAdminActivateDto: PostAdminActivateDto) {
         await this.commandPipeline.execute(
             new ActivateAdminCommand(postAdminActivateDto.token, postAdminActivateDto.password),
@@ -363,6 +368,7 @@ export class AdminController {
     // the status, so naming one cause would document the endpoint as if the others did not exist.
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async ban(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
         await this.commandPipeline.execute(new BanAdminCommand(params.id, principal));
     }
@@ -388,6 +394,7 @@ export class AdminController {
     // the status, so naming one cause would document the endpoint as if the others did not exist.
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async unban(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
         await this.commandPipeline.execute(new UnbanAdminCommand(params.id, principal));
     }
@@ -418,6 +425,7 @@ export class AdminController {
     // target all share the status.
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async replacePermissions(
         @CurrentPrincipal() principal: Principal,
         @Param() params: ParamIdDto,
