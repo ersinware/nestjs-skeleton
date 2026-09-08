@@ -41,6 +41,7 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
      * Initializes the principal base state.
      *
      * @param id The unique identifier
+     * @param version The persisted version the state was loaded at; 0 for a new aggregate
      * @param deletedAt The persisted deletion timestamp, or null while the aggregate is live
      * @param permissions The permissions the principal currently holds
      * @param sessionVersion The persisted session version
@@ -48,12 +49,13 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
      */
     protected constructor(
         id: string,
+        version: number,
         deletedAt: Date | null,
         permissions: readonly Permission[],
         sessionVersion: number,
         revocationVersion: number,
     ) {
-        super(id, deletedAt);
+        super(id, version, deletedAt);
         this._permissions = [...permissions];
         this._sessionVersion = sessionVersion;
         this._revocationVersion = revocationVersion;

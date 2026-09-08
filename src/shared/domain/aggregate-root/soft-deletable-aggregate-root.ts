@@ -18,10 +18,11 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
      * Initializes the soft-deletable base state.
      *
      * @param id The unique identifier
+     * @param version The persisted version the state was loaded at; 0 for a new aggregate
      * @param deletedAt The persisted deletion timestamp, or null while the aggregate is live
      */
-    protected constructor(id: string, deletedAt: Date | null) {
-        super(id);
+    protected constructor(id: string, version: number, deletedAt: Date | null) {
+        super(id, version);
         this._deletedAt = deletedAt;
     }
 

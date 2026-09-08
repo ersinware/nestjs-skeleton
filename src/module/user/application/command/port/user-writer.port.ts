@@ -27,7 +27,8 @@ export interface IUserWriterPort {
      * Persists the aggregate (insert or update), then dispatches the domain events it accumulated.
      *
      * @param user The aggregate to save
-     * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {ResourceConflictException} When the email address is already in use, or when the row
+     * was modified by another request since the aggregate was loaded (optimistic lock)
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
     save(user: User): Promise<void>;

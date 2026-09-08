@@ -89,6 +89,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async deleteMe(@CurrentPrincipal() principal: Principal) {
         await this.commandPipeline.execute(new DeleteUserCommand(principal.id));
     }
@@ -214,7 +215,9 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
+    // Generic 409 on purpose: a taken email address and a concurrent modification share the status,
+    // so naming one cause would document the endpoint as if the other did not exist.
+    @ApiDefaultResourceConflictResponse()
     async updateMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchUserDto: PatchUserDto,
@@ -246,6 +249,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async changePasswordMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchUserPasswordDto: PatchUserPasswordDto,
@@ -300,6 +304,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async ban(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
         await this.commandPipeline.execute(new BanUserCommand(params.id, principal));
     }
@@ -323,6 +328,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async unban(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
         await this.commandPipeline.execute(new UnbanUserCommand(params.id, principal));
     }
@@ -349,6 +355,7 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async replacePermissions(
         @CurrentPrincipal() principal: Principal,
         @Param() params: ParamIdDto,

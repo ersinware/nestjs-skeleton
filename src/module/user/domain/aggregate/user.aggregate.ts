@@ -21,12 +21,13 @@ type UserProps = {
 };
 
 /**
- * The full persistable state of a User: the module-owned props plus the identity, deletion
- * timestamp, permissions and session counters owned by the aggregate-root bases. Consumed by
+ * The full persistable state of a User: the module-owned props plus the identity, persistence
+ * version, deletion timestamp, permissions and session counters owned by the aggregate-root bases. Consumed by
  * reconstitution, produced by {@link User.toSnapshot}.
  */
 type UserSnapshot = {
     id: string;
+    version: number;
     deletedAt: Date | null;
     permissions: Permission[];
     sessionVersion: number;
@@ -46,13 +47,22 @@ export class User extends PrincipalAggregateRoot {
     private props: UserProps;
 
     /**
-     * Splits the snapshot along the ownership boundary: id, deletedAt, permissions and the session
-     * counters go to the aggregate-root bases that own them, the rest becomes the module-owned state.
+     * Splits the snapshot along the ownership boundary: id, version, deletedAt, permissions and the
+     * session counters go to the aggregate-root bases that own them, the rest becomes the module-owned
+     * state.
      *
      * @param snapshot The full aggregate state
      */
-    private constructor({ id, deletedAt, permissions, sessionVersion, revocationVersion, ...props }: UserSnapshot) {
-        super(id, deletedAt, permissions, sessionVersion, revocationVersion);
+    private constructor({
+        id,
+        version,
+        deletedAt,
+        permissions,
+        sessionVersion,
+        revocationVersion,
+        ...props
+    }: UserSnapshot) {
+        super(id, version, deletedAt, permissions, sessionVersion, revocationVersion);
         this.props = props;
     }
 
@@ -68,6 +78,7 @@ export class User extends PrincipalAggregateRoot {
         return new User({
             ...props,
             isBanned: false,
+            version: 0,
             deletedAt: null,
             permissions: [],
             sessionVersion: 0,
@@ -93,6 +104,7 @@ export class User extends PrincipalAggregateRoot {
     toSnapshot(): UserSnapshot {
         return {
             id: this.id,
+            version: this.version,
             deletedAt: this.deletedAt,
             permissions: [...this.permissions],
             sessionVersion: this.sessionVersion,
