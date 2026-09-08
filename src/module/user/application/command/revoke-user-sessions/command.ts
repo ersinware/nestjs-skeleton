@@ -1,21 +1,25 @@
 /**
  * @file command.ts
- * @description Defines the RevokeUserSessionsCommand, dispatched when auth reports refresh-token reuse
- * for a user so the user module can revoke every session and warn the account owner.
+ * @description Command that revokes all of a user's sessions.
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { SessionRevocationReason } from 'src/shared/domain/principal';
 
 /**
- * Command to revoke all of a user's sessions after refresh-token reuse was detected.
+ * Revokes all of a user's sessions. The reason decides whether the account owner is notified.
  */
 export class RevokeUserSessionsCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
      * @param id The unique identifier of the user whose sessions must be revoked
+     * @param reason Why the sessions are revoked
      */
-    constructor(readonly id: string) {
+    constructor(
+        readonly id: string,
+        readonly reason: SessionRevocationReason,
+    ) {
         super();
     }
 }

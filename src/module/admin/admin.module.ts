@@ -27,8 +27,8 @@ import { SendAdminInviteCommandHandler } from 'src/module/admin/application/comm
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
 import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
 import { AdminInviteListener } from 'src/module/admin/application/event/admin-invite.listener';
+import { AdminSessionRevocationListener } from 'src/module/admin/application/event/admin-session-revocation.listener';
 import { AdminSessionListener } from 'src/module/admin/application/event/admin-session.listener';
-import { AdminTokenReuseListener } from 'src/module/admin/application/event/admin-token-reuse.listener';
 import { GetAdminAuthStateQueryHandler } from 'src/module/admin/application/query/get-admin-auth-state/handler';
 import { TOKEN_GET_ADMIN_AUTH_STATE_PORT } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { GetAdminByIdQueryHandler } from 'src/module/admin/application/query/get-admin-by-id/handler';
@@ -79,7 +79,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         GetAdminByIdQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,
-        AdminTokenReuseListener,
+        AdminSessionRevocationListener,
         AdminSessionListener,
         AdminInviteListener,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
