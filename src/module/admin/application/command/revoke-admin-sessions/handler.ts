@@ -1,6 +1,7 @@
 /**
  * @file handler.ts
- * @description Handler for RevokeAdminSessionsCommand.
+ * @description Handles RevokeAdminSessionsCommand: bumps the admin's session counters and notifies the
+ * account owner when the reason calls for it.
  */
 
 import { Inject } from '@nestjs/common';
@@ -14,10 +15,11 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
+import { SessionRevocationReason } from 'src/shared/domain/principal';
+import { SystemException } from 'src/shared/exception';
 
 /**
- * Bumps the admin's session version — invalidating every outstanding token — and emails the account
- * owner a security notice.
+ * Revokes all of an admin's sessions; on refresh-token reuse it also emails a security notice.
  */
 @CommandHandler(RevokeAdminSessionsCommand)
 export class RevokeAdminSessionsCommandHandler implements ICommandHandler<RevokeAdminSessionsCommand, void> {
@@ -25,9 +27,9 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
      * Initializes the handler with the required ports.
      *
      * @param adminWriterPort The port used to load and save the admin aggregate
-     * @param emailerPort The port used to send the security-notice email
+     * @param emailerPort The port used to send the security notice
      * @param sessionPort The port used to push the session version to Redis
-     * @param auditPort The port used to record the revocation for the audit trail
+     * @param auditPort The port used to record the revocation
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
@@ -44,30 +46,47 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
     async execute(command: RevokeAdminSessionsCommand) {
         const admin = await this.adminWriterPort.load(command.id);
 
-        // The account may have been removed between reuse detection and this handler; nothing to revoke.
+        // Removed between the request and this handler; nothing to revoke.
         if (!admin) {
             return;
         }
 
         admin.revokeSessions();
 
-        // The save is the security outcome: the bumped version lives in the DB, which is the
-        // authority every later refresh is checked against. The audit record follows while the fact
-        // is established.
+        // The save is the security outcome: the DB counters are what every later refresh is
+        // checked against.
         await this.adminWriterPort.save(admin);
         await this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id });
 
-        // Best-effort instant eviction, fire-and-forget, ahead of the email so outstanding access
-        // tokens die before the notice round-trip: the DB version already denies the next refresh,
-        // so Redis being unreachable delays the cut-off rather than defeating it. The catch only
-        // stops an unhandled rejection.
+        // Best-effort instant eviction of the access tokens. Redis being unreachable only delays
+        // the cut-off, so the failure is swallowed.
         this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch(() => {});
 
-        await this.emailerPort.sendEmail(this.buildSecurityEmail(admin.email, admin.name));
+        await this.notify(command.reason, admin.email, admin.name);
     }
 
     /**
-     * Builds the security-notice email, advising (not forcing) a password change.
+     * Sends the notice the reason calls for: a possibly stolen token warrants a warning, the
+     * owner's own logout-all does not.
+     *
+     * @param reason Why the sessions were revoked
+     * @param to The account owner's email address
+     * @param name The account owner's display name
+     */
+    private async notify(reason: SessionRevocationReason, to: string, name: string) {
+        switch (reason) {
+            case SessionRevocationReason.REFRESH_REUSE:
+                await this.emailerPort.sendEmail(this.buildSecurityEmail(to, name));
+                return;
+            case SessionRevocationReason.LOGOUT_ALL:
+                return;
+            default:
+                assertRevocationReasonExhausted(reason);
+        }
+    }
+
+    /**
+     * Builds the security notice, advising (not forcing) a password change.
      *
      * @param to The recipient's email address
      * @param name The recipient's display name
@@ -86,4 +105,17 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
                 `<p>If you did not expect this, please change your password immediately.</p>`,
         };
     }
+}
+
+/**
+ * Exhaustiveness guard for the notice `switch`: a new {@link SessionRevocationReason} member
+ * without a `case` fails compilation here. Reaching it at runtime is a bug, hence 500 + Sentry.
+ *
+ * @param reason The reason no `case` claimed
+ * @throws {SystemException} Always.
+ */
+function assertRevocationReasonExhausted(reason: never): never {
+    throw new SystemException(`Unhandled session revocation reason: ${String(reason)}`, {
+        context: { class: RevokeAdminSessionsCommandHandler.name, method: assertRevocationReasonExhausted.name },
+    });
 }

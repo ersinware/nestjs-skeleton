@@ -23,8 +23,8 @@ import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/co
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
 import { UserCacheListener } from 'src/module/user/application/event/user-cache.listener';
+import { UserSessionRevocationListener } from 'src/module/user/application/event/user-session-revocation.listener';
 import { UserSessionListener } from 'src/module/user/application/event/user-session.listener';
-import { UserTokenReuseListener } from 'src/module/user/application/event/user-token-reuse.listener';
 import { GetUserAuthStateQueryHandler } from 'src/module/user/application/query/get-user-auth-state/handler';
 import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
@@ -74,7 +74,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         GetUserCredentialsByEmailQueryHandler,
         GetUserAuthStateQueryHandler,
         UserCacheListener,
-        UserTokenReuseListener,
+        UserSessionRevocationListener,
         UserSessionListener,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
         { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },

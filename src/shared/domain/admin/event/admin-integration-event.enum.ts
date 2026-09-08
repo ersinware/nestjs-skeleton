@@ -14,4 +14,10 @@ export enum AdminIntegrationEvent {
      * and emailing the account owner a security notice.
      */
     REFRESH_REUSE_DETECTED = 'admin.refresh_reuse_detected',
+
+    /**
+     * The admin asked to be signed out of every device. Auth closes the refresh sessions it owns;
+     * the admin module bumps the session counters that kill the outstanding access tokens.
+     */
+    LOGOUT_ALL_REQUESTED = 'admin.logout_all_requested',
 }

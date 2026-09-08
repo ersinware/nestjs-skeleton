@@ -1,8 +1,7 @@
 /**
  * @file handler.ts
- * @description Handles RevokeUserSessionsCommand. On detected refresh-token reuse it bumps the user's
- * session version (revoking every token), sends a security-notice email, then applies the version to
- * Redis on a best-effort basis.
+ * @description Handles RevokeUserSessionsCommand: bumps the user's session counters and notifies the
+ * account owner when the reason calls for it.
  */
 
 import { Inject } from '@nestjs/common';
@@ -16,9 +15,11 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
+import { SessionRevocationReason } from 'src/shared/domain/principal';
+import { SystemException } from 'src/shared/exception';
 
 /**
- * Revokes all of a user's sessions after refresh-token reuse and emails the account owner a security notice.
+ * Revokes all of a user's sessions; on refresh-token reuse it also emails a security notice.
  */
 @CommandHandler(RevokeUserSessionsCommand)
 export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeUserSessionsCommand, void> {
@@ -26,9 +27,9 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
      * Initializes the handler with the required ports.
      *
      * @param userWriterPort The port used to load and save the user aggregate
-     * @param emailerPort The port used to send the security-notice email
+     * @param emailerPort The port used to send the security notice
      * @param sessionPort The port used to push the session version to Redis
-     * @param auditPort The port used to record the revocation for the audit trail
+     * @param auditPort The port used to record the revocation
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
@@ -38,40 +39,57 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
     ) {}
 
     /**
-     * Executes the revoke-user-sessions command.
+     * Executes the revocation.
      *
      * @param command The command payload
      */
     async execute(command: RevokeUserSessionsCommand) {
         const user = await this.userWriterPort.load(command.id);
 
-        // The account may have been hard-removed between reuse detection and this handler; nothing to revoke.
+        // Removed between the request and this handler; nothing to revoke.
         if (!user) {
             return;
         }
 
         user.revokeSessions();
 
-        // The save is the security outcome: the bumped version lives in the DB, which is the
-        // authority every later refresh is checked against. The audit record follows while the fact
-        // is established.
+        // The save is the security outcome: the DB counters are what every later refresh is
+        // checked against.
         await this.userWriterPort.save(user);
-        await this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: command.id });
+        await this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: user.id });
 
-        // Best-effort instant eviction, fire-and-forget, ahead of the email so outstanding access
-        // tokens die before the notice round-trip: the DB version already denies the next refresh,
-        // so Redis being unreachable delays the cut-off rather than defeating it. The catch only
-        // stops an unhandled rejection.
-        this.sessionPort.setVersion(command.id, user.sessionVersion).catch(() => {});
+        // Best-effort instant eviction of the access tokens. Redis being unreachable only delays
+        // the cut-off, so the failure is swallowed.
+        this.sessionPort.setVersion(user.id, user.sessionVersion).catch(() => {});
 
-        await this.emailerPort.sendEmail(this.buildSecurityEmail(user.email, user.name));
+        await this.notify(command.reason, user.email, user.name);
     }
 
     /**
-     * Builds the security-notice email sent after sessions are revoked, advising (not forcing) a password change.
+     * Sends the notice the reason calls for: a possibly stolen token warrants a warning, the
+     * owner's own logout-all does not.
+     *
+     * @param reason Why the sessions were revoked
+     * @param to The account owner's email address
+     * @param name The account owner's display name
+     */
+    private async notify(reason: SessionRevocationReason, to: string, name: string) {
+        switch (reason) {
+            case SessionRevocationReason.REFRESH_REUSE:
+                await this.emailerPort.sendEmail(this.buildSecurityEmail(to, name));
+                return;
+            case SessionRevocationReason.LOGOUT_ALL:
+                return;
+            default:
+                assertRevocationReasonExhausted(reason);
+        }
+    }
+
+    /**
+     * Builds the security notice, advising (not forcing) a password change.
      *
      * @param to The recipient's email address
-     * @param name The recipient's display name, used to personalize the message
+     * @param name The recipient's display name
      * @returns The email payload to send
      */
     private buildSecurityEmail(to: string, name: string): EmailPayload {
@@ -87,4 +105,17 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
                 `<p>If you did not expect this, please change your password immediately.</p>`,
         };
     }
+}
+
+/**
+ * Exhaustiveness guard for the notice `switch`: a new {@link SessionRevocationReason} member
+ * without a `case` fails compilation here. Reaching it at runtime is a bug, hence 500 + Sentry.
+ *
+ * @param reason The reason no `case` claimed
+ * @throws {SystemException} Always.
+ */
+function assertRevocationReasonExhausted(reason: never): never {
+    throw new SystemException(`Unhandled session revocation reason: ${String(reason)}`, {
+        context: { class: RevokeUserSessionsCommandHandler.name, method: assertRevocationReasonExhausted.name },
+    });
 }

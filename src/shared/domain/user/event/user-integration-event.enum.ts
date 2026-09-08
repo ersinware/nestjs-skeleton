@@ -14,4 +14,10 @@ export enum UserIntegrationEvent {
      * and emailing the account owner a security notice.
      */
     REFRESH_REUSE_DETECTED = 'user.refresh_reuse_detected',
+
+    /**
+     * The user asked to be signed out of every device. Auth closes the refresh sessions it owns;
+     * the user module bumps the session counters that kill the outstanding access tokens.
+     */
+    LOGOUT_ALL_REQUESTED = 'user.logout_all_requested',
 }

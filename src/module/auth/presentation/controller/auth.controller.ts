@@ -163,6 +163,6 @@ export class AuthController {
     @ApiNoContentResponse({ description: 'All sessions revoked.' })
     @ApiDefaultUnauthenticatedResponse()
     async logoutAll(@CurrentPrincipal() principal: Principal) {
-        await this.commandPipeline.execute(new LogoutAllCommand(principal.id));
+        await this.commandPipeline.execute(new LogoutAllCommand(principal.id, principal.type));
     }
 }
