@@ -47,12 +47,12 @@ export class ListAuditTrailRecordsQuery extends Query<ListAuditTrailRecordsResul
  * identifies the event (who did what to whom, and when); the rest belongs to the single-record read.
  */
 export type ListAuditTrailRecordsResult = {
-    data: {
-        id: string;
-        action: AuditAction;
-        targetId: string | null;
-        actorId: string | null;
-        occurredAt: Date;
+    readonly data: readonly {
+        readonly id: string;
+        readonly action: AuditAction;
+        readonly targetId: string | null;
+        readonly actorId: string | null;
+        readonly occurredAt: Date;
     }[];
-    total: number;
+    readonly total: number;
 };

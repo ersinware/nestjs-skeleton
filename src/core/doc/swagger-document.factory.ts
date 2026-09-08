@@ -119,6 +119,14 @@ function wrapSingleResponse(response: unknown, statusCode: string, componentsSch
 
     if (!isSuccessToWrap && !isErrorToWrap) return;
 
+    // An error response declared without a schema is body-less (the readiness probe's 503):
+    // creating a `content` entry for it would document a JSON body that is never sent.
+    const existingSchema = (_response['content'] as Record<string, Record<string, unknown>> | undefined)?.[
+        'application/json'
+    ]?.['schema'];
+
+    if (isErrorToWrap && !existingSchema) return;
+
     let content = _response['content'] as Record<string, unknown>;
     if (!content) {
         _response['content'] = {};
@@ -149,11 +157,7 @@ function wrapSingleResponse(response: unknown, statusCode: string, componentsSch
         return;
     }
 
-    if (isSuccessToWrap) {
-        jsonContent['schema'] = buildEnvelope(schemaVal, 'data', componentsSchemas);
-    } else if (jsonContent['schema']) {
-        jsonContent['schema'] = buildEnvelope(schemaVal, 'error', componentsSchemas);
-    }
+    jsonContent['schema'] = buildEnvelope(schemaVal, isSuccessToWrap ? 'data' : 'error', componentsSchemas);
 }
 
 /**

@@ -86,11 +86,11 @@ attacks**. A single login request may be counted on both the account and the add
 **Critical sub-decision — guard ordering.** To use the identity axis, `sub` must be known at the
 moment the rate-limit decision is made. Two options:
 
-- **(Proposed) Keep the rate-limit guard BEFORE `AuthGuard` and let it resolve identity itself** —
+- **(Proposed) Keep the rate-limit guard BEFORE `AuthenticationGuard` and let it resolve identity itself** —
   by verifying **only the token's signature**. HS256 verification is cheap and touches neither the
   DB nor Redis. An unauthenticated flood is then stopped before it ever reaches the cost of session
   validation.
-- Move the rate-limit guard after `AuthGuard`. Simpler, but **an unauthenticated flood reaches Redis
+- Move the rate-limit guard after `AuthenticationGuard`. Simpler, but **an unauthenticated flood reaches Redis
   before it hits the rate limit** — an amplification vector.
 
 > **Never:** decoding the token without verifying it and reading `sub`. With an unsigned token an
@@ -215,7 +215,7 @@ proportional.
    └─ Fastify onRequest hook: audit context opens (sourceIp, userAgent, method, route)
       · sourceIp is the address resolved according to TRUST_PROXY  → §2
 
-2. Rate-limit guard runs (BEFORE AuthGuard)
+2. Rate-limit guard runs (BEFORE AuthenticationGuard)
    ├─ a) Policy resolved: the endpoint's decorator → DEFAULT when absent
    ├─ b) Tracker resolved: user:<sub> when the token signature verifies, else ip:<addr>  → §3
    ├─ c) For each of the policy's limiters, the counter is incremented and checked  → §5
@@ -223,10 +223,10 @@ proportional.
         ├─ All within limits → continue
         └─ Any exceeded     → 429 + Retry-After            → §9
 
-3. AuthGuard runs
+3. AuthenticationGuard runs
    └─ token is VERIFIED → actor is published into the audit context
 
-4. AuthRolesGuard → role check
+4. AuthorizationGuard → permission check
 5. Pipes / handler
 ```
 

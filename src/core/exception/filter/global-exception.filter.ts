@@ -20,10 +20,10 @@ import {
 } from 'src/shared/exception';
 
 /**
- * The single place the transport-neutral taxonomy meets HTTP. Exhaustive, so a new ExceptionKind
- * without a status fails compilation.
+ * The single place the transport-neutral taxonomy meets HTTP. Checked with `satisfies`, so a new
+ * `ExceptionKind` without a status fails compilation instead of routing silently.
  */
-const KIND_TO_STATUS: Record<ExceptionKind, HttpStatus> = {
+const KIND_TO_STATUS = {
     [ExceptionKind.RESOURCE_NOT_FOUND]: HttpStatus.NOT_FOUND,
     [ExceptionKind.RESOURCE_CONFLICT]: HttpStatus.CONFLICT,
     [ExceptionKind.UNAUTHENTICATED]: HttpStatus.UNAUTHORIZED,
@@ -31,16 +31,18 @@ const KIND_TO_STATUS: Record<ExceptionKind, HttpStatus> = {
     [ExceptionKind.INVALID_INPUT]: HttpStatus.BAD_REQUEST,
     [ExceptionKind.DEPENDENCY_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
     [ExceptionKind.SYSTEM]: HttpStatus.INTERNAL_SERVER_ERROR,
-};
+} satisfies Record<ExceptionKind, HttpStatus>;
 
 /**
- * Global exception filter to capture, format, and log all unhandled application errors.
+ * The only place the taxonomy meets HTTP: maps every caught value to a status and the
+ * `ErrorDefaultDto` body, and decides in one spot what the failure leaves behind (log, Sentry,
+ * audit), so throwers throw and nothing else formats or records an error.
  */
 @Catch()
 @Injectable()
 export class GlobalExceptionFilter implements ExceptionFilter {
     /**
-     * @param httpAdapterHost Host of the HTTP adapter.
+     * @param httpAdapterHost Exposes the Fastify adapter the filter replies through.
      * @param loggerPort Writes the operational log entries this filter decides to emit.
      * @param auditPort Writes the audit records for the refusals the transport itself establishes.
      * @param exceptionTrackerPort Reports the failures a human must act on.
@@ -53,8 +55,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     ) {}
 
     /**
-     * Intercepts every exception, decides its record (log/Sentry/audit), and replies with the
-     * standardized error body — or lets a health-probe 503 pass through unnormalized.
+     * Handles every exception reaching the transport: a health-probe 503 leaves unnormalized,
+     * everything else is normalized into the error body, recorded, and replied.
+     *
+     * @param exception The caught value, of any type.
+     * @param host The execution context of the failing request.
      */
     async catch(exception: unknown, host: ArgumentsHost) {
         const ctx = host.switchToHttp(),
@@ -84,7 +89,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * callers. Matches the exact path (query string stripped), so an unrelated route merely
      * containing "health" can never bypass normalization.
      *
-     * @returns The body to reply with, or null when this is not a health-probe 503.
+     * @param exception The caught value, of any type.
+     * @param request The incoming request, read for its URL only.
+     * @returns The passthrough reply (its body, if any), or null when this is not a health-probe 503.
      */
     private resolveHealthProbePassthrough(exception: unknown, request: { url?: string }): { body?: unknown } | null {
         if (!(exception instanceof HttpException)) {
@@ -111,7 +118,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     /**
      * Translates any caught value into the standard error DTO; anything unrecognized falls back to
-     * a masked 500.
+     * a masked 500, the intended outcome for the unexpected.
+     *
+     * @param exception The caught value, of any type.
+     * @returns The error DTO carrying the status and client-facing message.
      */
     private normalizeException(exception: unknown): ErrorDefaultDto {
         if (exception instanceof HttpException) {
@@ -131,35 +141,54 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     /**
-     * Formats framework-raised HTTP exceptions, masking the bodies that would leak internals (a
-     * raw 5xx or 503 names infrastructure, the router's 404 names the missing route) with their
-     * taxonomy DEFAULT; client-facing 4xx messages pass through untouched.
+     * Formats a framework-raised HTTP exception: client-facing 4xx messages pass through untouched,
+     * everything else is masked by {@link maskMessage}.
+     *
+     * @param exception The framework exception to format.
+     * @returns The error DTO carrying the status and client-facing message.
      */
     private formatHttpException(exception: HttpException): ErrorDefaultDto {
         const statusCode: HttpStatus = exception.getStatus();
 
-        let message: string[];
-
-        if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
-            message = [DependencyUnavailableMessage.DEFAULT];
-        } else if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
-            message = [SystemMessage.DEFAULT];
-        } else if (statusCode === HttpStatus.NOT_FOUND) {
-            message = [ResourceNotFoundMessage.DEFAULT];
-        } else {
-            message = this.extractMessages(exception.getResponse()) ?? [exception.message];
-        }
-
         return new ErrorDefaultDto({
             statusCode,
-            message,
+            message: this.maskMessage(statusCode, this.extractMessages(exception.getResponse()) ?? [exception.message]),
             statusText: this.deriveStatusText(statusCode, exception.name),
         });
     }
 
     /**
-     * Extracts the message strings from a standard HTTP exception response body, or null when it
-     * carries none in a known shape.
+     * The client-facing message for a status, applying the masks every 5xx and the router's 404
+     * need: an internal failure names infrastructure and code paths — diagnostics for the log and
+     * Sentry, never the client — and the router's 404 names the missing route. Any other status
+     * keeps the thrower's own client-safe message.
+     *
+     * @param statusCode The HTTP status the reply will carry.
+     * @param message The thrower's own messages.
+     * @returns The messages safe to send to the client for that status.
+     */
+    private maskMessage(statusCode: HttpStatus, message: string[]): string[] {
+        if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
+            return [DependencyUnavailableMessage.DEFAULT];
+        }
+
+        if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+            return [SystemMessage.DEFAULT];
+        }
+
+        if (statusCode === HttpStatus.NOT_FOUND) {
+            return [ResourceNotFoundMessage.DEFAULT];
+        }
+
+        return message;
+    }
+
+    /**
+     * Extracts the message strings from a framework exception's response body, which may be a bare
+     * string or an object carrying `message` as a string or an array (Nest's validation shape).
+     *
+     * @param response The exception's response body.
+     * @returns The extracted messages, or null when the body carries none in a known shape.
      */
     private extractMessages(response: string | object): string[] | null {
         if (typeof response === 'string') {
@@ -183,7 +212,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     /**
      * Translates a taxonomy exception's transport-neutral kind into its HTTP status via
-     * KIND_TO_STATUS, or null when the value is not a taxonomy exception.
+     * `KIND_TO_STATUS`. A taxonomy 5xx carries a diagnostic message for the log and Sentry; the
+     * client sees the generic one like any other 5xx.
+     *
+     * @param exception The caught value, of any type.
+     * @returns The error DTO, or null when the value is not a taxonomy exception.
      */
     private formatAppException(exception: unknown): ErrorDefaultDto | null {
         if (!(exception instanceof AppException)) {
@@ -194,14 +227,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         return new ErrorDefaultDto({
             statusCode,
-            message: [exception.message],
+            message: this.maskMessage(statusCode, [exception.message]),
             statusText: this.deriveStatusText(statusCode, exception.name),
         });
     }
 
     /**
-     * Derives a human-readable status text from the status code, falling back to the exception
-     * class name for non-standard codes.
+     * Derives the human-readable status text from the status code, falling back to the exception
+     * class name for a code `HttpStatus` does not name.
+     *
+     * @param statusCode The HTTP status the reply will carry.
+     * @param exceptionName The exception class name, used only for a non-standard code.
+     * @returns The title-cased status text (e.g. `Not Found`).
      */
     private deriveStatusText(statusCode: HttpStatus, exceptionName: string): string {
         const statusText = HttpStatus[statusCode];
@@ -234,6 +271,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      *
      * A failed audit write re-enters this decision (silent on an outage, error log + Sentry
      * otherwise) and never changes the reply: the filter must not throw, so the 403 stands.
+     *
+     * @param exception The caught value, of any type.
+     * @param errorDefaultDto The normalized error the decision keys off.
      */
     private async logException(exception: unknown, errorDefaultDto: ErrorDefaultDto) {
         const { statusCode, message } = errorDefaultDto;
@@ -259,7 +299,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     /**
-     * Builds the 5xx log payload, attaching the thrower's diagnostic `context` when present.
+     * Builds the 5xx log payload, attaching the thrower's diagnostic `context` when present; a
+     * non-`Error` value is wrapped so the log always carries a stack.
+     *
+     * @param exception The caught value, of any type.
+     * @returns The payload handed to the error log.
      */
     private createErrorLogPayload(exception: unknown): LogPayload {
         const error = exception instanceof Error ? exception : new Error(String(exception)),

@@ -14,6 +14,8 @@ import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
 import { TOKEN_EXCEPTION_TRACKER_PORT } from 'src/core/observability/exception-tracker';
 import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
+import { AuthTokenType, type AccessTokenPayload } from 'src/core/security/token';
+import { PrincipalType } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
     DependencyUnavailableException,
@@ -333,11 +335,17 @@ describe('GlobalExceptionFilter', () => {
             });
 
             it('should not name the acting principal as the audit target', async () => {
-                const accessTokenPayload = { sub: 'user-1', role: 'USER' };
+                const accessTokenPayload: AccessTokenPayload = {
+                    sub: 'user-1',
+                    principalType: PrincipalType.USER,
+                    permissions: [],
+                    sessionVersion: 1,
+                    type: AuthTokenType.ACCESS,
+                };
 
                 await filter.catch(
                     new AccessDeniedException('Insufficient privileges.'),
-                    createHost({ accessTokenPayload } as Partial<AuthenticatedRequest>),
+                    createHost({ accessTokenPayload }),
                 );
 
                 expect(mockAuditPort.record).toHaveBeenCalledWith(expect.not.objectContaining({ targetId: 'user-1' }));

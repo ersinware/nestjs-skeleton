@@ -12,11 +12,11 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { AdminRole } from 'src/shared/domain/admin';
-import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Bans the admin account and revokes all of its active sessions. Super-admins cannot be banned.
+ * Bans the admin account and revokes all of its active sessions. The aggregate refuses an actor
+ * banning themselves, root, or a manager unless the actor is root.
  */
 @CommandHandler(BanAdminCommand)
 export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, void> {
@@ -38,7 +38,7 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, 
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
-     * @throws {AccessDeniedException} When the target is a super-admin.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
      */
     async execute(command: BanAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -47,13 +47,9 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, 
             throw new ResourceNotFoundException();
         }
 
-        if (admin.role === AdminRole.SUPER_ADMIN) {
-            throw new AccessDeniedException();
-        }
-
         // On an already-banned account `ban()` is a no-op: nothing changed, so there is nothing to
         // persist, audit, or evict.
-        if (!admin.ban()) {
+        if (!admin.ban(command.actor)) {
             return;
         }
 

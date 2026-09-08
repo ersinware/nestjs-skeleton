@@ -1,5 +1,5 @@
 /**
- * @file auth.guard.ts
+ * @file authentication.guard.ts
  * @description Global authentication guard verifying JWT access tokens and the cached session version.
  */
 
@@ -17,7 +17,7 @@ import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exc
  * version, so a session bump evicts already-issued tokens instantly.
  */
 @Injectable()
-export class AuthGuard implements CanActivate {
+export class AuthenticationGuard implements CanActivate {
     /**
      * @param tokenPort Verifies access tokens.
      * @param sessionPort Reads the current session version.
@@ -77,7 +77,7 @@ export class AuthGuard implements CanActivate {
         }
 
         request.accessTokenPayload = payload;
-        publishAuditActor(payload.sub, payload.role);
+        publishAuditActor(payload.sub, payload.principalType);
 
         return true;
     }

@@ -34,6 +34,7 @@ export class AdminSessionListener {
     @OnAppEvent(AdminEvent.PASSWORD_CHANGED)
     @OnAppEvent(AdminEvent.DELETED)
     @OnAppEvent(AdminEvent.SESSIONS_REVOKED)
+    @OnAppEvent(AdminEvent.PERMISSIONS_CHANGED)
     async reconcile(event: DispatchedDomainEvent) {
         await this.commandPipeline.execute(new ReconcileAdminSessionCommand(event.aggregateId));
     }

@@ -4,8 +4,9 @@
  */
 
 export type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
-export { CurrentAccessTokenPayload } from 'src/core/security/auth/decorator/current-access-token-payload.decorator';
+export { CurrentPrincipal } from 'src/core/security/auth/decorator/current-principal.decorator';
+export { Permissions } from 'src/core/security/auth/decorator/permissions.decorator';
+export { PrincipalOnly } from 'src/core/security/auth/decorator/principal-only.decorator';
 export { Public } from 'src/core/security/auth/decorator/public.decorator';
-export { Roles } from 'src/core/security/auth/decorator/roles.decorator';
-export { AuthRolesGuard } from 'src/core/security/auth/guard/auth-roles.guard';
-export { AuthGuard } from 'src/core/security/auth/guard/auth.guard';
+export { AuthenticationGuard } from 'src/core/security/auth/guard/authentication.guard';
+export { AuthorizationGuard } from 'src/core/security/auth/guard/authorization.guard';

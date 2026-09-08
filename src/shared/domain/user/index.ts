@@ -4,4 +4,3 @@
  */
 
 export { UserIntegrationEvent } from 'src/shared/domain/user/event/user-integration-event.enum';
-export { UserRole } from 'src/shared/domain/user/user-role.enum';

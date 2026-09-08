@@ -7,6 +7,7 @@
 import { Query } from '@nestjs/cqrs';
 import type { ICacheableQuery } from 'src/core/cqrs';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
+import type { Permission } from 'src/shared/domain/principal';
 
 /**
  * Fetches the public user projection by unique identifier. Cacheable: its result is keyed by user id
@@ -39,8 +40,9 @@ export class GetUserByIdQuery extends Query<GetUserByIdResult> implements ICache
  * The public user projection — the client-safe fields only, never the password hash.
  */
 export type GetUserByIdResult = {
-    id: string;
-    email: string;
-    name: string;
-    isBanned: boolean;
+    readonly id: string;
+    readonly email: string;
+    readonly name: string;
+    readonly permissions: readonly Permission[];
+    readonly isBanned: boolean;
 };

@@ -12,4 +12,4 @@ export { auditContextHook } from 'src/core/observability/audit/hook/audit-contex
 export { AuditInterceptor } from 'src/core/observability/audit/interceptor/audit.interceptor';
 export { AuditModule } from 'src/core/observability/audit/module';
 export { TOKEN_AUDIT_PORT } from 'src/core/observability/audit/port/audit.port';
-export type { AuditRecordInput, IAuditPort } from 'src/core/observability/audit/port/audit.port';
+export type { AuditDetail, AuditRecordInput, IAuditPort } from 'src/core/observability/audit/port/audit.port';

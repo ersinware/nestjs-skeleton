@@ -1,6 +1,6 @@
 /**
  * @file audit-trail.controller.ts
- * @description Read-only HTTP endpoints over the audit trail, restricted to super-admins.
+ * @description Read-only HTTP endpoints over the audit trail, gated by the audit-trail read permission.
  */
 
 import { Controller, Get, Param, Query } from '@nestjs/common';
@@ -26,13 +26,13 @@ import {
     ROUTE_PARAM_ID,
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
-import { Roles } from 'src/core/security/auth';
+import { Permissions } from 'src/core/security/auth';
 import { GetAuditTrailRecordByIdQuery } from 'src/module/audit-trail/application/query/get-audit-trail-record-by-id/query';
 import { ListAuditTrailRecordsQuery } from 'src/module/audit-trail/application/query/list-audit-trail-records/query';
 import { QueryAuditTrailDto } from 'src/module/audit-trail/presentation/dto/query-audit-trail.dto';
 import { ResponseAuditTrailRecordSummaryDto } from 'src/module/audit-trail/presentation/dto/response-audit-trail-record-summary.dto';
 import { ResponseAuditTrailRecordDto } from 'src/module/audit-trail/presentation/dto/response-audit-trail-record.dto';
-import { AdminRole } from 'src/shared/domain/admin';
+import { Permission } from 'src/shared/domain/principal';
 
 /**
  * The operator view of the audit trail. Read-only: the trail is append-only evidence. Every read is
@@ -42,9 +42,9 @@ import { AdminRole } from 'src/shared/domain/admin';
     path: 'audit-trail',
     version: VERSION_1,
 })
-@ApiTags('audit-trail')
-@Roles(AdminRole.SUPER_ADMIN)
+@Permissions(Permission.AUDIT_TRAIL_RECORD_READ)
 @Audited(AuditAction.AUDIT_TRAIL_ACCESSED)
+@ApiTags('audit-trail')
 @ApiBearerAuth()
 @ApiDefaultUnauthenticatedResponse()
 @ApiDefaultAccessDeniedResponse()
@@ -66,21 +66,19 @@ export class AuditTrailController {
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'List audit trail records',
-        description:
-            'Retrieves audit trail records newest first, filterable by action, actor, target and time range. Requires super-administrator authorization.',
+        description: `Retrieves audit trail records newest first, filterable by action, actor, target and time range. Requires the '${Permission.AUDIT_TRAIL_RECORD_READ}' permission.`,
     })
     @ApiDefaultOkResponsePaginated({
         message: 'Audit trail records successfully retrieved.',
         model: ResponseAuditTrailRecordSummaryDto,
     })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
-    async findAll(
-        @Query() query: QueryAuditTrailDto,
-    ): Promise<ResponsePaginationDto<ResponseAuditTrailRecordSummaryDto>> {
+    async list(@Query() query: QueryAuditTrailDto): Promise<ResponsePaginationDto<ResponseAuditTrailRecordSummaryDto>> {
         const { data, total } = await this.queryPipeline.execute(new ListAuditTrailRecordsQuery(query));
 
         return new ResponsePaginationDto<ResponseAuditTrailRecordSummaryDto>(
-            plainToInstance(ResponseAuditTrailRecordSummaryDto, data),
+            // Copied because plainToInstance maps arrays only through its mutable-array overload.
+            plainToInstance(ResponseAuditTrailRecordSummaryDto, [...data]),
             total,
             query.page,
             query.limit,
@@ -97,12 +95,12 @@ export class AuditTrailController {
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'Get audit trail record by ID',
-        description: 'Retrieves a single audit trail record. Requires super-administrator authorization.',
+        description: `Retrieves a single audit trail record. Requires the '${Permission.AUDIT_TRAIL_RECORD_READ}' permission.`,
     })
     @ApiOkResponse({ description: 'Audit trail record successfully retrieved.', type: ResponseAuditTrailRecordDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
-    async findOne(@Param() params: ParamIdDto): Promise<ResponseAuditTrailRecordDto> {
+    async getById(@Param() params: ParamIdDto): Promise<ResponseAuditTrailRecordDto> {
         return plainToInstance(
             ResponseAuditTrailRecordDto,
             await this.queryPipeline.execute(new GetAuditTrailRecordByIdQuery(params.id)),

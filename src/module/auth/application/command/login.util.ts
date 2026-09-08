@@ -7,7 +7,8 @@ import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
 import type { ISessionPort } from 'src/core/security/session';
 import type { ITokenPort } from 'src/core/security/token';
-import { IdentityRealm, type IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
+import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
+import type { PrincipalType } from 'src/shared/domain/principal';
 import {
     ExceptionKind,
     UnauthenticatedException,
@@ -31,15 +32,15 @@ enum AuthRejectionReason {
 }
 
 /**
- * Authenticates an email/password pair against the given realm and opens a fresh session.
+ * Authenticates an email/password pair against the given kind of principal and opens a fresh session.
  *
- * One implementation for both realms on purpose: every security property of the flow — the deny
+ * One implementation for both kinds on purpose: every security property of the flow — the deny
  * order, the audit records, the uniform "credentials" response that blocks account enumeration —
  * must hold identically for users and admins, and a single body is what guarantees a future fix
- * (e.g. timing hardening) cannot land in one realm and miss the other.
+ * (e.g. timing hardening) cannot land in one kind and miss the other.
  *
  * @param ports The ports the flow runs on, injected by the calling handler
- * @param realm The identity realm the credentials authenticate against
+ * @param principalType The kind of principal the credentials authenticate against
  * @param email The email address identifying the account
  * @param password The plain-text password to verify
  * @returns The generated access and refresh token pair
@@ -53,14 +54,14 @@ export async function login(
         sessionPort: ISessionPort;
         auditPort: IAuditPort;
     },
-    realm: IdentityRealm,
+    principalType: PrincipalType,
     email: string,
     password: string,
 ): Promise<{ accessToken: string; refreshToken: string }> {
     let identity;
 
     try {
-        identity = await ports.identityReaderPort.getCredentialsByEmail(realm, email);
+        identity = await ports.identityReaderPort.getCredentialsByEmail(principalType, email);
     } catch (error) {
         if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
             throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND);
@@ -84,7 +85,10 @@ export async function login(
     }
 
     const id = identity.id,
-        tokens = await ports.tokenPort.generateTokens(identity.role, id, identity.sessionVersion);
+        tokens = await ports.tokenPort.generateTokens(
+            { id, type: principalType, permissions: identity.permissions },
+            identity.sessionVersion,
+        );
 
     // Uncaught on purpose: the guard fails closed on a missing version key, so a login that cannot
     // write it must 503 instead of minting dead-on-arrival tokens.

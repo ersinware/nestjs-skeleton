@@ -40,10 +40,10 @@ export class UserFacade {
     }
 
     /**
-     * Resolves a user's authentication state (active status + session version) by their unique identifier.
+     * Resolves a user's authentication state (ban status, session counters, permissions) by their unique identifier.
      *
      * @param id The unique identifier of the target user
-     * @returns The user's active status and current session version
+     * @returns The user's ban status, session counters and permissions
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      * @throws {DependencyUnavailableException} When the database is unreachable
      */

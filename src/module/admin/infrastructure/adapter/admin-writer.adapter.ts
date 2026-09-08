@@ -96,10 +96,11 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             email: row.email,
             name: row.name,
             password: row.password,
-            role: row.role,
+            permissions: row.permissions,
             isBanned: row.isBanned,
             deletedAt: row.deletedAt,
             sessionVersion: row.sessionVersion,
+            revocationVersion: row.revocationVersion,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });

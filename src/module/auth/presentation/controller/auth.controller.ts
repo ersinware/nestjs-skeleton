@@ -15,9 +15,8 @@ import {
     ApiDefaultResourceConflictResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
-import { NotEmptyBodyPipe, RequestValidationMessage } from 'src/core/http';
-import { CurrentAccessTokenPayload, Public } from 'src/core/security/auth';
-import type { AccessTokenPayload } from 'src/core/security/token';
+import { RequestValidationMessage } from 'src/core/http';
+import { CurrentPrincipal, Public } from 'src/core/security/auth';
 import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
@@ -26,6 +25,7 @@ import { RefreshTokensCommand, RefreshTokensMessage } from 'src/module/auth/appl
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
+import type { Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -64,7 +64,7 @@ export class AuthController {
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
-    async loginUser(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
+    async loginUser(@Body() dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
             await this.commandPipeline.execute(new LoginUserCommand(dto.email, dto.password)),
@@ -89,7 +89,7 @@ export class AuthController {
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
-    async loginAdmin(@Body(NotEmptyBodyPipe) dto: PostLoginDto): Promise<ResponseTokensDto> {
+    async loginAdmin(@Body() dto: PostLoginDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
             await this.commandPipeline.execute(new LoginAdminCommand(dto.email, dto.password)),
@@ -117,7 +117,7 @@ export class AuthController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceConflictResponse(RefreshTokensMessage.CONCURRENT_REFRESH)
-    async refresh(@Body(NotEmptyBodyPipe) dto: PostRefreshDto): Promise<ResponseTokensDto> {
+    async refresh(@Body() dto: PostRefreshDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
             await this.commandPipeline.execute(new RefreshTokensCommand(dto.refreshToken)),
@@ -143,14 +143,14 @@ export class AuthController {
     @ApiNoContentResponse({ description: 'Session revoked.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
-    async logout(@Body(NotEmptyBodyPipe) dto: PostRefreshDto) {
+    async logout(@Body() dto: PostRefreshDto) {
         await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken));
     }
 
     /**
      * Revokes every active session of the authenticated principal, across all devices.
      *
-     * @param accessTokenPayload The decoded payload of the currently authenticated request
+     * @param principal The verified principal of the current request
      * @throws {UnauthenticatedException} If the user is not authenticated
      */
     @Post('logout-all')
@@ -162,7 +162,7 @@ export class AuthController {
     })
     @ApiNoContentResponse({ description: 'All sessions revoked.' })
     @ApiDefaultUnauthenticatedResponse()
-    async logoutAll(@CurrentAccessTokenPayload() accessTokenPayload: AccessTokenPayload) {
-        await this.commandPipeline.execute(new LogoutAllCommand(accessTokenPayload.sub));
+    async logoutAll(@CurrentPrincipal() principal: Principal) {
+        await this.commandPipeline.execute(new LogoutAllCommand(principal.id));
     }
 }

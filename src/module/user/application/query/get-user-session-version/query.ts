@@ -8,5 +8,5 @@
  * The user's current session version — all reconciliation needs to push into Redis.
  */
 export type GetUserSessionVersionResult = {
-    sessionVersion: number;
+    readonly sessionVersion: number;
 };

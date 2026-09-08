@@ -1,1 +1,0 @@
-ALTER TABLE "admin"."admin" ALTER COLUMN "password" DROP NOT NULL;

@@ -5,7 +5,8 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEmailAddress, IsEntityId, IsPersonName } from 'src/core/http';
+import { IsEmailAddress, IsEntityId, IsPermissionList, IsPersonName } from 'src/core/http';
+import type { Permission } from 'src/shared/domain/principal';
 
 /**
  * Whitelist-exposes the client-safe user fields; anything not exposed here — the password hash in
@@ -34,6 +35,13 @@ export class ResponseUserDto {
     @Expose()
     @IsPersonName()
     readonly name!: string;
+
+    /**
+     * The permissions the user holds, so the back office can show and edit them.
+     */
+    @Expose()
+    @IsPermissionList('The permissions the user holds')
+    readonly permissions!: readonly Permission[];
 
     /**
      * Whether the account is currently banned, so the back office can offer the matching

@@ -1,38 +1,30 @@
 /**
  * @file identity-reader.adapter.ts
- * @description Implements the identity lookup by routing each realm to the facade of the bounded context that owns it.
+ * @description Implements the identity lookup by routing each kind of principal to the facade of the bounded context that owns it.
  */
 
 import { Injectable } from '@nestjs/common';
 import { AdminFacade } from 'src/module/admin';
-import {
-    IdentityRealm,
-    type AuthIdentity,
-    type AuthState,
-    type IIdentityReaderPort,
+import type {
+    AuthIdentity,
+    AuthState,
+    IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import { UserFacade } from 'src/module/user';
-import { UserRole } from 'src/shared/domain/user';
+import { PrincipalType } from 'src/shared/domain/principal';
 import { SystemException } from 'src/shared/exception';
 
 /**
- * The single role every user-realm identity holds — that realm's read model has no role column.
- * Closed over {@link UserRole} so a second member fails compilation here, forcing the role to come
- * from the read model instead of this stamp.
- */
-const SOLE_USER_ROLE = { [UserRole.USER]: UserRole.USER } as const satisfies Record<UserRole, UserRole>;
-
-/**
- * Adapter that gives the Auth module a single read surface over both identity realms.
+ * Adapter that gives the Auth module a single read surface over both kinds of principal.
  *
- * The realm-to-facade routing lives here rather than in the handlers: composing several sources
+ * The kind-to-facade routing lives here rather than in the handlers: composing several sources
  * behind one narrowed contract is the adapter's job, and it keeps authentication unaware of which
  * bounded contexts exist.
  */
 @Injectable()
 export class IdentityReaderAdapter implements IIdentityReaderPort {
     /**
-     * Injects both context facades to serve either realm.
+     * Injects both context facades to serve either kind.
      *
      * @param userFacade The user module facade
      * @param adminFacade The admin module facade
@@ -43,57 +35,57 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
     ) {}
 
     /**
-     * Looks up an identity in the given realm strictly by its email address.
+     * Looks up an identity of the given kind strictly by its email address.
      *
-     * @param realm The bounded context that owns the identity
+     * @param principalType The bounded context that owns the identity
      * @param email The email address to search for
      * @returns The associated identity
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    async getCredentialsByEmail(realm: IdentityRealm, email: string): Promise<AuthIdentity> {
-        // Exhaustive on purpose: a realm added to the enum without a routing arm here must fail
+    async getCredentialsByEmail(principalType: PrincipalType, email: string): Promise<AuthIdentity> {
+        // Exhaustive on purpose: a kind added to the enum without a routing arm here must fail
         // compilation, never silently fall through to another context's facade.
-        switch (realm) {
-            case IdentityRealm.ADMIN:
+        switch (principalType) {
+            case PrincipalType.ADMIN:
                 return this.adminFacade.getCredentialsByEmail(email);
-            case IdentityRealm.USER:
-                return { ...(await this.userFacade.getCredentialsByEmail(email)), role: SOLE_USER_ROLE[UserRole.USER] };
+            case PrincipalType.USER:
+                return this.userFacade.getCredentialsByEmail(email);
             default:
-                return assertRealmExhausted(realm);
+                return assertPrincipalTypeExhausted(principalType);
         }
     }
 
     /**
-     * Retrieves an identity's ban status and current session version by its unique identifier.
+     * Retrieves an identity's ban status, session counters and permissions by its unique identifier.
      *
-     * @param realm The bounded context that owns the identity
+     * @param principalType The bounded context that owns the identity
      * @param id The unique identifier of the target identity
-     * @returns The ban status and current session version
+     * @returns The ban status, session counters and permissions
      * @throws {ResourceNotFoundException} If no identity is found
      */
-    async getAuthState(realm: IdentityRealm, id: string): Promise<AuthState> {
-        switch (realm) {
-            case IdentityRealm.ADMIN:
+    async getAuthState(principalType: PrincipalType, id: string): Promise<AuthState> {
+        switch (principalType) {
+            case PrincipalType.ADMIN:
                 return this.adminFacade.getAuthState(id);
-            case IdentityRealm.USER:
+            case PrincipalType.USER:
                 return this.userFacade.getAuthState(id);
             default:
-                return assertRealmExhausted(realm);
+                return assertPrincipalTypeExhausted(principalType);
         }
     }
 }
 
 /**
- * Compile-time exhaustiveness gate for realm routing: adding a member to {@link IdentityRealm}
+ * Compile-time exhaustiveness gate for kind routing: adding a member to {@link PrincipalType}
  * without a routing arm makes the `default` branch pass a non-`never` value here and fail
  * compilation. The runtime throw is unreachable through typed callers — hence a SystemException,
  * because a broken code path must surface as 500 + Sentry.
  *
- * @param realm The realm no routing arm claimed
+ * @param principalType The kind no routing arm claimed
  * @throws {SystemException} Always — reaching it at runtime is a bug.
  */
-function assertRealmExhausted(realm: never): never {
-    throw new SystemException(`Unroutable identity realm: ${String(realm)}`, {
-        context: { class: IdentityReaderAdapter.name, method: assertRealmExhausted.name },
+function assertPrincipalTypeExhausted(principalType: never): never {
+    throw new SystemException(`Unroutable principal type: ${String(principalType)}`, {
+        context: { class: IdentityReaderAdapter.name, method: assertPrincipalTypeExhausted.name },
     });
 }

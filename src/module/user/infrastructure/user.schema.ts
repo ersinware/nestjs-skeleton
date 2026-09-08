@@ -6,6 +6,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, index, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { aggregateTimestamps } from 'src/core/database';
+import type { Permission } from 'src/shared/domain/principal';
 
 /**
  * The PostgreSQL logical schema owned by the user bounded context. Only this module may read or
@@ -40,6 +41,13 @@ export const user = userSchema.table(
         password: text('password').notNull(),
 
         /**
+         * The permissions the user holds, as catalog values. A plain text array rather than a
+         * PostgreSQL enum: the catalog lives in code, and removing a member from a PostgreSQL enum
+         * is not supported, so the array keeps a catalog change a code-only change.
+         */
+        permissions: text('permissions').array().$type<Permission[]>().notNull().default([]),
+
+        /**
          * Whether the account is banned.
          */
         isBanned: boolean('is_banned').notNull().default(false),
@@ -50,11 +58,18 @@ export const user = userSchema.table(
         deletedAt: timestamp('deleted_at'),
 
         /**
-         * Monotonic session version. Any token minted with a lower version is rejected by the auth
-         * guard, giving DB-durable revocation. Bumped on ban, password change, deletion, and
-         * session revocation.
+         * Monotonic session version: the version new tokens are minted at, and the floor an ACCESS
+         * token must reach at the auth guard. Bumped by every cut-off — ban, deletion, password
+         * change, session revocation, and a permission change.
          */
         sessionVersion: integer('session_version').notNull().default(0),
+
+        /**
+         * The session version of the last FULL revocation: the floor a REFRESH token must reach to
+         * be rotated. A permission change leaves it, so the refresh token survives to fetch the new
+         * permission set while the access tokens that carried the old one die.
+         */
+        revocationVersion: integer('revocation_version').notNull().default(0),
 
         ...aggregateTimestamps,
     },

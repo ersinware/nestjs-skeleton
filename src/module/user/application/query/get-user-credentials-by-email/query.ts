@@ -4,6 +4,7 @@
  */
 
 import { Query } from '@nestjs/cqrs';
+import type { Permission } from 'src/shared/domain/principal';
 
 /**
  * Fetches the credential fields for a user by email address.
@@ -24,8 +25,9 @@ export class GetUserCredentialsByEmailQuery extends Query<GetUserCredentialsByEm
  * Minimal projection used exclusively for authentication credential checks.
  */
 export type GetUserCredentialsByEmailResult = {
-    id: string;
-    password: string;
-    isBanned: boolean;
-    sessionVersion: number;
+    readonly id: string;
+    readonly password: string;
+    readonly permissions: readonly Permission[];
+    readonly isBanned: boolean;
+    readonly sessionVersion: number;
 };

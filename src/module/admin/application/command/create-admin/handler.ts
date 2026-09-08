@@ -12,7 +12,6 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
-import { AdminRole } from 'src/shared/domain/admin';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -43,7 +42,6 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
             email: command.email,
             name: command.name,
             password: null,
-            role: AdminRole.ADMIN,
         });
 
         await this.adminWriterPort.save(admin);

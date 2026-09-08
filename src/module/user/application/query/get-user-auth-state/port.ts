@@ -15,7 +15,7 @@ export const TOKEN_GET_USER_AUTH_STATE_PORT = Symbol('TOKEN_GET_USER_AUTH_STATE_
  */
 export interface IGetUserAuthStatePort {
     /**
-     * Reads a user's authentication state (active status + session version) by their unique identifier.
+     * Reads a user's authentication state (ban status, session counters, permissions) by their unique identifier.
      *
      * @param id The unique identifier of the target user
      * @returns The authentication state, or null if no user is found

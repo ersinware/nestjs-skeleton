@@ -27,6 +27,6 @@ export class LoginUserCommand extends Command<LoginUserResult> {
  * Result of the LoginUserCommand: the freshly issued token pair.
  */
 export type LoginUserResult = {
-    accessToken: string;
-    refreshToken: string;
+    readonly accessToken: string;
+    readonly refreshToken: string;
 };

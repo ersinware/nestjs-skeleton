@@ -12,12 +12,11 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { AdminRole } from 'src/shared/domain/admin';
-import { AccessDeniedException, ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Soft-deletes the admin account and revokes all of its active sessions. Super-admins cannot be
- * deleted, so the system can never lock itself out.
+ * Soft-deletes the admin account and revokes all of its active sessions. The aggregate refuses an
+ * actor deleting themselves, root, or a manager unless the actor is root.
  */
 @CommandHandler(DeleteAdminCommand)
 export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCommand, void> {
@@ -39,7 +38,7 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
-     * @throws {AccessDeniedException} When the target is a super-admin.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
      */
     async execute(command: DeleteAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -48,11 +47,7 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
             throw new ResourceNotFoundException();
         }
 
-        if (admin.role === AdminRole.SUPER_ADMIN) {
-            throw new AccessDeniedException();
-        }
-
-        admin.markAsDeleted();
+        admin.markAsDeleted(command.actor);
         await this.adminWriterPort.save(admin);
         await this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: admin.id });
 

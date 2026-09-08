@@ -8,5 +8,5 @@
  * The admin's current session version — all reconciliation needs to push into Redis.
  */
 export type GetAdminSessionVersionResult = {
-    sessionVersion: number;
+    readonly sessionVersion: number;
 };

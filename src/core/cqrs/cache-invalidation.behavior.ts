@@ -21,7 +21,7 @@ export interface ICacheInvalidatingCommand {
      *
      * @returns The keys to evict after the command succeeds
      */
-    invalidatedKeys(): string[];
+    invalidatedKeys(): readonly string[];
 }
 
 /**

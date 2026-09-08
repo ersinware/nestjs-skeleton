@@ -33,11 +33,11 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * @param command The logout all command parameters
      */
     async execute(command: LogoutAllCommand) {
-        await this.sessionPort.closeAllSessions(command.sub);
+        await this.sessionPort.closeAllSessions(command.id);
 
         // Recorded as LOGOUT_ALL rather than LOGOUT so the trail keeps the account-wide revocation
         // distinct from a single-device sign-out — a different fact for an auditor. No `targetId`:
-        // `sub` is taken straight from the access token, so it is the actor the context already names.
+        // `id` is taken straight from the access token, so it is the actor the context already names.
         await this.auditPort.record({ action: AuditAction.LOGOUT_ALL });
     }
 }

@@ -96,9 +96,11 @@ export class UserWriterAdapter implements IUserWriterPort {
             email: row.email,
             name: row.name,
             password: row.password,
+            permissions: row.permissions,
             isBanned: row.isBanned,
             deletedAt: row.deletedAt,
             sessionVersion: row.sessionVersion,
+            revocationVersion: row.revocationVersion,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });

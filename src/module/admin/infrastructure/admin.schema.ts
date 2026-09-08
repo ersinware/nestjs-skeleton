@@ -4,20 +4,15 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgSchema, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { aggregateTimestamps } from 'src/core/database';
-import { AdminRole } from 'src/shared/domain/admin';
+import { Permission } from 'src/shared/domain/principal';
 
 /**
  * The PostgreSQL logical schema owned by the admin bounded context. Only this module may read or
  * write objects inside it.
  */
 export const adminSchema = pgSchema('admin');
-
-/**
- * PostgreSQL enum derived from AdminRole, so a new role reaches the database without a hand-edit here.
- */
-export const adminRoleEnum = adminSchema.enum('admin_role', Object.values(AdminRole) as [AdminRole]);
 
 /**
  * The admin accounts table.
@@ -47,9 +42,11 @@ export const admin = adminSchema.table(
         password: text('password'),
 
         /**
-         * The authorization role.
+         * The permissions the admin holds, as catalog values. A plain text array rather than a
+         * PostgreSQL enum: the catalog lives in code, and removing a member from a PostgreSQL enum
+         * is not supported, so the array keeps a catalog change a code-only change.
          */
-        role: adminRoleEnum('role').notNull().default(AdminRole.ADMIN),
+        permissions: text('permissions').array().$type<Permission[]>().notNull().default([]),
 
         /**
          * Whether the account is banned.
@@ -62,10 +59,18 @@ export const admin = adminSchema.table(
         deletedAt: timestamp('deleted_at'),
 
         /**
-         * Monotonic session version. Any token minted with a lower version is rejected by the auth
-         * guard, giving DB-durable revocation. Bumped on ban, deletion, and session revocation.
+         * Monotonic session version: the version new tokens are minted at, and the floor an ACCESS
+         * token must reach at the auth guard. Bumped by every cut-off — ban, deletion, password
+         * change, session revocation, and a permission change.
          */
         sessionVersion: integer('session_version').notNull().default(0),
+
+        /**
+         * The session version of the last FULL revocation: the floor a REFRESH token must reach to
+         * be rotated. A permission change leaves it, so the refresh token survives to fetch the new
+         * permission set while the access tokens that carried the old one die.
+         */
+        revocationVersion: integer('revocation_version').notNull().default(0),
 
         ...aggregateTimestamps,
     },
@@ -76,5 +81,10 @@ export const admin = adminSchema.table(
         index('admin_id_live_idx')
             .on(table.id)
             .where(sql`deleted_at IS NULL`),
+        // Exactly one root: a unique index over a constant, restricted to rows holding the root
+        // marker, so a second row can never be inserted or updated into the tier — not even by hand.
+        uniqueIndex('admin_root_unique_idx')
+            .on(sql`(1)`)
+            .where(sql`${sql.raw(`'${Permission.ADMIN_ROOT}'`)} = ANY(permissions)`),
     ],
 );

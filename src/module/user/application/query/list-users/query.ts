@@ -4,6 +4,7 @@
  */
 
 import { Query } from '@nestjs/cqrs';
+import type { Permission } from 'src/shared/domain/principal';
 import type { PaginationParams } from 'src/shared/pagination';
 import type { SearchParams } from 'src/shared/search';
 
@@ -25,11 +26,12 @@ export class ListUsersQuery extends Query<ListUsersResult> {
  * The expected result of the ListUsersQuery, wrapping items in a paginated response.
  */
 export type ListUsersResult = {
-    data: {
-        id: string;
-        email: string;
-        name: string;
-        isBanned: boolean;
+    readonly data: readonly {
+        readonly id: string;
+        readonly email: string;
+        readonly name: string;
+        readonly permissions: readonly Permission[];
+        readonly isBanned: boolean;
     }[];
-    total: number;
+    readonly total: number;
 };

@@ -6,7 +6,7 @@
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
-import type { AuthRole } from 'src/shared/domain/auth-role';
+import type { Principal } from 'src/shared/domain/principal';
 
 /**
  * Dependency injection token for the {@link ITokenPort} contract.
@@ -30,12 +30,11 @@ export interface ITokenPort {
     /**
      * Generates a signed access/refresh token pair.
      *
-     * @param role The principal's authentication role.
-     * @param id The principal identifier.
+     * @param principal The verified principal the tokens are minted for; its permissions go into the access token only.
      * @param sessionVersion The session version to stamp into both tokens.
      * @returns The signed token pair and the refresh token's JTI.
      */
-    generateTokens(role: AuthRole, id: string, sessionVersion: number): Promise<GeneratedTokens>;
+    generateTokens(principal: Principal, sessionVersion: number): Promise<GeneratedTokens>;
 
     /**
      * Verifies an access token's signature, expiry, and type.

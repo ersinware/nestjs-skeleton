@@ -9,6 +9,6 @@ import { SetMetadata } from '@nestjs/common';
 export const KEY_DECORATOR_PUBLIC = 'KEY_DECORATOR_PUBLIC';
 
 /**
- * Marks a route or controller as public: `AuthGuard` skips authentication for it.
+ * Marks a route or controller as public: `AuthenticationGuard` skips authentication for it.
  */
 export const Public = () => SetMetadata(KEY_DECORATOR_PUBLIC, true);

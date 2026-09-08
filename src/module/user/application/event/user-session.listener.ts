@@ -34,6 +34,7 @@ export class UserSessionListener {
     @OnAppEvent(UserEvent.PASSWORD_CHANGED)
     @OnAppEvent(UserEvent.DELETED)
     @OnAppEvent(UserEvent.SESSIONS_REVOKED)
+    @OnAppEvent(UserEvent.PERMISSIONS_CHANGED)
     async reconcile(event: DispatchedDomainEvent) {
         await this.commandPipeline.execute(new ReconcileUserSessionCommand(event.aggregateId));
     }

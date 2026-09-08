@@ -4,7 +4,7 @@
  */
 
 import { Query } from '@nestjs/cqrs';
-import { AdminRole } from 'src/shared/domain/admin';
+import type { Permission } from 'src/shared/domain/principal';
 
 /**
  * Fetches the public admin projection by unique identifier.
@@ -24,9 +24,9 @@ export class GetAdminByIdQuery extends Query<GetAdminByIdResult> {
  * The public admin projection — the client-safe fields only, never the password hash.
  */
 export type GetAdminByIdResult = {
-    id: string;
-    email: string;
-    name: string;
-    role: AdminRole;
-    isBanned: boolean;
+    readonly id: string;
+    readonly email: string;
+    readonly name: string;
+    readonly permissions: readonly Permission[];
+    readonly isBanned: boolean;
 };

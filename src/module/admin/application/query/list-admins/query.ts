@@ -4,7 +4,7 @@
  */
 
 import { Query } from '@nestjs/cqrs';
-import { AdminRole } from 'src/shared/domain/admin';
+import type { Permission } from 'src/shared/domain/principal';
 import { PaginationParams } from 'src/shared/pagination';
 import type { SearchParams } from 'src/shared/search';
 
@@ -26,12 +26,12 @@ export class ListAdminsQuery extends Query<ListAdminsResult> {
  * One page of admin read-models plus the total row count for pagination.
  */
 export type ListAdminsResult = {
-    data: {
-        id: string;
-        email: string;
-        name: string;
-        role: AdminRole;
-        isBanned: boolean;
+    readonly data: readonly {
+        readonly id: string;
+        readonly email: string;
+        readonly name: string;
+        readonly permissions: readonly Permission[];
+        readonly isBanned: boolean;
     }[];
-    total: number;
+    readonly total: number;
 };
