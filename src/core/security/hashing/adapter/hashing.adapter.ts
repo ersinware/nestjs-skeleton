@@ -3,9 +3,10 @@
  * @description Argon2 adapter implementing the hashing port.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
+import { randomBytes } from 'node:crypto';
 import { ENV, Environment } from 'src/core/config';
 import type { IHashingPort } from 'src/core/security/hashing/port/hashing.port';
 
@@ -13,7 +14,7 @@ import type { IHashingPort } from 'src/core/security/hashing/port/hashing.port';
  * Hashes and verifies passwords with Argon2id.
  */
 @Injectable()
-export class HashingAdapter implements IHashingPort {
+export class HashingAdapter implements IHashingPort, OnModuleInit {
     /**
      * Argon2id cost parameters, chosen once at boot from the environment.
      *
@@ -27,6 +28,15 @@ export class HashingAdapter implements IHashingPort {
     private readonly hashOptions: argon2.Options;
 
     /**
+     * Hash of a random secret, verified against by `simulateVerify`.
+     *
+     * Built here rather than hard-coded so it always carries the current cost parameters: Argon2
+     * reads them from the encoded hash, so only a hash produced with the same options costs the same
+     * time as a stored one.
+     */
+    private placeholderHash!: string;
+
+    /**
      * @param configService Source of the environment deciding the Argon2 cost parameters.
      */
     constructor(configService: ConfigService) {
@@ -34,6 +44,13 @@ export class HashingAdapter implements IHashingPort {
             configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST
                 ? { timeCost: 1, memoryCost: 8, parallelism: 1 }
                 : { timeCost: 2, memoryCost: 19456, parallelism: 1 };
+    }
+
+    /**
+     * Derives the placeholder hash once at boot, so no login pays for it.
+     */
+    async onModuleInit() {
+        this.placeholderHash = await argon2.hash(randomBytes(32), this.hashOptions);
     }
 
     /**
@@ -55,5 +72,14 @@ export class HashingAdapter implements IHashingPort {
      */
     async verify(hash: string, plainText: string): Promise<boolean> {
         return argon2.verify(hash, plainText);
+    }
+
+    /**
+     * Verifies against the placeholder hash and discards the result, which is false by construction.
+     *
+     * @param plainText The plain text the caller would have verified.
+     */
+    async simulateVerify(plainText: string) {
+        await argon2.verify(this.placeholderHash, plainText);
     }
 }

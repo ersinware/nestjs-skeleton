@@ -29,4 +29,14 @@ export interface IHashingPort {
      * @throws {Error} The raw driver error when the stored hash is not a valid encoding.
      */
     verify(hash: string, plainText: string): Promise<boolean>;
+
+    /**
+     * Spends the time a `verify` against a stored hash would, without a stored hash.
+     *
+     * For a rejection decided before the password is verified (unknown email, pending or banned
+     * account), so response time does not say why the attempt failed.
+     *
+     * @param plainText The plain text the caller would have verified.
+     */
+    simulateVerify(plainText: string): Promise<void>;
 }
