@@ -11,7 +11,13 @@ yoktu). İncelemenin en yüksek öncelikli bulgusuydu; `AggregateRoot.version` +
 `LOGOUT_ALL_REQUESTED` event'ini fırlatıyor, sahibi modülün listener'ı `RevokeXSessionsCommand`'ı
 `SessionRevocationReason.LOGOUT_ALL` ile dispatch ediyor (sayaç bump + best-effort `setVersion`,
 e-posta yok). Auth'un kendisi `setVersion` yapmıyor: DB'deki sayacı yalnızca sahibi artırabilir,
-tahmini bir değer Redis'i otoritenin önüne geçirip kullanıcıyı kilitlerdi. 2026-09-08.
+tahmini bir değer Redis'i otoritenin önüne geçirip kullanıcıyı kilitlerdi. 2026-09-08. (c) Bulgu 2,
+zamanlama oracle'ı: `login.util.ts` şifre doğrulanmadan verilen her redde (hesap yok, pending, banlı)
+`IHashingPort.simulateVerify` çağırıyor (adapter'ın boot'ta güncel maliyet parametreleriyle ürettiği
+placeholder hash'e karşı doğrulama); akışın geri kalanı değişmedi. 2026-09-08. (d) Bulgu 8:
+`@Permissions()` imzası `[Permission, ...Permission[]]`, boş çağrı derlenmiyor; runtime kontrol yedek.
+(e) Bulgu 9: `LogoutCommand` principal'ı taşıyor, handler `sub` ve `principalType` uyuşmazlığında 401.
+2026-09-09.
 
 ---
 
@@ -35,7 +41,7 @@ tespiti sayaçları bumplarken kullanıcının kendi tetiklediği en kritik revo
 Auth'un aggregate'i olmadığından çözüm: bir integration event ile sahibi modülün `RevokeXSessions`
 komutunu tetiklemek (mevcut reuse akışıyla aynı yol), session sweep'i handler'da kalır.
 
-### 2. Login zamanlama oracle'ı
+### 2. ~~Login zamanlama oracle'ı~~ — kapatıldı
 
 `login.util.ts` hesap yoksa, pending'se veya banlıysa argon2 `verify` çalıştırmadan reddediyor.
 Argon2 (19 MiB, t=2) onlarca ms sürer, yanıt süresinden e-posta varlığı okunur. Mesaj tekilleştirilmiş
@@ -81,12 +87,12 @@ ailesine kısıtlıyor, yine de `['HS256']` yazılmalı); `iss`/`aud` yok; secre
 `env.validation.ts` üç secret için yalnızca `@IsString()` istiyor, `.env.example` değerleri zayıf.
 En az 32 byte şartı eklenmeli.
 
-### 8. `@Permissions()` boş çağrı her kimliği kabul ediyor
+### 8. ~~`@Permissions()` boş çağrı her kimliği kabul ediyor~~ — kapatıldı
 
 `authorization.guard.ts` `length === 0` durumunu "gereksinim yok" sayıyor. Kısıtlama gibi okunan ama
 kısıtlamayan bir dekoratör. Dekoratör içinde boş liste reddedilmeli.
 
-### 9. `logout` gövdedeki refresh token'ın `sub`'ını çağıranla karşılaştırmıyor
+### 9. ~~`logout` gövdedeki refresh token'ın `sub`'ını çağıranla karşılaştırmıyor~~ — kapatıldı
 
 Pratikte zararsız (o token'ı elinde tutan zaten oturumun sahibi), ama audit'te "başkasının oturumunu
 kapatan principal" olarak yorumlanan bir durum yaratıyor. Eşleşmezse reddetmek daha temiz.
@@ -126,5 +132,5 @@ Bir sonraki inceleme yeniden türetmesin diye kaydedildi.
 ## Çalışma sırası
 
 1. ~~Lost update yarışı~~ — kapatıldı.
-2. ~~Bulgu 1~~ kapatıldı; bulgu 2–5: her biri küçük ve rate limiting'den bağımsız.
-3. Bulgu 6–11 sertleştirme turu olarak.
+2. ~~Bulgu 1–2~~ kapatıldı; bulgu 3–5: her biri küçük ve rate limiting'den bağımsız.
+3. ~~Bulgu 8–9~~ kapatıldı; bulgu 6, 7, 10, 11 sertleştirme turu olarak.

@@ -15,6 +15,15 @@ export const KEY_DECORATOR_PERMISSIONS = 'KEY_DECORATOR_PERMISSIONS';
  * requiring one also pins the kind of caller — a self-scoped route with no permission pins it
  * with `@PrincipalOnly()` instead.
  *
- * @param permissions The permissions the caller must hold, every one of them.
+ * @param permissions The permissions the caller must hold, every one of them. At least one
+ * permission is required: use `@PrincipalOnly()` for a route that only restricts principal kind.
  */
-export const Permissions = (...permissions: Permission[]) => SetMetadata(KEY_DECORATOR_PERMISSIONS, permissions);
+export function Permissions(...permissions: [Permission, ...Permission[]]): MethodDecorator & ClassDecorator {
+    if (permissions.length === 0) {
+        throw new Error(
+            '@Permissions() requires at least one permission. Use @PrincipalOnly() to restrict a route by principal type.',
+        );
+    }
+
+    return SetMetadata(KEY_DECORATOR_PERMISSIONS, permissions);
+}

@@ -128,6 +128,7 @@ export class AuthController {
      * Revokes the session bound to the provided refresh token. Idempotent: an invalid or
      * already-revoked token still answers 204.
      *
+     * @param principal The verified principal of the current request
      * @param dto The refresh token identifying the session to revoke
      * @throws {InvalidInputException} If the payload is invalid
      * @throws {UnauthenticatedException} If the user is not authenticated
@@ -143,8 +144,8 @@ export class AuthController {
     @ApiNoContentResponse({ description: 'Session revoked.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
-    async logout(@Body() dto: PostRefreshDto) {
-        await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken));
+    async logout(@CurrentPrincipal() principal: Principal, @Body() dto: PostRefreshDto) {
+        await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken, principal));
     }
 
     /**

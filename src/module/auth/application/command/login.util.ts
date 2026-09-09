@@ -64,6 +64,11 @@ export async function login(
         identity = await ports.identityReaderPort.getCredentialsByEmail(principalType, email);
     } catch (error) {
         if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
+            // Every refusal decided before the password is verified spends the verification anyway,
+            // so response time says no more than the uniform message does — the only defence
+            // against enumeration until rate limiting lands.
+            await ports.hashingPort.simulateVerify(password);
+
             throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND);
         }
 
@@ -71,12 +76,16 @@ export async function login(
     }
 
     if (identity.isBanned) {
+        await ports.hashingPort.simulateVerify(password);
+
         throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, identity.id);
     }
 
     // A pending account has no password yet, so there is nothing to verify against until its owner
     // activates it.
     if (!identity.password) {
+        await ports.hashingPort.simulateVerify(password);
+
         throw await denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
     }
 
