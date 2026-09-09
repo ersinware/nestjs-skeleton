@@ -9,7 +9,7 @@ import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observa
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
-import { UnauthenticatedException } from 'src/shared/exception';
+import { ExceptionKind, UnauthenticatedException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Handler for the LogoutCommand.
@@ -41,8 +41,12 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
 
         try {
             payload = await this.tokenPort.verifyRefreshToken(command.refreshToken);
-        } catch {
-            return;
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                return;
+            }
+
+            throw error;
         }
 
         if (payload.sub !== command.principal.id || payload.principalType !== command.principal.type) {

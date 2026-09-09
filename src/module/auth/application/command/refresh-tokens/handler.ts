@@ -77,8 +77,12 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
         try {
             payload = await this.tokenPort.verifyRefreshToken(command.refreshToken);
-        } catch {
-            throw new UnauthenticatedException();
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                throw new UnauthenticatedException();
+            }
+
+            throw error;
         }
 
         const { sub, principalType } = payload;

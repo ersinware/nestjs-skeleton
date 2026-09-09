@@ -13,13 +13,15 @@ import { CommandPipeline, TOKEN_COMMAND_BEHAVIORS, type ICommandBehavior } from 
 import { QueryCachingBehavior } from 'src/core/cqrs/query-caching.behavior';
 import { QueryPipeline, TOKEN_QUERY_BEHAVIORS, type IQueryBehavior } from 'src/core/cqrs/query.pipeline';
 import { TracingBehavior } from 'src/core/cqrs/tracing.behavior';
+import { ExceptionTrackerModule } from 'src/core/observability/exception-tracker';
+import { LoggerModule } from 'src/core/observability/logger';
 
 /**
  * The composition point for the CQRS pipelines. The behavior order lives here and nowhere else: a
  * new cross-cutting behavior (transaction, metrics, outbox) is added by binding it into these lists.
  */
 @Module({
-    imports: [CqrsModule, CacheModule],
+    imports: [CqrsModule, CacheModule, LoggerModule, ExceptionTrackerModule],
     providers: [
         QueryPipeline,
         CommandPipeline,

@@ -8,10 +8,12 @@ import { Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CacheCleanerAdapter } from 'src/core/cache/adapter/cache-cleaner.adapter';
+import { CacheEvictionAdapter } from 'src/core/cache/adapter/cache-eviction.adapter';
 import { CacheHealthAdapter } from 'src/core/cache/adapter/cache-health.adapter';
 import { CacheAdapter } from 'src/core/cache/adapter/cache.adapter';
 import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port';
+import { TOKEN_CACHE_EVICTION_PORT } from 'src/core/cache/port/cache-eviction.port';
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
 import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
 import { createRedisClient } from 'src/core/cache/redis-client.factory';
@@ -45,6 +47,10 @@ import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/obse
             useClass: CacheAdapter,
         },
         {
+            provide: TOKEN_CACHE_EVICTION_PORT,
+            useClass: CacheEvictionAdapter,
+        },
+        {
             provide: TOKEN_CACHE_CLEANER_PORT,
             useClass: CacheCleanerAdapter,
         },
@@ -53,7 +59,7 @@ import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/obse
             useClass: CacheHealthAdapter,
         },
     ],
-    exports: [TOKEN_CACHE_PORT, TOKEN_CACHE_CLEANER_PORT, TOKEN_CACHE_HEALTH_PORT],
+    exports: [TOKEN_CACHE_PORT, TOKEN_CACHE_EVICTION_PORT, TOKEN_CACHE_CLEANER_PORT, TOKEN_CACHE_HEALTH_PORT],
 })
 export class CacheModule implements OnApplicationShutdown {
     /**

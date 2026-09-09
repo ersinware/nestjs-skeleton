@@ -17,7 +17,7 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { InvalidInputException } from 'src/shared/exception';
+import { ExceptionKind, InvalidInputException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Activates a pending admin account. Verification is two-layered: the token's signature and expiry,
@@ -53,9 +53,13 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
 
         try {
             payload = await this.tokenPort.verifyInviteToken(command.token);
-        } catch {
-            // The port error names the cause; the response deliberately does not.
-            throw await this.deny(ActivateAdminRejectionReason.INVALID_TOKEN);
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                // The port error names the cause; the response deliberately does not.
+                throw await this.deny(ActivateAdminRejectionReason.INVALID_TOKEN);
+            }
+
+            throw error;
         }
 
         const admin = await this.adminWriterPort.load(payload.sub);

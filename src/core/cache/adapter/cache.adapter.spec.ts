@@ -169,6 +169,14 @@ describe('CacheAdapter', () => {
             await expect(adapter.set(key, value)).resolves.toBeUndefined();
         });
 
+        it('should propagate serialization errors without calling Redis', async () => {
+            const key = 'test_key',
+                value = 1n;
+
+            await expect(adapter.set(key, value)).rejects.toThrow(TypeError);
+            expect(mockRedis.set).not.toHaveBeenCalled();
+        });
+
         it('should throw an error if key is empty', async () => {
             await expect(adapter.set('', 'test_value')).rejects.toThrow(Error);
             expect(mockRedis.set).not.toHaveBeenCalled();

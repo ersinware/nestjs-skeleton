@@ -9,7 +9,7 @@ import { publishAuditActor } from 'src/core/observability/audit';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { TOKEN_TOKEN_PORT, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
+import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -57,17 +57,11 @@ export class AuthenticationGuard implements CanActivate {
             throw new UnauthenticatedException();
         }
 
-        let payload: AccessTokenPayload;
-        try {
-            payload = await this.tokenPort.verifyAccessToken(token);
-        } catch {
-            throw new UnauthenticatedException();
-        }
-
-        // Deliberately unguarded — the port's DependencyUnavailableException propagates, so the guard
-        // fails closed: without the cached version, instant session eviction cannot be honoured, and
-        // rejecting with a retryable 503 beats admitting a possibly-revoked token.
-        const currentVersion = await this.sessionPort.getVersion(payload.sub);
+        const payload = await this.tokenPort.verifyAccessToken(token),
+            // Deliberately unguarded — the port's DependencyUnavailableException propagates, so the guard
+            // fails closed: without the cached version, instant session eviction cannot be honoured, and
+            // rejecting with a retryable 503 beats admitting a possibly-revoked token.
+            currentVersion = await this.sessionPort.getVersion(payload.sub);
 
         // Login and refresh keep every live session's version key alive, so a missing key means the
         // session is dead: fail closed. 401 rather than 503 — the store answered definitively, and

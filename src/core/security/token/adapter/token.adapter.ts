@@ -7,6 +7,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import * as crypto from 'crypto';
+import { JsonWebTokenError } from 'jsonwebtoken';
 import { ENV } from 'src/core/config';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
@@ -14,6 +15,7 @@ import type { InviteTokenPayload } from 'src/core/security/token/invite-token-pa
 import type { GeneratedTokens, ITokenPort } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { Principal } from 'src/shared/domain/principal';
+import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * Implements {@link ITokenPort} with signed JWTs, using separate secrets and lifetimes
@@ -139,13 +141,7 @@ export class TokenAdapter implements ITokenPort {
      * @returns The decoded access token payload
      */
     async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
-        const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
-            secret: this.accessSecret,
-        });
-
-        this.assertTokenType(payload.type, AuthTokenType.ACCESS);
-
-        return payload;
+        return this.verifyToken<AccessTokenPayload>(token, this.accessSecret, AuthTokenType.ACCESS);
     }
 
     /**
@@ -155,13 +151,7 @@ export class TokenAdapter implements ITokenPort {
      * @returns The decoded refresh token payload
      */
     async verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
-        const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(token, {
-            secret: this.refreshSecret,
-        });
-
-        this.assertTokenType(payload.type, AuthTokenType.REFRESH);
-
-        return payload;
+        return this.verifyToken<RefreshTokenPayload>(token, this.refreshSecret, AuthTokenType.REFRESH);
     }
 
     /**
@@ -171,13 +161,37 @@ export class TokenAdapter implements ITokenPort {
      * @returns The decoded invite token payload
      */
     async verifyInviteToken(token: string): Promise<InviteTokenPayload> {
-        const payload = await this.jwtService.verifyAsync<InviteTokenPayload>(token, {
-            secret: this.inviteSecret,
-        });
+        return this.verifyToken<InviteTokenPayload>(token, this.inviteSecret, AuthTokenType.INVITE);
+    }
 
-        this.assertTokenType(payload.type, AuthTokenType.INVITE);
+    /**
+     * Verifies a token against its shared per-type secret and validates its discriminator.
+     *
+     * @param token The JWT token string
+     * @param secret The per-type signing secret to validate the signature
+     * @param expectedType The type this verification method is responsible for
+     * @returns The decoded token payload
+     */
+    private async verifyToken<T extends { type: AuthTokenType }>(
+        token: string,
+        secret: string,
+        expectedType: AuthTokenType,
+    ): Promise<T> {
+        try {
+            const payload = await this.jwtService.verifyAsync<T>(token, { secret });
 
-        return payload;
+            this.assertTokenType(payload.type, expectedType);
+
+            return payload;
+        } catch (error) {
+            if (error instanceof JsonWebTokenError) {
+                throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, {
+                    cause: this.toError(error),
+                });
+            }
+
+            throw error;
+        }
     }
 
     /**
@@ -191,7 +205,19 @@ export class TokenAdapter implements ITokenPort {
      */
     private assertTokenType(actual: AuthTokenType, expected: AuthTokenType) {
         if (actual !== expected) {
-            throw new Error(`Token type mismatch: expected '${expected}'.`);
+            throw new UnauthenticatedException(`Token type mismatch: expected '${expected}'.`);
         }
+    }
+
+    /**
+     * Normalizes unknown throw values into a real Error instance for nested-cause compatibility.
+     *
+     * @param error A value caught from an external library
+     * @returns A concrete Error object for {@link ErrorOptions.cause}
+     */
+    private toError(error: unknown): Error {
+        if (error instanceof Error) return error;
+
+        return new Error(typeof error === 'string' ? error : 'Token validation failed');
     }
 }
