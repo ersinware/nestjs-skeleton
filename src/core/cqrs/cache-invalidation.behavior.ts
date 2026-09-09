@@ -1,7 +1,7 @@
 /**
  * @file cache-invalidation.behavior.ts
  * @description Command pipeline behavior that evicts the cache keys a successful mutation dirtied,
- * synchronously and in the same request — no staleness window — for commands that opt in.
+ * best-effort in the same request for commands that opt in.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -13,7 +13,8 @@ import type { ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 /**
  * A command that dirties one or more cache keys. Eviction is coarser than event-driven invalidation
  * — it fires whenever the command succeeds, even if the handler no-op'd — but same-module, immediate,
- * and free of a delivery-reliability gap. Cross-module cache reactions still belong on domain events.
+ * and independent of event delivery. Redis outages and concurrent fills can leave stale entries.
+ * Cross-module cache reactions still belong on domain events.
  */
 export interface ICacheInvalidatingCommand {
     /**

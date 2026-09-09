@@ -18,7 +18,7 @@ const EMPTY_KEY_ERROR_MESSAGE = 'Cache key must be a non-empty string.';
  * to its authoritative source, so the failure is fully self-healing per request. No logging or
  * capture here — detection is the health alarm's job and the per-outage transition log in
  * `redis-client.factory.ts` names the cause; a per-call record would only flood during an outage.
- * The only throw is `SystemException` on an empty key: a caller bug that must surface as 500 + Sentry.
+ * Empty keys throw `SystemException`; JSON serialization errors propagate before the Redis call.
  */
 @Injectable()
 export class CacheAdapter implements ICachePort {
@@ -79,9 +79,11 @@ export class CacheAdapter implements ICachePort {
             });
         }
 
-        try {
-            const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+        // Serialization is application code, not a cache operation. Let an unsupported value
+        // surface as a programming error instead of disguising it as a harmless Redis miss.
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
 
+        try {
             if (ttlSeconds !== undefined) {
                 let finalTtl = ttlSeconds;
 

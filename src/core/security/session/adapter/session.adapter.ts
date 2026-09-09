@@ -9,6 +9,7 @@ import Redis from 'ioredis';
 import { ENV } from 'src/core/config';
 import type { ISessionPort } from 'src/core/security/session/port/session.port';
 import { RotateOutcome } from 'src/core/security/session/port/session.port';
+import { isRedisUnavailable } from 'src/core/security/session/redis-error.util';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
@@ -110,9 +111,8 @@ export class SessionAdapter implements ISessionPort {
     }
 
     /**
-     * Runs a session store operation, translating any driver error at the port boundary. The session
-     * store is authoritative — nothing here may fail open — so an unreachable store is a retryable
-     * dependency outage for every caller, never a raw ioredis error escaping infrastructure.
+     * Translates recognized Redis availability failures at the port boundary.
+     * Other failures propagate unchanged, whether thrown synchronously or rejected asynchronously.
      *
      * @param operation The Redis operation to execute
      * @returns The operation's result
@@ -122,7 +122,11 @@ export class SessionAdapter implements ISessionPort {
         try {
             return await operation();
         } catch (error) {
-            throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
+            if (isRedisUnavailable(error)) {
+                throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
+            }
+
+            throw error;
         }
     }
 

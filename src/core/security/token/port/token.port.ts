@@ -41,9 +41,7 @@ export interface ITokenPort {
      *
      * @param token The JWT access token string.
      * @returns The decoded access token payload.
-     * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
-     * `TokenExpiredError` (a subclass) when it is expired.
-     * @throws {Error} When the token's type discriminator names another token type.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, or has an unexpected token type.
      */
     verifyAccessToken(token: string): Promise<AccessTokenPayload>;
 
@@ -52,9 +50,7 @@ export interface ITokenPort {
      *
      * @param token The JWT refresh token string.
      * @returns The decoded refresh token payload.
-     * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
-     * `TokenExpiredError` (a subclass) when it is expired.
-     * @throws {Error} When the token's type discriminator names another token type.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, or has an unexpected token type.
      */
     verifyRefreshToken(token: string): Promise<RefreshTokenPayload>;
 
@@ -71,9 +67,7 @@ export interface ITokenPort {
      *
      * @param token The JWT invite token string.
      * @returns The decoded invite token payload.
-     * @throws {JsonWebTokenError} When the token is malformed or its signature is invalid;
-     * `TokenExpiredError` (a subclass) when it is expired.
-     * @throws {Error} When the token's type discriminator names another token type.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, or has an unexpected token type.
      */
     verifyInviteToken(token: string): Promise<InviteTokenPayload>;
 }
