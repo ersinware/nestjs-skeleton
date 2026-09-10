@@ -31,6 +31,6 @@ COPY --from=builder --chown=node:node /app/dist ./dist
 EXPOSE 3000
 # Readiness, not liveness: "healthy" must mean able to serve traffic, and only the readiness probe
 # verifies the database and cache. 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget -q --tries=1 --spider http://localhost:3000/api/health/ready || exit 1
 CMD ["node", "dist/src/main.js"]

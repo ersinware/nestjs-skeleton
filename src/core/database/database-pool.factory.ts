@@ -19,8 +19,10 @@ export function createDatabasePool(configService: ConfigService, connectionStrin
     const pool = new Pool({
         connectionString,
         max: configService.getOrThrow<number>(ENV.DATABASE_POOL_SIZE),
-        // The env contract is in seconds; the driver takes milliseconds for these two.
+        // Timeout env values are seconds; pg expects milliseconds except maxLifetimeSeconds.
         connectionTimeoutMillis: configService.getOrThrow<number>(ENV.DATABASE_CONNECT_TIMEOUT) * 1000,
+        statement_timeout: configService.getOrThrow<number>(ENV.DATABASE_STATEMENT_TIMEOUT) * 1000,
+        query_timeout: configService.getOrThrow<number>(ENV.DATABASE_QUERY_TIMEOUT) * 1000,
         idleTimeoutMillis: configService.getOrThrow<number>(ENV.DATABASE_IDLE_TIMEOUT) * 1000,
         maxLifetimeSeconds: configService.getOrThrow<number>(ENV.DATABASE_MAX_LIFETIME),
         // Every session in UTC, whatever the server's own setting: time-zone-less `timestamp`
