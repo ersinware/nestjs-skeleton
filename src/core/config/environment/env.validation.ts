@@ -5,17 +5,25 @@
  */
 
 import { applyDecorators } from '@nestjs/common';
-import { plainToInstance, Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
 import {
     IsBoolean,
+    IsEmail,
     IsEnum,
+    isFQDN,
     IsIn,
+    IsInt,
+    isIP,
     IsNumber,
     IsOptional,
+    IsPositive,
     IsString,
+    IsUrl,
     Matches,
     Max,
     Min,
+    ValidateBy,
+    ValidateIf,
     validateSync,
 } from 'class-validator';
 import { Environment } from 'src/core/config/environment/node-env.enum';
@@ -30,17 +38,107 @@ import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tr
  * fails — the audit record's `remoteAddress` quietly starts naming the wrong party. A list names the
  * machines actually operated; a hop not on it is never believed, whatever position it arrives in.
  *
- * The pattern is otherwise shape-only — the exact address grammar is proxy-addr's to enforce, and
- * duplicating it here would be a second parser to keep in step. It only guarantees that nothing
- * outside these shapes, `true` above all, ever reaches the adapter.
+ * This pattern checks list syntax; the property validator also checks IP addresses and CIDR
+ * prefix lengths before the value reaches proxy-addr.
  */
 export const TRUST_PROXY_PATTERN =
     /^(?:false|(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal)(?:\s*,\s*(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal))*)$/;
 
+/** Maximum seconds representable by PostgreSQL and Node timers in signed 32-bit milliseconds. */
+const MAX_TIMER_SECONDS = 2_147_483_647 / 1000;
+
 /**
- * The duration shape every TTL variable must match: an integer followed by s, m, h, or d.
+ * Parses decimal environment numbers without coercing blanks or booleans to zero/one.
+ * Integer-only contracts reject fractional values after parsing.
+ *
+ * @param integer Whether the consumer requires a whole number.
+ * @returns Numeric conversion and validation decorators.
  */
-const TTL_PATTERN = /^\d+[smhd]$/;
+function IsEnvNumber(integer = false): PropertyDecorator {
+    return applyDecorators(
+        Transform(({ value }: { value: unknown }) =>
+            typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value)
+                ? Number(value)
+                : value,
+        ),
+        integer ? IsInt() : IsNumber(),
+    );
+}
+
+/**
+ * Validates trusted proxy IPs, CIDR prefix lengths, and named ranges; accepts false to disable trust.
+ *
+ * @returns Trusted proxy list validation decorator.
+ */
+function IsTrustedProxyList(): PropertyDecorator {
+    return ValidateBy({
+        name: 'isTrustedProxyList',
+        validator: {
+            validate: (value: unknown) =>
+                typeof value === 'string' &&
+                (value === 'false' ||
+                    value.split(',').every((entry) => {
+                        const token = entry.trim();
+
+                        if (['loopback', 'linklocal', 'uniquelocal'].includes(token)) {
+                            return true;
+                        }
+
+                        const [address, prefix, extra] = token.split('/');
+
+                        if (!address || !isIP(address) || extra !== undefined) {
+                            return false;
+                        }
+
+                        return (
+                            prefix === undefined ||
+                            (/^\d+$/.test(prefix) && Number(prefix) <= (isIP(address, 4) ? 32 : 128))
+                        );
+                    })),
+            defaultMessage: () => '$property must contain valid IP addresses, CIDRs, or named ranges',
+        },
+    });
+}
+
+/**
+ * Maps an empty string to `undefined`, so an optional variable left as `NAME=` in an env file counts
+ * as unset — `@IsOptional` skips `undefined`, not ''.
+ *
+ * @param params The transform parameter object.
+ * @returns `undefined` for an empty string, the original value otherwise.
+ */
+function emptyToUndefined<T>({ value }: { value: T }): T | undefined {
+    return value === '' ? undefined : value;
+}
+
+/**
+ * Validates a Redis host without accepting URLs, ports, or malformed numeric IP addresses.
+ *
+ * @returns Hostname or IP validation decorator.
+ */
+function IsRedisHost(): PropertyDecorator {
+    return ValidateBy({
+        name: 'isRedisHost',
+        validator: {
+            validate: (value: unknown) =>
+                typeof value === 'string' &&
+                (isIP(value) ||
+                    (!/^[\d.]+$/.test(value) && isFQDN(value, { require_tld: false, allow_underscores: true }))),
+            defaultMessage: () => '$property must be a hostname or IP address, without a scheme or port',
+        },
+    });
+}
+
+/**
+ * Validates a boolean environment variable arriving as the string 'true'/'false'.
+ *
+ * Converts only the two explicit boolean strings; validation rejects every other value.
+ *
+ * @returns The composed property decorator.
+ */
+function IsEnvBoolean(): PropertyDecorator {
+    return applyDecorators(Transform(transformToBoolean), IsBoolean());
+}
 
 /**
  * Transforms the strings 'true'/'false' to actual booleans, leaving any other value untouched for
@@ -62,32 +160,26 @@ function transformToBoolean<T>({ value }: { value: T }): boolean | T {
 }
 
 /**
- * Maps an empty string to `undefined`, so an optional variable left as `NAME=` in an env file counts
- * as unset — `@IsOptional` skips `undefined`, not ''.
+ * Validates a positive JWT lifetime with an explicit seconds, minutes, hours, or days suffix.
  *
- * @param params The transform parameter object.
- * @returns `undefined` for an empty string, the original value otherwise.
+ * @returns JWT lifetime validation decorator.
  */
-function emptyToUndefined<T>({ value }: { value: T }): T | undefined {
-    return value === '' ? undefined : value;
+function IsJwtTtl(): PropertyDecorator {
+    return applyDecorators(
+        IsString(),
+        Matches(/^0*[1-9]\d*[smhd]$/, {
+            message: '$property must be a positive duration followed by s, m, h, or d (e.g., "15m", "7d")',
+        }),
+    );
 }
 
 /**
- * Validates a boolean environment variable arriving as the string 'true'/'false'.
+ * Validates an absolute HTTP/HTTPS URL, including localhost and internal hostnames.
  *
- * Bundles the three decorators the conversion needs so no future boolean variable can forget one:
- * `@Type(() => Object)` bypasses class-transformer's eager casting that would turn every non-empty
- * string (including 'false') into `true`, `@Transform` then maps the two accepted strings to real
- * booleans, and `@IsBoolean` rejects everything else.
- *
- * @returns The composed property decorator.
+ * @returns HTTP URL validation decorator.
  */
-function IsEnvBoolean(): PropertyDecorator {
-    return applyDecorators(
-        Type(() => Object),
-        Transform(transformToBoolean),
-        IsBoolean(),
-    );
+function IsHttpUrl(): PropertyDecorator {
+    return IsUrl({ protocols: ['http', 'https'], require_protocol: true, require_tld: false });
 }
 
 /**
@@ -98,7 +190,9 @@ export class EnvironmentVariables {
     /**
      * The port number on which the application will listen.
      */
-    @IsNumber()
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(65535)
     readonly PORT!: number;
 
     /**
@@ -125,12 +219,14 @@ export class EnvironmentVariables {
         message:
             'TRUST_PROXY must be "false" or a comma-separated list of proxy IPs/CIDRs (loopback, linklocal and uniquelocal are also accepted). A hop count is not accepted: it silently resolves to a different hop whenever the proxy chain changes.',
     })
+    @IsTrustedProxyList()
     readonly TRUST_PROXY!: string;
 
     /**
      * Connection URL of the primary (writer) PostgreSQL endpoint.
      */
     @IsString()
+    @IsUrl({ protocols: ['postgres', 'postgresql'], require_protocol: true, require_tld: false })
     readonly DATABASE_URL!: string;
 
     /**
@@ -140,42 +236,70 @@ export class EnvironmentVariables {
     @Transform(emptyToUndefined)
     @IsOptional()
     @IsString()
+    @IsUrl({ protocols: ['postgres', 'postgresql'], require_protocol: true, require_tld: false })
     readonly DATABASE_REPLICA_URL?: string;
 
     /**
      * Maximum number of connections in the database connection pool.
      */
-    @IsNumber()
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(Number.MAX_SAFE_INTEGER)
     readonly DATABASE_POOL_SIZE!: number;
 
     /**
-     * Database connection timeout in milliseconds.
+     * Maximum wait in seconds to acquire or establish a database connection.
      */
-    @IsNumber()
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
     readonly DATABASE_CONNECT_TIMEOUT!: number;
 
     /**
-     * Idle timeout in milliseconds for database connections to be terminated.
+     * PostgreSQL statement execution limit in seconds, including lock waits.
      */
-    @IsNumber()
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly DATABASE_STATEMENT_TIMEOUT!: number;
+
+    /**
+     * Client query wait limit in seconds; allow time beyond the statement limit for its response.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly DATABASE_QUERY_TIMEOUT!: number;
+
+    /**
+     * Idle timeout in seconds for database connections to be terminated.
+     */
+    @IsEnvNumber()
+    @Min(0)
+    @Max(MAX_TIMER_SECONDS)
     readonly DATABASE_IDLE_TIMEOUT!: number;
 
     /**
-     * Maximum lifetime of a database connection in milliseconds.
+     * Maximum lifetime of a database connection in seconds.
      */
-    @IsNumber()
+    @IsEnvNumber()
+    @Min(0)
+    @Max(MAX_TIMER_SECONDS)
     readonly DATABASE_MAX_LIFETIME!: number;
 
     /**
      * Hostname or IP address of the Redis Cache server.
      */
     @IsString()
+    @IsRedisHost()
     readonly REDIS_CACHE_HOST!: string;
 
     /**
      * Port number on which the Redis Cache server is listening.
      */
-    @IsNumber()
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(65535)
     readonly REDIS_CACHE_PORT!: number;
 
     /**
@@ -194,12 +318,15 @@ export class EnvironmentVariables {
      * Hostname or IP address of the Redis session store server.
      */
     @IsString()
+    @IsRedisHost()
     readonly REDIS_SESSION_HOST!: string;
 
     /**
      * Port number on which the Redis session store server is listening.
      */
-    @IsNumber()
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(65535)
     readonly REDIS_SESSION_PORT!: number;
 
     /**
@@ -217,67 +344,63 @@ export class EnvironmentVariables {
     /**
      * Maximum number of Redis reconnection retries per request.
      */
-    @IsNumber()
+    @IsEnvNumber(true)
+    @Min(0)
+    @Max(Number.MAX_SAFE_INTEGER)
     readonly REDIS_MAX_RETRIES_PER_REQUEST!: number;
 
     /**
-     * Redis command execution timeout in milliseconds.
+     * Redis command execution timeout in seconds.
      */
-    @IsNumber()
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
     readonly REDIS_COMMAND_TIMEOUT!: number;
 
     /**
      * Secret key for signing JWT access tokens.
      */
     @IsString()
+    @Matches(/\S/)
     readonly JWT_ACCESS_SECRET!: string;
 
     /**
      * Time-to-live for JWT access tokens (e.g., '15m').
      */
-    @IsString()
-    @Matches(TTL_PATTERN, {
-        message: 'JWT_ACCESS_TTL must match the format: duration followed by s, m, h, or d (e.g., "15m", "7d")',
-    })
+    @IsJwtTtl()
     readonly JWT_ACCESS_TTL!: string;
 
     /**
      * Secret key for signing JWT refresh tokens.
      */
     @IsString()
+    @Matches(/\S/)
     readonly JWT_REFRESH_SECRET!: string;
 
     /**
      * Time-to-live for JWT refresh tokens (e.g., '7d').
      */
-    @IsString()
-    @Matches(TTL_PATTERN, {
-        message: 'JWT_REFRESH_TTL must match the format: duration followed by s, m, h, or d (e.g., "7d", "30d")',
-    })
+    @IsJwtTtl()
     readonly JWT_REFRESH_TTL!: string;
 
     /**
      * Secret key for signing JWT invite tokens.
      */
     @IsString()
+    @Matches(/\S/)
     readonly JWT_INVITE_SECRET!: string;
 
     /**
      * Time-to-live for JWT invite tokens (e.g., '3d').
      */
-    @IsString()
-    @Matches(TTL_PATTERN, {
-        message: 'JWT_INVITE_TTL must match the format: duration followed by s, m, h, or d (e.g., "3d", "72h")',
-    })
+    @IsJwtTtl()
     readonly JWT_INVITE_TTL!: string;
 
     /**
      * Base URL of the admin activation page; the invite email appends the token as a query parameter.
      */
     @IsString()
-    @Matches(/^https?:\/\/\S+$/, {
-        message: 'ADMIN_INVITE_URL must be an absolute http(s) URL',
-    })
+    @IsHttpUrl()
     readonly ADMIN_INVITE_URL!: string;
 
     /**
@@ -286,7 +409,7 @@ export class EnvironmentVariables {
      * instead of triggering full session-family revocation.
      */
     @IsString()
-    @Matches(TTL_PATTERN, {
+    @Matches(/^\d+[smhd]$/, {
         message:
             'SESSION_ROTATION_GRACE_TTL must match the format: duration followed by s, m, h, or d (e.g., "30s", "1m")',
     })
@@ -295,43 +418,54 @@ export class EnvironmentVariables {
     /**
      * Heap memory limit (in MB) for system health checks.
      */
-    @IsNumber()
+    @IsEnvNumber()
+    @IsPositive()
     readonly HEALTH_HEAP_LIMIT_MB!: number;
 
     /**
      * Resident Set Size (RSS) limit (in MB) for system health checks.
      */
-    @IsNumber()
+    @IsEnvNumber()
+    @IsPositive()
     readonly HEALTH_RSS_LIMIT_MB!: number;
 
     /**
      * Sender email address for Gmail API.
      */
     @IsString()
+    @IsEmail()
     readonly GMAIL_USER_EMAIL!: string;
 
     /**
      * Google OAuth2 client ID for Gmail API.
      */
     @IsString()
+    @Matches(/\S/)
     readonly GMAIL_CLIENT_ID!: string;
 
     /**
      * Google OAuth2 client secret for Gmail API.
      */
     @IsString()
+    @Matches(/\S/)
     readonly GMAIL_CLIENT_SECRET!: string;
 
     /**
      * Google OAuth2 refresh token for Gmail API.
      */
     @IsString()
+    @Matches(/\S/)
     readonly GMAIL_REFRESH_TOKEN!: string;
 
     /**
-     * Sentry DSN (Data Source Name) for error tracking.
+     * Sentry DSN (Data Source Name) for error tracking; empty disables Sentry initialization.
      */
+    @ValidateIf((_object, value: unknown) => value !== '')
     @IsString()
+    @IsHttpUrl()
+    @Matches(/^https?:\/\/\w+(?::\w*)?@[^/?#]+\/(?:[^?#]*\/)?\d+$/, {
+        message: 'SENTRY_DSN must include a public key and numeric project ID',
+    })
     readonly SENTRY_DSN!: string;
 
     /**
@@ -344,18 +478,21 @@ export class EnvironmentVariables {
      * OpenTelemetry traces exporter endpoint.
      */
     @IsString()
+    @IsHttpUrl()
     readonly OTEL_EXPORTER_OTLP_TRACES_ENDPOINT!: string;
 
     /**
      * OpenTelemetry metrics exporter endpoint.
      */
     @IsString()
+    @IsHttpUrl()
     readonly OTEL_EXPORTER_OTLP_METRICS_ENDPOINT!: string;
 
     /**
      * OpenTelemetry service name.
      */
     @IsString()
+    @Matches(/\S/)
     readonly OTEL_SERVICE_NAME!: string;
 
     /**
@@ -364,6 +501,7 @@ export class EnvironmentVariables {
      * fails at boot instead of leaving the telemetry unlabelled.
      */
     @IsString()
+    @Matches(/^[^\s=,]+=[^,]*(?:,[^\s=,]+=[^,]*)*$/)
     readonly OTEL_RESOURCE_ATTRIBUTES!: string;
 
     /**
@@ -372,6 +510,14 @@ export class EnvironmentVariables {
      * back to the SDK default.
      */
     @IsString()
+    @IsIn([
+        'always_on',
+        'always_off',
+        'traceidratio',
+        'parentbased_always_on',
+        'parentbased_always_off',
+        'parentbased_traceidratio',
+    ])
     readonly OTEL_TRACES_SAMPLER!: string;
 
     /**
@@ -387,7 +533,7 @@ export class EnvironmentVariables {
      * `always_on`/`always_off`. Stays at 1: the collector's tail sampling judges a trace on its
      * outcome, which it cannot do for a trace the app never recorded.
      */
-    @IsNumber()
+    @IsEnvNumber()
     @Min(0)
     @Max(1)
     readonly OTEL_TRACES_SAMPLER_ARG!: number;
@@ -403,7 +549,7 @@ export class EnvironmentVariables {
  */
 export function validateConfig(config: Record<string, unknown>): EnvironmentVariables {
     const validatedConfig = plainToInstance(EnvironmentVariables, config, {
-            enableImplicitConversion: true,
+            enableImplicitConversion: false,
         }),
         errors = validateSync(validatedConfig, { skipMissingProperties: false });
 

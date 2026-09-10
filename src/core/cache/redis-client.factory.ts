@@ -33,7 +33,8 @@ export function createRedisClient(
             ...(password ? { password } : {}),
             ...(config.getOrThrow<boolean>(env.tls) ? { tls: {} } : {}),
             maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
-            commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT),
+            // App duration values are seconds; ioredis expects milliseconds.
+            commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT) * 1000,
         });
 
     // One log per outage episode, gated on a per-client transition flag: ioredis re-emits 'error' on

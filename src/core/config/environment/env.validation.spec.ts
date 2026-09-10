@@ -19,9 +19,11 @@ describe('env.validation.config', () => {
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_REPLICA_URL: undefined,
         DATABASE_POOL_SIZE: 10,
-        DATABASE_CONNECT_TIMEOUT: 5000,
-        DATABASE_IDLE_TIMEOUT: 10000,
-        DATABASE_MAX_LIFETIME: 30000,
+        DATABASE_CONNECT_TIMEOUT: 2,
+        DATABASE_STATEMENT_TIMEOUT: 4,
+        DATABASE_QUERY_TIMEOUT: 5,
+        DATABASE_IDLE_TIMEOUT: 10,
+        DATABASE_MAX_LIFETIME: 30,
 
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,
@@ -32,7 +34,7 @@ describe('env.validation.config', () => {
         REDIS_SESSION_PASSWORD: 'redis-password',
         REDIS_SESSION_TLS: false,
         REDIS_MAX_RETRIES_PER_REQUEST: 3,
-        REDIS_COMMAND_TIMEOUT: 2000,
+        REDIS_COMMAND_TIMEOUT: 2,
 
         JWT_ACCESS_SECRET: 'access-secret',
         JWT_ACCESS_TTL: '15m',
@@ -51,7 +53,7 @@ describe('env.validation.config', () => {
         GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
         GMAIL_USER_EMAIL: 'user@gmail.com',
 
-        SENTRY_DSN: 'https://sentry-dsn.com',
+        SENTRY_DSN: 'https://publickey@sentry.example/1',
         SENTRY_ENVIRONMENT: ExceptionTrackerEnvironment.TEST,
 
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://localhost:4318/v1/traces',
@@ -75,7 +77,7 @@ describe('env.validation.config', () => {
         expect(result.SENTRY_ENVIRONMENT).toBe(ExceptionTrackerEnvironment.TEST);
     });
 
-    it('should perform implicit type conversions (e.g. string numbers to numbers, string booleans to booleans)', () => {
+    it('should explicitly convert numeric and boolean environment strings', () => {
         const result = validateConfig({
             ...validConfig,
             PORT: '4000',
@@ -97,6 +99,65 @@ describe('env.validation.config', () => {
         expect(() => validateConfig(invalidConfig)).toThrow(Error);
     });
 
+    describe.each(['DATABASE_STATEMENT_TIMEOUT', 'DATABASE_QUERY_TIMEOUT'] as const)('%s', (key) => {
+        it('should convert seconds from the environment', () => {
+            const result = validateConfig({ ...validConfig, [key]: '4.5' });
+
+            expect(result[key]).toBe(4.5);
+        });
+
+        it.each([undefined, '', 'invalid', 0, -1])('should reject an absent or invalid limit: %s', (value) => {
+            expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);
+        });
+    });
+
+    it.each([
+        ['PORT', 0],
+        ['PORT', 65536],
+        ['REDIS_CACHE_PORT', -1],
+        ['REDIS_SESSION_PORT', 65536],
+        ['DATABASE_POOL_SIZE', 0],
+        ['DATABASE_POOL_SIZE', Number.MAX_SAFE_INTEGER + 1],
+        ['REDIS_MAX_RETRIES_PER_REQUEST', -1],
+        ['DATABASE_CONNECT_TIMEOUT', 0],
+        ['DATABASE_STATEMENT_TIMEOUT', 2147484],
+        ['DATABASE_QUERY_TIMEOUT', 2147484],
+        ['DATABASE_IDLE_TIMEOUT', -1],
+        ['DATABASE_MAX_LIFETIME', 2147484],
+        ['REDIS_COMMAND_TIMEOUT', 0],
+        ['HEALTH_HEAP_LIMIT_MB', 0],
+        ['HEALTH_RSS_LIMIT_MB', -1],
+        ['JWT_ACCESS_TTL', '0s'],
+        ['JWT_REFRESH_TTL', '0d'],
+        ['JWT_INVITE_TTL', '00h'],
+        ['REDIS_CACHE_HOST', 'http://localhost'],
+        ['REDIS_SESSION_HOST', '999.999.999.999'],
+        ['TRUST_PROXY', '999.1.1.1'],
+        ['TRUST_PROXY', '10.0.0.1/33'],
+        ['SENTRY_DSN', 'https://sentry.example'],
+    ] as const)('should reject invalid %s: %s', (key, value) => {
+        expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);
+    });
+
+    it('should preserve supported zero values and host forms', () => {
+        const result = validateConfig({
+            ...validConfig,
+            DATABASE_IDLE_TIMEOUT: 0,
+            DATABASE_MAX_LIFETIME: 0,
+            REDIS_MAX_RETRIES_PER_REQUEST: 0,
+            SESSION_ROTATION_GRACE_TTL: '0s',
+            REDIS_CACHE_HOST: 'redis-cache',
+            REDIS_SESSION_HOST: '::1',
+            TRUST_PROXY: '10.0.0.0/8,::1/128,loopback',
+        });
+        expect(result.DATABASE_IDLE_TIMEOUT).toBe(0);
+        expect(result.DATABASE_MAX_LIFETIME).toBe(0);
+        expect(result.REDIS_MAX_RETRIES_PER_REQUEST).toBe(0);
+        expect(result.SESSION_ROTATION_GRACE_TTL).toBe('0s');
+        expect(result.REDIS_CACHE_HOST).toBe('redis-cache');
+        expect(result.REDIS_SESSION_HOST).toBe('::1');
+    });
+
     it('should throw an error if PORT is not a number', () => {
         const invalidConfig = {
             ...validConfig,
@@ -104,6 +165,47 @@ describe('env.validation.config', () => {
         };
 
         expect(() => validateConfig(invalidConfig)).toThrow(Error);
+    });
+
+    it.each(['', ' ', true, false, 'Infinity', '0x10'])('should reject numeric coercion of %s', (value) => {
+        expect(() => validateConfig({ ...validConfig, PORT: value })).toThrow(Error);
+    });
+
+    it.each(['PORT', 'DATABASE_POOL_SIZE', 'REDIS_CACHE_PORT', 'REDIS_SESSION_PORT', 'REDIS_MAX_RETRIES_PER_REQUEST'])(
+        'should reject fractional %s',
+        (key) => {
+            expect(() => validateConfig({ ...validConfig, [key]: '1.5' })).toThrow(Error);
+        },
+    );
+
+    it.each([
+        ['DATABASE_URL', 'https://localhost/db'],
+        ['DATABASE_REPLICA_URL', 'not-a-url'],
+        ['ADMIN_INVITE_URL', 'https://'],
+        ['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'ftp://localhost/traces'],
+        ['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'not-a-url'],
+        ['GMAIL_USER_EMAIL', 'not-an-email'],
+        ['JWT_ACCESS_SECRET', '   '],
+        ['JWT_REFRESH_SECRET', 123],
+        ['OTEL_TRACES_SAMPLER', 'unknown'],
+        ['OTEL_RESOURCE_ATTRIBUTES', 'missing-assignment'],
+    ] as const)('should reject malformed %s', (key, value) => {
+        expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);
+    });
+
+    it('should preserve optional replica and disabled authentication/telemetry values', () => {
+        const result = validateConfig({
+            ...validConfig,
+            DATABASE_REPLICA_URL: '',
+            REDIS_CACHE_PASSWORD: '',
+            REDIS_SESSION_PASSWORD: '',
+            SENTRY_DSN: '',
+        });
+
+        expect(result.DATABASE_REPLICA_URL).toBeUndefined();
+        expect(result.REDIS_CACHE_PASSWORD).toBe('');
+        expect(result.REDIS_SESSION_PASSWORD).toBe('');
+        expect(result.SENTRY_DSN).toBe('');
     });
 
     it('should throw an error if REDIS_CACHE_TLS is not a boolean', () => {
