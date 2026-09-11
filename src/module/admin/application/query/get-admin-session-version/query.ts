@@ -1,7 +1,7 @@
 /**
  * @file query.ts
  * @description Read-model of the get-admin-session-version query. No `handler.ts`: its only consumer
- * is a command handler, which reads through the port directly (CLAUDE.md read-transport rule).
+ * is a command handler, which reads through the port directly (agent/architecture.md#cqrs).
  */
 
 /**

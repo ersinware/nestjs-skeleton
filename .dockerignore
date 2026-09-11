@@ -29,9 +29,9 @@
 .spectral.yml
 .vscode
 AGENTS.md
+agent/
 build
 CHANGELOG.md
-CLAUDE.md
 coverage
 dist
 docker-compose.*.yml
