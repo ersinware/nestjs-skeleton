@@ -1,3 +1,8 @@
+/**
+ * @file redis-error.util.ts
+ * @description Redis availability classifier for session storage failures.
+ */
+
 /** Transport error codes for the standalone session Redis connection. */
 const CONNECTION_CODES = new Set([
     'ECONNREFUSED',
@@ -10,6 +15,9 @@ const CONNECTION_CODES = new Set([
     'EPIPE',
 ]);
 
+/**
+ * Known textual transport failures produced by ioredis in this implementation.
+ */
 const CONNECTION_MESSAGES = new Set([
     'Connection is closed.',
     'Command timed out',
