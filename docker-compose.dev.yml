@@ -6,17 +6,24 @@
 # container restart: Compose injects the file at start, so the running process never sees an edit.
 services:
     api:
+        labels:
+            deployment.environment.name: local-dev
         build:
             target: development
 
         env_file:
             - .env
 
+        environment:
+            OTEL_RESOURCE_ATTRIBUTES: service.namespace=${OTEL_SERVICE_NAME:?},deployment.environment.name=local-dev
+
         ports:
             - '127.0.0.1:3000:3000'
 
         volumes:
             - .:/app
+            # Keep sender credentials outside the application bind mount.
+            - /dev/null:/app/.env.observability:ro
             # Anonymous volume so the image's own node_modules (built against Alpine/musl) survive
             # the bind mount above — the host's native builds (e.g. argon2) do not run on musl.
             - /app/node_modules

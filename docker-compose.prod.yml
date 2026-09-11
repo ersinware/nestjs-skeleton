@@ -1,9 +1,8 @@
-# Local production rehearsal: the `production` image against the same self-hosted datastores as
-# dev. `docker:prod:*` also starts and stops the observability stack, so everything production has
-# is present and nothing reaches an external service. The real deployment is an ECS task
-# definition, not this file.
+# Local production image rehearsal; optional telemetry goes to Grafana Cloud.
 services:
     api:
+        labels:
+            deployment.environment.name: local-prod
         build:
             context: .
             target: production
@@ -13,6 +12,7 @@ services:
 
         environment:
             - NODE_ENV=production
+            - OTEL_RESOURCE_ATTRIBUTES=service.namespace=${OTEL_SERVICE_NAME:?},deployment.environment.name=local-prod
 
         ports:
             - '127.0.0.1:3001:3000'

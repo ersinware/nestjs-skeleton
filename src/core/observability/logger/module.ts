@@ -81,9 +81,6 @@ const ENVIRONMENT_TO_LEVEL: Record<Environment, string> = {
             useClass: LoggerAdapter,
         },
     ],
-    // PinoLoggerModule is re-exported for exactly one consumer: the audit concern, whose store is
-    // pino today. Drop the re-export when audit moves to a database table — every other module
-    // sees only the port.
     exports: [PinoLoggerModule, TOKEN_LOGGER_PORT],
 })
 export class LoggerModule {}

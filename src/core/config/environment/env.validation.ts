@@ -475,6 +475,12 @@ export class EnvironmentVariables {
     readonly SENTRY_ENVIRONMENT!: ExceptionTrackerEnvironment;
 
     /**
+     * Disables telemetry export for local runs without the Collector.
+     */
+    @IsEnvBoolean()
+    readonly OTEL_SDK_DISABLED!: boolean;
+
+    /**
      * OpenTelemetry traces exporter endpoint.
      */
     @IsString()
@@ -530,7 +536,7 @@ export class EnvironmentVariables {
 
     /**
      * Keep-ratio for the `*traceidratio` sampler: 1 records every trace, 0.1 one in ten. Ignored by
-     * `always_on`/`always_off`. Stays at 1: the collector's tail sampling judges a trace on its
+     * `always_on`/`always_off`. Stays at 1: Grafana Cloud Adaptive Traces evaluates the complete trace
      * outcome, which it cannot do for a trace the app never recorded.
      */
     @IsEnvNumber()

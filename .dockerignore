@@ -4,6 +4,7 @@
 .act-artifacts
 .agents
 .claude
+.codex
 .dockerignore
 .DS_Store
 .env
@@ -27,6 +28,7 @@
 .vars
 .spectral.yml
 .vscode
+AGENTS.md
 build
 CHANGELOG.md
 CLAUDE.md
