@@ -20,6 +20,10 @@ if (
     !process.env[RUNTIME_FLAG.VITEST] &&
     process.env[RUNTIME_FLAG.CI] !== 'true'
 ) {
+    // OTEL_NODE_RESOURCE_DETECTORS includes serviceinstance last: a fresh UUID distinguishes
+    // each process lifetime without losing environment, host, or process attributes.
+    // Without sampler env overrides, the SDK defaults to parentbased_always_on:
+    // retain all root traces for Collector tail sampling and honor parent decisions.
     const otelSDK = new NodeSDK({
         // Sentry's AsyncLocalStorage manager, so each request's Sentry scope (request data on a
         // captured exception) follows the OTel context that this SDK owns (`instrument.ts`).

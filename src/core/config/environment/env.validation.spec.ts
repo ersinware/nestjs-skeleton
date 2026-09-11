@@ -61,10 +61,16 @@ describe('env.validation.config', () => {
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://localhost:4318/v1/metrics',
         OTEL_SERVICE_NAME: 'nestjs-skeleton',
         OTEL_RESOURCE_ATTRIBUTES: 'service.namespace=nestjs-skeleton,deployment.environment.name=test',
+        OTEL_NODE_RESOURCE_DETECTORS: 'env,host,process,serviceinstance',
         OTEL_SEMCONV_STABILITY_OPT_IN: 'http',
-        OTEL_TRACES_SAMPLER: 'parentbased_traceidratio',
-        OTEL_TRACES_SAMPLER_ARG: 1,
     } satisfies Record<keyof EnvironmentVariables, unknown>;
+
+    it.each(['env,host,process', 'serviceinstance,env,host,process', 'all', ''])(
+        'should reject detector configuration that cannot guarantee the instance identity: %s',
+        (detectors) => {
+            expect(() => validateConfig({ ...validConfig, OTEL_NODE_RESOURCE_DETECTORS: detectors })).toThrow();
+        },
+    );
 
     it('should return a validated EnvironmentVariables instance when config is valid', () => {
         const result = validateConfig(validConfig);
@@ -190,7 +196,6 @@ describe('env.validation.config', () => {
         ['GMAIL_USER_EMAIL', 'not-an-email'],
         ['JWT_ACCESS_SECRET', '   '],
         ['JWT_REFRESH_SECRET', 123],
-        ['OTEL_TRACES_SAMPLER', 'unknown'],
         ['OTEL_SDK_DISABLED', 'yes'],
         ['OTEL_RESOURCE_ATTRIBUTES', 'missing-assignment'],
     ] as const)('should reject malformed %s', (key, value) => {

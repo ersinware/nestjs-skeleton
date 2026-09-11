@@ -18,6 +18,28 @@ processors:
         check_interval: 1s
         limit_mib: 400
         spike_limit_mib: 100
+    # All spans of a trace must reach this Collector; route by trace ID when scaling.
+    # Pending traces live in memory, outside the persistent exporter queue.
+    tail_sampling:
+        decision_wait: 30s
+        num_traces: 10000
+        decision_cache:
+            sampled_cache_size: 100000
+            non_sampled_cache_size: 100000
+        # Policies are OR-ed: preserve errors/slow traces, sample the remainder.
+        policies:
+            - name: errors
+              type: status_code
+              status_code:
+                  status_codes: [ERROR]
+            - name: slow
+              type: latency
+              latency:
+                  threshold_ms: ${env:OTEL_COLLECTOR_TRACES_SLOW_THRESHOLD_MS}
+            - name: baseline
+              type: probabilistic
+              probabilistic:
+                  sampling_percentage: ${env:OTEL_COLLECTOR_TRACES_SAMPLING_PERCENTAGE}
     batch:
         timeout: 5s
         send_batch_size: 512
@@ -46,7 +68,7 @@ service:
     pipelines:
         traces:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, tail_sampling, batch]
             exporters: [otlp_http]
         metrics:
             receivers: [otlp]
