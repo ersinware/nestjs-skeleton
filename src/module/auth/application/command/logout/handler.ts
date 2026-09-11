@@ -55,11 +55,6 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
 
         await this.sessionPort.closeSession(payload.sub, payload.jti);
 
-        // The unverifiable-token path above returns without a record on purpose: nothing was closed,
-        // and the subject is unknown — there is no fact to file.
-        //
-        // The ownership check above makes this a self-scoped action. `targetId` is nevertheless kept
-        // to make the revoked session's owner explicit in audit queries.
-        await this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
+        await this.auditPort.record({ action: AuditAction.LOGOUT });
     }
 }

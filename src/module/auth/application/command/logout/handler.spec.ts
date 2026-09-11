@@ -44,7 +44,7 @@ describe('LogoutCommandHandler', () => {
         await handler.execute(new LogoutCommand(refreshToken, principal));
 
         expect(closeSession).toHaveBeenCalledWith(principal.id, 'session-1');
-        expect(record).toHaveBeenCalledWith({ action: AuditAction.LOGOUT, targetId: principal.id });
+        expect(record).toHaveBeenCalledWith({ action: AuditAction.LOGOUT });
     });
 
     it('rejects a refresh token owned by another principal without closing or auditing it', async () => {

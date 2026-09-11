@@ -208,7 +208,7 @@ Paths are version-neutral and relative to the global prefix.
 - Readiness/detail run uncached checks for `HEALTH_INDICATOR_KEYS`: `memory_heap`, `memory_rss`, `database`, `database_replica`, `cache`, `session`. All affect readiness. Replica probe reuse: § Dependency Outages.
 - Use readiness for traffic eligibility and liveness for restart/replacement decisions. Verify platform health-check consequences, including load-balancer checks; dependency outages must not restart healthy processes.
 - Preserve Terminus `ServiceUnavailableException`: the filter makes readiness 503 bodyless and preserves detailed indicator reports under `error`. Other failures follow § Exceptions; session unavailability can produce a standard guard 503 before detailed checks run.
-- Bound check execution within deployment probe timeouts. DB probes use the application's pool acquisition, server statement, and client query timeouts; allow response margin beyond the statement limit and deployment margin beyond acquisition + query waits. DB timeout env values are seconds. HTTP cache policy: § HTTP Caching.
+- Bound check execution within deployment probe timeouts. DB probes use the application's pool acquisition, server statement, and client query timeouts; allow response margin beyond the statement limit and deployment margin beyond acquisition + query waits. HTTP cache policy: § HTTP Caching.
 
 ### HTTP Caching
 
@@ -254,57 +254,59 @@ Paths are version-neutral and relative to the global prefix.
 
 ### Audit
 
-`IAuditPort` is evidence (who/what/when/where), `ILoggerPort` diagnostics. Audit: append-only primary `audit.audit`, independent of log level, active in tests. Loss is unacceptable; current non-atomic writes are an implementation gap:
-
-- Fact owners must atomically persist mutation audit evidence or its immutable delivery record with the mutation (§ Events & Messaging). Capture facts/time/trace/actor/context before deferral; preserve record identity across retries, never reconstruct history from current state. Current commands await `auditPort.record()` after writes; failures propagate until atomic persistence replaces this path.
-- Edges own filter 403s (§ Exceptions) and `AuditInterceptor` / `@Audited` reads/disclosures (`PERSONAL_DATA_ACCESSED`, `AUDIT_TRAIL_ACCESSED`). Never `@Audited` mutations. Filter audit failures re-enter its error decision without throwing/changing the response.
-- Record refusal episodes once at their deciding component (future limiters/breakers), never the filter that cannot distinguish triggering/affected requests. Per-request evidence amplifies writes regardless of log level.
+- `IAuditPort` records evidence, not diagnostics: append-only primary `audit.audit` (§ Data & State), independent of log level/sampling and active in tests. Audit loss is unacceptable.
+- Fact owners persist immutable mutation evidence in the owning context's transactional outbox, atomically with DB changes (§ Events & Messaging). Snapshot facts, time, trace, and verified context before deferral; preserve record identity across retries, never reconstruct history from current state. Delivery to `audit.audit` must be idempotent.
+- Use `@Audited` / `AuditInterceptor` only for reads/disclosures: await durable audit acceptance before emitting results; audit failure fails the response, handler failure creates no disclosure record. Filter 403 ownership: § Exceptions; its audit failures follow error reporting without replacing the original response.
 - `auditContextHook` (`main.ts`, `onRequest`) seeds transport before guards; authentication adds verified, session-checked identity before authorization. Never publish unverified payloads; interceptors are too late.
 - Audit actors travel via AsyncLocalStorage, never command payloads; absent non-HTTP actors leave unattributed records. Business actors remain explicit (§ Authentication & Authorization).
-- Pass only non-ambient facts. `targetId` means distinct subject, not self-scoped actor duplication: administration, actorless public routes, or a different credential (logout refresh token).
-- Audit is personal data with policy-bound retention. Never record tokens, passwords, or full PII payloads. `detail: AuditDetail` jsonb holds identifier/enum changes; `actorType` identifies the context owning `actorId`. Sanitize transport facts at the hook: matched route template, or unmatched path without query string; cap user-agent length.
+- Callers supply only non-ambient facts. `AuditAction` includes outcome; `actorType` identifies the actor's owning context. Use `targetId` for a distinct subject or actorless action; omit it when the subject is the actor.
+- Apply retention and data minimization: no tokens, passwords, or full PII payloads; restrict `AuditDetail` values to identifiers/enums. At the hook, prefer matched route templates, strip queries from unmatched paths, and cap user-agent length.
 
 ### Dependency Outages
 
-Record connection transitions once per episode: `isDown` gates `warn` with driver error + `ConnectionLogMessage.LOST`, then `info` + `RESTORED`. The shared vocabulary lives in `core/observability/logger`.
-
-- Redis concerns share connection events in `core/cache/redis-client.factory.ts`. PG idle-client errors are swallowed in `database-pool.factory.ts`; one `DatabaseHealthAdapter` per connection tracks probe transitions via `isDown`, identified by `data.role`. Reuse the primary probe when replica aliases primary.
-- Downstream availability failures stay silent (cache misses/session best-effort writes/filter 503s). Health alarms detect; transition logs explain without flooding.
+- Per application instance and client/pool, log observed outage transitions once: `warn` + driver error + `ConnectionLogMessage.LOST`, then `info` + `RESTORED`. Identify the connection; vocabulary belongs in `core/observability/logger`.
+- Redis client events own transition logs; PostgreSQL health probes own pool transition logs. Keep pool error listeners without duplicate reporting; share the probe when replica aliases primary.
+- Suppress duplicate outage logs/Sentry, preserving failure semantics (§ Adapters, § Session Versions & Failure Semantics, § Exceptions, § Events & Messaging).
+- Require regular external health checks and Grafana Cloud alert coverage; transition logs provide diagnostics (§ Health Probes).
 
 ## Coding Conventions
 
 ### JSDoc
 
 - Files start with matching `@file` + `@description`; classes/interfaces/methods/functions require purpose/rationale JSDoc.
-- Comments explain current rationale briefly, never filler/history/code narration. No TS types in `@param`; use `@throws {ExceptionType}`.
-- Interface methods own `@throws`, not implementations: taxonomy, health/cleaner rejection, caller-caught library failures. Facades document all contract throws, including propagated taxonomy. Omit universal unexpected-500 tags.
-- No `@returns` for `void` / `Promise<void>`; decorator factories describe the returned value, not its raw type.
+- Comments explain current rationale briefly; no filler/history/code narration.
+- Document contract failures with `@throws {ExceptionType}` at their declaration (interface methods, facades, etc.), not again in implementations: taxonomy, health/cleaner failures and caller-caught library errors, including propagation and async rejection. Omit universal unexpected-error tags.
+- Require `@param` for each parameter without TS types, and `@returns` except for `void` / `Promise<void>` (omit it). Describe return meaning, including decorator factories, not raw types.
 
 ### Types, Signatures & Variables
 
-- `interface` describes implementable behavior/contracts (ports, repositories, services); `type` describes data (payloads, results, read-models, unions, intersections, utilities, tuples).
-- Keep `exactOptionalPropertyTypes` on; ban `?: X | undefined`. Omit absent keys with conditional spread, never assign conditional `undefined`. For `unknown`, narrow with an explicit boolean check (`x !== undefined`) before spreading. Drizzle update-set column exclusion is exempt (`id: undefined`, also `createdAt` in current writers).
-- Interface returns are always explicit, including void. Class implementations omit `void` / `Promise<void>` annotations and explicitly annotate non-void returns.
-- Exhaust enum/union decisions: switch defaults call a local `never` guard throwing `SystemException`; maps use `satisfies Record<Enum, T>`. Ternaries require type-closed two-member unions.
-- Used once → inline; used more than once → named variable.
+- Use `interface` for behavior contracts; `type` for data shapes and type compositions.
+- Keep `exactOptionalPropertyTypes`; ban `?: X | undefined`. Omit absent keys via conditional spread, never conditional `undefined`; for `unknown`, use an explicit boolean check (`x !== undefined`) before spreading. Drizzle update-set column exclusion is exempt (`id: undefined`, `createdAt: undefined`).
+- Explicitly type all function/method returns except `void` / `Promise<void>`, which implementations infer; interface returns are always explicit.
+- Exhaust enum/union decisions: switch defaults call a local `never` guard throwing `SystemException`; maps use `satisfies Record<Enum, T>`. Only ternaries dispatching by enum/union member require closed two-member types.
+- Used once → inline; reused → named variable, unless each use requires a fresh read.
 
 ### Environment & Route Constants
 
-- Numeric app duration env values use seconds; convert at library boundaries when milliseconds are required. String TTLs carry explicit units (`s`/`m`/`h`/`d`).
-- Validate env values by consumer semantics: integer counts/ports, decimal durations, explicit booleans, URL/email formats and closed choices. Disable implicit env conversion; explicitly transform numbers/booleans. Reject blank/boolean numeric coercion; preserve intentional empty-value contracts. Numeric bounds enforce valid consumer inputs and driver limits, never arbitrary capacity policy.
-- Read app env via `ConfigService` + `ENV`: typed `getOrThrow` for required values. Optional: `?:`, `@IsOptional()`, `@Transform(emptyToUndefined)`, `get`; readers also treat empty as unset because raw-env fallback can restore dropped keys.
-- Repeated env reads become constructor-initialized `private readonly` fields (one key/type, required failures at boot); single reads stay inline.
-- Direct `process.env`: pre-DI instrumentation/tracing and `core/config` `trustProxy` / `envFilePath` resolvers only. Interpret, do not validate; fail safe. App contracts remain boot-validated in `EnvironmentVariables`.
-- Repeated route fragments are owner-local constants. App mounts: `core/config` (`GLOBAL_PREFIX`, `VERSION_PREFIX`, `ROUTE_HEALTH*`, `ROUTE_DOCS`, derived `PATH_HEALTH*`). `PARAM_ID` / `ROUTE_PARAM_ID` accompany `ParamIdDto` in `core/http`, linked by `satisfies`.
-- Core health constants deliberately let filter/controller share exact passthrough paths without core importing a module.
+- Numeric app duration env values use seconds; convert at library boundaries. String TTLs require `s`/`m`/`h`/`d`.
+- Boot-validate app env in `EnvironmentVariables`: explicit number/boolean conversion, no implicit conversion or blank/boolean-to-number coercion. Match consumer formats, choices, integer requirements and bounds; allow fractional durations where supported. Preserve intentional empty values; enforce technical limits, not arbitrary capacity caps.
+- Read through `ConfigService` + `ENV`: typed `getOrThrow` for required values, `get` for optional ones. Optional env uses `?:` and `@IsOptional()`; where empty means unset, use `@Transform(emptyToUndefined)` and handle `''` in readers because raw-env fallback may restore it.
+- Within a provider, read keys used at multiple code sites once into constructor-initialized `private readonly` fields.
+- Direct `process.env` reads are limited to pre-DI instrumentation/tracing and `core/config` trust-proxy/env-file resolvers. Interpret safely without duplicating boot validation.
+- Keep reused route fragments with their owner (§ Placement & Naming). `core/config` owns app mounts (`GLOBAL_PREFIX`, `VERSION_PREFIX`, `ROUTE_HEALTH*`, `ROUTE_DOCS`) and derived `PATH_HEALTH*`, allowing health controller/filter agreement without core importing a module. Keep `PARAM_ID` / `ROUTE_PARAM_ID` beside `ParamIdDto`, with the parameter key checked by `satisfies`.
 
 ## Testing Rules
 
-- `vitest.config.mts` enables `restoreMocks` and `clearMocks`; do not manually call `vi.clearAllMocks()` / `vi.resetAllMocks()` / `vi.restoreAllMocks()`.
-- Never hardcode validation messages in assertions; use `expect.any(String)` or `expect.stringContaining(...)`.
-- In positive/negative paths, verify mock calls in chronological order and their arguments with `.toHaveBeenCalledWith(...)`. In negative paths assert `.not.toHaveBeenCalled()` only for the immediate next function, not farther downstream.
-- Test boundaries remain TODO: direct writer imports are allowed. Remind the user during test structure/import work. Undecided proposal: `test/api/**` → module barrels/presentation for HTTP E2E, looser integration element. Other import restrictions: § Layer Isolation, § Events & Messaging.
+- Test observable outcomes and contract-relevant effects; assert arguments, counts, and order only where correctness depends on them. On failure, verify relevant forbidden effects do not occur.
+- Validate fields/constraints and HTTP status/error shape; assert exact validation text only when testing message generation.
+- Unit and E2E configs enable `restoreMocks` and `clearMocks`; do not duplicate automatic cleanup. Allow targeted resets/restoration where needed.
+- Unit-test domain/application behavior through ports; verify DB/Redis guarantees with real dependencies in integration tests.
+- Test apps must use the same bootstrap configuration and wiring as production apps, including hooks, guards, pipes, interceptors, and filters.
+- Keep tests order-independent; clean up resources and isolate external test state from non-test data.
+- `test/` architectural boundaries remain TODO; direct writer imports remain allowed. Remind the user during test structure/import work until boundaries are defined. Existing import restrictions: § Layer Isolation, § Events & Messaging.
 
 ## Reference Stack
 
-NestJS 11+ / SWC; Fastify; Drizzle / PostgreSQL (`pg`) with optional replica; ioredis; in-process Nest event emitter; Gmail via Google APIs; Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud (Loki logs, managed traces/metrics); Vitest / Supertest / Spectral / Schemathesis. Queue and rate limiting are not implemented (§ Events & Messaging, § Security & Sessions).
+NestJS / SWC; Fastify; PostgreSQL / Drizzle (`pg`); Redis (`ioredis`); Gmail (`googleapis`); Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud; Vitest / Supertest / Spectral / Schemathesis.
+
+Current event transport: in-process `@nestjs/event-emitter` (§ Events & Messaging).

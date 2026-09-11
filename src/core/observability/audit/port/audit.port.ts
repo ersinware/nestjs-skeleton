@@ -11,8 +11,8 @@ import { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 export const TOKEN_AUDIT_PORT = Symbol('TOKEN_AUDIT_PORT');
 
 /**
- * What an action changed, beyond what its ids say. Bounded on purpose: values are identifiers and
- * enum members only, so a record can never carry a token, a password or personal data.
+ * What an action changed, beyond what its ids say. Callers must restrict values to identifiers
+ * and enum members; this string-based type does not enforce content restrictions.
  */
 export type AuditDetail = Readonly<Record<string, string | readonly string[]>>;
 

@@ -15,6 +15,8 @@ export default defineConfig({
     test: {
         globals: true,
         root: './',
+        restoreMocks: true,
+        clearMocks: true,
         include: ['test/**/*.e2e-spec.ts'],
         environment: 'node',
         fileParallelism: false,
