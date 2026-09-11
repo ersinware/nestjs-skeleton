@@ -59,7 +59,7 @@ export default tseslint.config(
     {
         /**
          * Scoped to `src/` only: `test/` has no element definitions yet, so `no-unknown-files` would
-         * reject every test file. See the TODO in CLAUDE.md § Testing Rules.
+         * reject every test file. See the TODO in agent/testing.md#testing-rules.
          */
         files: ['src/**/*.ts'],
         plugins: {
@@ -272,7 +272,7 @@ export default tseslint.config(
                             from: { type: ['domain', 'shared'] },
                             disallow: [{ to: { origin: 'external' } }],
                             message:
-                                'The domain and shared layers are pure TypeScript and must not import any external package (CLAUDE.md § Architecture 1).',
+                                'The domain and shared layers are pure TypeScript and must not import any external package (agent/architecture.md#layer-isolation).',
                         },
                         /**
                          * Barrels are BOUNDARIES: reaching past a concern's `index.ts` re-opens what
@@ -285,7 +285,7 @@ export default tseslint.config(
                             to: { type: ['shared', 'core', 'coreCqrs'], internalPath: '!index.ts' },
                             disallow: [{ from: { type: '*' } }],
                             message:
-                                'A core/shared concern may only be entered through its index.ts barrel (CLAUDE.md § Barrels).',
+                                'A core/shared concern may only be entered through its index.ts barrel (agent/architecture.md#barrels).',
                         },
                     ],
                 },
@@ -348,7 +348,7 @@ export default tseslint.config(
                             name: '@nestjs/event-emitter',
                             importNames: ['EventEmitter2'],
                             message:
-                                'Publish through IEventPublisherPort (TOKEN_EVENT_PUBLISHER_PORT) so the transport stays swappable (CLAUDE.md § Architecture 5).',
+                                'Publish through IEventPublisherPort (TOKEN_EVENT_PUBLISHER_PORT) so the transport stays swappable (agent/events-and-messaging.md#events--messaging).',
                         },
                     ],
                 },

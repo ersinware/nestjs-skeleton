@@ -1,0 +1,12 @@
+# Events & Messaging
+
+Required delivery model: transactional outbox + at-least-once delivery. Outbox/relay are not implemented yet; treat missing guarantees as implementation gaps, never exemptions.
+
+- Publish through `IEventPublisherPort` / `TOKEN_EVENT_PUBLISHER_PORT`; only `src/core/event-bus/` uses `EventEmitter2`. Persist events atomically with originating DB changes; acknowledge durable acceptance, not downstream completion. Dispatch only committed events.
+- Generate `eventId` once per logical event before persistence; preserve it across retries/replays. Metadata-only `DispatchedDomainEvent` carries `aggregateId` and `eventId`; consumers re-read authoritative state through owned ports/facades, never infer historical state ([Audit](observability.md#audit)).
+- Consumers tolerate duplicate, concurrent, and out-of-order delivery. Prefer idempotent reconciliation; otherwise deduplicate by `(consumer, eventId)` atomically with DB effects. External effects require provider idempotency or explicit duplicate tolerance; use email-provider idempotency when available, otherwise duplicate emails are acceptable.
+- In-process subscriptions use `OnAppEvent` in `application/event/`; network ingress uses `presentation/listener/`. Thin listeners dispatch commands owning reads, mutations, and idempotency; pass `eventId` when needed. Cache eviction may call its port directly.
+- Await required listener work; propagate failures to the relay. Complete delivery only after all required consumers succeed; preserve failed work for retry/recovery. Relay claims must recover after worker failure and support multiple instances.
+- Persist retry state; provide backoff, stalled/failed-delivery monitoring, and replay. Clean delivery/dedup records only under a retention policy covering supported retries/replays ([Observability](observability.md#observability)).
+- Same-module cache eviction combines awaited best-effort pipeline eviction with retryable in-process event eviction, sharing `<module>-cache-key.util.ts`. Event-path failures must remain visible ([Adapters](data-and-state.md#adapters)); idempotent deletion needs no inbox and does not guarantee race-free freshness.
+- Keep delivery infrastructure behind ports; use in-process dispatch in the monolith and brokers for extracted consumers without changing application semantics.

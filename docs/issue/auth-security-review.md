@@ -3,11 +3,11 @@
 **Durum:** Açık — bulgular not alındı, henüz hiçbiri düzeltilmedi; adım adım ilerlenecek.
 **Tarih:** 2026-09-08. JWT, session, izin modeli ve rank invariant'larının tam incelemesi.
 **Not:** Transactional outbox varmış gibi değerlendirildi. Event teslimatının güvenilmezliğinden
-kaynaklanan hiçbir madde burada yok; o boşluk `CLAUDE.md` § Reliable messaging'de.
+kaynaklanan hiçbir madde burada yok; o boşluk [Events & Messaging](../../agent/events-and-messaging.md#events--messaging) bölümünde.
 **Kapatılan:** (a) Aggregate writer'lardaki lost update yarışı (upsert tüm satırı ezerdi, optimistic lock
 yoktu). İncelemenin en yüksek öncelikli bulgusuydu; `AggregateRoot.version` + koşullu upsert
 (`WHERE version = loaded`, 0 satır → `ResourceConflictException(CONCURRENT_MODIFICATION)`) ile
-2026-09-08'de kapatıldı. Kural `CLAUDE.md` § Adapters'ta. (b) Bulgu 1, `logout-all`: auth
+2026-09-08'de kapatıldı. Kural [Adapters](../../agent/data-and-state.md#adapters) bölümünde. (b) Bulgu 1, `logout-all`: auth
 `LOGOUT_ALL_REQUESTED` event'ini fırlatıyor, sahibi modülün listener'ı `RevokeXSessionsCommand`'ı
 `SessionRevocationReason.LOGOUT_ALL` ile dispatch ediyor (sayaç bump + best-effort `setVersion`,
 e-posta yok). Auth'un kendisi `setVersion` yapmıyor: DB'deki sayacı yalnızca sahibi artırabilir,

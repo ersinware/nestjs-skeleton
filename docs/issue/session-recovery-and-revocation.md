@@ -130,7 +130,7 @@ Redis'e yazıp DB'yi sonradan outbox ile güncellemek bu garantiyi sağlamaz: ce
 arasında aynı kayıp penceresi kalır. DB otoritesi seçilirse önce DB commit edilir.
 
 Bedeli: refresh/logout için DB bağımlılığı, transaction ve cleanup ihtiyacı. Bu değişiklik
-`AGENTS.md` içindeki “Keep sessions in Redis” kuralının bilinçli revizyonunu gerektirir.
+[Data & State](../../agent/data-and-state.md#data--state) içindeki “Keep sessions in Redis” kuralının bilinçli revizyonunu gerektirir.
 Auth kendi session tablolarına sahip olmalı; principal tablolarına cross-module JOIN/transaction
 eklenmemeli. Principal revocation okuması ile eşzamanlı refresh arasındaki semantik ayrıca tasarlanmalıdır.
 
