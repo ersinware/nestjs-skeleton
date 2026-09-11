@@ -95,4 +95,5 @@ networks:
 volumes:
     pg_data_vol:
     redis_session_data:
+    # Exporter queues and log offsets survive recreation; docker:*:down:clean removes them.
     otel_collector_data:

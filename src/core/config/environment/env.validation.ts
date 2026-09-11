@@ -511,20 +511,11 @@ export class EnvironmentVariables {
     readonly OTEL_RESOURCE_ATTRIBUTES!: string;
 
     /**
-     * OpenTelemetry trace sampler strategy (e.g. `parentbased_traceidratio`). Read natively by the
-     * OTel SDK; declared here only so an unknown value fails fast at boot instead of silently falling
-     * back to the SDK default.
+     * Preserves resource detection and generates a unique instance ID on every SDK startup.
+     * Keep serviceinstance last so a static environment attribute cannot override its UUID.
      */
-    @IsString()
-    @IsIn([
-        'always_on',
-        'always_off',
-        'traceidratio',
-        'parentbased_always_on',
-        'parentbased_always_off',
-        'parentbased_traceidratio',
-    ])
-    readonly OTEL_TRACES_SAMPLER!: string;
+    @IsIn(['env,host,process,serviceinstance'])
+    readonly OTEL_NODE_RESOURCE_DETECTORS!: string;
 
     /**
      * Semantic-convention generation the HTTP instrumentation emits: `http` for the stable names
@@ -533,16 +524,6 @@ export class EnvironmentVariables {
      */
     @IsIn(['http', 'http/dup'])
     readonly OTEL_SEMCONV_STABILITY_OPT_IN!: string;
-
-    /**
-     * Keep-ratio for the `*traceidratio` sampler: 1 records every trace, 0.1 one in ten. Ignored by
-     * `always_on`/`always_off`. Stays at 1: Grafana Cloud Adaptive Traces evaluates the complete trace
-     * outcome, which it cannot do for a trace the app never recorded.
-     */
-    @IsEnvNumber()
-    @Min(0)
-    @Max(1)
-    readonly OTEL_TRACES_SAMPLER_ARG!: number;
 }
 
 /**

@@ -240,17 +240,17 @@ Paths are version-neutral and relative to the global prefix.
 
 ## Observability
 
-- Grafana Cloud stores telemetry: traces/metrics via OTLP→Collector; JSON stdout via local Collector→Loki. Fargate FireLens→Loki is the deployment plan, not implemented. Keep routing/credentials in deployment configuration, never application code. Sentry owns exception tracking; audit remains in DB.
-- Local dev/prod Compose uses the optional `observability` profile and explicit SDK enablement; no local telemetry stores. `OTEL_SDK_DISABLED` controls the app SDK, not stdout logging or the Collector.
-- App `OTEL_*` settings belong in app env; Collector settings/Cloud credentials belong in ignored `.env.observability` (template: `.env.observability.example`), never the API container or image. `GRAFANA_CLOUD_OTLP_HEADERS` contains only the Authorization value (`Basic <base64>`), not `Authorization=`.
-- Initialize `reflect-metadata` → `instrument.ts` → `tracing.ts` before application imports. OTel owns tracing; retain Sentry `skipOpenTelemetrySetup: true` and `SentryContextManager`.
-- Keep Fastify route-based spans/`http.route`, stable HTTP metrics (`OTEL_SEMCONV_STABILITY_OPT_IN=http`), and pg instrumentation; disable fs/net/dns instrumentation. Preserve active trace context and Pino `traceId`/`spanId` correlation.
-- Handlers never call logger/tracker ports. Report at the owning boundary (§ Exceptions, § CQRS): unexpected/actionable failures → error + Sentry; self-healing failures needing a diagnostic breadcrumb → warn with established alert coverage; significant operational transitions → info. Audit facts: § Audit; connection episodes: § Dependency Outages.
-- Swallow failures silently only where the contract permits fail-open/automatic recovery; explain why and handle rejections. Retryable delivery must remain failed (§ Events & Messaging).
-- Monitor relay backlog age, retries, and stalls; escalate actionable failures without duplicate per-attempt reports (§ Events & Messaging).
-- Default SDK head sampling to `parentbased_traceidratio` / `1` for Grafana Cloud Adaptive Traces; coordinate upstream BFF sampling, since head-dropped traces cannot be recovered, including unsampled parents. Collectors only forward; no local tail sampling.
-- Match service/environment resource attributes across signals; Compose log labels must match app OTel attributes. Local Docker log collection requires `telemetry.logs: 'true'`; exclude Collector diagnostics. Keep trace/user/task IDs out of Loki index labels. Configure Grafana correlations against emitted fields; preserve Pino field names rather than renaming them to UI labels.
-- Local Collector exporter queues and log read offsets use `file_storage` on a named volume; offsets alone do not guarantee delivery. Pre-queue buffers, bounded retries/capacity, and storage loss still prevent end-to-end delivery guarantees; `down:clean` deletes the queue volume. AWS storage/routing configuration is deferred to deployment.
+- Send OTel traces/metrics through the Collector to Grafana Cloud and JSON stdout to Loki; Sentry tracks exceptions (§ Audit).
+- Keep routing/credentials in deployment configuration. Local Collector settings use ignored `.env.observability`, excluded from API containers/images. Compose telemetry needs the `observability` profile; app traces/metrics also need SDK enablement. `OTEL_SDK_DISABLED` does not disable stdout logs. No local telemetry stores; AWS routing/storage, including planned FireLens, remain unimplemented.
+- Initialize `reflect-metadata` → `instrument.ts` → `tracing.ts` before application imports. OTel owns tracing; preserve Sentry `skipOpenTelemetrySetup: true` and `SentryContextManager`.
+- Preserve Fastify route spans/`http.route`, stable HTTP metrics (`OTEL_SEMCONV_STABILITY_OPT_IN=http`), pg instrumentation, and active Pino `traceId`/`spanId` correlation. Disable Fastify hook spans and fs/net/dns instrumentation; match Grafana correlations to emitted fields.
+- Handlers never call logger/tracker ports. Report once at the owning boundary (§ Exceptions, § CQRS, § Dependency Outages): unexpected/actionable failures → error + Sentry; recovery breadcrumbs → warn with alert coverage; significant operational transitions → info.
+- Preserve HTTP log allowlists; exclude bodies, query strings, and sensitive headers. Keep secrets and unnecessary personal data out of logs, spans, and exception payloads.
+- Preserve SDK `parentbased_always_on`; never configure sampler overrides that drop traces before the Collector. Collector tail sampling retains traces with any ERROR span or latency above the configured threshold and samples the remainder by configured percentage; logs/metrics are unsampled. Upstream drops, including unsampled parents, cannot be recovered; downstream sampling must honor the retention policy.
+- Route each trace to one tail-sampling Collector; size decision windows/capacity for traffic and late spans. Pending traces/decisions are memory-only: restarts, overload, and late arrivals can lose error evidence or traces.
+- Match service/environment attributes across signals and Compose log labels. Generate a fresh `service.instance.id` per SDK startup, preserving env/host/process attributes and overriding static IDs. Exclude trace/user/request IDs from metric dimensions and Loki index labels; exclude instance/task IDs from Loki index labels.
+- Collect local Docker logs only with `telemetry.logs: 'true'`; exclude Collector diagnostics.
+- Preserve `file_storage` exporter queues and log offsets on the local named volume. Offsets alone do not guarantee delivery; buffers, retry limits, and storage loss can lose telemetry.
 
 ### Audit
 
