@@ -316,7 +316,12 @@ describe('GlobalExceptionFilter', () => {
 
                 await filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.error).toHaveBeenCalledWith(expect.objectContaining({ data: { context } }));
+                expect(mockLoggerPort.error).toHaveBeenCalledWith({
+                    class: GlobalExceptionFilter.name,
+                    method: 'catch',
+                    message: thrown.message,
+                    error: thrown,
+                });
                 expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
             });

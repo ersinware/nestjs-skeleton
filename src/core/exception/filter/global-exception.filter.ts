@@ -17,6 +17,7 @@ import {
     ExceptionKind,
     ResourceNotFoundMessage,
     SystemMessage,
+    toError,
 } from 'src/shared/exception';
 
 /**
@@ -299,22 +300,20 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     /**
-     * Builds the 5xx log payload, attaching the thrower's diagnostic `context` when present; a
-     * non-`Error` value is wrapped so the log always carries a stack.
+     * Builds the 5xx log payload with the original error for context serialization; a non-`Error`
+     * value is wrapped so the log always carries a stack.
      *
      * @param exception The caught value, of any type.
      * @returns The payload handed to the error log.
      */
     private createErrorLogPayload(exception: unknown): LogPayload {
-        const error = exception instanceof Error ? exception : new Error(String(exception)),
-            context = exception instanceof AppException ? exception.context : undefined;
+        const error = toError(exception);
 
         return {
             class: this.constructor.name,
             method: this.catch.name,
             message: error.message,
             error,
-            ...(context && { data: { context } }),
         };
     }
 }

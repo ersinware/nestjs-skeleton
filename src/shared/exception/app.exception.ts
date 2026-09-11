@@ -75,5 +75,5 @@ export function isExceptionOfKind(
     error: unknown,
     kind: ExceptionKind,
 ): error is Pick<AppException, 'kind' | 'message'> {
-    return error !== null && typeof error === 'object' && (error as { kind?: unknown }).kind === kind;
+    return error != null && typeof error === 'object' && (error as { kind?: unknown }).kind === kind;
 }

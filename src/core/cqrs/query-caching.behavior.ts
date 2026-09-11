@@ -11,7 +11,6 @@ import { TOKEN_CACHE_PORT } from 'src/core/cache';
 import type { IQueryBehavior } from 'src/core/cqrs/query.pipeline';
 import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/exception-tracker';
 import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { AppException } from 'src/shared/exception';
 
 /**
  * A query that participates in the read cache. Caching is a property of the QUERY, never of the
@@ -80,28 +79,15 @@ export class QueryCachingBehavior implements IQueryBehavior {
         const result = await next();
 
         void this.cachePort.set(key, result, query.cacheTtlSeconds, { useJitter: true }).catch((error: unknown) => {
-            this.reportCacheWriteFailure(error);
+            this.loggerPort.error({
+                class: this.constructor.name,
+                method: this.execute.name,
+                message: 'Background cache write failed.',
+                error,
+            });
+            this.exceptionTrackerPort.captureException(error);
         });
 
         return result;
-    }
-
-    /**
-     * Reports a detached write's failure without rejecting the completed query. Redis failures
-     * already fail open in the adapter; this path owns unexpected errors outside the HTTP filter.
-     *
-     * @param error The original cache-write rejection
-     */
-    private reportCacheWriteFailure(error: unknown) {
-        const context = error instanceof AppException ? error.context : undefined;
-
-        this.loggerPort.error({
-            class: this.constructor.name,
-            method: this.execute.name,
-            message: 'Background cache write failed.',
-            error,
-            ...(context && { data: { context } }),
-        });
-        this.exceptionTrackerPort.captureException(error);
     }
 }

@@ -10,6 +10,7 @@ import { Command, type ICommand, type IQuery } from '@nestjs/cqrs';
 import { SpanStatusCode, trace } from '@opentelemetry/api';
 import type { ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 import type { IQueryBehavior } from 'src/core/cqrs/query.pipeline';
+import { toError } from 'src/shared/exception';
 
 /** The dispatched message's role, carried as a span attribute so a query and a command never merge. */
 enum MessageKind {
@@ -48,9 +49,7 @@ export class TracingBehavior implements ICommandBehavior, IQueryBehavior {
                 try {
                     return await next();
                 } catch (error) {
-                    if (error instanceof Error) {
-                        span.recordException(error);
-                    }
+                    span.recordException(toError(error));
 
                     span.setStatus({ code: SpanStatusCode.ERROR });
 
