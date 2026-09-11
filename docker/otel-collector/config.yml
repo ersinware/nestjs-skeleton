@@ -1,75 +1,52 @@
-# OpenTelemetry Collector — the single telemetry gateway. The app pushes traces and metrics here
-# over OTLP and writes logs to stdout; where the collector ships them is decided by the
-# OTEL_COLLECTOR_* variables it starts with, so a backend swap never touches the app.
-#
-# Portable base: nothing here assumes a host, so it runs as-is in compose, on a VM, or as a Fargate
-# sidecar. Docker-host concerns are separate `--config` overlays (merged; lists replace):
-#   docker-logs.yml — container stdout from Docker's json-file logs (a Fargate task has none)
-#   scrape.yml      — self-hosted Postgres/Redis exporters (RDS/ElastiCache report to CloudWatch)
-#
-# Every backend (Tempo, Prometheus, Loki, Grafana Cloud) ingests OTLP/HTTP, so one exporter with
-# per-signal endpoints covers dev and prod.
-#
-# OTEL_TAIL_SAMPLING_PERCENTAGE: 100 keeps every trace (default), 10 keeps 1 in 10 of the ordinary
-# ones. Errors and slow traces are always kept.
+# Forwarding configuration with local persistent queues; Grafana Cloud stores telemetry history.
+# Use localhost binding on Fargate; Compose needs the container interface.
+extensions:
+    # Shared by exporter queues and local Docker log read offsets.
+    file_storage:
+        directory: /var/lib/otelcol
+        create_directory: true
+        fsync: true
 
 receivers:
     otlp:
         protocols:
             http:
-                endpoint: 0.0.0.0:4318
-            grpc:
-                endpoint: 0.0.0.0:4317
+                endpoint: ${env:OTEL_COLLECTOR_LISTEN_ADDRESS}
 
 processors:
-    # Above the soft limit new data is refused (the app's exporters fail open),
-    # above soft + spike GC is forced. Both are set beside the container's memory limit.
     memory_limiter:
         check_interval: 1s
-        limit_mib: ${env:OTEL_COLLECTOR_MEMORY_LIMIT_MIB}
-        spike_limit_mib: ${env:OTEL_COLLECTOR_MEMORY_SPIKE_LIMIT_MIB}
-
-    # Policies are OR-ed: a trace is kept if any policy elects it.
-    tail_sampling:
-        # Longest expected request plus the SDK's export interval, or late spans are judged as a
-        # truncated trace.
-        decision_wait: 30s
-        # Traces held in memory while waiting: at least rate x decision_wait, with headroom for bursts.
-        # Scale these two together with traffic; decision_wait stays.
-        num_traces: 100000
-        expected_new_traces_per_sec: 1000
-        policies:
-            - name: keep-errors
-              type: status_code
-              status_code:
-                  status_codes: [ERROR]
-            - name: keep-slow
-              type: latency
-              latency:
-                  threshold_ms: 200
-            - name: sample-the-rest
-              type: probabilistic
-              probabilistic:
-                  sampling_percentage: ${env:OTEL_TAIL_SAMPLING_PERCENTAGE}
-
-    # After sampling, so only kept traces are batched.
-    batch: {}
+        limit_mib: 400
+        spike_limit_mib: 100
+    batch:
+        timeout: 5s
+        send_batch_size: 512
+        send_batch_max_size: 1024
 
 exporters:
-    # Local: the three stores, empty Authorization (ignored by unauthenticated backends).
-    # Grafana Cloud: all three on the gateway, Authorization = `Basic <base64 instance:token>`.
     otlp_http:
-        traces_endpoint: ${env:OTEL_COLLECTOR_TRACES_ENDPOINT}
-        metrics_endpoint: ${env:OTEL_COLLECTOR_METRICS_ENDPOINT}
-        logs_endpoint: ${env:OTEL_COLLECTOR_LOGS_ENDPOINT}
+        # Portal OTLP gateway base, including /otlp; exporter adds /v1/<signal>.
+        endpoint: ${env:GRAFANA_CLOUD_OTLP_ENDPOINT}
         headers:
-            Authorization: ${env:OTEL_COLLECTOR_AUTHORIZATION}
+            Authorization: ${env:GRAFANA_CLOUD_OTLP_HEADERS}
+        timeout: 10s
+        sending_queue:
+            enabled: true
+            storage: file_storage
+            num_consumers: 2
+            queue_size: 256
+        retry_on_failure:
+            enabled: true
+            initial_interval: 1s
+            max_interval: 30s
+            max_elapsed_time: 300s
 
 service:
+    extensions: [file_storage]
     pipelines:
         traces:
             receivers: [otlp]
-            processors: [memory_limiter, tail_sampling, batch]
+            processors: [memory_limiter, batch]
             exporters: [otlp_http]
         metrics:
             receivers: [otlp]

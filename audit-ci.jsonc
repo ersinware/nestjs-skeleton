@@ -1,22 +1,5 @@
 {
-    // Fail the build on `high` and `critical` advisories.
     "high": true,
-
-    // Allowlisted advisories. Every entry MUST have a corresponding note in docs/issue/.
-    // See: docs/issue/audit-brace-expansion.md
-    "allowlist": [
-        // GHSA-mh99-v99m-4gvg — brace-expansion DoS (unbounded expansion → OOM).
-        // Patched only in brace-expansion@5.0.8; the 1.x/2.x lines have NO patched release.
-        // Reached exclusively through devDependencies (eslint, @nestjs/cli, @swc/cli,
-        // spectral, openapi-typescript) via minimatch@3/5/9, which pin `brace-expansion@^1|^2`.
-        // A global override to 5.0.8 is NOT possible: its CommonJS entry exports a namespace
-        // object, while minimatch@3/5/9 call the module itself as a function.
-        // Remove this entry once those minimatch versions move to brace-expansion@^5.
-        "GHSA-mh99-v99m-4gvg"
-    ],
-
-    // Surface allowlist drift: report entries that are still found, and entries that no
-    // longer match anything (i.e. upstream fixed it and the allowlist can be pruned).
     "show-found": true,
     "show-not-found": true
 }

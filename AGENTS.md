@@ -58,7 +58,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Outbound query handlers use one purpose-specific local port; compose sources behind it in adapters, even for forwarding/merging (§ Adapters). Static permission catalogs need no outbound port.
 - Controllers/facades/listeners/crons dispatch through pipelines, never raw buses or direct handler calls. Exceptions: liveness (§ Health Probes), cache eviction (§ Events & Messaging).
 - Handlers inject ports directly, never pipelines/buses; write decisions must not use cached reads (§ Data & State).
-- Payload/result fields and arrays are `readonly`; preserve cache-key/result stability. HTTP edges map read-models to DTOs.
+- Payload/result fields and arrays are `readonly`; preserve cache-key/result stability. HTTP mapping: § DTOs & Responses.
 - Pipelines wrap Nest buses, never override their tokens. `CqrsPipelineModule` re-exports `CqrsModule` for handler registration; behavior order belongs in `src/core/cqrs/module.ts`.
 - `TracingBehavior`: outermost on both pipelines; one named span per dispatch, recording errors and rethrowing unchanged (§ Exceptions).
 - `QueryCachingBehavior`: query-owned opt-in cache-aside via `ICacheableQuery` (`cacheKey()`, `cacheTtlSeconds`). Cache writes are fire-and-forget; catch unexpected rejections, error-log and capture via observability ports without rethrowing.
@@ -212,47 +212,45 @@ Paths are version-neutral and relative to the global prefix.
 
 ### HTTP Caching
 
-- `core/http/caching`: `HttpCacheInterceptor` sets policy; `httpCacheHook` (`main.ts` Fastify `onSend`) gives cacheable GET/HEAD 200s weak ETags and matching `If-None-Match` a 304. Errors/missing policies get `no-store`.
-- GET/HEAD methods require `@HttpCache(HttpCachePolicy.X)`; others forbid it and get `no-store`. Violations throw `SystemException`. No class decorators: future POSTs would inherit them.
-- Use `NO_STORE` for probes/instant state, `PRIVATE_REVALIDATE` for identity-scoped reads (default), and `PUBLIC_REVALIDATE` for identity-free data suitable for a CDN.
-- No freshness (`max-age`): server round-trips retain guards/audit/revalidation. Exception only by design for identity-free, non-audited public data. Client stale-while-revalidate owns round-trip reduction.
-- ETags do not skip handlers; compute savings belong to CQRS caching. A BFF forwards `If-None-Match` inward and `ETag` / `Cache-Control` / 304 outward with its own fetch cache disabled; the browser owns the validator.
+- GET/HEAD handlers require method-level `@HttpCache(HttpCachePolicy.X)`; forbid it on classes/other methods. Missing GET/HEAD or misplaced non-GET/HEAD policies throw `SystemException`; other methods use `no-store`.
+- Use `NO_STORE` for probes, tokens, and non-storable data; prefer `PRIVATE_REVALIDATE` for identity-scoped reads. Reserve `PUBLIC_REVALIDATE` for identity-free, shareable data.
+- Require revalidation before reuse, preserving guards/audit; allow freshness only by explicit design for identity-free, non-audited public data.
+- `core/http/caching`: `HttpCacheInterceptor` sets policy; `httpCacheHook` (`main.ts`, Fastify `onSend`) forces errors/missing policy headers to `no-store` and gives storable GET/HEAD 200 string/Buffer bodies weak ETags; matching `If-None-Match` returns bodyless 304.
+- ETags save response transfer, not handler execution (§ CQRS).
+- The API is designed to run behind a BFF. Disable BFF fetch caching; forward the browser's `If-None-Match` upstream and `ETag`/`Cache-Control`/304 downstream. Preserve the representation when forwarding its ETag; the browser owns the validator.
 
 ### DTOs & Responses
 
-- Request body: HTTP-method prefix: `post-user.dto.ts` / `PostUserDto`
-- Query/response/error prefixes: `query-` / `response-` / `error-` (`QueryPaginationDto`, `ResponseUserDto`, `ErrorDefaultDto`).
-
-- Every DTO: `@ApiSchema({ name, description })`, name = class minus `Dto`, description = purpose sentence. Apply § JSDoc; document property meanings.
-- All DTOs use class `@Exclude()` + property `@Expose()`. Mapped types redeclare class exclusion only; property metadata inherits.
-- First check `src/core/http/validation/decorator/` for composed validation + `ApiProperty`; override field labels only when non-default. Otherwise use raw validators + `@ApiProperty` for one-off fields.
-- Every validator needs a field-label-based custom `message`, never library defaults leaking regex/property names. Boot env validation is exempt: operators need variable names.
-- Response DTOs have no raw validators: express all contract constraints through `@ApiProperty` (`minimum`, lengths, items, enum, etc.). Existing composed decorators remain as the common metadata source. Input optional fields use `@IsOptional()`; that does not override the response-validator restriction.
-- Every property is `readonly`: required `readonly email!: string`, optional `readonly search?: string`; never combine `!` and `?`. No property may lack its applicable exposure, documentation, and validation decorators.
-- Compose field decorators on second use, never first; migrate both uses to centralize limits.
-- `ResponseInterceptor` wraps responses; never wrap manually. Use `QueryPaginationDto` for pagination input and `ResponsePaginationDto` for output.
+- Body DTOs use HTTP-method prefixes (`post-user.dto.ts` / `PostUserDto`); path/query/output/error DTOs use `param-`/`query-`/`response-`/`error-`.
+- Every DTO declares `@Exclude()` and `@ApiSchema({ name, description })`: name = class minus `Dto`; description = purpose. Expose each field with `@Expose()` and document it; property JSDoc explains meaning (§ JSDoc). Mapped DTOs redeclare class decorators, inheriting unchanged field metadata.
+- Reuse matching decorators from `src/core/http/validation/decorator/`; override labels only when needed. One-off fields use raw validators + `@ApiProperty`; compose on the second use of the same field contract and migrate both uses.
+- Keep OpenAPI constraints aligned with field contracts. HTTP validation errors need field-label-based custom messages, supplied by decorators or constraints.
+- Validate inputs; optional fields use direct/inherited/composed `@IsOptional()`. Responses add no raw validators; document constraints through `@ApiProperty` or existing composed field decorators.
+- Properties are `readonly`; use `?` for optional fields and `!` for required fields without initialization. Preserve applicable exposure, documentation, and input validation.
+- Convert read-models to response DTOs at HTTP edges with `plainToInstance` or explicit DTO construction; return annotations alone do not filter fields (§ CQRS).
+- `ResponseInterceptor` alone adds the success `{ data }` envelope; keep 204/304 bodyless. Errors: § Exceptions. Pagination uses `QueryPaginationDto` and `ResponsePaginationDto`.
 
 ### API Documentation
 
-- `ApiDefault*` message parameters use `string` with the corresponding shared `DEFAULT`, never enum types. HTTP validation descriptions use `core/http`'s `RequestValidationMessage` (`PAYLOAD`/`PARAM`), not shared taxonomy vocabulary or runtime validation messages.
-- Document endpoints first with `@ApiTags`, `@ApiOperation`, and `ApiDefault*`. Check `src/core/doc/decorator/` before adding raw `@ApiResponse`.
-- Status descriptions cover all causes: one cause → its message; several → generic default. No endpoint cause-enumeration enums; clients branch on status and runtime messages supply specifics.
-- `core/doc` deliberately owns API-wide `APITag` / versioned `doc.config.ts` descriptions; new tags/versions require descriptions at compile time.
+- Document endpoint tags, operations, authentication, and success/applicable error responses. Reuse `src/core/doc/decorator/` when status/body contracts match; otherwise use raw Swagger decorators.
+- Standard error decorators accept `message: string`, defaulting to the corresponding shared `DEFAULT`, never module-specific enum types.
+- Error descriptions cover all causes: masked errors use public defaults (§ Exceptions); otherwise one cause uses its client-safe message, several use a generic description. Validation-only 400s use `RequestValidationMessage.PAYLOAD`/`PARAM`. No endpoint cause-enumeration enums; clients branch on status, not message text.
+- Declare payload schemas without outer envelopes; `swagger-document.factory.ts` adds `data`/`error`. Document bodyless responses without body schemas. DTO metadata: § DTOs & Responses; 304 metadata: `@HttpCache` (§ HTTP Caching).
+- Keep controller tags aligned with `APITag` in `src/core/doc/doc.config.ts`; add `VERSION_CONFIG` descriptions for every new tag/version.
 
 ## Observability
 
-Telemetry: OTLP→Collector + JSON stdout; store routing in `docker/otel-collector/`, never app code. Observability Compose uses local stores; its header describes intended ECS sidecars. Sentry handles exceptions separately.
-
-- `instrument.ts`: `skipOpenTelemetrySetup: true` prevents Sentry tracer ownership. `tracing.ts` owns OTel, using `SentryContextManager` for exception request scope.
-- `@fastify/otel` in `tracing.ts` names spans after matched routes and sets `http.route`. Keep fs/net/dns instrumentation off. `OTEL_SEMCONV_STABILITY_OPT_IN=http` selects stable HTTP metrics (`http_server_request_duration_seconds`); `instrumentation-pg` traces the chosen `pg` driver.
-- Sampling: SDK head `OTEL_TRACES_SAMPLER*` + Collector tail policies. Tempo `metrics_ingestion_time_range_slack` > Collector `decision_wait` keeps delayed spans in metrics.
-- Handlers never call `ILoggerPort` / `IExceptionTrackerPort`; raised exceptions follow § Exceptions. For other branches, choose by who acts and whether recovery is automatic:
-
-- `captureException`: Human intervention required; failure will not self-heal.
-- `logger.warn`: Self-healing failure with a unique root-cause breadcrumb, and an existing metric/Sentry alert already brings someone to investigate.
-- `logger.info`: Operationally significant transitions, not routine chatter or auditable facts.
-- Silent catch: Fully self-healing failure nobody investigates; explain why, prevent an unhandled rejection, and do not rethrow. Retryable event work must retain failure status, never appear completed.
-- Relay failures follow the same reporting policy; monitor pending age, retry backlog, and stalled delivery. Escalate failures requiring intervention; avoid per-attempt duplicate reports.
+- Grafana Cloud stores telemetry: traces/metrics via OTLP→Collector; JSON stdout via local Collector→Loki. Fargate FireLens→Loki is the deployment plan, not implemented. Keep routing/credentials in deployment configuration, never application code. Sentry owns exception tracking; audit remains in DB.
+- Local dev/prod Compose uses the optional `observability` profile and explicit SDK enablement; no local telemetry stores. `OTEL_SDK_DISABLED` controls the app SDK, not stdout logging or the Collector.
+- App `OTEL_*` settings belong in app env; Collector settings/Cloud credentials belong in ignored `.env.observability` (template: `.env.observability.example`), never the API container or image. `GRAFANA_CLOUD_OTLP_HEADERS` contains only the Authorization value (`Basic <base64>`), not `Authorization=`.
+- Initialize `reflect-metadata` → `instrument.ts` → `tracing.ts` before application imports. OTel owns tracing; retain Sentry `skipOpenTelemetrySetup: true` and `SentryContextManager`.
+- Keep Fastify route-based spans/`http.route`, stable HTTP metrics (`OTEL_SEMCONV_STABILITY_OPT_IN=http`), and pg instrumentation; disable fs/net/dns instrumentation. Preserve active trace context and Pino `traceId`/`spanId` correlation.
+- Handlers never call logger/tracker ports. Report at the owning boundary (§ Exceptions, § CQRS): unexpected/actionable failures → error + Sentry; self-healing failures needing a diagnostic breadcrumb → warn with established alert coverage; significant operational transitions → info. Audit facts: § Audit; connection episodes: § Dependency Outages.
+- Swallow failures silently only where the contract permits fail-open/automatic recovery; explain why and handle rejections. Retryable delivery must remain failed (§ Events & Messaging).
+- Monitor relay backlog age, retries, and stalls; escalate actionable failures without duplicate per-attempt reports (§ Events & Messaging).
+- Default SDK head sampling to `parentbased_traceidratio` / `1` for Grafana Cloud Adaptive Traces; coordinate upstream BFF sampling, since head-dropped traces cannot be recovered, including unsampled parents. Collectors only forward; no local tail sampling.
+- Match service/environment resource attributes across signals; Compose log labels must match app OTel attributes. Local Docker log collection requires `telemetry.logs: 'true'`; exclude Collector diagnostics. Keep trace/user/task IDs out of Loki index labels. Configure Grafana correlations against emitted fields; preserve Pino field names rather than renaming them to UI labels.
+- Local Collector exporter queues and log read offsets use `file_storage` on a named volume; offsets alone do not guarantee delivery. Pre-queue buffers, bounded retries/capacity, and storage loss still prevent end-to-end delivery guarantees; `down:clean` deletes the queue volume. AWS storage/routing configuration is deferred to deployment.
 
 ### Audit
 
@@ -309,4 +307,4 @@ Record connection transitions once per episode: `isDown` gates `warn` with drive
 
 ## Reference Stack
 
-NestJS 11+ / SWC; Fastify; Drizzle / PostgreSQL (`pg`) with optional replica; ioredis; in-process Nest event emitter; Gmail via Google APIs; Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Tempo / Prometheus / Loki / Grafana (including Cloud deployment target); Vitest / Supertest / Spectral / Schemathesis. Queue and rate limiting are not implemented (§ Events & Messaging, § Security & Sessions).
+NestJS 11+ / SWC; Fastify; Drizzle / PostgreSQL (`pg`) with optional replica; ioredis; in-process Nest event emitter; Gmail via Google APIs; Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud (Loki logs, managed traces/metrics); Vitest / Supertest / Spectral / Schemathesis. Queue and rate limiting are not implemented (§ Events & Messaging, § Security & Sessions).

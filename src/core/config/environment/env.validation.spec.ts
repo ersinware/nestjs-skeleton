@@ -56,6 +56,7 @@ describe('env.validation.config', () => {
         SENTRY_DSN: 'https://publickey@sentry.example/1',
         SENTRY_ENVIRONMENT: ExceptionTrackerEnvironment.TEST,
 
+        OTEL_SDK_DISABLED: true,
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://localhost:4318/v1/traces',
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://localhost:4318/v1/metrics',
         OTEL_SERVICE_NAME: 'nestjs-skeleton',
@@ -84,12 +85,14 @@ describe('env.validation.config', () => {
             DATABASE_POOL_SIZE: '15',
             REDIS_CACHE_TLS: 'true',
             REDIS_SESSION_TLS: 'false',
+            OTEL_SDK_DISABLED: 'false',
         });
 
         expect(result.PORT).toBe(4000);
         expect(result.DATABASE_POOL_SIZE).toBe(15);
         expect(result.REDIS_CACHE_TLS).toBe(true);
         expect(result.REDIS_SESSION_TLS).toBe(false);
+        expect(result.OTEL_SDK_DISABLED).toBe(false);
     });
 
     it('should throw an error if a required field is missing', () => {
@@ -188,6 +191,7 @@ describe('env.validation.config', () => {
         ['JWT_ACCESS_SECRET', '   '],
         ['JWT_REFRESH_SECRET', 123],
         ['OTEL_TRACES_SAMPLER', 'unknown'],
+        ['OTEL_SDK_DISABLED', 'yes'],
         ['OTEL_RESOURCE_ATTRIBUTES', 'missing-assignment'],
     ] as const)('should reject malformed %s', (key, value) => {
         expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);

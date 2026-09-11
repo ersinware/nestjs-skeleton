@@ -1,16 +1,11 @@
-# Application stack — everything the API needs to RUN, and nothing else.
-#
-# Observability lives in docker-compose.observability.yml as a SEPARATE Compose project. The two
-# stacks meet only on the `api-network` bridge, owned by neither: it is declared `external` in both
-# and created by `npm run docker:network`, so each stack starts, restarts and stops without the
-# other (the OTLP exporters fail open; set OTEL_SDK_DISABLED=true to silence them).
+# Local application stack; enable the observability profile to send telemetry to Grafana Cloud.
 
 # Stamps the compose service name — and, where a container carries one, its `service.name` label —
 # into each log line; the collector names the source from them (docker-logs.yml).
 x-logging: &logging
     driver: json-file
     options:
-        labels: com.docker.compose.service,service.name
+        labels: com.docker.compose.service,service.name,deployment.environment.name,telemetry.logs
 
 services:
     postgres:
@@ -54,6 +49,8 @@ services:
             - api-network
 
     api:
+        environment:
+            OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:?}
         # Build context is common for both envs
         build:
             context: .
@@ -61,13 +58,36 @@ services:
         # one `service.name` in Grafana.
         labels:
             service.name: ${OTEL_SERVICE_NAME:?}
+            deployment.environment.name: local
+            telemetry.logs: 'true'
         logging: *logging
         networks:
             - api-network
 
+    otel-collector:
+        profiles: [observability]
+        image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+        # Linux Docker log files require root; Fargate does not load this overlay.
+        user: '0'
+        mem_limit: 512m
+        stop_grace_period: 30s
+        env_file:
+            - path: .env.observability
+              required: true
+        command:
+            - --config=/etc/otelcol/config.yml
+            - --config=/etc/otelcol/docker-logs.yml
+        ports:
+            - '127.0.0.1:4318:4318'
+        volumes:
+            - ./docker/otel-collector/config.yml:/etc/otelcol/config.yml:ro
+            - ./docker/otel-collector/docker-logs.yml:/etc/otelcol/docker-logs.yml:ro
+            - /var/lib/docker/containers:/var/lib/docker/containers:ro
+            - otel_collector_data:/var/lib/otelcol
+        networks: [api-network]
+
 networks:
-    # Owned by NEITHER stack. Declaring it non-external here would stamp it with this project's
-    # labels, and the observability project would then refuse to attach to it.
+    # Retained for existing local environments; npm scripts create it if missing.
     api-network:
         external: true
         name: api-network
@@ -75,3 +95,4 @@ networks:
 volumes:
     pg_data_vol:
     redis_session_data:
+    otel_collector_data:

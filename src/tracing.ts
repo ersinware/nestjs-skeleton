@@ -15,6 +15,7 @@ import { SentryContextManager } from '@sentry/nestjs';
 import { ENV, Environment, RUNTIME_FLAG } from 'src/core/config';
 
 if (
+    process.env[ENV.OTEL_SDK_DISABLED] !== 'true' &&
     process.env[ENV.NODE_ENV] !== Environment.TEST &&
     !process.env[RUNTIME_FLAG.VITEST] &&
     process.env[RUNTIME_FLAG.CI] !== 'true'
