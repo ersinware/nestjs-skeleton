@@ -9,6 +9,7 @@ import { IncomingMessage } from 'http';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
 import { ENV, Environment, ROUTE_DOCS, ROUTE_HEALTH, VERSION_PREFIX } from 'src/core/config';
 import { LoggerAdapter } from 'src/core/observability/logger/adapter/logger.adapter';
+import { serializeError } from 'src/core/observability/logger/error-serializer';
 import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.port';
 
 /**
@@ -47,18 +48,7 @@ const ENVIRONMENT_TO_LEVEL: Record<Environment, string> = {
                             // Response headers are dropped wholesale: Set-Cookie and any future
                             // token-bearing header would land there by default.
                             res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
-                            error: function serialize(error: unknown): unknown {
-                                if (error instanceof Error) {
-                                    return {
-                                        type: error.name,
-                                        message: error.message,
-                                        stack: error.stack,
-                                        ...(error.cause !== undefined && { cause: serialize(error.cause) }),
-                                    };
-                                }
-
-                                return error;
-                            },
+                            error: serializeError,
                         },
                         formatters: {
                             level: (label: string) => ({ level: label }),

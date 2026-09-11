@@ -186,7 +186,7 @@ export class TokenAdapter implements ITokenPort {
         } catch (error) {
             if (error instanceof JsonWebTokenError) {
                 throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, {
-                    cause: this.toError(error),
+                    cause: error,
                 });
             }
 
@@ -207,17 +207,5 @@ export class TokenAdapter implements ITokenPort {
         if (actual !== expected) {
             throw new UnauthenticatedException(`Token type mismatch: expected '${expected}'.`);
         }
-    }
-
-    /**
-     * Normalizes unknown throw values into a real Error instance for nested-cause compatibility.
-     *
-     * @param error A value caught from an external library
-     * @returns A concrete Error object for {@link ErrorOptions.cause}
-     */
-    private toError(error: unknown): Error {
-        if (error instanceof Error) return error;
-
-        return new Error(typeof error === 'string' ? error : 'Token validation failed');
     }
 }
