@@ -25,14 +25,11 @@ const TTL_UNIT_SECONDS: Record<string, number> = {
 };
 
 /**
- * Single source of every Redis key this adapter touches, so a mutator and the scan pattern that
- * deletes its keys cannot drift apart on a rename.
+ * Single source of the Redis keys used by session and version operations.
  */
 const SessionKeys = {
     session: (id: string, jti: string) => `session:${id}:${jti}`,
-    sessionPattern: (id: string) => `session:${id}:*`,
     tombstone: (id: string, jti: string) => `rotated:${id}:${jti}`,
-    tombstonePattern: (id: string) => `rotated:${id}:*`,
     version: (id: string) => `version:${id}`,
 };
 
@@ -232,19 +229,6 @@ export class SessionAdapter implements ISessionPort {
     }
 
     /**
-     * Sweeps every session key and rotation tombstone of a principal. Tombstones must go with the
-     * sessions: a survivor would classify a token of the revoked family as replay within grace.
-     *
-     * @param id The principal identifier.
-     */
-    async closeAllSessions(id: string) {
-        await Promise.all([
-            this.deleteByPattern(SessionKeys.sessionPattern(id)),
-            this.deleteByPattern(SessionKeys.tombstonePattern(id)),
-        ]);
-    }
-
-    /**
      * Advances the session version via the monotonic-max Lua script. TTL-bounded to the
      * refresh-token lifetime, the longest a token carrying a stale version can live.
      *
@@ -266,26 +250,6 @@ export class SessionAdapter implements ISessionPort {
         const version = await this.run(() => this.redis.get(SessionKeys.version(id)));
 
         return version === null ? null : Number(version);
-    }
-
-    /**
-     * Scans and deletes every key matching the pattern.
-     *
-     * @param pattern The Redis key pattern to sweep.
-     */
-    private async deleteByPattern(pattern: string) {
-        await this.run(async () => {
-            let cursor = '0';
-
-            do {
-                const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-                cursor = nextCursor;
-
-                if (keys.length > 0) {
-                    await this.redis.del(...keys);
-                }
-            } while (cursor !== '0');
-        });
     }
 
     /**

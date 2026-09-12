@@ -7,7 +7,6 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
@@ -55,7 +54,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @param sessionPort The port used to atomically rotate the refresh session
      * @param eventPublisherPort The port used to publish the reuse-detection event
      * @param auditPort The port used to record refresh-reuse decisions
-     * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
@@ -63,7 +61,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
     ) {}
 
     /**
@@ -154,22 +151,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         await this.auditPort.record({
             action: AuditAction.REFRESH_REUSE_DETECTED,
             targetId: sub,
-        });
-
-        // Revoke the whole refresh family (RFC 9700) so a stolen token cannot keep minting sessions.
-        // Best-effort, fire-and-forget: the durable cut-off is the version bump the event drives,
-        // so a failed sweep delays the cut rather than defeating it and must not turn the reply
-        // into a 503.
-        void this.sessionPort.closeAllSessions(sub).catch((error: unknown) => {
-            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return;
-            }
-
-            this.errorReporterPort.report(error, {
-                class: this.constructor.name,
-                method: this.execute.name,
-                message: 'Best-effort session cleanup failed.',
-            });
         });
 
         // No context: the reuse is audited above, and the response must stay indistinguishable from

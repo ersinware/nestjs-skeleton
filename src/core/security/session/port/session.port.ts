@@ -74,16 +74,6 @@ export interface ISessionPort {
     closeSession(id: string, jti: string): Promise<void>;
 
     /**
-     * Removes every refresh session for a principal, logging them out of all devices. Rotation
-     * tombstones go too: a survivor would let a token of the revoked family classify as replay
-     * within grace instead of reuse.
-     *
-     * @param id The principal identifier.
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
-     */
-    closeAllSessions(id: string): Promise<void>;
-
-    /**
      * Advances the cached session version with a monotonic-max write: the stored value moves only
      * when `version` is strictly greater, so a racing stale write cannot resurrect revoked tokens.
      * Every write renews the key's TTL, keeping a live session's key alive for the fail-closed
