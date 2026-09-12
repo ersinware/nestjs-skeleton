@@ -45,7 +45,7 @@ export function createRedisClient(
 
     // One log per outage episode, gated on a per-client transition flag: ioredis re-emits 'error' on
     // every reconnect attempt while the server is unreachable, so logging each one floods during an
-    // outage. No Sentry here — the health-endpoint alarm is the pager;
+    // outage. No Sentry here — dependency availability alarms are the pager;
     // this pair of transition logs is only the forensic breadcrumb that names the cause and the recovery.
     let isDown = false;
 

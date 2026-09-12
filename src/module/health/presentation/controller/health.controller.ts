@@ -22,6 +22,7 @@ import {
 } from 'src/core/doc';
 import { HttpCache, HttpCachePolicy } from 'src/core/http';
 import { Permissions, Public } from 'src/core/security/auth';
+import { CheckReadinessQuery } from 'src/module/health/application/query/check-readiness/query';
 import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
@@ -65,7 +66,7 @@ export class HealthController {
     checkLiveness() {}
 
     /**
-     * Readiness probe. Runs the full dependency check but discards the detail: the caller branches
+     * Readiness probe. Runs dependency checks and discards the detail: the caller branches
      * on the status code, and the endpoint is unauthenticated.
      *
      * @throws {ServiceUnavailableException} When any indicator fails; the global filter turns it into a bare 503.
@@ -77,12 +78,12 @@ export class HealthController {
     @ApiOperation({
         summary: 'Readiness probe',
         description:
-            'Reports whether the instance can serve traffic, checking every dependency. The status code is the whole answer; the failing dependency is never disclosed.',
+            'Reports whether the instance can serve traffic, checking readiness-critical dependencies. The status code is the whole answer; the failing dependency is never disclosed.',
     })
     @ApiNoContentResponse({ description: 'The instance is ready to serve traffic.' })
     @ApiServiceUnavailableResponse({ description: DependencyUnavailableMessage.DEFAULT })
     async checkReadiness() {
-        await this.queryPipeline.execute(new GetHealthStatusQuery());
+        await this.queryPipeline.execute(new CheckReadinessQuery());
     }
 
     /**

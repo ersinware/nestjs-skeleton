@@ -6,9 +6,9 @@
 import { Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { createRedisClient } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { createRedisClient } from 'src/core/redis';
 import { SessionCleanerAdapter } from 'src/core/security/session/adapter/session-cleaner.adapter';
 import { SessionHealthAdapter } from 'src/core/security/session/adapter/session-health.adapter';
 import { SessionAdapter } from 'src/core/security/session/adapter/session.adapter';

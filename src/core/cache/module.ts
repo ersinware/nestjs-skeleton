@@ -16,9 +16,9 @@ import { TOKEN_CACHE_CLEANER_PORT } from 'src/core/cache/port/cache-cleaner.port
 import { TOKEN_CACHE_EVICTION_PORT } from 'src/core/cache/port/cache-eviction.port';
 import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache/port/cache-health.port';
 import { TOKEN_CACHE_PORT } from 'src/core/cache/port/cache.port';
-import { createRedisClient } from 'src/core/cache/redis-client.factory';
 import { ENV } from 'src/core/config';
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { createRedisClient } from 'src/core/redis';
 
 /**
  * Module providing the cache client singleton and the cache ports to the modules that import it.

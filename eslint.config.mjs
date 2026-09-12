@@ -82,6 +82,7 @@ export default tseslint.config(
                 { type: 'core', pattern: 'src/core/observability/*' },
                 { type: 'core', pattern: 'src/core/security/*' },
                 { type: 'core', pattern: 'src/core/cache' },
+                { type: 'core', pattern: 'src/core/redis' },
                 { type: 'core', pattern: 'src/core/config' },
                 /**
                  * The CQRS pipeline is its OWN element, not a plain `core` concern: it is the one

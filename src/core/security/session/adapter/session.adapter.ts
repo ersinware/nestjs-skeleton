@@ -7,9 +7,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { ENV } from 'src/core/config';
+import { isRedisUnavailable } from 'src/core/redis';
 import type { ISessionPort } from 'src/core/security/session/port/session.port';
 import { RotateOutcome } from 'src/core/security/session/port/session.port';
-import { isRedisUnavailable } from 'src/core/security/session/redis-error.util';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 

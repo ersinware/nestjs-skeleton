@@ -19,6 +19,7 @@ import type { IDatabaseHealthPort } from 'src/core/database';
 import { TOKEN_DATABASE_HEALTH_PORT, TOKEN_DATABASE_REPLICA_HEALTH_PORT } from 'src/core/database';
 import type { ISessionHealthPort } from 'src/core/security/session';
 import { TOKEN_SESSION_HEALTH_PORT } from 'src/core/security/session';
+import type { ICheckReadinessPort } from 'src/module/health/application/query/check-readiness/port';
 import type { IGetHealthStatusPort } from 'src/module/health/application/query/get-health-status/port';
 import {
     GetHealthStatusResult,
@@ -31,7 +32,7 @@ import { SystemException } from 'src/shared/exception';
  * Implements the health read port with Terminus, composing the core health ports into one report.
  */
 @Injectable()
-export class HealthReaderAdapter implements IGetHealthStatusPort {
+export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadinessPort {
     /**
      * Creates the adapter.
      *
@@ -84,6 +85,30 @@ export class HealthReaderAdapter implements IGetHealthStatusPort {
                 () => this.checkDependency('session', this.sessionHealthIndicatorPort),
             ]),
         );
+    }
+
+    /**
+     * Runs readiness checks only; cache is intentionally excluded.
+     *
+     * @remarks If any dependency is not ready, `HealthCheckService` throws and the caller
+     * can map the result to readiness semantics.
+     */
+    async checkReadiness(): Promise<void> {
+        await this.health.check([
+            () =>
+                this.memory.checkHeap(
+                    'memory_heap',
+                    this.configService.getOrThrow<number>(ENV.HEALTH_HEAP_LIMIT_MB) * 1024 * 1024,
+                ),
+            () =>
+                this.memory.checkRSS(
+                    'memory_rss',
+                    this.configService.getOrThrow<number>(ENV.HEALTH_RSS_LIMIT_MB) * 1024 * 1024,
+                ),
+            () => this.checkDependency('database', this.databaseHealthIndicatorPort),
+            () => this.checkDependency('database_replica', this.databaseReplicaHealthIndicatorPort),
+            () => this.checkDependency('session', this.sessionHealthIndicatorPort),
+        ]);
     }
 
     /**

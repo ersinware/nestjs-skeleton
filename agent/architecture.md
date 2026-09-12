@@ -31,7 +31,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 ## Dependency Injection
 
-- Port bindings: Symbol token in the interface file; consumers `@Inject(TOKEN)`; module `{ provide: TOKEN, useClass: Adapter }`. One adapter class may serve several ports; use `useExisting` to share an instance.
+- Port bindings: Symbol token in the interface file; consumers `@Inject(TOKEN)`; module `{ provide: TOKEN, useClass: Adapter }`. Share identically configured adapters across ports with `useExisting`.
 - Value-parameterized adapters: undecorated classes + `useFactory`.
 - Redefined DI constructors must annotate token dependencies with `@Inject` at their new parameter positions, including those forwarded to `super`.
 - Register local providers; import modules exporting external providers. No project `@Global()` modules; exceptions: global `ConfigModule` and `EventEmitterModule.forRoot()`. Verify DI wiring separately; ESLint checks import boundaries.

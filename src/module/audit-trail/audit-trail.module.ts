@@ -24,7 +24,7 @@ import { AuditTrailController } from 'src/module/audit-trail/presentation/contro
         ListAuditTrailRecordsQueryHandler,
         GetAuditTrailRecordByIdQueryHandler,
         { provide: TOKEN_LIST_AUDIT_TRAIL_RECORDS_PORT, useClass: AuditTrailReplicaReaderAdapter },
-        { provide: TOKEN_GET_AUDIT_TRAIL_RECORD_BY_ID_PORT, useClass: AuditTrailReplicaReaderAdapter },
+        { provide: TOKEN_GET_AUDIT_TRAIL_RECORD_BY_ID_PORT, useExisting: TOKEN_LIST_AUDIT_TRAIL_RECORDS_PORT },
     ],
 })
 export class AuditTrailModule {}
