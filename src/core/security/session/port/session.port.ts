@@ -10,14 +10,14 @@ export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
 /**
  * The three mutually exclusive outcomes of an atomic refresh-session rotation. Exists so the caller
- * can react to each case: a lost concurrent-refresh race is benign (reject only that request),
+ * can react to each case: replay within grace rejects only that request and requires audit,
  * whereas a post-grace replay is the RFC 9700 reuse signal that must revoke the whole session family.
  */
 export enum RotateOutcome {
     /** The old session existed and was atomically swapped for the new one. */
     ROTATED = 'ROTATED',
 
-    /** The old session was already consumed but its tombstone is still within the grace window — a benign concurrent/duplicate refresh. */
+    /** The old session was already consumed but its tombstone is still within the grace window — concurrency and theft cannot be distinguished. */
     CONCURRENT_REPLAY = 'CONCURRENT_REPLAY',
 
     /** The old session was gone with no tombstone — a replay after the grace window, i.e. refresh-token reuse. */
@@ -52,7 +52,7 @@ export interface ISessionPort {
      * Atomically closes the current session and opens the next one in a single round trip, so no
      * intermediate state can be observed by a concurrent refresh — the old session doubles as the
      * single-use gate. A short-lived tombstone written in the same step classifies the outcome as a
-     * real rotation, a benign replay inside the grace window, or genuine post-grace reuse.
+     * real rotation, replay inside the grace window, or post-grace reuse.
      *
      * @param id The principal identifier.
      * @param oldJti The JWT ID of the refresh token being rotated away.
@@ -73,8 +73,8 @@ export interface ISessionPort {
 
     /**
      * Removes every refresh session for a principal, logging them out of all devices. Rotation
-     * tombstones go too: a survivor would let a token of the revoked family classify as a benign
-     * replay instead of reuse.
+     * tombstones go too: a survivor would let a token of the revoked family classify as replay
+     * within grace instead of reuse.
      *
      * @param id The principal identifier.
      * @throws {DependencyUnavailableException} When the session store is unreachable.

@@ -420,14 +420,13 @@ export class EnvironmentVariables {
     readonly ADMIN_INVITE_URL!: string;
 
     /**
-     * Grace window (e.g. '30s') during which a just-rotated refresh token is tombstoned rather than
-     * treated as reuse, so a legitimate concurrent/duplicate refresh is rejected as a benign conflict
-     * instead of triggering full session-family revocation.
+     * Grace window (e.g. '10s') during which replay of a just-rotated refresh token is audited and
+     * rejected as a conflict without full session-family revocation. Timing cannot prove legitimacy.
      */
     @IsString()
     @Matches(/^\d+[smhd]$/, {
         message:
-            'SESSION_ROTATION_GRACE_TTL must match the format: duration followed by s, m, h, or d (e.g., "30s", "1m")',
+            'SESSION_ROTATION_GRACE_TTL must match the format: duration followed by s, m, h, or d (e.g., "10s", "1m")',
     })
     readonly SESSION_ROTATION_GRACE_TTL!: string;
 

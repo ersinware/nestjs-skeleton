@@ -72,8 +72,8 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @param command The refresh token command parameters
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
-     * @throws {ResourceConflictException} When a concurrent refresh already rotated the session (benign — the client should retry with its latest token pair).
-     * @throws {DependencyUnavailableException} When the session cache is unreachable while syncing the version or rotating the session.
+     * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
+     * @throws {DependencyUnavailableException} When the session cache or audit store is unreachable.
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
@@ -124,7 +124,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 identity.sessionVersion,
             ),
             // The atomic rotation is both the single-use gate and the classifier: the grace
-            // tombstone tells a lost concurrent-refresh race apart from post-window reuse (RFC 9700).
+            // tombstone distinguishes replay within grace from post-window reuse, not concurrency from theft.
             outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.refreshTokenJti);
 
         if (outcome === RotateOutcome.ROTATED) {
@@ -132,7 +132,11 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         }
 
         if (outcome === RotateOutcome.CONCURRENT_REPLAY) {
-            // A duplicate refresh lost the race — benign. 409 for this request only; no audit.
+            // Timing cannot prove a replay is benign; preserve evidence without revoking sessions.
+            await this.auditPort.record({
+                action: AuditAction.REFRESH_CONCURRENT_REPLAY,
+                targetId: sub,
+            });
             throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
         }
 
