@@ -7,6 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import type { ICachePort } from 'src/core/cache/port/cache.port';
+import { isRedisUnavailable } from 'src/core/redis';
 import { SystemException } from 'src/shared/exception';
 
 const EMPTY_KEY_ERROR_MESSAGE = 'Cache key must be a non-empty string.';
@@ -14,9 +15,9 @@ const EMPTY_KEY_ERROR_MESSAGE = 'Cache key must be a non-empty string.';
 /**
  * Redis-backed implementation of the cache port.
  *
- * Every Redis failure is swallowed and the operation degrades to a cache miss: the caller falls back
- * to its authoritative source, so the failure is fully self-healing per request. No logging or
- * capture here — detection is the health alarm's job and the per-outage transition log in
+ * Only dependency-unavailable failures are fail-open; any other cache backend error is rethrown to
+ * avoid masking non-transient bugs, while still allowing transparent fallbacks for expected outages.
+ * No logging or capture here — detection is the cache availability alarm's job and the transition log in
  * `redis-client.factory.ts` names the cause; a per-call record would only flood during an outage.
  * Empty keys throw `SystemException`; JSON serialization errors propagate before the Redis call.
  */
@@ -34,7 +35,6 @@ export class CacheAdapter implements ICachePort {
      *
      * @param key Cache key.
      * @returns The typed value if found, otherwise null.
-     * @throws {SystemException} If the key is empty.
      */
     async get<T = string>(key: string): Promise<T | null> {
         if (!key) {
@@ -51,7 +51,9 @@ export class CacheAdapter implements ICachePort {
             }
 
             return this.safeParse<T>(value) as T;
-        } catch {
+        } catch (error) {
+            this.rethrowUnlessUnavailable(error);
+
             // Fail-open: indistinguishable from a cache miss to the caller, which re-reads its source.
             return null;
         }
@@ -65,7 +67,6 @@ export class CacheAdapter implements ICachePort {
      * @param ttlSeconds Optional time-to-live in seconds.
      * @param useJitter Adds random variation to the TTL, spreading expirations to avoid stampedes.
      * @param jitterMaxPercent Maximum percentage of the TTL to add as jitter.
-     * @throws {SystemException} If the key is empty.
      */
     async set(
         key: string,
@@ -98,8 +99,8 @@ export class CacheAdapter implements ICachePort {
             } else {
                 await this.redis.set(key, stringValue);
             }
-        } catch {
-            // Fail-open: the value simply isn't cached; the next read falls back to the source.
+        } catch (error) {
+            this.rethrowUnlessUnavailable(error);
         }
     }
 
@@ -107,7 +108,6 @@ export class CacheAdapter implements ICachePort {
      * Deletes a key from Redis.
      *
      * @param key Cache key.
-     * @throws {SystemException} If the key is empty.
      */
     async delete(key: string) {
         if (!key) {
@@ -118,8 +118,8 @@ export class CacheAdapter implements ICachePort {
 
         try {
             await this.redis.del(key);
-        } catch {
-            // Fail-open: a stale entry outlives its invalidation but expires with its TTL.
+        } catch (error) {
+            this.rethrowUnlessUnavailable(error);
         }
     }
 
@@ -136,5 +136,18 @@ export class CacheAdapter implements ICachePort {
         } catch {
             return value;
         }
+    }
+
+    /**
+     * Absorbs recognized Redis availability failures and rethrows other errors unchanged.
+     *
+     * @param error The caught error to classify.
+     */
+    private rethrowUnlessUnavailable(error: unknown) {
+        if (isRedisUnavailable(error)) {
+            return;
+        }
+
+        throw error;
     }
 }

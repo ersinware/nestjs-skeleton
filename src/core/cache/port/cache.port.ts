@@ -9,8 +9,9 @@
 export const TOKEN_CACHE_PORT = Symbol('TOKEN_CACHE_PORT');
 
 /**
- * Contract for cache reads, writes, and evictions. Implementations fail open: a backend failure
- * degrades to a cache miss, so callers never handle cache errors.
+ * Contract for cache reads, writes, and evictions. Recognized Redis availability failures
+ * degrade to a cache miss on reads and a no-op on writes/deletes. Other backend errors propagate
+ * unchanged; serialization and programming errors also propagate.
  */
 export interface ICachePort {
     /**

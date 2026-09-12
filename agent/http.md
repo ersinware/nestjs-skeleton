@@ -5,9 +5,9 @@
 Paths are version-neutral and relative to the global prefix.
 
 - `/health/live`: public, bodyless 204; no checks or dispatch.
-- `/health/ready`: public, bodyless 204 when all indicators pass, 503 on indicator failure; never disclose topology.
+- `/health/ready`: public, bodyless 204 when readiness indicators pass, 503 on their failure; never disclose topology.
 - `/health`: requires `Permission.HEALTH_DETAIL_READ`; returns indicator details with 200/503.
-- Readiness/detail run uncached checks for `HEALTH_INDICATOR_KEYS`: `memory_heap`, `memory_rss`, `database`, `database_replica`, `cache`, `session`. All affect readiness. Replica probe reuse: [Dependency Outages](observability.md#dependency-outages).
+- Checks are uncached: detail checks all `HEALTH_INDICATOR_KEYS`; readiness excludes `cache`. Replica probe reuse: [Dependency Outages](observability.md#dependency-outages).
 - Use readiness for traffic eligibility and liveness for restart/replacement decisions. Verify platform health-check consequences, including load-balancer checks; dependency outages must not restart healthy processes.
 - Preserve Terminus `ServiceUnavailableException`: the filter makes readiness 503 bodyless and preserves detailed indicator reports under `error`. Other failures follow [Exceptions](exceptions.md#exceptions); session unavailability can produce a standard guard 503 before detailed checks run.
 - Bound check execution within deployment probe timeouts. DB probes use the application's pool acquisition, server statement, and client query timeouts; allow response margin beyond the statement limit and deployment margin beyond acquisition + query waits. HTTP cache policy: [HTTP Caching](http.md#http-caching).

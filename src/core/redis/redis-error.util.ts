@@ -1,9 +1,9 @@
 /**
  * @file redis-error.util.ts
- * @description Redis availability classifier for session storage failures.
+ * @description Classifies Redis availability failures independently of consumer failure policies.
  */
 
-/** Transport error codes for the standalone session Redis connection. */
+/** Transport error codes for standalone Redis connections. */
 const CONNECTION_CODES = new Set([
     'ECONNREFUSED',
     'ECONNRESET',
@@ -29,7 +29,7 @@ const CONNECTION_MESSAGES = new Set([
  * Unknown, authentication, command and Lua errors remain unchanged.
  *
  * @param error The original driver failure
- * @returns Whether session storage is unavailable
+ * @returns Whether Redis is temporarily unavailable
  */
 export function isRedisUnavailable(error: unknown): boolean {
     if (!(error instanceof Error)) {

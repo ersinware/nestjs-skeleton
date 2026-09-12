@@ -28,4 +28,4 @@
 - Per application instance and client/pool, log observed outage transitions once: `warn` + driver error + `ConnectionLogMessage.LOST`, then `info` + `RESTORED`. Identify the connection; vocabulary belongs in `core/observability/logger`.
 - Redis client events own transition logs; PostgreSQL health probes own pool transition logs. Keep pool error listeners without duplicate reporting; share the probe when replica aliases primary.
 - Suppress duplicate outage logs/Sentry, preserving failure semantics ([Adapters](data-and-state.md#adapters), [Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics), [Exceptions](exceptions.md#exceptions), [Events & Messaging](events-and-messaging.md#events--messaging)).
-- Require regular external health checks and Grafana Cloud alert coverage; transition logs provide diagnostics ([Health Probes](http.md#health-probes)).
+- Require regular external health checks and Grafana Cloud alerts, including separate cache monitoring ([Health Probes](http.md#health-probes)); transition logs are diagnostic.
