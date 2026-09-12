@@ -29,12 +29,14 @@ describe('env.validation.config', () => {
         REDIS_CACHE_PORT: 6379,
         REDIS_CACHE_PASSWORD: 'redis-password',
         REDIS_CACHE_TLS: false,
+        REDIS_CACHE_MAX_RETRIES_PER_REQUEST: 0,
+        REDIS_CACHE_COMMAND_TIMEOUT: 0.1,
         REDIS_SESSION_HOST: 'localhost',
         REDIS_SESSION_PORT: 6380,
         REDIS_SESSION_PASSWORD: 'redis-password',
         REDIS_SESSION_TLS: false,
-        REDIS_MAX_RETRIES_PER_REQUEST: 3,
-        REDIS_COMMAND_TIMEOUT: 2,
+        REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 1,
+        REDIS_SESSION_COMMAND_TIMEOUT: 0.5,
 
         JWT_ACCESS_SECRET: 'access-secret',
         JWT_ACCESS_TTL: '15m',
@@ -127,13 +129,15 @@ describe('env.validation.config', () => {
         ['REDIS_SESSION_PORT', 65536],
         ['DATABASE_POOL_SIZE', 0],
         ['DATABASE_POOL_SIZE', Number.MAX_SAFE_INTEGER + 1],
-        ['REDIS_MAX_RETRIES_PER_REQUEST', -1],
+        ['REDIS_CACHE_MAX_RETRIES_PER_REQUEST', -1],
+        ['REDIS_SESSION_MAX_RETRIES_PER_REQUEST', -1],
         ['DATABASE_CONNECT_TIMEOUT', 0],
         ['DATABASE_STATEMENT_TIMEOUT', 2147484],
         ['DATABASE_QUERY_TIMEOUT', 2147484],
         ['DATABASE_IDLE_TIMEOUT', -1],
         ['DATABASE_MAX_LIFETIME', 2147484],
-        ['REDIS_COMMAND_TIMEOUT', 0],
+        ['REDIS_CACHE_COMMAND_TIMEOUT', 0],
+        ['REDIS_SESSION_COMMAND_TIMEOUT', 0],
         ['HEALTH_HEAP_LIMIT_MB', 0],
         ['HEALTH_RSS_LIMIT_MB', -1],
         ['JWT_ACCESS_TTL', '0s'],
@@ -153,7 +157,8 @@ describe('env.validation.config', () => {
             ...validConfig,
             DATABASE_IDLE_TIMEOUT: 0,
             DATABASE_MAX_LIFETIME: 0,
-            REDIS_MAX_RETRIES_PER_REQUEST: 0,
+            REDIS_CACHE_MAX_RETRIES_PER_REQUEST: 0,
+            REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 0,
             SESSION_ROTATION_GRACE_TTL: '0s',
             REDIS_CACHE_HOST: 'redis-cache',
             REDIS_SESSION_HOST: '::1',
@@ -161,7 +166,8 @@ describe('env.validation.config', () => {
         });
         expect(result.DATABASE_IDLE_TIMEOUT).toBe(0);
         expect(result.DATABASE_MAX_LIFETIME).toBe(0);
-        expect(result.REDIS_MAX_RETRIES_PER_REQUEST).toBe(0);
+        expect(result.REDIS_CACHE_MAX_RETRIES_PER_REQUEST).toBe(0);
+        expect(result.REDIS_SESSION_MAX_RETRIES_PER_REQUEST).toBe(0);
         expect(result.SESSION_ROTATION_GRACE_TTL).toBe('0s');
         expect(result.REDIS_CACHE_HOST).toBe('redis-cache');
         expect(result.REDIS_SESSION_HOST).toBe('::1');
@@ -180,12 +186,16 @@ describe('env.validation.config', () => {
         expect(() => validateConfig({ ...validConfig, PORT: value })).toThrow(Error);
     });
 
-    it.each(['PORT', 'DATABASE_POOL_SIZE', 'REDIS_CACHE_PORT', 'REDIS_SESSION_PORT', 'REDIS_MAX_RETRIES_PER_REQUEST'])(
-        'should reject fractional %s',
-        (key) => {
-            expect(() => validateConfig({ ...validConfig, [key]: '1.5' })).toThrow(Error);
-        },
-    );
+    it.each([
+        'PORT',
+        'DATABASE_POOL_SIZE',
+        'REDIS_CACHE_PORT',
+        'REDIS_SESSION_PORT',
+        'REDIS_CACHE_MAX_RETRIES_PER_REQUEST',
+        'REDIS_SESSION_MAX_RETRIES_PER_REQUEST',
+    ])('should reject fractional %s', (key) => {
+        expect(() => validateConfig({ ...validConfig, [key]: '1.5' })).toThrow(Error);
+    });
 
     it.each([
         ['DATABASE_URL', 'https://localhost/db'],
