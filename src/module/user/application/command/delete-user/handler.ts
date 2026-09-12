@@ -6,13 +6,14 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Marks a user account as deleted.
@@ -25,11 +26,13 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
      * @param userWriterPort The port used to load and save the user aggregate
      * @param sessionPort The port used to push the session version to Redis
      * @param auditPort The port used to record the deletion for the audit trail
+     * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
     ) {}
 
     /**
@@ -50,7 +53,17 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
         await this.auditPort.record({ action: AuditAction.USER_DELETED });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
-        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
-        this.sessionPort.setVersion(user.id, user.sessionVersion).catch(() => {});
+        // refresh, so the response does not wait on Redis.
+        void this.sessionPort.setVersion(user.id, user.sessionVersion).catch((error: unknown) => {
+            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
+                return;
+            }
+
+            this.errorReporterPort.report(error, {
+                class: this.constructor.name,
+                method: this.execute.name,
+                message: 'Best-effort session version update failed.',
+            });
+        });
     }
 }

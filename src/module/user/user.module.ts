@@ -10,6 +10,7 @@ import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
+import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
@@ -48,6 +49,7 @@ import { UserFacade } from 'src/module/user/user.facade';
 @Module({
     imports: [
         AuditModule,
+        ErrorReporterModule,
         DatabaseModule,
         CacheModule,
         EventBusModule,

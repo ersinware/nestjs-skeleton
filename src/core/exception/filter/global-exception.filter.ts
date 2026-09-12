@@ -9,15 +9,13 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { PATH_HEALTH, PATH_HEALTH_READY } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/exception-tracker';
-import { TOKEN_LOGGER_PORT, type ILoggerPort, type LogPayload } from 'src/core/observability/logger';
+import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import {
     AppException,
     DependencyUnavailableMessage,
     ExceptionKind,
     ResourceNotFoundMessage,
     SystemMessage,
-    toError,
 } from 'src/shared/exception';
 
 /**
@@ -44,15 +42,13 @@ const KIND_TO_STATUS = {
 export class GlobalExceptionFilter implements ExceptionFilter {
     /**
      * @param httpAdapterHost Exposes the Fastify adapter the filter replies through.
-     * @param loggerPort Writes the operational log entries this filter decides to emit.
+     * @param errorReporterPort Logs and tracks the failures this filter selects.
      * @param auditPort Writes the audit records for the refusals the transport itself establishes.
-     * @param exceptionTrackerPort Reports the failures a human must act on.
      */
     constructor(
         private readonly httpAdapterHost: HttpAdapterHost,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
+        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_EXCEPTION_TRACKER_PORT) private readonly exceptionTrackerPort: IExceptionTrackerPort,
     ) {}
 
     /**
@@ -284,8 +280,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         }
 
         if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
-            this.loggerPort.error(this.createErrorLogPayload(exception));
-            this.exceptionTrackerPort.captureException(exception);
+            this.errorReporterPort.report(exception, {
+                class: this.constructor.name,
+                method: this.catch.name,
+            });
 
             return;
         }
@@ -297,23 +295,5 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                 await this.logException(error, this.normalizeException(error));
             }
         }
-    }
-
-    /**
-     * Builds the 5xx log payload with the original error for context serialization; a non-`Error`
-     * value is wrapped so the log always carries a stack.
-     *
-     * @param exception The caught value, of any type.
-     * @returns The payload handed to the error log.
-     */
-    private createErrorLogPayload(exception: unknown): LogPayload {
-        const error = toError(exception);
-
-        return {
-            class: this.constructor.name,
-            method: this.catch.name,
-            message: error.message,
-            error,
-        };
     }
 }

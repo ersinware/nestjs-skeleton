@@ -9,6 +9,7 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import type { EmailPayload } from 'src/core/email';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
     TOKEN_USER_WRITER_PORT,
@@ -16,7 +17,7 @@ import {
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
 import { SessionRevocationReason } from 'src/shared/domain/principal';
-import { SystemException } from 'src/shared/exception';
+import { ExceptionKind, SystemException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Revokes all of a user's sessions; on refresh-token reuse it also emails a security notice.
@@ -30,12 +31,14 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
      * @param emailerPort The port used to send the security notice
      * @param sessionPort The port used to push the session version to Redis
      * @param auditPort The port used to record the revocation
+     * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
     ) {}
 
     /**
@@ -59,8 +62,18 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
         await this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: user.id });
 
         // Best-effort instant eviction of the access tokens. Redis being unreachable only delays
-        // the cut-off, so the failure is swallowed.
-        this.sessionPort.setVersion(user.id, user.sessionVersion).catch(() => {});
+        // the cut-off; unexpected failures are reported without changing the response.
+        void this.sessionPort.setVersion(user.id, user.sessionVersion).catch((error: unknown) => {
+            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
+                return;
+            }
+
+            this.errorReporterPort.report(error, {
+                class: this.constructor.name,
+                method: this.execute.name,
+                message: 'Best-effort session version update failed.',
+            });
+        });
 
         await this.notify(command.reason, user.email, user.name);
     }
