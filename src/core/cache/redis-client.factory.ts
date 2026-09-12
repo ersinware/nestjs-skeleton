@@ -7,7 +7,6 @@
 
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { ENV } from 'src/core/config';
 import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
@@ -22,7 +21,14 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
 export function createRedisClient(
     config: ConfigService,
     logger: ILoggerPort,
-    env: { host: string; port: string; password: string; tls: string },
+    env: {
+        host: string;
+        port: string;
+        password: string;
+        tls: string;
+        maxRetriesPerRequest: string;
+        commandTimeout: string;
+    },
     token: symbol,
 ) {
     const clientName = token.description ?? token.toString(),
@@ -32,9 +38,9 @@ export function createRedisClient(
             port: config.getOrThrow<number>(env.port),
             ...(password ? { password } : {}),
             ...(config.getOrThrow<boolean>(env.tls) ? { tls: {} } : {}),
-            maxRetriesPerRequest: config.getOrThrow<number>(ENV.REDIS_MAX_RETRIES_PER_REQUEST),
+            maxRetriesPerRequest: config.getOrThrow<number>(env.maxRetriesPerRequest),
             // App duration values are seconds; ioredis expects milliseconds.
-            commandTimeout: config.getOrThrow<number>(ENV.REDIS_COMMAND_TIMEOUT) * 1000,
+            commandTimeout: config.getOrThrow<number>(env.commandTimeout) * 1000,
         });
 
     // One log per outage episode, gated on a per-client transition flag: ioredis re-emits 'error' on

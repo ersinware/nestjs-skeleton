@@ -38,6 +38,8 @@ import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/obse
                         port: ENV.REDIS_CACHE_PORT,
                         password: ENV.REDIS_CACHE_PASSWORD,
                         tls: ENV.REDIS_CACHE_TLS,
+                        maxRetriesPerRequest: ENV.REDIS_CACHE_MAX_RETRIES_PER_REQUEST,
+                        commandTimeout: ENV.REDIS_CACHE_COMMAND_TIMEOUT,
                     },
                     TOKEN_CACHE_CONNECTION,
                 ),

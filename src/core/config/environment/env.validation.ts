@@ -315,6 +315,22 @@ export class EnvironmentVariables {
     readonly REDIS_CACHE_TLS!: boolean;
 
     /**
+     * Maximum number of Redis cache reconnection retries per request.
+     */
+    @IsEnvNumber(true)
+    @Min(0)
+    @Max(Number.MAX_SAFE_INTEGER)
+    readonly REDIS_CACHE_MAX_RETRIES_PER_REQUEST!: number;
+
+    /**
+     * Redis cache command execution timeout in seconds.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly REDIS_CACHE_COMMAND_TIMEOUT!: number;
+
+    /**
      * Hostname or IP address of the Redis session store server.
      */
     @IsString()
@@ -342,20 +358,20 @@ export class EnvironmentVariables {
     readonly REDIS_SESSION_TLS!: boolean;
 
     /**
-     * Maximum number of Redis reconnection retries per request.
+     * Maximum number of Redis session reconnection retries per request.
      */
     @IsEnvNumber(true)
     @Min(0)
     @Max(Number.MAX_SAFE_INTEGER)
-    readonly REDIS_MAX_RETRIES_PER_REQUEST!: number;
+    readonly REDIS_SESSION_MAX_RETRIES_PER_REQUEST!: number;
 
     /**
-     * Redis command execution timeout in seconds.
+     * Redis session command execution timeout in seconds.
      */
     @IsEnvNumber()
     @Min(0.001)
     @Max(MAX_TIMER_SECONDS)
-    readonly REDIS_COMMAND_TIMEOUT!: number;
+    readonly REDIS_SESSION_COMMAND_TIMEOUT!: number;
 
     /**
      * Secret key for signing JWT access tokens.
