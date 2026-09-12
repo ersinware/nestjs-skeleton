@@ -9,8 +9,7 @@ import type { IQuery } from '@nestjs/cqrs';
 import type { ICachePort } from 'src/core/cache';
 import { TOKEN_CACHE_PORT } from 'src/core/cache';
 import type { IQueryBehavior } from 'src/core/cqrs/query.pipeline';
-import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/core/observability/exception-tracker';
-import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
+import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 
 /**
  * A query that participates in the read cache. Caching is a property of the QUERY, never of the
@@ -48,13 +47,11 @@ function isCacheableQuery(query: IQuery): query is IQuery & ICacheableQuery {
 export class QueryCachingBehavior implements IQueryBehavior {
     /**
      * @param cachePort The cache the behavior reads and populates
-     * @param loggerPort Records unexpected background cache-write failures
-     * @param exceptionTrackerPort Reports failures requiring intervention
+     * @param errorReporterPort Reports unexpected background cache-write failures
      */
     constructor(
         @Inject(TOKEN_CACHE_PORT) private readonly cachePort: ICachePort,
-        @Inject(TOKEN_LOGGER_PORT) private readonly loggerPort: ILoggerPort,
-        @Inject(TOKEN_EXCEPTION_TRACKER_PORT) private readonly exceptionTrackerPort: IExceptionTrackerPort,
+        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
     ) {}
 
     /**
@@ -79,13 +76,11 @@ export class QueryCachingBehavior implements IQueryBehavior {
         const result = await next();
 
         void this.cachePort.set(key, result, query.cacheTtlSeconds, { useJitter: true }).catch((error: unknown) => {
-            this.loggerPort.error({
+            this.errorReporterPort.report(error, {
                 class: this.constructor.name,
                 method: this.execute.name,
-                message: 'Background cache write failed.',
-                error,
+                message: 'Best-effort cache write failed.',
             });
-            this.exceptionTrackerPort.captureException(error);
         });
 
         return result;

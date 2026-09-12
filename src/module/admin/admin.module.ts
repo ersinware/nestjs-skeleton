@@ -9,6 +9,7 @@ import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
+import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -51,6 +52,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
 @Module({
     imports: [
         AuditModule,
+        ErrorReporterModule,
         DatabaseModule,
         EventBusModule,
         HashingModule,

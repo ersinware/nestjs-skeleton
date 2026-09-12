@@ -7,6 +7,7 @@ import { Module } from '@nestjs/common';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
+import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -28,6 +29,7 @@ import { UserModule } from 'src/module/user';
 @Module({
     imports: [
         AuditModule,
+        ErrorReporterModule,
         EventBusModule,
         HashingModule,
         TokenModule,

@@ -6,6 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
@@ -16,7 +17,13 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { InvalidInputException, ResourceNotFoundException, SystemException } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    InvalidInputException,
+    ResourceNotFoundException,
+    SystemException,
+    isExceptionOfKind,
+} from 'src/shared/exception';
 
 /**
  * Changes the password for an existing admin account.
@@ -30,12 +37,14 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<Change
      * @param hashingPort The port used to verify and hash passwords
      * @param sessionPort The port used to push the session version to Redis
      * @param auditPort The port used to record the password change for the audit trail
+     * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
     ) {}
 
     /**
@@ -76,7 +85,17 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<Change
         await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
-        // refresh, so the response does not wait on Redis. The catch only stops an unhandled rejection.
-        this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch(() => {});
+        // refresh, so the response does not wait on Redis.
+        void this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch((error: unknown) => {
+            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
+                return;
+            }
+
+            this.errorReporterPort.report(error, {
+                class: this.constructor.name,
+                method: this.execute.name,
+                message: 'Best-effort session version update failed.',
+            });
+        });
     }
 }
