@@ -32,7 +32,7 @@ describe('CacheEvictionAdapter', () => {
     });
 
     it('propagates the original failure while request eviction still fails open', async () => {
-        const error = new Error('Redis unavailable');
+        const error = new Error('Connection is closed.');
         redis.del.mockRejectedValueOnce(error).mockRejectedValueOnce(error);
 
         await expect(adapter.delete('profile')).rejects.toBe(error);

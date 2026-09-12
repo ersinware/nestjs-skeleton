@@ -11,8 +11,7 @@ import { PATH_HEALTH } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { GlobalExceptionFilter } from 'src/core/exception/filter/global-exception.filter';
 import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
-import { TOKEN_EXCEPTION_TRACKER_PORT } from 'src/core/observability/exception-tracker';
-import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger';
+import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
 import { AuthTokenType, type AccessTokenPayload } from 'src/core/security/token';
 import { PrincipalType } from 'src/shared/domain/principal';
@@ -33,16 +32,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('GlobalExceptionFilter', () => {
     const mockReply = vi.fn(),
-        mockLoggerPort = {
-            error: vi.fn(),
-            warn: vi.fn(),
-            info: vi.fn(),
+        mockErrorReporterPort = {
+            report: vi.fn(),
         },
         mockAuditPort = {
             record: vi.fn(),
-        },
-        mockExceptionTrackerPort = {
-            captureException: vi.fn(),
         };
 
     const context: ExceptionContext = { class: 'SomeHandler', method: 'execute', reason: 'SESSION_REUSE' };
@@ -86,12 +80,8 @@ describe('GlobalExceptionFilter', () => {
                     provide: HttpAdapterHost,
                     useValue: { httpAdapter: { reply: mockReply } },
                 },
-                { provide: TOKEN_LOGGER_PORT, useValue: mockLoggerPort },
+                { provide: TOKEN_ERROR_REPORTER_PORT, useValue: mockErrorReporterPort },
                 { provide: TOKEN_AUDIT_PORT, useValue: mockAuditPort },
-                {
-                    provide: TOKEN_EXCEPTION_TRACKER_PORT,
-                    useValue: mockExceptionTrackerPort,
-                },
             ],
         }).compile();
 
@@ -114,9 +104,8 @@ describe('GlobalExceptionFilter', () => {
                 { error: indicatorBody },
                 HttpStatus.SERVICE_UNAVAILABLE,
             );
-            expect(mockLoggerPort.error).not.toHaveBeenCalled();
+            expect(mockErrorReporterPort.report).not.toHaveBeenCalled();
             expect(mockAuditPort.record).not.toHaveBeenCalled();
-            expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
         });
 
         it('should strip the query string before matching the health path', async () => {
@@ -270,9 +259,8 @@ describe('GlobalExceptionFilter', () => {
                     createHost(),
                 );
 
-                expect(mockLoggerPort.error).not.toHaveBeenCalled();
+                expect(mockErrorReporterPort.report).not.toHaveBeenCalled();
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
-                expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
 
             it('should stay silent even when the thrower attached context', async () => {
@@ -281,7 +269,7 @@ describe('GlobalExceptionFilter', () => {
                     createHost(),
                 );
 
-                expect(mockLoggerPort.error).not.toHaveBeenCalled();
+                expect(mockErrorReporterPort.report).not.toHaveBeenCalled();
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
         });
@@ -292,23 +280,20 @@ describe('GlobalExceptionFilter', () => {
 
                 await filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.error).toHaveBeenCalledWith({
+                expect(mockErrorReporterPort.report).toHaveBeenCalledWith(thrown, {
                     class: GlobalExceptionFilter.name,
                     method: 'catch',
-                    message: 'boom',
-                    error: thrown,
                 });
-                expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
 
-            it('should coerce a non-Error throwable into an Error for the log payload', async () => {
+            it('should pass a non-Error throwable to the reporter unchanged', async () => {
                 await filter.catch('boom', createHost());
 
-                expect(mockLoggerPort.error).toHaveBeenCalledWith(
-                    expect.objectContaining({ message: 'boom', error: new Error('boom') }),
-                );
-                expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith('boom');
+                expect(mockErrorReporterPort.report).toHaveBeenCalledWith('boom', {
+                    class: GlobalExceptionFilter.name,
+                    method: 'catch',
+                });
             });
 
             it("should carry a taxonomy exception's context into the error log rather than degrading to an audit record", async () => {
@@ -316,13 +301,10 @@ describe('GlobalExceptionFilter', () => {
 
                 await filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.error).toHaveBeenCalledWith({
+                expect(mockErrorReporterPort.report).toHaveBeenCalledWith(thrown, {
                     class: GlobalExceptionFilter.name,
                     method: 'catch',
-                    message: thrown.message,
-                    error: thrown,
                 });
-                expect(mockExceptionTrackerPort.captureException).toHaveBeenCalledWith(thrown);
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
             });
         });
@@ -335,8 +317,7 @@ describe('GlobalExceptionFilter', () => {
                     action: AuditAction.ACCESS_DENIED,
                     reason: 'Insufficient privileges.',
                 });
-                expect(mockLoggerPort.error).not.toHaveBeenCalled();
-                expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
+                expect(mockErrorReporterPort.report).not.toHaveBeenCalled();
             });
 
             it('should not name the acting principal as the audit target', async () => {
@@ -387,9 +368,8 @@ describe('GlobalExceptionFilter', () => {
             ])('should neither log, audit, nor capture %s', async (_label, thrown) => {
                 await filter.catch(thrown, createHost());
 
-                expect(mockLoggerPort.error).not.toHaveBeenCalled();
+                expect(mockErrorReporterPort.report).not.toHaveBeenCalled();
                 expect(mockAuditPort.record).not.toHaveBeenCalled();
-                expect(mockExceptionTrackerPort.captureException).not.toHaveBeenCalled();
             });
         });
     });
