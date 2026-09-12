@@ -113,10 +113,6 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw new UnauthenticatedException();
         }
 
-        // Heals any drift the best-effort bumps left in the store and renews the key's TTL for the
-        // fail-closed guard. Uncaught — the rotation below needs the same store anyway.
-        await this.sessionPort.setVersion(sub, identity.sessionVersion);
-
         // The access token is minted from the freshly read permissions, never from the old token:
         // a refresh is exactly where a permission change reaches the client.
         const tokens = await this.tokenPort.generateTokens(
@@ -125,7 +121,12 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             ),
             // The atomic rotation is both the single-use gate and the classifier: the grace
             // tombstone distinguishes replay within grace from post-window reuse, not concurrency from theft.
-            outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokens.refreshTokenJti);
+            outcome = await this.sessionPort.rotateSession(
+                sub,
+                payload.jti,
+                tokens.refreshTokenJti,
+                identity.sessionVersion,
+            );
 
         if (outcome === RotateOutcome.ROTATED) {
             return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
@@ -137,6 +138,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 action: AuditAction.REFRESH_CONCURRENT_REPLAY,
                 targetId: sub,
             });
+
             throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
         }
 

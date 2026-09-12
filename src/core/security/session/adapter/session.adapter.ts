@@ -38,18 +38,26 @@ const SessionKeys = {
 
 /**
  * Atomic three-state rotation. Deleting the old session and opening the new one is one indivisible
- * step, so two concurrent refreshes carrying the same token cannot both rotate — only the first DEL
- * observes the key. A short-lived tombstone on the old jti classifies replay by timing, not by intent:
+ * step, so two concurrent refreshes carrying the same token cannot both rotate — only the first call
+ * observes the old key. A short-lived tombstone on the old jti classifies replay by timing, not by intent:
  *   - old session deleted → rotate, write tombstone, return 1.
  *   - old session gone, tombstone present → replay within grace, return 0.
  *   - old session gone, no tombstone → post-grace replay, i.e. reuse, return -1.
- * KEYS[1] = old session; KEYS[2] = new session; KEYS[3] = tombstone (old jti).
- * ARGV[1] = session ttl seconds; ARGV[2] = grace ttl seconds.
+ * Successful rotation also mirrors the monotonic-max version and renews its TTL; replay leaves it untouched.
+ * KEYS[1] = old session; KEYS[2] = new session; KEYS[3] = tombstone (old jti); KEYS[4] = version.
+ * ARGV[1] = session ttl seconds; ARGV[2] = grace ttl seconds; ARGV[3] = version.
  */
 const ROTATE_SESSION_LUA = `
-if redis.call('DEL', KEYS[1]) == 1 then
+if redis.call('EXISTS', KEYS[1]) == 1 then
+  local stored = redis.call('GET', KEYS[4])
+  local version = tonumber(ARGV[3])
+  if stored then
+    version = math.max(tonumber(stored), version)
+  end
+  redis.call('DEL', KEYS[1])
   redis.call('SET', KEYS[2], '1', 'EX', ARGV[1])
   redis.call('SET', KEYS[3], '1', 'EX', ARGV[2])
+  redis.call('SET', KEYS[4], version, 'EX', ARGV[1])
   return 1
 end
 if redis.call('EXISTS', KEYS[3]) == 1 then
@@ -184,18 +192,21 @@ export class SessionAdapter implements ISessionPort {
      * @param id The principal identifier.
      * @param oldJti The JWT ID of the refresh token being rotated away.
      * @param newJti The JWT ID of the newly issued refresh token.
+     * @param version The version used to sign the new tokens.
      * @returns The rotation outcome.
      */
-    async rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome> {
+    async rotateSession(id: string, oldJti: string, newJti: string, version: number): Promise<RotateOutcome> {
         const result = await this.run(() =>
             this.redis.eval(
                 ROTATE_SESSION_LUA,
-                3,
+                4,
                 SessionKeys.session(id, oldJti),
                 SessionKeys.session(id, newJti),
                 SessionKeys.tombstone(id, oldJti),
+                SessionKeys.version(id),
                 this.refreshTtlSeconds,
                 this.rotationGraceTtlSeconds,
+                version,
             ),
         );
 

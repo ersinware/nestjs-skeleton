@@ -52,15 +52,17 @@ export interface ISessionPort {
      * Atomically closes the current session and opens the next one in a single round trip, so no
      * intermediate state can be observed by a concurrent refresh — the old session doubles as the
      * single-use gate. A short-lived tombstone written in the same step classifies the outcome as a
-     * real rotation, replay inside the grace window, or post-grace reuse.
+     * real rotation, replay inside the grace window, or post-grace reuse. Only successful rotation
+     * mirrors the monotonic-max version and renews its TTL in the same atomic operation.
      *
      * @param id The principal identifier.
      * @param oldJti The JWT ID of the refresh token being rotated away.
      * @param newJti The JWT ID of the newly issued refresh token.
+     * @param version The version used to sign the new tokens.
      * @returns The rotation outcome the caller must react to.
      * @throws {DependencyUnavailableException} When the session store is unreachable.
      */
-    rotateSession(id: string, oldJti: string, newJti: string): Promise<RotateOutcome>;
+    rotateSession(id: string, oldJti: string, newJti: string, version: number): Promise<RotateOutcome>;
 
     /**
      * Removes a specific refresh session for a principal.

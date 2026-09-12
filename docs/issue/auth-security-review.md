@@ -1,29 +1,4 @@
-## Genel değerlendirme
-
-Mimari sağlam kurulmuş: ayrı secret'lı üç token tipi, `type` discriminator, atomik Lua ile refresh
-rotasyonu ve RFC 9700 reuse tespiti, fail-closed session version, iki sayaçlı (sessionVersion /
-revocationVersion) revocation modeli, aggregate içinde rank invariant'ları, root için partial unique
-index. Yetkilendirme kurallarında (root / manager / ordinary, self, cross-kind) kapatılmamış bir
-yükselme zinciri bulunamadı. Aşağıdakiler bu tabanın üstündeki gerçek boşluklar.
-
----
-
 ## Orta
-
-### 1. ~~`logout-all` access token'ları öldürmüyor~~ — kapatıldı
-
-`logout-all/handler.ts` yalnızca `closeAllSessions` çağırıyor; sessionVersion bump yok. "Cihazım
-çalındı" senaryosunda çalınan access token 15 dakika daha çalışır. Ban, şifre değişikliği ve reuse
-tespiti sayaçları bumplarken kullanıcının kendi tetiklediği en kritik revocation bunu yapmıyor.
-Auth'un aggregate'i olmadığından çözüm: bir integration event ile sahibi modülün `RevokeXSessions`
-komutunu tetiklemek (mevcut reuse akışıyla aynı yol), session sweep'i handler'da kalır.
-
-### 2. ~~Login zamanlama oracle'ı~~ — kapatıldı
-
-`login.util.ts` hesap yoksa, pending'se veya banlıysa argon2 `verify` çalıştırmadan reddediyor.
-Argon2 (19 MiB, t=2) onlarca ms sürer, yanıt süresinden e-posta varlığı okunur. Mesaj tekilleştirilmiş
-ama süre değil. Her red yolunda sabit bir dummy hash'e karşı `verify` çalıştırılmalı. Rate limiting
-gelene kadar bu tek savunma.
 
 ### 3. E-posta değişikliği yalnızca access token ile
 
