@@ -77,6 +77,21 @@ return 1
 `;
 
 /**
+ * Opens a session and mirrors its version without an observable intermediate state. A newer
+ * stored floor rejects the opening. This cannot detect DB changes not yet mirrored to Redis.
+ * KEYS[1] = version; KEYS[2] = new session; ARGV[1] = version; ARGV[2] = ttl seconds.
+ */
+const OPEN_SESSION_AT_VERSION_LUA = `
+local stored = redis.call('GET', KEYS[1])
+if stored and tonumber(stored) > tonumber(ARGV[1]) then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+return 1
+`;
+
+/**
  * Manages refresh sessions and session versions directly in the session store Redis.
  */
 @Injectable()
@@ -138,6 +153,29 @@ export class SessionAdapter implements ISessionPort {
      */
     async openSession(id: string, jti: string) {
         await this.run(() => this.redis.set(SessionKeys.session(id, jti), '1', 'EX', this.refreshTtlSeconds));
+    }
+
+    /**
+     * Opens a replacement session only if its committed version has not been superseded in Redis.
+     *
+     * @param id The principal identifier.
+     * @param jti The fresh refresh token identifier.
+     * @param version The committed token version.
+     * @returns Whether the replacement session was opened.
+     */
+    async openSessionAtVersion(id: string, jti: string, version: number): Promise<boolean> {
+        return (
+            (await this.run(() =>
+                this.redis.eval(
+                    OPEN_SESSION_AT_VERSION_LUA,
+                    2,
+                    SessionKeys.version(id),
+                    SessionKeys.session(id, jti),
+                    version,
+                    this.refreshTtlSeconds,
+                ),
+            )) === 1
+        );
     }
 
     /**

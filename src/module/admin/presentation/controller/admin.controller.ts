@@ -4,7 +4,15 @@
  */
 
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBearerAuth,
+    ApiExtraModels,
+    ApiNoContentResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiTags,
+    getSchemaPath,
+} from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
@@ -47,6 +55,10 @@ import { PatchAdminDto } from 'src/module/admin/presentation/dto/patch-admin.dto
 import { PostAdminActivateDto } from 'src/module/admin/presentation/dto/post-admin-activate.dto';
 import { PostAdminDto } from 'src/module/admin/presentation/dto/post-admin.dto';
 import { PutAdminPermissionsDto } from 'src/module/admin/presentation/dto/put-admin-permissions.dto';
+import {
+    ResponseAdminPasswordLoginRequiredDto,
+    ResponseAdminPasswordSessionDto,
+} from 'src/module/admin/presentation/dto/response-admin-password.dto';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { ResourceConflictMessage } from 'src/shared/exception';
@@ -244,16 +256,36 @@ export class AdminController {
      *
      * @param principal The verified principal of the current request
      * @param patchAdminPasswordDto The payload carrying the current and new passwords
+     * @returns The password change result with tokens or a sign-in requirement
      */
     @Patch('me/password')
     @PrincipalOnly(PrincipalType.ADMIN)
-    @HttpCode(HttpStatus.NO_CONTENT)
+    @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Change current admin password',
-        description: "Updates the currently authenticated admin's password and revokes all active sessions.",
+        description:
+            "Updates the currently authenticated admin's password, revokes existing sessions, and attempts to open a replacement session for this client.",
     })
-    @ApiNoContentResponse({ description: 'Password successfully changed.' })
+    @ApiExtraModels(ResponseAdminPasswordSessionDto, ResponseAdminPasswordLoginRequiredDto)
+    @ApiOkResponse({
+        description:
+            'Password changed. The session result contains new tokens or requires sign-in with the new password; session unavailability does not undo the password change.',
+        schema: {
+            type: 'object',
+            oneOf: [
+                { $ref: getSchemaPath(ResponseAdminPasswordSessionDto) },
+                { $ref: getSchemaPath(ResponseAdminPasswordLoginRequiredDto) },
+            ],
+            discriminator: {
+                propertyName: 'session',
+                mapping: {
+                    created: getSchemaPath(ResponseAdminPasswordSessionDto),
+                    login_required: getSchemaPath(ResponseAdminPasswordLoginRequiredDto),
+                },
+            },
+        },
+    })
     // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
     // share the status, so naming one cause would document the endpoint as if the others did not exist.
     @ApiDefaultInvalidRequestResponse()
@@ -264,14 +296,18 @@ export class AdminController {
     async changePasswordMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchAdminPasswordDto: PatchAdminPasswordDto,
-    ) {
-        await this.commandPipeline.execute(
+    ): Promise<ResponseAdminPasswordSessionDto | ResponseAdminPasswordLoginRequiredDto> {
+        const result = await this.commandPipeline.execute(
             new ChangeAdminPasswordCommand(
                 principal.id,
                 patchAdminPasswordDto.currentPassword,
                 patchAdminPasswordDto.newPassword,
             ),
         );
+
+        return result.session === 'created'
+            ? plainToInstance(ResponseAdminPasswordSessionDto, result)
+            : plainToInstance(ResponseAdminPasswordLoginRequiredDto, result);
     }
 
     /**

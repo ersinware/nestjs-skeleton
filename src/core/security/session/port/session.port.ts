@@ -38,6 +38,17 @@ export interface ISessionPort {
     openSession(id: string, jti: string): Promise<void>;
 
     /**
+     * Atomically mirrors a committed version and opens a session unless a newer version is stored.
+     *
+     * @param id The principal identifier.
+     * @param jti The fresh refresh token identifier.
+     * @param version The committed version used to sign the tokens.
+     * @returns Whether the session was opened; false means a newer version superseded it.
+     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     */
+    openSessionAtVersion(id: string, jti: string, version: number): Promise<boolean>;
+
+    /**
      * Atomically closes the current session and opens the next one in a single round trip, so no
      * intermediate state can be observed by a concurrent refresh — the old session doubles as the
      * single-use gate. A short-lived tombstone written in the same step classifies the outcome as a

@@ -3,9 +3,9 @@
  * @description Response DTO returning a freshly issued JWT token pair.
  */
 
-import { ApiProperty, ApiSchema } from '@nestjs/swagger';
+import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsJwtToken, TOKEN_MAX_LENGTH } from 'src/core/http';
+import { IsJwtToken } from 'src/core/http';
 
 /**
  * Returns the issued token pair; the class-level whitelist guarantees nothing else ever reaches
@@ -21,14 +21,7 @@ export class ResponseTokensDto {
      * The short-lived access token, sent as a Bearer token on protected routes.
      */
     @Expose()
-    @ApiProperty({
-        type: 'string',
-        format: 'jwt',
-        minLength: 1,
-        maxLength: TOKEN_MAX_LENGTH,
-        description: 'JWT Access Token.',
-        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    })
+    @IsJwtToken('JWT Access Token')
     readonly accessToken!: string;
 
     /**

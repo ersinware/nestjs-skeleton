@@ -20,7 +20,7 @@ export enum ChangeAdminPasswordMessage {
 /**
  * Command to change an existing admin's password.
  */
-export class ChangeAdminPasswordCommand extends Command<void> {
+export class ChangeAdminPasswordCommand extends Command<ChangeAdminPasswordResult> {
     /**
      * Initializes the command payload.
      *
@@ -36,3 +36,14 @@ export class ChangeAdminPasswordCommand extends Command<void> {
         super();
     }
 }
+
+/**
+ * A committed password change with either a fresh session or a required sign-in.
+ */
+export type ChangeAdminPasswordResult =
+    | {
+          readonly session: 'created';
+          readonly accessToken: string;
+          readonly refreshToken: string;
+      }
+    | { readonly session: 'login_required' };

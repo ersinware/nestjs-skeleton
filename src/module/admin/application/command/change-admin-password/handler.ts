@@ -6,18 +6,21 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     ChangeAdminPasswordCommand,
     ChangeAdminPasswordMessage,
+    type ChangeAdminPasswordResult,
 } from 'src/module/admin/application/command/change-admin-password/command';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
+import { PrincipalType } from 'src/shared/domain/principal';
 import {
+    AccessDeniedException,
     ExceptionKind,
     InvalidInputException,
     ResourceNotFoundException,
@@ -29,37 +32,49 @@ import {
  * Changes the password for an existing admin account.
  */
 @CommandHandler(ChangeAdminPasswordCommand)
-export class ChangeAdminPasswordCommandHandler implements ICommandHandler<ChangeAdminPasswordCommand, void> {
+export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
+    ChangeAdminPasswordCommand,
+    ChangeAdminPasswordResult
+> {
     /**
      * Initializes the handler with the required ports.
      *
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param hashingPort The port used to verify and hash passwords
-     * @param sessionPort The port used to push the session version to Redis
+     * @param sessionPort The port used to synchronize the version and open a fresh session
      * @param auditPort The port used to record the password change for the audit trail
-     * @param errorReporterPort The port used to report unexpected background session failures
+     * @param tokenPort The port used to sign the replacement token pair
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
+        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
     ) {}
 
     /**
      * Executes the change admin password command.
+     * Checks the loaded account's ban state before password verification because the guard's
+     * Redis version may lag behind a committed ban. Issuing tokens at the newly advanced version
+     * would otherwise give that banned account access that later reconciliation would not revoke.
      *
      * @param command The command payload
+     * @returns The committed password change and its session outcome
      * @throws {ResourceNotFoundException} When the admin does not exist
+     * @throws {AccessDeniedException} When the loaded account is banned
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      */
-    async execute(command: ChangeAdminPasswordCommand) {
+    async execute(command: ChangeAdminPasswordCommand): Promise<ChangeAdminPasswordResult> {
         const { id, currentPassword, newPassword } = command,
             admin = await this.adminWriterPort.load(id);
 
         if (!admin) {
             throw new ResourceNotFoundException();
+        }
+
+        if (admin.isBanned) {
+            throw new AccessDeniedException();
         }
 
         const hashedPassword = admin.password;
@@ -84,18 +99,25 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<Change
         await this.adminWriterPort.save(admin);
         await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
 
-        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
-        // refresh, so the response does not wait on Redis.
-        void this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch((error: unknown) => {
+        const tokens = await this.tokenPort.generateTokens(
+            { id, type: PrincipalType.ADMIN, permissions: admin.permissions },
+            admin.sessionVersion,
+        );
+
+        // The password is already committed. Session unavailability cannot undo it; event
+        // reconciliation remains responsible for propagating the session version mirror.
+        try {
+            if (!(await this.sessionPort.openSessionAtVersion(id, tokens.refreshTokenJti, admin.sessionVersion))) {
+                return { session: 'login_required' };
+            }
+        } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return;
+                return { session: 'login_required' };
             }
 
-            this.errorReporterPort.report(error, {
-                class: this.constructor.name,
-                method: this.execute.name,
-                message: 'Best-effort session version update failed.',
-            });
-        });
+            throw error;
+        }
+
+        return { session: 'created', accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
     }
 }
