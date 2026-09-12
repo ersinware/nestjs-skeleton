@@ -29,6 +29,7 @@ enum AuthRejectionReason {
     INACTIVE_ACCOUNT = 'ACCOUNT_IS_INACTIVE',
     PENDING_ACCOUNT = 'ACCOUNT_PENDING_ACTIVATION',
     INVALID_PASSWORD = 'INVALID_PASSWORD',
+    SESSION_SUPERSEDED = 'SESSION_SUPERSEDED',
 }
 
 /**
@@ -44,7 +45,8 @@ enum AuthRejectionReason {
  * @param email The email address identifying the account
  * @param password The plain-text password to verify
  * @returns The generated access and refresh token pair
- * @throws {UnauthenticatedException} When credentials are invalid or the account is inactive.
+ * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or a newer session version supersedes the login.
+ * @throws {DependencyUnavailableException} When a required dependency is unavailable.
  */
 export async function login(
     ports: {
@@ -75,34 +77,37 @@ export async function login(
         throw error;
     }
 
+    const { id, password: currentPassword, sessionVersion } = identity;
+
     if (identity.isBanned) {
         await ports.hashingPort.simulateVerify(password);
 
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, identity.id);
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, id);
     }
 
     // A pending account has no password yet, so there is nothing to verify against until its owner
     // activates it.
-    if (!identity.password) {
+    if (!currentPassword) {
         await ports.hashingPort.simulateVerify(password);
 
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, id);
     }
 
-    if (!(await ports.hashingPort.verify(identity.password, password))) {
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, identity.id);
+    if (!(await ports.hashingPort.verify(currentPassword, password))) {
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, id);
     }
 
-    const id = identity.id,
-        tokens = await ports.tokenPort.generateTokens(
-            { id, type: principalType, permissions: identity.permissions },
-            identity.sessionVersion,
-        );
+    const tokens = await ports.tokenPort.generateTokens(
+        { id, type: principalType, permissions: identity.permissions },
+        sessionVersion,
+    );
 
-    // Uncaught on purpose: the guard fails closed on a missing version key, so a login that cannot
-    // write it must 503 instead of minting dead-on-arrival tokens.
-    await ports.sessionPort.setVersion(id, identity.sessionVersion);
-    await ports.sessionPort.openSession(id, tokens.refreshTokenJti);
+    // Mirror the version and open the session together; a newer Redis floor means this login's
+    // auth snapshot was superseded. Session availability failures propagate without issuing tokens.
+    if (!(await ports.sessionPort.openSessionAtVersion(id, tokens.refreshTokenJti, sessionVersion))) {
+        throw await denyLogin(ports.auditPort, AuthRejectionReason.SESSION_SUPERSEDED, id);
+    }
+
     await ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
 
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
