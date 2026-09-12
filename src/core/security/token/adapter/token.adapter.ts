@@ -94,6 +94,7 @@ export class TokenAdapter implements ITokenPort {
             },
             {
                 secret: this.accessSecret,
+                algorithm: 'HS256',
                 expiresIn: this.accessTtl,
             },
         );
@@ -113,6 +114,7 @@ export class TokenAdapter implements ITokenPort {
             { sub: principal.id, principalType: principal.type, jti, sessionVersion, type: AuthTokenType.REFRESH },
             {
                 secret: this.refreshSecret,
+                algorithm: 'HS256',
                 expiresIn: this.refreshTtl,
             },
         );
@@ -129,6 +131,7 @@ export class TokenAdapter implements ITokenPort {
             { sub: id, type: AuthTokenType.INVITE },
             {
                 secret: this.inviteSecret,
+                algorithm: 'HS256',
                 expiresIn: this.inviteTtl,
             },
         );
@@ -178,7 +181,7 @@ export class TokenAdapter implements ITokenPort {
         expectedType: AuthTokenType,
     ): Promise<T> {
         try {
-            const payload = await this.jwtService.verifyAsync<T>(token, { secret });
+            const payload = await this.jwtService.verifyAsync<T>(token, { secret, algorithms: ['HS256'] });
 
             this.assertTokenType(payload.type, expectedType);
 

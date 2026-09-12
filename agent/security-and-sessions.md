@@ -2,6 +2,7 @@
 
 ### Authentication & Authorization
 
+- JWT signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
 - Global guards run authentication before authorization; authentication verifies access JWTs and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal; never combine it with effective authorization requirements.
 - Authorize by permissions, never roles. `src/shared/domain/principal/` owns static `Permission` values and exhaustive `PERMISSION_HOLDER`; holder mismatches throw `InvalidInputException`. Use `<context>:<resource>:<action>` ([Administration](security-and-sessions.md#administration) exceptions); changing persisted values requires migration.
 - Access tokens carry dynamic permission assignments; authorization uses verified claims without additional store reads.

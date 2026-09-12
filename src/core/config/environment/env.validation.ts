@@ -8,6 +8,7 @@ import { applyDecorators } from '@nestjs/common';
 import { plainToInstance, Transform } from 'class-transformer';
 import {
     IsBoolean,
+    IsByteLength,
     IsEmail,
     IsEnum,
     isFQDN,
@@ -378,6 +379,7 @@ export class EnvironmentVariables {
      */
     @IsString()
     @Matches(/\S/)
+    @IsByteLength(32)
     readonly JWT_ACCESS_SECRET!: string;
 
     /**
@@ -391,6 +393,7 @@ export class EnvironmentVariables {
      */
     @IsString()
     @Matches(/\S/)
+    @IsByteLength(32)
     readonly JWT_REFRESH_SECRET!: string;
 
     /**
@@ -404,6 +407,7 @@ export class EnvironmentVariables {
      */
     @IsString()
     @Matches(/\S/)
+    @IsByteLength(32)
     readonly JWT_INVITE_SECRET!: string;
 
     /**

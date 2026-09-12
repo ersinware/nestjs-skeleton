@@ -50,23 +50,6 @@ alabilir. Escape'i emailer adapter'ında veya bir template katmanında merkezile
 
 ## Düşük / sertleştirme
 
-### 7. JWT sertleştirme
-
-`token.adapter.ts` `verifyAsync`'te `algorithms` pinlemiyor (jsonwebtoken 9 string secret için HS
-ailesine kısıtlıyor, yine de `['HS256']` yazılmalı); `iss`/`aud` yok; secret rotasyonu yok.
-`env.validation.ts` üç secret için yalnızca `@IsString()` istiyor, `.env.example` değerleri zayıf.
-En az 32 byte şartı eklenmeli.
-
-### 8. ~~`@Permissions()` boş çağrı her kimliği kabul ediyor~~ — kapatıldı
-
-`authorization.guard.ts` `length === 0` durumunu "gereksinim yok" sayıyor. Kısıtlama gibi okunan ama
-kısıtlamayan bir dekoratör. Dekoratör içinde boş liste reddedilmeli.
-
-### 9. ~~`logout` gövdedeki refresh token'ın `sub`'ını çağıranla karşılaştırmıyor~~ — kapatıldı
-
-Pratikte zararsız (o token'ı elinde tutan zaten oturumun sahibi), ama audit'te "başkasının oturumunu
-kapatan principal" olarak yorumlanan bir durum yaratıyor. Eşleşmezse reddetmek daha temiz.
-
 ### 10. Refresh handler'da sıra
 
 `setVersion` (TTL yenilemesi dahil) ve token üretimi tek-kullanım kapısından önce çalışıyor;
