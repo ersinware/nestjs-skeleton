@@ -1,26 +1,3 @@
-# Authentication & Authorization — Güvenlik İncelemesi Bulguları
-
-**Durum:** Açık — bulgular not alındı, henüz hiçbiri düzeltilmedi; adım adım ilerlenecek.
-**Tarih:** 2026-09-08. JWT, session, izin modeli ve rank invariant'larının tam incelemesi.
-**Not:** Transactional outbox varmış gibi değerlendirildi. Event teslimatının güvenilmezliğinden
-kaynaklanan hiçbir madde burada yok; o boşluk [Events & Messaging](../../agent/events-and-messaging.md#events--messaging) bölümünde.
-**Kapatılan:** (a) Aggregate writer'lardaki lost update yarışı (upsert tüm satırı ezerdi, optimistic lock
-yoktu). İncelemenin en yüksek öncelikli bulgusuydu; `AggregateRoot.version` + koşullu upsert
-(`WHERE version = loaded`, 0 satır → `ResourceConflictException(CONCURRENT_MODIFICATION)`) ile
-2026-09-08'de kapatıldı. Kural [Adapters](../../agent/data-and-state.md#adapters) bölümünde. (b) Bulgu 1, `logout-all`: auth
-`LOGOUT_ALL_REQUESTED` event'ini fırlatıyor, sahibi modülün listener'ı `RevokeXSessionsCommand`'ı
-`SessionRevocationReason.LOGOUT_ALL` ile dispatch ediyor (sayaç bump + best-effort `setVersion`,
-e-posta yok). Auth'un kendisi `setVersion` yapmıyor: DB'deki sayacı yalnızca sahibi artırabilir,
-tahmini bir değer Redis'i otoritenin önüne geçirip kullanıcıyı kilitlerdi. 2026-09-08. (c) Bulgu 2,
-zamanlama oracle'ı: `login.util.ts` şifre doğrulanmadan verilen her redde (hesap yok, pending, banlı)
-`IHashingPort.simulateVerify` çağırıyor (adapter'ın boot'ta güncel maliyet parametreleriyle ürettiği
-placeholder hash'e karşı doğrulama); akışın geri kalanı değişmedi. 2026-09-08. (d) Bulgu 8:
-`@Permissions()` imzası `[Permission, ...Permission[]]`, boş çağrı derlenmiyor; runtime kontrol yedek.
-(e) Bulgu 9: `LogoutCommand` principal'ı taşıyor, handler `sub` ve `principalType` uyuşmazlığında 401.
-2026-09-09.
-
----
-
 ## Genel değerlendirme
 
 Mimari sağlam kurulmuş: ayrı secret'lı üç token tipi, `type` discriminator, atomik Lua ile refresh
@@ -73,13 +50,6 @@ alabilir. Escape'i emailer adapter'ında veya bir template katmanında merkezile
 
 ## Düşük / sertleştirme
 
-### 6. Grace penceresi kör nokta
-
-Saldırgan çalınan refresh token'ı meşru istemciden önce kullanırsa ve meşru istemci 30 s içinde
-refresh ederse sonuç `CONCURRENT_REPLAY`: 409, audit yok, revocation yok, saldırganın oturumu yaşar.
-Tasarımın kabul ettiği bir takas ama sinyalsiz kalmamalı. `CONCURRENT_REPLAY` düşük öncelikli bir
-audit kaydına bağlanmalı; grace'i daha da kısaltmak değerlendirilmeli.
-
 ### 7. JWT sertleştirme
 
 `token.adapter.ts` `verifyAsync`'te `algorithms` pinlemiyor (jsonwebtoken 9 string secret için HS
@@ -102,35 +72,3 @@ kapatan principal" olarak yorumlanan bir durum yaratıyor. Eşleşmezse reddetme
 `setVersion` (TTL yenilemesi dahil) ve token üretimi tek-kullanım kapısından önce çalışıyor;
 çalınmış bir token reddedilirken bile version key'in TTL'ini uzatıyor. Etkisi ihmal edilebilir,
 ancak rotasyonu öne almak niyeti daha iyi anlatır.
-
-### 11. `helmet` ve CORS yapılandırması yok
-
-Bearer token kullanıldığından CSRF yok, ama `/docs` altında Scalar UI servis ediliyor; temel güvenlik
-başlıkları eklenmeli.
-
----
-
-## Doğru olduğu teyit edilenler
-
-Bir sonraki inceleme yeniden türetmesin diye kaydedildi.
-
-- Root: verilemez, alınamaz, banlanamaz, silinemez; kendini de yönetemez. Partial unique index elle
-  ikinci root'u da engeller.
-- Manager: `MANAGE`'i yalnızca root verir/alır; manager başka manager'ı yönetemez, kendine dokunamaz.
-  Ordinary + `ADMIN_ACCOUNT_BAN` yalnızca ordinary'yi banlar. Yükselme zinciri kapalı.
-- Cross-kind: user için holdable izin yok; `assertAdministrableBy` non-admin aktörü
-  `SystemException` ile yakalıyor.
-- Guard sırası doğru (auth önce authz), `@Public` yalnızca beklenen rotalarda, `/health` detayı
-  izinli, audit-trail sınıf düzeyinde izinli.
-- Invite token pending, banlı ve silinmiş hesapları reddediyor; tek mesajla.
-- Soft-deleted aggregate immutable; writer `load` deleted'ı süzüyor.
-- Refresh rotasyonu atomik (Lua), reuse tespiti aileyi revoke ediyor, tombstone'lar session'larla
-  birlikte süpürülüyor, version key monotonic-max ve fail-closed.
-
----
-
-## Çalışma sırası
-
-1. ~~Lost update yarışı~~ — kapatıldı.
-2. ~~Bulgu 1–2~~ kapatıldı; bulgu 3–5: her biri küçük ve rate limiting'den bağımsız.
-3. ~~Bulgu 8–9~~ kapatıldı; bulgu 6, 7, 10, 11 sertleştirme turu olarak.

@@ -39,10 +39,9 @@ const SessionKeys = {
 /**
  * Atomic three-state rotation. Deleting the old session and opening the new one is one indivisible
  * step, so two concurrent refreshes carrying the same token cannot both rotate — only the first DEL
- * observes the key. A short-lived tombstone on the old jti tells the loser of that race apart from
- * an attacker:
+ * observes the key. A short-lived tombstone on the old jti classifies replay by timing, not by intent:
  *   - old session deleted → rotate, write tombstone, return 1.
- *   - old session gone, tombstone present → benign concurrent/duplicate replay, return 0.
+ *   - old session gone, tombstone present → replay within grace, return 0.
  *   - old session gone, no tombstone → post-grace replay, i.e. reuse, return -1.
  * KEYS[1] = old session; KEYS[2] = new session; KEYS[3] = tombstone (old jti).
  * ARGV[1] = session ttl seconds; ARGV[2] = grace ttl seconds.
@@ -103,7 +102,7 @@ export class SessionAdapter implements ISessionPort {
     private readonly refreshTtlSeconds: number;
 
     /**
-     * Rotation grace window in seconds — the TTL of the tombstone that classifies a replay as benign.
+     * Rotation grace window in seconds — the TTL of the tombstone that identifies replay within grace.
      */
     private readonly rotationGraceTtlSeconds: number;
 
@@ -223,7 +222,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Sweeps every session key and rotation tombstone of a principal. Tombstones must go with the
-     * sessions: a survivor would classify a token of the revoked family as a benign replay.
+     * sessions: a survivor would classify a token of the revoked family as replay within grace.
      *
      * @param id The principal identifier.
      */

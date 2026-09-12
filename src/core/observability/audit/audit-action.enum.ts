@@ -20,6 +20,9 @@ export enum AuditAction {
     /** Sign-out of every session at once — kept distinct from {@link LOGOUT} in the trail. */
     LOGOUT_ALL = 'LOGOUT_ALL',
 
+    /** Rejected refresh-token replay within grace; concurrency and theft remain indistinguishable. */
+    REFRESH_CONCURRENT_REPLAY = 'REFRESH_CONCURRENT_REPLAY',
+
     /** Replay of an already-rotated refresh token — the token-theft signal. */
     REFRESH_REUSE_DETECTED = 'REFRESH_REUSE_DETECTED',
 
