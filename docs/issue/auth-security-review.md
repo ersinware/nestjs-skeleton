@@ -20,13 +20,3 @@ karşılaştırmak. Mevcut sayaç deseniyle aynı fikir.
 ediyor. `ADMIN_ACCOUNT_INVITE` sahibi düşük kademeli bir admin, davet ettiği kişiye gövdesi kendi
 HTML'i olan (örneğin sahte aktivasyon linki) bir e-posta gönderebilir ve ilk şifreyi phishing'le
 alabilir. Escape'i emailer adapter'ında veya bir template katmanında merkezileştirmek gerekir.
-
----
-
-## Düşük / sertleştirme
-
-### 10. Refresh handler'da sıra
-
-`setVersion` (TTL yenilemesi dahil) ve token üretimi tek-kullanım kapısından önce çalışıyor;
-çalınmış bir token reddedilirken bile version key'in TTL'ini uzatıyor. Etkisi ihmal edilebilir,
-ancak rotasyonu öne almak niyeti daha iyi anlatır.
