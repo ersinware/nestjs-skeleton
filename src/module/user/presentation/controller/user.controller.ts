@@ -4,7 +4,15 @@
  */
 
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBearerAuth,
+    ApiExtraModels,
+    ApiNoContentResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiTags,
+    getSchemaPath,
+} from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
@@ -44,6 +52,10 @@ import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-use
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { PutUserPermissionsDto } from 'src/module/user/presentation/dto/put-user-permissions.dto';
+import {
+    ResponseUserPasswordLoginRequiredDto,
+    ResponseUserPasswordSessionDto,
+} from 'src/module/user/presentation/dto/response-user-password.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { ResourceConflictMessage } from 'src/shared/exception';
@@ -233,16 +245,36 @@ export class UserController {
      *
      * @param principal The verified principal of the current request
      * @param patchUserPasswordDto The payload carrying the current and new passwords
+     * @returns The password change result with tokens or a sign-in requirement
      */
     @Patch('me/password')
     @PrincipalOnly(PrincipalType.USER)
-    @HttpCode(HttpStatus.NO_CONTENT)
+    @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Change current user password',
-        description: "Updates the currently authenticated user's password and revokes all active sessions.",
+        description:
+            "Updates the currently authenticated user's password, revokes existing sessions, and attempts to open a replacement session for this client.",
     })
-    @ApiNoContentResponse({ description: 'Password successfully changed.' })
+    @ApiExtraModels(ResponseUserPasswordSessionDto, ResponseUserPasswordLoginRequiredDto)
+    @ApiOkResponse({
+        description:
+            'Password changed. The session result contains new tokens or requires sign-in with the new password; session unavailability does not undo the password change.',
+        schema: {
+            type: 'object',
+            oneOf: [
+                { $ref: getSchemaPath(ResponseUserPasswordSessionDto) },
+                { $ref: getSchemaPath(ResponseUserPasswordLoginRequiredDto) },
+            ],
+            discriminator: {
+                propertyName: 'session',
+                mapping: {
+                    created: getSchemaPath(ResponseUserPasswordSessionDto),
+                    login_required: getSchemaPath(ResponseUserPasswordLoginRequiredDto),
+                },
+            },
+        },
+    })
     // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
     // share the status, so naming one cause would document the endpoint as if the others did not exist.
     @ApiDefaultInvalidRequestResponse()
@@ -253,14 +285,18 @@ export class UserController {
     async changePasswordMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchUserPasswordDto: PatchUserPasswordDto,
-    ) {
-        await this.commandPipeline.execute(
+    ): Promise<ResponseUserPasswordSessionDto | ResponseUserPasswordLoginRequiredDto> {
+        const result = await this.commandPipeline.execute(
             new ChangeUserPasswordCommand(
                 principal.id,
                 patchUserPasswordDto.currentPassword,
                 patchUserPasswordDto.newPassword,
             ),
         );
+
+        return result.session === 'created'
+            ? plainToInstance(ResponseUserPasswordSessionDto, result)
+            : plainToInstance(ResponseUserPasswordLoginRequiredDto, result);
     }
 
     /**

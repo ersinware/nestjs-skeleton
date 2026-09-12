@@ -61,12 +61,10 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
             eventId: uuidv7(),
         });
 
-        // LOGOUT_ALL rather than LOGOUT: an account-wide revocation is a different fact for an
-        // auditor. No `targetId`: `id` comes from the access token, so it is the actor the context
-        // already names.
+        // No `targetId`: `id` comes from the access token, so it is the actor the context already names.
         await this.auditPort.record({ action: AuditAction.LOGOUT_ALL });
 
-        // Last: a failure here 503s after the durable part is scheduled and recorded.
+        // A failure here 503s after the durable part is scheduled and recorded.
         await this.sessionPort.closeAllSessions(command.id);
     }
 }

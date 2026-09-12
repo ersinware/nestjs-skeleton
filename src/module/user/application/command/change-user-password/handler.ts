@@ -6,18 +6,21 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     ChangeUserPasswordCommand,
     ChangeUserPasswordMessage,
+    type ChangeUserPasswordResult,
 } from 'src/module/user/application/command/change-user-password/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
+import { PrincipalType } from 'src/shared/domain/principal';
 import {
+    AccessDeniedException,
     ExceptionKind,
     InvalidInputException,
     ResourceNotFoundException,
@@ -28,37 +31,49 @@ import {
  * Changes the password for an existing user account.
  */
 @CommandHandler(ChangeUserPasswordCommand)
-export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeUserPasswordCommand, void> {
+export class ChangeUserPasswordCommandHandler implements ICommandHandler<
+    ChangeUserPasswordCommand,
+    ChangeUserPasswordResult
+> {
     /**
      * Initializes the handler with the required ports.
      *
      * @param userWriterPort The port used to load and save the user aggregate
      * @param hashingPort The port used to verify and hash passwords
-     * @param sessionPort The port used to push the session version to Redis
+     * @param sessionPort The port used to synchronize the version and open a fresh session
      * @param auditPort The port used to record the password change for the audit trail
-     * @param errorReporterPort The port used to report unexpected background session failures
+     * @param tokenPort The port used to sign the replacement token pair
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
+        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
     ) {}
 
     /**
      * Executes the change user password command.
+     * Checks the loaded account's ban state before password verification because the guard's
+     * Redis version may lag behind a committed ban. Issuing tokens at the newly advanced version
+     * would otherwise give that banned account access that later reconciliation would not revoke.
      *
      * @param command The command payload
+     * @returns The committed password change and its session outcome
      * @throws {ResourceNotFoundException} When the user does not exist
+     * @throws {AccessDeniedException} When the loaded account is banned
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      */
-    async execute(command: ChangeUserPasswordCommand) {
+    async execute(command: ChangeUserPasswordCommand): Promise<ChangeUserPasswordResult> {
         const { id, currentPassword, newPassword } = command,
             user = await this.userWriterPort.load(id);
 
         if (!user) {
             throw new ResourceNotFoundException();
+        }
+
+        if (user.isBanned) {
+            throw new AccessDeniedException();
         }
 
         const hashedPassword = user.password;
@@ -75,18 +90,25 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeU
         await this.userWriterPort.save(user);
         await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
 
-        // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
-        // refresh, so the response does not wait on Redis.
-        void this.sessionPort.setVersion(id, user.sessionVersion).catch((error: unknown) => {
+        const tokens = await this.tokenPort.generateTokens(
+            { id, type: PrincipalType.USER, permissions: user.permissions },
+            user.sessionVersion,
+        );
+
+        // The password is already committed. Session unavailability cannot undo it; event
+        // reconciliation remains responsible for propagating the session version mirror.
+        try {
+            if (!(await this.sessionPort.openSessionAtVersion(id, tokens.refreshTokenJti, user.sessionVersion))) {
+                return { session: 'login_required' };
+            }
+        } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return;
+                return { session: 'login_required' };
             }
 
-            this.errorReporterPort.report(error, {
-                class: this.constructor.name,
-                method: this.execute.name,
-                message: 'Best-effort session version update failed.',
-            });
-        });
+            throw error;
+        }
+
+        return { session: 'created', accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
     }
 }

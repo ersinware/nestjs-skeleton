@@ -13,6 +13,7 @@ import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
+import { TokenModule } from 'src/core/security/token';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
 import { ChangeUserPermissionsCommandHandler } from 'src/module/user/application/command/change-user-permissions/handler';
@@ -55,6 +56,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         EventBusModule,
         HashingModule,
         SessionModule,
+        TokenModule,
         EmailModule,
         CqrsPipelineModule,
     ],

@@ -125,9 +125,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return this.formatHttpException(exception);
         }
 
-        const appError = this.formatAppException(exception);
-        if (appError) {
-            return appError;
+        const appException = this.formatAppException(exception);
+        if (appException) {
+            return appException;
         }
 
         return new ErrorDefaultDto({
@@ -138,8 +138,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     /**
-     * Formats a framework-raised HTTP exception: client-facing 4xx messages pass through untouched,
-     * everything else is masked by {@link maskMessage}.
+     * Formats a framework-raised HTTP exception: 404 and 5xx messages use their shared defaults;
+     * other client-facing messages pass through untouched.
      *
      * @param exception The framework exception to format.
      * @returns The error DTO carrying the status and client-facing message.
@@ -149,22 +149,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         return new ErrorDefaultDto({
             statusCode,
-            message: this.maskMessage(statusCode, this.extractMessages(exception.getResponse()) ?? [exception.message]),
+            message: this.getDefaultMessage(statusCode) ??
+                this.extractMessages(exception.getResponse()) ?? [exception.message],
             statusText: this.deriveStatusText(statusCode, exception.name),
         });
     }
 
     /**
-     * The client-facing message for a status, applying the masks every 5xx and the router's 404
-     * need: an internal failure names infrastructure and code paths — diagnostics for the log and
-     * Sentry, never the client — and the router's 404 names the missing route. Any other status
-     * keeps the thrower's own client-safe message.
+     * Resolves the mandatory shared client-facing message for 404 and 5xx statuses. Internal
+     * failures may name infrastructure and code paths, which belong only in logs and Sentry;
+     * router 404 messages disclose the missing route.
      *
      * @param statusCode The HTTP status the reply will carry.
-     * @param message The thrower's own messages.
-     * @returns The messages safe to send to the client for that status.
+     * @returns The shared message, or undefined when the thrower's own client-safe message applies.
      */
-    private maskMessage(statusCode: HttpStatus, message: string[]): string[] {
+    private getDefaultMessage(statusCode: HttpStatus): string[] | null {
         if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
             return [DependencyUnavailableMessage.DEFAULT];
         }
@@ -177,7 +176,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return [ResourceNotFoundMessage.DEFAULT];
         }
 
-        return message;
+        return null;
     }
 
     /**
@@ -192,7 +191,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return [response];
         }
 
-        if (response !== null && typeof response === 'object') {
+        if (response !== null) {
             const message = (response as Record<string, unknown>)['message'];
 
             if (Array.isArray(message)) {
@@ -224,7 +223,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         return new ErrorDefaultDto({
             statusCode,
-            message: this.maskMessage(statusCode, [exception.message]),
+            message: this.getDefaultMessage(statusCode) ?? [exception.message],
             statusText: this.deriveStatusText(statusCode, exception.name),
         });
     }

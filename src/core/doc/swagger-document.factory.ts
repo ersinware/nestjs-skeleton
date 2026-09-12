@@ -222,7 +222,8 @@ function getSchemaType(schema: unknown, componentsSchemas: Record<string, unknow
 
 /**
  * Builds an example payload for a schema, following $ref pointers and recursing into
- * arrays and object properties.
+ * arrays and object properties. A oneOf uses its first alternative as the representative example;
+ * alternatives are never merged because their discriminators and required fields may conflict.
  *
  * @param schema The schema to inspect.
  * @param componentsSchemas Dictionary of component schemas.
@@ -251,6 +252,11 @@ function resolveExample(schema: unknown, componentsSchemas: Record<string, unkno
     const example = _schema['example'];
     if (example !== undefined) {
         return example;
+    }
+
+    const alternatives = _schema['oneOf'];
+    if (Array.isArray(alternatives) && alternatives.length > 0) {
+        return resolveExample(alternatives[0], componentsSchemas);
     }
 
     const type = _schema['type'];
