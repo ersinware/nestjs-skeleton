@@ -67,7 +67,7 @@ describe('CacheAdapter', () => {
 
         it('should return null silently when Redis client throws an error (fail-open)', async () => {
             const key = 'test_key';
-            const error = new Error();
+            const error = new Error('Connection is closed.');
 
             mockRedis.get.mockRejectedValueOnce(error);
 
@@ -162,7 +162,7 @@ describe('CacheAdapter', () => {
         it('should swallow the error silently when Redis client throws (fail-open)', async () => {
             const key = 'test_key',
                 value = 'test_value';
-            const error = new Error();
+            const error = new Error('Connection is closed.');
 
             mockRedis.set.mockRejectedValueOnce(error);
 
@@ -195,7 +195,7 @@ describe('CacheAdapter', () => {
 
         it('should swallow the error silently when Redis client throws (fail-open)', async () => {
             const key = 'test_key';
-            const error = new Error();
+            const error = new Error('Connection is closed.');
 
             mockRedis.del.mockRejectedValueOnce(error);
 
