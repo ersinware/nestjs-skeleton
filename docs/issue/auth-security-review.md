@@ -13,10 +13,3 @@ mevcut şifre şartı veya yeni adrese doğrulama.
 Re-invite çoğunlukla ilk e-posta yanlış yere gittiği için yapılır, ama eski token 3 gün boyunca
 hesabı aktive edebilir. Öneri: admin satırında bir `inviteNonce` tutup token'a gömmek, activate'te
 karşılaştırmak. Mevcut sayaç deseniyle aynı fikir.
-
-### 5. E-posta gövdesinde HTML injection
-
-İnvite ve security e-postaları `name`'i ham interpolate ediyor; `IsPersonName` regex'i `<` `>` kabul
-ediyor. `ADMIN_ACCOUNT_INVITE` sahibi düşük kademeli bir admin, davet ettiği kişiye gövdesi kendi
-HTML'i olan (örneğin sahte aktivasyon linki) bir e-posta gönderebilir ve ilk şifreyi phishing'le
-alabilir. Escape'i emailer adapter'ında veya bir template katmanında merkezileştirmek gerekir.

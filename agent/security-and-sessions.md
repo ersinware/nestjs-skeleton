@@ -32,6 +32,10 @@
 - Revocation mirror pushes are best-effort; token issuance requires the awaited session operations above. Event reconciliation remains required even after successful synchronization: read current primary versions, including soft-deleted principals, and await writes with failures propagated ([Events & Messaging](events-and-messaging.md#events--messaging)). Neither reliable delivery nor max writes make DB/Redis revocation immediate or atomic; stale mirrors can admit old access tokens until synchronization or expiry.
 - Use separate Redis stores: session with AOF, cache without. Missing versions deny access; persistence is not lossless revocation. Recovery must address lost keys and restored stale versions.
 
+### Email HTML
+
+- Apply `src/core/email`’s `escapeHtml` to all dynamic HTML text/quoted attributes, regardless of input validation; never to whole bodies. Links require trusted HTTP(S) URLs and URL-component encoding before HTML escaping. No dynamic scripts/styles.
+
 ### Rate Limiting
 
 Unimplemented. Before changes, review `docs/issue/rate-limiting.md`; its proposals are not final. No isolated limiters, dependencies, or environment settings.

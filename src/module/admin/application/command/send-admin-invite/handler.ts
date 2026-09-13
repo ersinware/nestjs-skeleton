@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
 import type { EmailPayload } from 'src/core/email';
-import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { TOKEN_EMAILER_PORT, escapeHtml, type IEmailerPort } from 'src/core/email';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -70,10 +70,10 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
             to,
             subject: 'You have been invited as an administrator',
             body:
-                `<p>Hi ${name},</p>` +
+                `<p>Hi ${escapeHtml(name)},</p>` +
                 `<p>An administrator account has been created for this email address. ` +
                 `To activate it, choose your password using the link below:</p>` +
-                `<p><a href="${this.configService.getOrThrow<string>(ENV.ADMIN_INVITE_URL)}?token=${token}">Activate your account</a></p>` +
+                `<p><a href="${escapeHtml(`${this.configService.getOrThrow<string>(ENV.ADMIN_INVITE_URL)}?token=${encodeURIComponent(token)}`)}">Activate your account</a></p>` +
                 `<p>The link expires after a limited time. If it has expired, ask the administrator ` +
                 `who invited you to send a new one. If you did not expect this invitation, you can ` +
                 `safely ignore this email.</p>`,

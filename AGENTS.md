@@ -19,17 +19,17 @@ This file and the topic guides in `agent/` form one project guide. Topic rules r
 
 Before changing or reviewing a relevant area, read the guides selected below. For work spanning several areas, read each applicable guide. Follow cross-references for the rules and exceptions relevant to the task; expand the selection when the task reveals additional affected behavior. Read all topic guides for a repository-wide review or guide reorganization.
 
-| Work area                                                                                                                             | Required reading                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Source or test code: architecture, imports, placement, naming, barrels, module boundaries, DI, commands, queries, pipelines           | [Architecture](agent/architecture.md)                                        |
-| Writing or reviewing code, JSDoc, types, signatures, environment variables, configuration, or route constants                         | [Coding Conventions](agent/coding-conventions.md)                            |
-| Aggregates, mutations, persistence, schemas, migrations, readers/writers, database selection, concurrency, or caching                 | [Data & State](agent/data-and-state.md)                                      |
-| Events, publishers, listeners, cross-context mutations, outbox/relay, retries, reconciliation, or cache invalidation                  | [Events & Messaging](agent/events-and-messaging.md)                          |
-| Authentication, authorization, principals, permissions, administration, passwords, sessions, tokens, Redis recovery, or rate limiting | [Security & Sessions](agent/security-and-sessions.md)                        |
-| Validation or business refusals, exceptions, error propagation/translation, dependency failures, or HTTP error mapping                | [Exceptions](agent/exceptions.md)                                            |
-| Endpoints, controllers, DTOs, validation decorators, responses, Swagger, HTTP caching, BFF forwarding, or health probes               | [HTTP](agent/http.md)                                                        |
-| Logging, tracing, metrics, audit, telemetry/deployment configuration, dependency outages, or health checks                            | [Observability](agent/observability.md)                                      |
-| Test changes/reviews, test configuration, fixtures, support, or verification design, including both `src/**/*.spec.ts` and `test/**`  | [Testing Rules](agent/testing.md) and the guides for the behavior under test |
+| Work area                                                                                                                                         | Required reading                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Source or test code: architecture, imports, placement, naming, barrels, module boundaries, DI, commands, queries, pipelines                       | [Architecture](agent/architecture.md)                                        |
+| Writing or reviewing code, JSDoc, types, signatures, environment variables, configuration, or route constants                                     | [Coding Conventions](agent/coding-conventions.md)                            |
+| Aggregates, mutations, persistence, schemas, migrations, readers/writers, database selection, concurrency, or caching                             | [Data & State](agent/data-and-state.md)                                      |
+| Events, publishers, listeners, cross-context mutations, outbox/relay, retries, reconciliation, or cache invalidation                              | [Events & Messaging](agent/events-and-messaging.md)                          |
+| Authentication, authorization, principals, permissions, administration, passwords, sessions, tokens, Redis recovery, rate limiting, or email HTML | [Security & Sessions](agent/security-and-sessions.md)                        |
+| Validation or business refusals, exceptions, error propagation/translation, dependency failures, or HTTP error mapping                            | [Exceptions](agent/exceptions.md)                                            |
+| Endpoints, controllers, DTOs, validation decorators, responses, Swagger, HTTP caching, BFF forwarding, or health probes                           | [HTTP](agent/http.md)                                                        |
+| Logging, tracing, metrics, audit, telemetry/deployment configuration, dependency outages, or health checks                                        | [Observability](agent/observability.md)                                      |
+| Test changes/reviews, test configuration, fixtures, support, or verification design, including both `src/**/*.spec.ts` and `test/**`              | [Testing Rules](agent/testing.md) and the guides for the behavior under test |
 
 Mutation evidence and event delivery require both [Events & Messaging](agent/events-and-messaging.md) and [Audit](agent/observability.md#audit). Health and dependency availability work requires [HTTP](agent/http.md#health-probes), [Dependency Outages](agent/observability.md#dependency-outages), and the applicable data/session failure rules.
 

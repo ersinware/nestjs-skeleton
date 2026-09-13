@@ -10,12 +10,12 @@ import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-valid
 const NAME_MIN_LENGTH = 2,
     NAME_MAX_LENGTH = 100,
     NAME_LABEL = 'The full name',
-    // eslint-disable-next-line no-control-regex
-    NAME_REGEX = /^[^0-9\x00]+$/;
+    // Require a letter first and absolute end-of-input, rejecting trailing line breaks too.
+    NAME_REGEX = /^\p{L}[\p{L}\p{M} .’'-]*(?![\s\S])/u;
 
 /**
- * Single source of the person-name field contract: enforces length bounds and rejects
- * digits and the null character while staying open to any script or diacritic.
+ * Single source of the person-name field contract: enforces length bounds, an initial letter,
+ * and Unicode letters/marks with spaces, periods, apostrophes, and hyphens.
  *
  * @returns A decorator that validates and documents a person-name property.
  */
@@ -30,7 +30,7 @@ export function IsPersonName() {
             message: `${NAME_LABEL} cannot exceed ${NAME_MAX_LENGTH} characters.`,
         }),
         Matches(NAME_REGEX, {
-            message: `${NAME_LABEL} must not contain numbers.`,
+            message: `${NAME_LABEL} must start with a letter and contain only letters, combining marks, spaces, periods, apostrophes, or hyphens.`,
         }),
         ApiProperty({
             type: 'string',

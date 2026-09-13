@@ -7,7 +7,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import type { EmailPayload } from 'src/core/email';
-import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { TOKEN_EMAILER_PORT, escapeHtml, type IEmailerPort } from 'src/core/email';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -110,7 +110,7 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
             to,
             subject: 'Security alert: you were signed out of all devices',
             body:
-                `<p>Hi ${name},</p>` +
+                `<p>Hi ${escapeHtml(name)},</p>` +
                 `<p>We noticed a sign-in token for your account was reused after it had already been rotated, ` +
                 `which can indicate the token was stolen. As a precaution we signed you out of every device.</p>` +
                 `<p>You can sign back in with your usual password. For your security we strongly recommend ` +
