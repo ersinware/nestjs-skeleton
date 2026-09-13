@@ -152,6 +152,33 @@ describe('env.validation.config', () => {
         expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);
     });
 
+    it.each(['1s', '10s', '30s', '60s', '1m'])('accepts bounded session rotation grace %s', (value) => {
+        expect(validateConfig({ ...validConfig, SESSION_ROTATION_GRACE_TTL: value }).SESSION_ROTATION_GRACE_TTL).toBe(
+            value,
+        );
+    });
+
+    it.each([
+        '0s',
+        '00m',
+        '61s',
+        '2m',
+        '1h',
+        '1d',
+        '-1s',
+        '0.5s',
+        '30',
+        '30S',
+        ' 30s',
+        '30s ',
+        '',
+        '9007199254740992s',
+        30,
+        null,
+    ])('rejects invalid session rotation grace %s', (value) => {
+        expect(() => validateConfig({ ...validConfig, SESSION_ROTATION_GRACE_TTL: value })).toThrow(Error);
+    });
+
     it('should preserve supported zero values and host forms', () => {
         const result = validateConfig({
             ...validConfig,
@@ -159,7 +186,6 @@ describe('env.validation.config', () => {
             DATABASE_MAX_LIFETIME: 0,
             REDIS_CACHE_MAX_RETRIES_PER_REQUEST: 0,
             REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 0,
-            SESSION_ROTATION_GRACE_TTL: '0s',
             REDIS_CACHE_HOST: 'redis-cache',
             REDIS_SESSION_HOST: '::1',
             TRUST_PROXY: '10.0.0.0/8,::1/128,loopback',
@@ -168,7 +194,6 @@ describe('env.validation.config', () => {
         expect(result.DATABASE_MAX_LIFETIME).toBe(0);
         expect(result.REDIS_CACHE_MAX_RETRIES_PER_REQUEST).toBe(0);
         expect(result.REDIS_SESSION_MAX_RETRIES_PER_REQUEST).toBe(0);
-        expect(result.SESSION_ROTATION_GRACE_TTL).toBe('0s');
         expect(result.REDIS_CACHE_HOST).toBe('redis-cache');
         expect(result.REDIS_SESSION_HOST).toBe('::1');
     });

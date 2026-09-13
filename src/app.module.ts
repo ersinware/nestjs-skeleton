@@ -17,7 +17,7 @@ import { HttpCacheInterceptor, NotEmptyBodyPipe, ResponseInterceptor } from 'src
 import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { LoggerModule } from 'src/core/observability/logger';
-import { AuthenticationGuard, AuthorizationGuard } from 'src/core/security/auth';
+import { AuthenticationGuard, AuthorizationGuard, AuthPolicyModule } from 'src/core/security/auth';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
 import { AdminModule } from 'src/module/admin';
@@ -46,6 +46,7 @@ import { UserModule } from 'src/module/user';
         EmailModule,
         TokenModule,
         SessionModule,
+        AuthPolicyModule,
         HealthModule,
         AuthModule,
         UserModule,

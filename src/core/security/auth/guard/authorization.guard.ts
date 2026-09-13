@@ -5,60 +5,50 @@
 
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { resolveAuthPolicy } from 'src/core/security/auth/auth-policy';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
-import { KEY_DECORATOR_PERMISSIONS } from 'src/core/security/auth/decorator/permissions.decorator';
-import { KEY_DECORATOR_PRINCIPAL_ONLY } from 'src/core/security/auth/decorator/principal-only.decorator';
-import type { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { AccessDeniedException } from 'src/shared/exception';
 
 /**
  * Global authorization guard. Runs after `AuthenticationGuard` and decides from the verified payload alone:
  * `@PrincipalOnly()` pins the kind of caller, `@Permissions()` requires every listed permission.
- * A route declaring neither admits any authenticated principal.
+ * Explicit authenticated access admits either principal kind; missing policies are wiring errors.
  */
 @Injectable()
 export class AuthorizationGuard implements CanActivate {
     /**
-     * @param reflector Reads the `@PrincipalOnly()` and `@Permissions()` metadata.
+     * @param reflector Reads the endpoint access policy.
      */
     constructor(private readonly reflector: Reflector) {}
 
     /**
-     * Admits routes without requirements, otherwise requires the token to be of the pinned kind
+     * Admits public routes, otherwise requires a verified token of the pinned kind
      * and to carry every required permission.
      *
      * @param context Execution context of the request.
      * @returns True if authorized.
+     * @throws {SystemException} If the endpoint access policy is invalid.
      * @throws {AccessDeniedException} if the token's kind or permissions do not satisfy the route.
      */
     canActivate(context: ExecutionContext): boolean {
-        const targets = [context.getHandler(), context.getClass()],
-            principalOnly = this.reflector.getAllAndOverride<PrincipalType | undefined>(
-                KEY_DECORATOR_PRINCIPAL_ONLY,
-                targets,
-            ),
-            requiredPermissions = this.reflector.getAllAndOverride<Permission[] | undefined>(
-                KEY_DECORATOR_PERMISSIONS,
-                targets,
-            );
+        const policy = resolveAuthPolicy(this.reflector, context.getClass(), context.getHandler());
 
-        if (!principalOnly && !requiredPermissions?.length) {
+        if (policy.public) {
             return true;
         }
 
         const payload = context.switchToHttp().getRequest<AuthenticatedRequest>().accessTokenPayload;
 
-        // A public route never declares a requirement, so a missing payload here is a token the
-        // auth guard did not attach: refuse rather than reason about an absent identity.
+        // Every non-public policy requires the authentication guard to have verified an identity.
         if (!payload) {
             throw new AccessDeniedException();
         }
 
-        if (principalOnly && payload.principalType !== principalOnly) {
+        if (policy.principalType && payload.principalType !== policy.principalType) {
             throw new AccessDeniedException();
         }
 
-        if (requiredPermissions?.some((permission) => !payload.permissions.includes(permission))) {
+        if (policy.permissions.some((permission) => !payload.permissions.includes(permission))) {
             throw new AccessDeniedException();
         }
 

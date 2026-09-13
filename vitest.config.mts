@@ -19,9 +19,9 @@ export default defineConfig({
         // Since Vitest 3, `restoreMocks` touches only `vi.spyOn` spies; `clearMocks` is what wipes
         // call history on plain `vi.fn()` mocks between tests.
         clearMocks: true,
-        // `test/architecture/` tests the repository's own structure, so it runs with the unit
+        // `eslint.config.spec.ts` tests the repository's own structure, so it runs with the unit
         // suite; the e2e config matches only `*.e2e-spec.ts` and boots an app.
-        include: ['src/**/*.spec.ts', 'test/architecture/**/*.spec.ts'],
+        include: ['src/**/*.spec.ts', 'eslint.config.spec.ts'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],

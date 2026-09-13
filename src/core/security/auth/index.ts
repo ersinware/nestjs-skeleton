@@ -11,3 +11,4 @@ export { PrincipalOnly } from 'src/core/security/auth/decorator/principal-only.d
 export { Public } from 'src/core/security/auth/decorator/public.decorator';
 export { AuthenticationGuard } from 'src/core/security/auth/guard/authentication.guard';
 export { AuthorizationGuard } from 'src/core/security/auth/guard/authorization.guard';
+export { AuthPolicyModule } from 'src/core/security/auth/module';

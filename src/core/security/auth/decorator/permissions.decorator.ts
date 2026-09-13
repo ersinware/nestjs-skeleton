@@ -11,7 +11,7 @@ export const KEY_DECORATOR_PERMISSIONS = 'KEY_DECORATOR_PERMISSIONS';
 
 /**
  * Declares the permissions a route requires, ALL of which the caller's access token must carry;
- * enforced by `AuthorizationGuard`. A permission is held by one kind of principal only, so
+ * combined across controller and method and enforced by `AuthorizationGuard`. A permission is held by one kind of principal only, so
  * requiring one also pins the kind of caller — a self-scoped route with no permission pins it
  * with `@PrincipalOnly()` instead.
  *
