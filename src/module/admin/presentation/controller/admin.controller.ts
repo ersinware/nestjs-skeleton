@@ -358,8 +358,9 @@ export class AdminController {
     }
 
     /**
-     * Re-issues the activation invitation for a pending admin whose link expired or never arrived.
+     * Re-issues a pending admin's invitation, invalidating earlier links.
      *
+     * @param principal The verified principal requesting the invitation
      * @param params The path parameters carrying the target admin ID
      */
     @Post(`${ROUTE_PARAM_ID}/re-invite`)
@@ -368,18 +369,17 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Re-invite admin',
-        description: `Emails a fresh activation invitation for a pending admin account. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission.`,
+        description: `Invalidates earlier invitations and emails a replacement for a pending admin account. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission and authority to administer the target.`,
     })
     @ApiNoContentResponse({ description: 'Invitation successfully re-issued.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    // Generic 409 on purpose: an already-activated and a banned account both refuse a re-invite, so
-    // naming one cause would document the endpoint as if the other did not exist.
+    // Active/banned accounts and concurrent writes all return 409.
     @ApiDefaultResourceConflictResponse()
-    async reInvite(@Param() params: ParamIdDto) {
-        await this.commandPipeline.execute(new ReInviteAdminCommand(params.id));
+    async reInvite(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
+        await this.commandPipeline.execute(new ReInviteAdminCommand(params.id, principal));
     }
 
     /**

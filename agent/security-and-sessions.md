@@ -21,6 +21,7 @@
 ### Session Versions & Failure Semantics
 
 - Owning aggregates alone advance DB counters: `sessionVersion` is the access floor/new-token version; `revocationVersion` is the refresh floor. Permission changes call `retireAccessTokens` (session only), preserving refresh with current permissions. Ban/delete/password/reuse/logout-all call `revokeAllSessions` (increment session, copy to revocation), invalidating earlier tokens subject to propagation below.
+- Admin invites require a non-negative integer `revocationVersion` matching primary DB state. Re-invite persists `revokeAllSessions` before sending; senders re-read without bumping counters. Pending accounts need no Redis sync. Activation invalidates all invites by setting the password, without a counter bump.
 - Auth requests owner revocation through events, never invents versions. Logout-all emits `LOGOUT_ALL_REQUESTED`; owner listeners dispatch revocation commands. `SessionRevocationReason` selects notices only ([Events & Messaging](events-and-messaging.md#events--messaging)).
 - Full revocation leaves session/tombstone cleanup to TTL; account-wide sweeps can delete new logins. Single-session logout deletes only the presented refresh token's session.
 - Redis mirrors only `sessionVersion`; refresh reads primary auth state and checks `revocationVersion`. Refresh revocation takes effect when the DB floor commits, not when its event is accepted. Version writes atomically take max and renew refresh-lifetime TTL; revocation bumps, never deletes. Max prevents regression only while the key survives.

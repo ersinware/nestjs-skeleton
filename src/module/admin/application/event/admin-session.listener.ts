@@ -25,8 +25,8 @@ export class AdminSessionListener {
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Dispatches session reconciliation on every version-bumping admin event. UNBANNED is deliberately
-     * absent: lifting a ban does not change the session version, so there is nothing to reconcile.
+     * Reconciles session versions for accounts that may have sessions. INVITED is excluded because
+     * pending accounts cannot log in; UNBANNED does not advance a version.
      *
      * @param event The event carrying the admin id
      */

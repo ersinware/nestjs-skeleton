@@ -21,8 +21,8 @@ import { ExceptionKind, InvalidInputException, isExceptionOfKind } from 'src/sha
 
 /**
  * Activates a pending admin account. Verification is two-layered: the token's signature and expiry,
- * then the account's live state — the token stays valid until expiry, so the state checks are what
- * spend it.
+ * then the account's live state and revocation version. Activation consumes all invitations by
+ * setting the first password.
  */
 @CommandHandler(ActivateAdminCommand)
 export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdminCommand, void> {
@@ -74,6 +74,10 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
 
         if (admin.password !== null) {
             throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_ALREADY_ACTIVE, admin.id);
+        }
+
+        if (payload.revocationVersion !== admin.revocationVersion) {
+            throw await this.deny(ActivateAdminRejectionReason.INVITE_REVOKED, admin.id);
         }
 
         admin.activate(await this.hashingPort.hash(command.password));

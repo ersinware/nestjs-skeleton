@@ -121,14 +121,15 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Signs an invite token carrying only the pending account's identifier.
+     * Signs an invite token bound to the pending account's revocation version.
      *
      * @param id The identifier of the account the invitation activates, embedded as the subject
+     * @param revocationVersion The persisted revocation version invalidating earlier invitations
      * @returns The signed invite token
      */
-    async generateInviteToken(id: string): Promise<string> {
+    async generateInviteToken(id: string, revocationVersion: number): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, type: AuthTokenType.INVITE },
+            { sub: id, revocationVersion, type: AuthTokenType.INVITE },
             {
                 secret: this.inviteSecret,
                 algorithm: 'HS256',
@@ -158,13 +159,19 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Verifies an invite token's signature, expiry, and type.
+     * Verifies an invite token's signature, expiry, type, and revocation version.
      *
      * @param token The JWT invite token string
      * @returns The decoded invite token payload
      */
     async verifyInviteToken(token: string): Promise<InviteTokenPayload> {
-        return this.verifyToken<InviteTokenPayload>(token, this.inviteSecret, AuthTokenType.INVITE);
+        const payload = await this.verifyToken<InviteTokenPayload>(token, this.inviteSecret, AuthTokenType.INVITE);
+
+        if (!Number.isSafeInteger(payload.revocationVersion) || payload.revocationVersion < 0) {
+            throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT);
+        }
+
+        return payload;
     }
 
     /**

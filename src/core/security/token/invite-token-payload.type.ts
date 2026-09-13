@@ -6,13 +6,15 @@
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 
 /**
- * Decoded JWT invite token payload. Minimal by design: the account is re-read at activation, so the
- * token carries only the subject and the discriminator.
+ * Decoded JWT invite token payload bound to the account's persisted revocation version.
  */
 export type InviteTokenPayload = {
     /** Identifier of the account the invitation activates. */
-    sub: string;
+    readonly sub: string;
+
+    /** Must equal the account's current revocation version at activation. */
+    readonly revocationVersion: number;
 
     /** Discriminator rejecting any other token type presented as an invitation. */
-    type: AuthTokenType.INVITE;
+    readonly type: AuthTokenType.INVITE;
 };

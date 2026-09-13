@@ -19,6 +19,7 @@ export enum ActivateAdminMessage {
  */
 export enum ActivateAdminRejectionReason {
     INVALID_TOKEN = 'INVALID_TOKEN',
+    INVITE_REVOKED = 'INVITE_REVOKED',
     ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
     ACCOUNT_BANNED = 'ACCOUNT_BANNED',
     ACCOUNT_ALREADY_ACTIVE = 'ACCOUNT_ALREADY_ACTIVE',

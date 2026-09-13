@@ -7,7 +7,7 @@ import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainEvent } from 'src/shared/domain/event';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
-import { AccessDeniedException, SystemException } from 'src/shared/exception';
+import { AccessDeniedException, ResourceConflictException, SystemException } from 'src/shared/exception';
 
 /**
  * The module-owned state of an Admin aggregate.
@@ -155,6 +155,31 @@ export class Admin extends PrincipalAggregateRoot {
         }
 
         return isUpdated;
+    }
+
+    /**
+     * Invalidates earlier invitations before requesting a replacement for a pending account.
+     *
+     * @param actor The verified principal requesting the invitation
+     * @throws {SystemException} When the account is deleted or the actor is not an admin
+     * @throws {AccessDeniedException} When the actor cannot administer the target
+     * @throws {ResourceConflictException} When the account is already active or banned
+     */
+    reInvite(actor: Principal) {
+        this.assertNotDeleted(this.reInvite.name);
+        this.assertAdministrableBy(actor);
+
+        if (this.props.password !== null) {
+            throw new ResourceConflictException('The account has already been activated.');
+        }
+
+        if (this.props.isBanned) {
+            throw new ResourceConflictException('A banned account cannot be re-invited.');
+        }
+
+        this.revokeAllSessions();
+        this.props.updatedAt = new Date();
+        this.addDomainEvent(new DomainEvent(AdminEvent.INVITED, this.id));
     }
 
     /**
