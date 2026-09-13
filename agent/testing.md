@@ -7,3 +7,4 @@
 - Test apps must use the same bootstrap configuration and wiring as production apps, including hooks, guards, pipes, interceptors, and filters.
 - Keep tests order-independent; clean up resources and isolate external test state from non-test data.
 - `test/` architectural boundaries remain TODO; direct writer imports remain allowed. Remind the user during test structure/import work until boundaries are defined. Existing import restrictions: [Layer Isolation](architecture.md#layer-isolation), [Events & Messaging](events-and-messaging.md#events--messaging).
+- Colocate `*.spec.ts` tests with their implementation or configuration, including dependency-free Nest module tests. Reserve `test/` for E2E tests and support.

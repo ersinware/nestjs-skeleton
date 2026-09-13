@@ -1,5 +1,5 @@
 /**
- * @file boundaries-element.spec.ts
+ * @file eslint.config.spec.ts
  * @description Verifies that `boundaries/elements` in eslint.config.mjs still describes the folders actually on disk under core/ and shared/.
  */
 

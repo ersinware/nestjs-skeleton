@@ -3,10 +3,12 @@
 ### Authentication & Authorization
 
 - JWT signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
-- Global guards run authentication before authorization; authentication verifies access JWTs and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal; never combine it with effective authorization requirements.
+- Global guards run authentication before authorization; authentication verifies access JWTs and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal.
 - Authorize by permissions, never roles. `src/shared/domain/principal/` owns static `Permission` values and exhaustive `PERMISSION_HOLDER`; holder mismatches throw `InvalidInputException`. Use `<context>:<resource>:<action>` ([Administration](security-and-sessions.md#administration) exceptions); changing persisted values requires migration.
 - Access tokens carry dynamic permission assignments; authorization uses verified claims without additional store reads.
-- `@Permissions(...)` requires all listed permissions; `@PrincipalOnly(PrincipalType.X)` restricts caller kind, not resource ownership. Self endpoints derive target IDs from the verified principal. Use `@Authenticated()` to explicitly admit any authenticated principal; it never overrides authorization requirements. Missing policies still admit authenticated principals; startup policy validation is not implemented.
+- Every HTTP endpoint needs an explicit policy. `AuthPolicyModule` and both guards share a resolver; startup rejects missing/invalid policies with `SystemException`.
+- `@Authenticated()` admits any authenticated principal; `@PrincipalOnly(...)` restricts caller kind, not ownership. Self endpoints derive target IDs from the verified principal. `@Permissions(...)` requires ALL class/method permissions; principal restrictions and permission holders must agree.
+- Reject `Public` with any protection. `Authenticated` cannot accompany same-level restrictions or relax class restrictions; class-level `Authenticated` allows method restrictions.
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
 - Both principal kinds share `login.util.ts` and uniform `CREDENTIALS` refusals. Each credential-login refusal performs one Argon2 verification; unknown/pending/banned accounts use `simulateVerify` with a boot-generated, current-cost hash.
 

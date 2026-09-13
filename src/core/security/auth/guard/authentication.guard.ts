@@ -6,8 +6,8 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { publishAuditActor } from 'src/core/observability/audit';
+import { resolveAuthPolicy } from 'src/core/security/auth/auth-policy';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
-import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.decorator';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
@@ -21,7 +21,7 @@ export class AuthenticationGuard implements CanActivate {
     /**
      * @param tokenPort Verifies access tokens.
      * @param sessionPort Reads the current session version.
-     * @param reflector Reads the `@Public()` metadata.
+     * @param reflector Reads and validates the endpoint access policy.
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
@@ -34,13 +34,12 @@ export class AuthenticationGuard implements CanActivate {
      *
      * @param context Execution context of the request.
      * @returns A promise resolving to true if authenticated.
+     * @throws {SystemException} If the endpoint access policy is invalid.
      * @throws {UnauthenticatedException} if the token or the session-version check fails.
      * @throws {DependencyUnavailableException} if the cache is unreachable — fails closed rather than skipping the session-version check.
      */
     async canActivate(context: ExecutionContext): Promise<boolean> {
-        if (
-            this.reflector.getAllAndOverride<boolean>(KEY_DECORATOR_PUBLIC, [context.getHandler(), context.getClass()])
-        ) {
+        if (resolveAuthPolicy(this.reflector, context.getClass(), context.getHandler()).public) {
             return true;
         }
 

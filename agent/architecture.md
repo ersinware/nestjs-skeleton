@@ -79,7 +79,7 @@ src/module/<context>/
 ```
 
 Facade eligibility: [Module Isolation](architecture.md#module-isolation). Listener placement: [Events & Messaging](events-and-messaging.md#events--messaging).
-Tests: colocated `src/**/*.spec.ts`; E2E/integration/architecture tests and support in `test/` ([Testing Rules](testing.md#testing-rules)).
+Test placement: [Testing Rules](testing.md#testing-rules).
 
 ### Placement & Naming
 
@@ -103,4 +103,4 @@ Within `src/`, group by ownership and reasons to change, never TS kind. Placemen
 - In `src/`, enter another core/shared concern or module through its root barrel. Direct imports within the same concern/module remain subject to [Layer Isolation](architecture.md#layer-isolation); tests: [Testing Rules](testing.md#testing-rules).
 - Use explicit named exports, never `export *`; expose only public API needed by existing or explicitly approved consumers. Module barrels expose only their Module and optional Facade.
 - Keep internal adapters, behavior classes, and private connection tokens unexported. Public contracts may come from implementation files; public DB client tokens remain infrastructure contracts ([Layer Isolation](architecture.md#layer-isolation)).
-- Align core/shared barrel roots with ESLint elements; grouping-folder wildcards may already cover additions. `test/architecture/boundaries-element.spec.ts` checks core/shared root-pattern alignment and barrels immediately beneath grouping folders.
+- Align core/shared barrel roots with ESLint elements; grouping-folder wildcards may already cover additions. `eslint.config.spec.ts` verifies pattern alignment and required barrels.
