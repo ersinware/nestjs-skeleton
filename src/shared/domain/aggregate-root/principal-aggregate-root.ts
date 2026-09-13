@@ -73,7 +73,7 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     /**
      * Revokes every outstanding session, access and refresh tokens alike: the principal must sign
      * in again. Subclasses call it from the mutations that end a session's right to exist (ban,
-     * deletion, password change, refresh-token reuse).
+     * deletion, password change, refresh-token reuse) or invalidate pending invitations.
      */
     protected revokeAllSessions() {
         this._sessionVersion++;

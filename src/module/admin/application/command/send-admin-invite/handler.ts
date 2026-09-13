@@ -53,7 +53,11 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
         }
 
         await this.emailerPort.sendEmail(
-            this.buildInviteEmail(admin.email, admin.name, await this.tokenPort.generateInviteToken(admin.id)),
+            this.buildInviteEmail(
+                admin.email,
+                admin.name,
+                await this.tokenPort.generateInviteToken(admin.id, admin.revocationVersion),
+            ),
         );
     }
 

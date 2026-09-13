@@ -1,6 +1,6 @@
 /**
  * @file token.port.ts
- * @description Port contract for generating and verifying JWT access and refresh tokens.
+ * @description Port contract for generating and verifying JWT access, refresh, and invite tokens.
  */
 
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
@@ -24,7 +24,7 @@ export type GeneratedTokens = {
 };
 
 /**
- * Contract for generating and verifying JWT access and refresh tokens.
+ * Contract for generating and verifying JWT access, refresh, and invite tokens.
  */
 export interface ITokenPort {
     /**
@@ -58,16 +58,17 @@ export interface ITokenPort {
      * Generates a signed invite token for a pending account.
      *
      * @param id The identifier of the account the invitation activates.
+     * @param revocationVersion The persisted revocation version binding the invitation to current state.
      * @returns The signed invite token.
      */
-    generateInviteToken(id: string): Promise<string>;
+    generateInviteToken(id: string, revocationVersion: number): Promise<string>;
 
     /**
-     * Verifies an invite token's signature, expiry, and type.
+     * Verifies an invite token's signature, expiry, type, and non-negative integer revocation version.
      *
      * @param token The JWT invite token string.
      * @returns The decoded invite token payload.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, or has an unexpected token type.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks a valid revocation version.
      */
     verifyInviteToken(token: string): Promise<InviteTokenPayload>;
 }

@@ -74,7 +74,8 @@ export const admin = adminSchema.table(
 
         /**
          * The session version of the last FULL revocation: the floor a REFRESH token must reach to
-         * be rotated. A permission change leaves it, so the refresh token survives to fetch the new
+         * be rotated; invite tokens must match it exactly. Re-invitation advances it.
+         * A permission change leaves it, so the refresh token survives to fetch the new
          * permission set while the access tokens that carried the old one die.
          */
         revocationVersion: integer('revocation_version').notNull().default(0),
