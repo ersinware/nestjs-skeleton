@@ -426,11 +426,27 @@ export class EnvironmentVariables {
     /**
      * Grace window (e.g. '10s') during which replay of a just-rotated refresh token is audited and
      * rejected as a conflict without full session-family revocation. Timing cannot prove legitimacy.
+     * Limited to 1–60 seconds: Redis requires positive expiry and longer grace delays reuse remediation.
      */
     @IsString()
-    @Matches(/^\d+[smhd]$/, {
-        message:
-            'SESSION_ROTATION_GRACE_TTL must match the format: duration followed by s, m, h, or d (e.g., "10s", "1m")',
+    @ValidateBy({
+        name: 'isRotationGraceTtl',
+        validator: {
+            validate: (value: unknown): boolean => {
+                const match = typeof value === 'string' ? /^(\d+)([smhd])$/.exec(value) : null;
+
+                if (!match) {
+                    return false;
+                }
+
+                const unitSeconds: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 },
+                    seconds = Number(match[1]) * unitSeconds[match[2]!]!;
+
+                return Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 60;
+            },
+            defaultMessage: () =>
+                '$property must be a duration from 1 to 60 seconds with an s/m/h/d suffix (e.g., "30s", "1m")',
+        },
     })
     readonly SESSION_ROTATION_GRACE_TTL!: string;
 

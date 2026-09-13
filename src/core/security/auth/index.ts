@@ -4,6 +4,7 @@
  */
 
 export type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
+export { Authenticated } from 'src/core/security/auth/decorator/authenticated.decorator';
 export { CurrentPrincipal } from 'src/core/security/auth/decorator/current-principal.decorator';
 export { Permissions } from 'src/core/security/auth/decorator/permissions.decorator';
 export { PrincipalOnly } from 'src/core/security/auth/decorator/principal-only.decorator';
