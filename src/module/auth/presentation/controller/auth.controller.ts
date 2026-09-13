@@ -16,7 +16,7 @@ import {
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { RequestValidationMessage } from 'src/core/http';
-import { CurrentPrincipal, Public } from 'src/core/security/auth';
+import { Authenticated, CurrentPrincipal, Public } from 'src/core/security/auth';
 import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
@@ -134,6 +134,7 @@ export class AuthController {
      * @throws {UnauthenticatedException} If the user is not authenticated
      */
     @Post('logout')
+    @Authenticated()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
@@ -155,6 +156,7 @@ export class AuthController {
      * @throws {UnauthenticatedException} If the user is not authenticated
      */
     @Post('logout-all')
+    @Authenticated()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
