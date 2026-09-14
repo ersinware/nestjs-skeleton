@@ -20,8 +20,8 @@ const DECLARED_PILLARS = ['src/core', 'src/shared'] as const;
  * imported because the config is a `.mjs` file outside `tsconfig.json`, so it arrives untyped.
  */
 type ElementDescriptor = {
-    type: string;
-    pattern: string;
+    readonly type: string;
+    readonly pattern: string;
 };
 
 /**
@@ -34,7 +34,7 @@ type ElementDescriptor = {
  *
  * @returns Every element descriptor declared in the config.
  */
-async function loadElementDescriptors(): Promise<ElementDescriptor[]> {
+async function loadElementDescriptors(): Promise<readonly ElementDescriptor[]> {
     const configUrl = pathToFileURL(join(process.cwd(), 'eslint.config.mjs')).href,
         configModule: unknown = await import(/* @vite-ignore */ configUrl);
 
@@ -49,7 +49,9 @@ async function loadElementDescriptors(): Promise<ElementDescriptor[]> {
     }
 
     for (const block of blocks) {
-        const elements = (block as { settings?: Record<string, unknown> } | null)?.settings?.['boundaries/elements'];
+        const elements = (block as { readonly settings?: Readonly<Record<string, unknown>> } | null)?.settings?.[
+            'boundaries/elements'
+        ];
 
         if (Array.isArray(elements)) {
             return elements as ElementDescriptor[];
@@ -65,7 +67,7 @@ async function loadElementDescriptors(): Promise<ElementDescriptor[]> {
  * @param pillar Pillar path relative to the repository root.
  * @returns The subdirectory names.
  */
-function listChildFolders(pillar: string): string[] {
+function listChildFolders(pillar: string): readonly string[] {
     return readdirSync(join(process.cwd(), pillar), { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name);

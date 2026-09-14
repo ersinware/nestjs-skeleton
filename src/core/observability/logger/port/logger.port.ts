@@ -17,7 +17,7 @@ export type LogPayload = {
     readonly method: string;
     readonly message: string;
     readonly error?: unknown;
-    readonly data?: Record<string, unknown>;
+    readonly data?: Readonly<Record<string, unknown>>;
 };
 
 /**

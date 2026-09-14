@@ -59,16 +59,16 @@ enum AuthRejectionReason {
  */
 export async function login(
     ports: {
-        identityReaderPort: IIdentityReaderPort;
-        hashingPort: IHashingPort;
-        tokenPort: ITokenPort;
-        sessionPort: ISessionPort;
-        auditPort: IAuditPort;
+        readonly identityReaderPort: IIdentityReaderPort;
+        readonly hashingPort: IHashingPort;
+        readonly tokenPort: ITokenPort;
+        readonly sessionPort: ISessionPort;
+        readonly auditPort: IAuditPort;
     },
     principalType: PrincipalType,
     email: string,
     password: string,
-): Promise<{ accessToken: string; refreshToken: string }> {
+): Promise<{ readonly accessToken: string; readonly refreshToken: string }> {
     let identity;
 
     try {

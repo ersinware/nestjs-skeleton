@@ -52,9 +52,9 @@ export class AuditInterceptor implements NestInterceptor {
         }
 
         // On a self-scoped route (`me/...`) `:id` is absent and the ambient actor is the subject.
-        const targetId = context.switchToHttp().getRequest<{ params: Record<string, string | undefined> }>().params[
-            PARAM_ID
-        ];
+        const targetId = context
+            .switchToHttp()
+            .getRequest<{ readonly params: Readonly<Record<string, string | undefined>> }>().params[PARAM_ID];
 
         return next.handle().pipe(
             concatMap(async (data: unknown) => {

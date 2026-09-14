@@ -16,8 +16,8 @@ import { ResponsePaginationDto } from 'src/core/http';
  * @returns A decorator applying the paginated response metadata to a controller or method.
  */
 export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: {
-    message: string;
-    model: T;
+    readonly message: string;
+    readonly model: T;
 }): MethodDecorator & ClassDecorator {
     const { message, model } = options,
         modelExample = getModelExample(model);
@@ -40,7 +40,7 @@ export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: 
             description: 'The list of items on the current page.',
             example: modelExample ? [modelExample] : [],
         })
-        readonly items!: unknown[];
+        readonly items!: readonly unknown[];
     }
 
     /**
@@ -68,22 +68,22 @@ type SwaggerPropertyMetadata = {
     /**
      * The property type: a constructor, or a lazy getter for forward references.
      */
-    type?: unknown;
+    readonly type?: unknown;
 
     /**
      * Indicates if the property has an array type.
      */
-    isArray?: boolean;
+    readonly isArray?: boolean;
 
     /**
      * Indicates if the property is a required field.
      */
-    required?: boolean;
+    readonly required?: boolean;
 
     /**
      * The raw example value registered on the property.
      */
-    example?: unknown;
+    readonly example?: unknown;
 };
 
 /**

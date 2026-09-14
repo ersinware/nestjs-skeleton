@@ -16,11 +16,11 @@ import { TOKEN_LOGGER_PORT } from 'src/core/observability/logger/port/logger.por
  * Log level per environment. Exhaustive, so a new {@link Environment} member fails compilation
  * here instead of silently falling through to a silenced logger.
  */
-const ENVIRONMENT_TO_LEVEL: Record<Environment, string> = {
+const ENVIRONMENT_TO_LEVEL = {
     [Environment.PRODUCTION]: 'info',
     [Environment.DEVELOPMENT]: 'debug',
     [Environment.TEST]: 'silent',
-};
+} as const satisfies Readonly<Record<Environment, string>>;
 
 /**
  * Configures pino — level per environment, whitelist serializers, route exclusions — and provides
@@ -38,7 +38,7 @@ const ENVIRONMENT_TO_LEVEL: Record<Environment, string> = {
                             // Whitelist, not denylist: a new header stays private until named here.
                             // The body is never logged (credentials, tokens, PII) and the URL drops
                             // its query string for the same reason — a query can carry a token.
-                            req: (req: IncomingMessage & { id: unknown; remoteAddress: string }) => ({
+                            req: (req: IncomingMessage & { readonly id: unknown; readonly remoteAddress: string }) => ({
                                 id: req.id,
                                 method: req.method,
                                 url: req.url?.split('?')[0],
@@ -47,7 +47,7 @@ const ENVIRONMENT_TO_LEVEL: Record<Environment, string> = {
                             }),
                             // Response headers are dropped wholesale: Set-Cookie and any future
                             // token-bearing header would land there by default.
-                            res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
+                            res: (res: { readonly statusCode: number }) => ({ statusCode: res.statusCode }),
                             error: serializeError,
                         },
                         formatters: {

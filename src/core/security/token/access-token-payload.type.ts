@@ -17,17 +17,17 @@ export type AccessTokenPayload = SessionIdentity & {
     readonly exp: number;
 
     /** Principal identifier. */
-    sub: string;
+    readonly sub: string;
 
     /** Which bounded context owns the principal's account. */
-    principalType: PrincipalType;
+    readonly principalType: PrincipalType;
 
     /** The permissions the principal held when the token was minted. */
-    permissions: Permission[];
+    readonly permissions: readonly Permission[];
 
     /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
-    sessionVersion: number;
+    readonly sessionVersion: number;
 
     /** Discriminator rejecting a refresh token presented as an access token. */
-    type: AuthTokenType.ACCESS;
+    readonly type: AuthTokenType.ACCESS;
 };

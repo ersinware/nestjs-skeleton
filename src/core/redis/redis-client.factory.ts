@@ -22,12 +22,12 @@ export function createRedisClient(
     config: ConfigService,
     logger: ILoggerPort,
     env: {
-        host: string;
-        port: string;
-        password: string;
-        tls: string;
-        maxRetriesPerRequest: string;
-        commandTimeout: string;
+        readonly host: string;
+        readonly port: string;
+        readonly password: string;
+        readonly tls: string;
+        readonly maxRetriesPerRequest: string;
+        readonly commandTimeout: string;
     },
     token: symbol,
 ) {

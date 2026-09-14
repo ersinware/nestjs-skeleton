@@ -29,7 +29,7 @@ export function IsPersonName(options: { readonly normalize?: boolean } = {}): Pr
             : [
                   Trim(),
                   Transform(
-                      ({ value }: { value: unknown }): unknown =>
+                      ({ value }: { readonly value: unknown }): unknown =>
                           typeof value === 'string' ? value.normalize('NFC') : value,
                       { toClassOnly: true },
                   ),

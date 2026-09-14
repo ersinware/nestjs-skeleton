@@ -4,7 +4,7 @@
  */
 
 /** Transport error codes for standalone Redis connections. */
-const CONNECTION_CODES = new Set([
+const CONNECTION_CODES: ReadonlySet<string> = new Set([
     'ECONNREFUSED',
     'ECONNRESET',
     'ENOTFOUND',
@@ -18,7 +18,7 @@ const CONNECTION_CODES = new Set([
 /**
  * Known textual transport failures produced by ioredis in this implementation.
  */
-const CONNECTION_MESSAGES = new Set([
+const CONNECTION_MESSAGES: ReadonlySet<string> = new Set([
     'Connection is closed.',
     'Command timed out',
     "Stream isn't writeable and enableOfflineQueue options is false",

@@ -21,7 +21,10 @@ import { describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 
 type GuardFixture = {
     readonly payload: AccessTokenPayload;
-    readonly request: { headers: Record<string, string>; accessTokenPayload?: AccessTokenPayload };
+    readonly request: {
+        headers: Readonly<Record<string, string>>;
+        accessTokenPayload?: AccessTokenPayload;
+    };
     readonly tokens: { readonly [K in keyof ITokenPort]: Mock<ITokenPort[K]> };
     readonly sessions: { readonly [K in keyof ISessionPort]: Mock<ISessionPort[K]> };
     readonly context: ExecutionContextHost;
@@ -37,8 +40,8 @@ type GuardFixture = {
  * @returns Guards, request, context, and external dependency mocks.
  */
 function fixture(
-    policies: (ClassDecorator & MethodDecorator)[] = [Authenticated()],
-    classPolicies: (ClassDecorator & MethodDecorator)[] = [],
+    policies: readonly (ClassDecorator & MethodDecorator)[] = [Authenticated()],
+    classPolicies: readonly (ClassDecorator & MethodDecorator)[] = [],
 ): GuardFixture {
     class ControllerFixture {
         /** Protected endpoint. */
@@ -61,7 +64,10 @@ function fixture(
         sessionVersion: 3,
         type: AuthTokenType.ACCESS,
     };
-    const request: { headers: Record<string, string>; accessTokenPayload?: AccessTokenPayload } = {
+    const request: {
+        headers: Readonly<Record<string, string>>;
+        accessTokenPayload?: AccessTokenPayload;
+    } = {
         headers: { authorization: 'Bearer signed-token' },
     };
     const tokens = {
@@ -188,8 +194,10 @@ describe('AuthorizationGuard', () => {
         const f = fixture([PrincipalOnly(kind)]);
         f.request.accessTokenPayload = { ...f.payload, principalType: kind };
         expect(f.authorization.canActivate(f.context)).toBe(true);
-        f.request.accessTokenPayload.principalType =
-            kind === PrincipalType.USER ? PrincipalType.ADMIN : PrincipalType.USER;
+        f.request.accessTokenPayload = {
+            ...f.payload,
+            principalType: kind === PrincipalType.USER ? PrincipalType.ADMIN : PrincipalType.USER,
+        };
         expect(() => f.authorization.canActivate(f.context)).toThrow(AccessDeniedException);
     });
 
@@ -222,7 +230,11 @@ describe('AuthorizationGuard', () => {
         const f = fixture([Permissions(Permission.ADMIN_ACCOUNT_READ)], [PrincipalOnly(PrincipalType.ADMIN)]);
         f.request.accessTokenPayload = { ...f.payload, permissions: [Permission.ADMIN_ACCOUNT_READ] };
         expect(f.authorization.canActivate(f.context)).toBe(true);
-        f.request.accessTokenPayload.principalType = PrincipalType.USER;
+        f.request.accessTokenPayload = {
+            ...f.payload,
+            principalType: PrincipalType.USER,
+            permissions: [Permission.ADMIN_ACCOUNT_READ],
+        };
         expect(() => f.authorization.canActivate(f.context)).toThrow(AccessDeniedException);
     });
 });

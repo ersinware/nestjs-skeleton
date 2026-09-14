@@ -12,13 +12,13 @@ import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
  */
 export type ExceptionContext = {
     /** Name of the class that threw. */
-    class: string;
+    readonly class: string;
 
     /** Name of the method that threw. */
-    method: string;
+    readonly method: string;
 
     /** Any further detail the thrower considers useful when the failure is investigated. */
-    [key: string]: unknown;
+    readonly [key: string]: unknown;
 };
 
 /**
@@ -27,7 +27,7 @@ export type ExceptionContext = {
  */
 export type AppExceptionOptions = ErrorOptions & {
     /** Forensic metadata for observability adapters; never rendered to a client. */
-    context?: ExceptionContext;
+    readonly context?: ExceptionContext;
 };
 
 /**
@@ -75,5 +75,5 @@ export function isExceptionOfKind(
     error: unknown,
     kind: ExceptionKind,
 ): error is Pick<AppException, 'kind' | 'message'> {
-    return error != null && typeof error === 'object' && (error as { kind?: unknown }).kind === kind;
+    return error != null && typeof error === 'object' && (error as { readonly kind?: unknown }).kind === kind;
 }

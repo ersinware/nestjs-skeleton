@@ -25,7 +25,7 @@ export class ResponsePaginationDto<T> {
         description: 'The list of items on the current page.',
         example: [],
     })
-    readonly items!: T[];
+    readonly items!: readonly T[];
 
     /**
      * Total number of matching items in the database.
@@ -83,7 +83,7 @@ export class ResponsePaginationDto<T> {
      * @param page The current page number.
      * @param limit The number of items per page.
      */
-    constructor(items: T[], total: number, page: number, limit: number) {
+    constructor(items: readonly T[], total: number, page: number, limit: number) {
         this.items = items;
         this.total = total;
         this.page = page;

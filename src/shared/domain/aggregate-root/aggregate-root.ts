@@ -49,7 +49,7 @@ export abstract class AggregateRoot {
      *
      * @returns The domain events accumulated since the last pull
      */
-    pullDomainEvents(): DomainEvent[] {
+    pullDomainEvents(): readonly DomainEvent[] {
         const events = [...this._domainEvents];
         this._domainEvents.length = 0;
 

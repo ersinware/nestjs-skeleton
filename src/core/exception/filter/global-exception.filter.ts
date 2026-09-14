@@ -30,7 +30,7 @@ const KIND_TO_STATUS = {
     [ExceptionKind.INVALID_INPUT]: HttpStatus.BAD_REQUEST,
     [ExceptionKind.DEPENDENCY_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
     [ExceptionKind.SYSTEM]: HttpStatus.INTERNAL_SERVER_ERROR,
-} satisfies Record<ExceptionKind, HttpStatus>;
+} as const satisfies Readonly<Record<ExceptionKind, HttpStatus>>;
 
 /**
  * The only place the taxonomy meets HTTP: maps every caught value to a status and the
@@ -61,7 +61,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     async catch(exception: unknown, host: ArgumentsHost) {
         const ctx = host.switchToHttp(),
             response = ctx.getResponse<unknown>(),
-            healthProbePassthrough = this.resolveHealthProbePassthrough(exception, ctx.getRequest<{ url?: string }>());
+            healthProbePassthrough = this.resolveHealthProbePassthrough(
+                exception,
+                ctx.getRequest<{ readonly url?: string }>(),
+            );
 
         if (healthProbePassthrough) {
             this.httpAdapterHost.httpAdapter.reply(
@@ -90,7 +93,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * @param request The incoming request, read for its URL only.
      * @returns The passthrough reply (its body, if any), or null when this is not a health-probe 503.
      */
-    private resolveHealthProbePassthrough(exception: unknown, request: { url?: string }): { body?: unknown } | null {
+    private resolveHealthProbePassthrough(
+        exception: unknown,
+        request: { readonly url?: string },
+    ): { readonly body?: unknown } | null {
         if (!(exception instanceof HttpException)) {
             return null;
         }
@@ -163,7 +169,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * @param statusCode The HTTP status the reply will carry.
      * @returns The shared message, or undefined when the thrower's own client-safe message applies.
      */
-    private getDefaultMessage(statusCode: HttpStatus): string[] | null {
+    private getDefaultMessage(statusCode: HttpStatus): readonly string[] | null {
         if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
             return [DependencyUnavailableMessage.DEFAULT];
         }
@@ -186,7 +192,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * @param response The exception's response body.
      * @returns The extracted messages, or null when the body carries none in a known shape.
      */
-    private extractMessages(response: string | object): string[] | null {
+    private extractMessages(response: string | object): readonly string[] | null {
         if (typeof response === 'string') {
             return [response];
         }

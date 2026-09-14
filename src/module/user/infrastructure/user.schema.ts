@@ -45,7 +45,7 @@ export const user = userSchema.table(
          * PostgreSQL enum: the catalog lives in code, and removing a member from a PostgreSQL enum
          * is not supported, so the array keeps a catalog change a code-only change.
          */
-        permissions: text('permissions').array().$type<Permission[]>().notNull().default([]),
+        permissions: text('permissions').array().$type<readonly Permission[]>().notNull().default([]),
 
         /**
          * Whether the account is banned.

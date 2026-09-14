@@ -28,13 +28,13 @@ type AdminProps = {
  * reconstitution, produced by {@link Admin.toSnapshot}.
  */
 type AdminSnapshot = {
-    id: string;
-    version: number;
-    deletedAt: Date | null;
-    permissions: Permission[];
-    sessionVersion: number;
-    revocationVersion: number;
-} & AdminProps;
+    readonly id: string;
+    readonly version: number;
+    readonly deletedAt: Date | null;
+    readonly permissions: readonly Permission[];
+    readonly sessionVersion: number;
+    readonly revocationVersion: number;
+} & Readonly<AdminProps>;
 
 /**
  * The Admin aggregate root. Owns every admin invariant: profile updates, ban/unban transitions,
@@ -80,7 +80,9 @@ export class Admin extends PrincipalAggregateRoot {
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(props: { id: string } & Omit<AdminProps, 'isBanned' | 'createdAt' | 'updatedAt'>): Admin {
+    static create(
+        props: { readonly id: string } & Readonly<Omit<AdminProps, 'isBanned' | 'createdAt' | 'updatedAt'>>,
+    ): Admin {
         const now = new Date(),
             admin = new Admin({
                 ...props,
@@ -134,7 +136,7 @@ export class Admin extends PrincipalAggregateRoot {
      * transition, so a request that matched the current state leaves no fabricated trail.
      * @throws {SystemException} When the account has been soft-deleted
      */
-    updateProfile(payload: { name?: string; email?: string }): boolean {
+    updateProfile(payload: { readonly name?: string; readonly email?: string }): boolean {
         this.assertNotDeleted(this.updateProfile.name);
 
         let isUpdated = false;

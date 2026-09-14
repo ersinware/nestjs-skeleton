@@ -17,8 +17,8 @@ import { expect } from 'vitest';
 export function expectDataDto<T>(body: unknown, cls: ClassConstructor<T>): T {
     expect(body).toHaveProperty('data');
 
-    const { dto, errors }: { dto: T; errors: ValidationError[] } = validateDataDto(
-        (body as { data: unknown }).data,
+    const { dto, errors }: { readonly dto: T; readonly errors: readonly ValidationError[] } = validateDataDto(
+        (body as { readonly data: unknown }).data,
         cls,
     );
     expect(errors).toHaveLength(0);
@@ -33,7 +33,10 @@ export function expectDataDto<T>(body: unknown, cls: ClassConstructor<T>): T {
  * @param cls Target DTO class constructor.
  * @returns Object holding the serialized DTO and array of ValidationErrors.
  */
-export function validateDataDto<T>(raw: unknown, cls: ClassConstructor<T>): { dto: T; errors: ValidationError[] } {
+export function validateDataDto<T>(
+    raw: unknown,
+    cls: ClassConstructor<T>,
+): { readonly dto: T; readonly errors: readonly ValidationError[] } {
     const dto = plainToInstance(cls, raw);
 
     return { dto, errors: validateSync(dto as object, { whitelist: true, forbidNonWhitelisted: true }) };
@@ -46,13 +49,19 @@ export function validateDataDto<T>(raw: unknown, cls: ClassConstructor<T>): { dt
  * @param cls Target DTO class constructor.
  * @returns Array of validated DTO instances.
  */
-export function expectDataArrayDto<T>(body: unknown, cls: ClassConstructor<T>): T[] {
+export function expectDataArrayDto<T>(body: unknown, cls: ClassConstructor<T>): readonly T[] {
     expect(body).toHaveProperty('data');
 
-    const data = (body as { data: unknown }).data;
+    const data = (body as { readonly data: unknown }).data;
     expect(Array.isArray(data)).toBe(true);
 
-    const { dtos, errors }: { dtos: T[]; errors: ValidationError[] } = validateDataArrayDto(data, cls);
+    const {
+        dtos,
+        errors,
+    }: {
+        readonly dtos: readonly T[];
+        readonly errors: readonly ValidationError[];
+    } = validateDataArrayDto(data, cls);
     expect(errors).toHaveLength(0);
 
     return dtos;
@@ -68,7 +77,7 @@ export function expectDataArrayDto<T>(body: unknown, cls: ClassConstructor<T>): 
 export function validateDataArrayDto<T>(
     raw: unknown,
     cls: ClassConstructor<T>,
-): { dtos: T[]; errors: ValidationError[] } {
+): { readonly dtos: readonly T[]; readonly errors: readonly ValidationError[] } {
     if (!Array.isArray(raw)) {
         throw new Error('Raw data is not an array');
     }
@@ -93,8 +102,8 @@ export function validateDataArrayDto<T>(
 export function expectErrorDto<T>(body: unknown, cls: ClassConstructor<T>): T {
     expect(body).toHaveProperty('error');
 
-    const { dto, errors }: { dto: T; errors: ValidationError[] } = validateErrorDto(
-        (body as { error: unknown }).error,
+    const { dto, errors }: { readonly dto: T; readonly errors: readonly ValidationError[] } = validateErrorDto(
+        (body as { readonly error: unknown }).error,
         cls,
     );
     expect(errors).toHaveLength(0);
@@ -109,7 +118,10 @@ export function expectErrorDto<T>(body: unknown, cls: ClassConstructor<T>): T {
  * @param cls Target error DTO class constructor.
  * @returns Object holding the serialized DTO and validation errors.
  */
-export function validateErrorDto<T>(raw: unknown, cls: ClassConstructor<T>): { dto: T; errors: ValidationError[] } {
+export function validateErrorDto<T>(
+    raw: unknown,
+    cls: ClassConstructor<T>,
+): { readonly dto: T; readonly errors: readonly ValidationError[] } {
     const dto: T = plainToInstance(cls, raw);
 
     return { dto, errors: validateSync(dto as object, { whitelist: true, forbidNonWhitelisted: true }) };

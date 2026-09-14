@@ -39,7 +39,7 @@ export class ResponseHealthyDto {
      */
     @Expose()
     @ApiProperty(createHealthyDetailsSchema('States of the healthy indicators.'))
-    readonly info!: Record<HealthIndicatorKey, unknown>;
+    readonly info!: Readonly<Record<HealthIndicatorKey, unknown>>;
 
     /**
      * Always empty here; present so both health responses share one shape.
@@ -51,14 +51,14 @@ export class ResponseHealthyDto {
         description: 'Always empty on a healthy response.',
         example: {} satisfies Record<string, never>,
     })
-    readonly error!: Record<string, never>;
+    readonly error!: Readonly<Record<string, never>>;
 
     /**
      * Combined per-indicator state; identical to `info` on a healthy response.
      */
     @Expose()
     @ApiProperty(createHealthyDetailsSchema('Combined states of all indicators.'))
-    readonly details!: Record<HealthIndicatorKey, unknown>;
+    readonly details!: Readonly<Record<HealthIndicatorKey, unknown>>;
 }
 
 /**

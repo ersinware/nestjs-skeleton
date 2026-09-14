@@ -13,13 +13,13 @@ export const TOKEN_EMAILER_PORT = Symbol('TOKEN_EMAILER_PORT');
  */
 export type EmailPayload = {
     /** The target recipient email address. */
-    to: string;
+    readonly to: string;
 
     /** The email subject. */
-    subject: string;
+    readonly subject: string;
 
     /** The HTML body of the email. */
-    body: string;
+    readonly body: string;
 };
 
 /**

@@ -47,7 +47,7 @@ describe('GlobalExceptionFilter', () => {
      * Builds the ArgumentsHost the filter reads, defaulting to an unauthenticated request on a
      * non-health route so each test only states the part it actually cares about.
      */
-    function createHost(request: Partial<AuthenticatedRequest> & { url?: string } = {}): ArgumentsHost {
+    function createHost(request: Partial<AuthenticatedRequest> & { readonly url?: string } = {}): ArgumentsHost {
         const response = { sent: true };
 
         return {
@@ -60,7 +60,7 @@ describe('GlobalExceptionFilter', () => {
 
     /** Extracts the `ErrorDefaultDto` the filter replied with. */
     function repliedDto(): ErrorDefaultDto {
-        const [, body] = mockReply.mock.calls[0] as [unknown, { error: ErrorDefaultDto }];
+        const [, body] = mockReply.mock.calls[0] as [unknown, { readonly error: ErrorDefaultDto }];
 
         return body.error;
     }
