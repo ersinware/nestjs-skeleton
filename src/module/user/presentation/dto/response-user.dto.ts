@@ -26,14 +26,14 @@ export class ResponseUserDto {
      * The email address of the user.
      */
     @Expose()
-    @IsEmailAddress()
+    @IsEmailAddress({ normalize: false })
     readonly email!: string;
 
     /**
      * The display name of the user.
      */
     @Expose()
-    @IsPersonName()
+    @IsPersonName({ normalize: false })
     readonly name!: string;
 
     /**

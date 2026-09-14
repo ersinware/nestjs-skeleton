@@ -2,6 +2,7 @@
 
 **Durum:** Açık; çözüm seçenekleri henüz kararlaştırılmadı veya uygulanmadı.
 **İnceleme tarihi:** 2026-09-09.
+**Güncel model:** Sabit `sid`, atomik logout/rotation ve mutlak süre uygulanıyor. Redis veri kaybı ve eski durumun geri yüklenmesi riskleri devam ediyor.
 **Kapsam:** Redis durumunun kaybolması/gerilemesi, access ve refresh token iptallerinin korunması,
 gelecekteki RabbitMQ outbox/inbox çalışmasıyla ilişkisi.
 
@@ -16,14 +17,13 @@ gözlemlenmiş olay veya testle yeniden üretilmiş bulgu değildir. İlgili gen
   `revocationVersion` değerini yeni session sürümüne taşır.
 - Redis, access kontrolü için `sessionVersion` değerini yansıtır. Guard DB'ye bakmaz;
   version anahtarı yoksa veya token sürümü Redis eşiğinin altındaysa 401 döner.
-- Login, okuduğu kimliğin sürümünü ve permission'larını kullanır; version yazımını ve
-  refresh-session açılışını bekler. Refresh primary auth state üzerinden revocation
-  eşiğini kontrol eder, version yazar ve session rotation'ını bekler.
+- Login, okuduğu kimliğin sürümü ve permission'larıyla atomik version/session yazımını bekler.
+  Refresh primary revocation eşiğini kontrol eder; version yazımı ve rotation aynı Lua işlemindedir.
 - `VERSION_LUA`, mevcut Redis değeri ile gelen sürümün maksimumunu atomik olarak saklar.
-  Her yazım refresh-lifetime TTL'yi yeniler. Anahtar yoksa gelen değer yazılır.
-- `session:<id>:<jti>` anahtarının varlığı aktif refresh credential'ını temsil eder;
-  ham JWT saklanmaz. Rotation eski anahtarı silip yenisini ve grace tombstone'unu oluşturur.
-  Tek-session logout yalnızca ilgili refresh-session anahtarını siler; DB sayaçlarını artırmaz.
+  Yazım version TTL'sini yeniler; mevcut kalan ömrü kısaltmaz. Anahtar yoksa gelen değer yazılır.
+- `auth:{id}:<principalType>:session:<sid>` güncel refresh JTI ve süreleri tutar; ham JWT saklanmaz.
+  Rotation aynı kaydı günceller ve tüketilmiş JTI için grace kaydı oluşturur.
+  Logout bu oturumu siler; DB sayaçlarını artırmaz. Guard ayrıca oturumun varlığını ve mutlak süresini kontrol eder.
 - Compose session Redis için AOF, `appendfsync everysec`, RDB snapshot ve kalıcı volume kullanır.
   Bunlar kayıpsız geri yükleme garantisi değildir. Redis belgelerine göre `everysec`, çökmede
   yaklaşık son bir saniyelik yazının kaybına izin verebilir; eski backup daha geniş geri dönüş yaratabilir.
@@ -45,17 +45,17 @@ Kaynak kod:
 
 Örnek zamanlama:
 
-| Adım | Olay                                                                       | DB  | Redis |
-| ---- | -------------------------------------------------------------------------- | --- | ----- |
-| 1    | Login kimliği okur; sürüm ve permission'lar belleğe alınır                 | 11  | 11    |
-| 2    | Login parola doğrulaması veya başka bir async adımda bekler                | 11  | 11    |
-| 3    | Başka istek permission değiştirir; yeni sürüm Redis'e de ulaşır            | 12  | 12    |
-| 4    | Redis veri kaybeder; version anahtarı kaybolur                             | 12  | yok   |
-| 5    | Eski login devam eder ve belleğindeki sürümle `setVersion(id, 11)` çağırır | 12  | 11    |
-| 6    | Login eski permission'larla, sürümü 11 olan token döndürür                 | 12  | 11    |
+| Adım | Olay                                                                           | DB  | Redis |
+| ---- | ------------------------------------------------------------------------------ | --- | ----- |
+| 1    | Login kimliği okur; sürüm ve permission'lar belleğe alınır                     | 11  | 11    |
+| 2    | Login parola doğrulaması veya başka bir async adımda bekler                    | 11  | 11    |
+| 3    | Başka istek permission değiştirir; yeni sürüm Redis'e de ulaşır                | 12  | 12    |
+| 4    | Redis veri kaybeder; version anahtarı kaybolur                                 | 12  | yok   |
+| 5    | Eski login devam eder ve belleğindeki sürümle `openSession` ile sürüm 11 yazar | 12  | 11    |
+| 6    | Login eski permission'larla, sürümü 11 olan token döndürür                     | 12  | 11    |
 
 Son istek Redis tekrar erişilebilir olduktan sonra yazabiliyorsa bu sıralama mümkündür.
-Anahtar mevcut kalsaydı max işlemi 12'yi koruyacak, eski token guard'dan geçemeyecekti.
+Version anahtarı mevcut kalsaydı `openSession` eski sürümü reddedecekti.
 Anahtar kaybolunca Lua önceki 12 değerini hatırlamaz; 11'i yeni başlangıç kabul eder.
 
 **Zarar:** Henüz süresi dolmamış, geri alınmış permission'ları taşıyan access token kabul
@@ -71,7 +71,7 @@ Normal TTL dolumunda eski JWT'ler zaten süresi dolmuş olabilir; her anahtar ka
 
 1. DB ve Redis 12'ye ilerlemiştir; eski access token'ın sürümü 11'dir.
 2. Redis 11 içeren eski kalıcı durumdan geri açılır; DB 12 olarak kalır.
-3. Guard 11 sürümlü token'ı Redis'teki 11 ile karşılaştırır ve kabul eder.
+3. İlgili session kaydı da mevcut ve geçerliyse guard, 11 sürümlü token'ı kabul eder.
 
 Bu senaryo için gecikmiş login gerekmez. Max yazımı ancak güncel bir değer tekrar geldiğinde
 iyileştirir; okuma sırasında Redis değerinin eski olduğunu anlayamaz. Reconciliation bu aralığı
@@ -82,11 +82,11 @@ kısaltabilir ancak tek başına aralık boyunca erişimi önlemez.
 Rotation örneği:
 
 1. Süresi dolmamış `R1` token'ı için Redis'te aktif session anahtarı vardır.
-2. Refresh Lua işlemi `R1` anahtarını siler, `R2` anahtarını ve `R1` grace tombstone'unu yazar.
+2. Refresh Lua işlemi aynı session kaydındaki JTI'yi `R2` ile değiştirir ve `R1` grace kaydını yazar.
 3. İstemci başarılı yanıtla `R2` alır.
-4. Redis rotation öncesindeki duruma döner; `R1` anahtarı tekrar vardır.
+4. Redis rotation öncesindeki duruma döner; session'ın güncel JTI'si tekrar `R1` olur.
 5. `R1` sahibi refresh yapar. İmza, süre, principal durumu ve DB revocation kontrolü geçerse
-   Lua'daki `DEL R1` sonucu 1 olur; işlem normal rotation kabul edilir ve yeni token üretir.
+   Lua güncel JTI eşleşmesini kabul eder ve mutlak süre sınırı içinde yeni token üretir.
 
 Tek-session logout için aynı risk vardır: başarılı `DEL` kaybolur veya eski backup'tan geri
 dönülürse session anahtarı yeniden vardır. Logout audit kaydının varlığı token kontrolünde kullanılmaz.
@@ -206,10 +206,6 @@ idempotency destekliyorsa kullanılmalı; desteklemiyorsa kararlaştırıldığ�
 Relay publisher confirms ve yönlendirilemeyen mesajların takibini; consumer commit sonrası ACK,
 retry/backoff, başarısız iş takibi ve replay'i ele almalıdır. Publisher confirm consumer commit'i değildir.
 Inbox/outbox başarılı uygulanmış olsa da Redis etkilerinin sonradan kaybı için bölüm 6 gereklidir.
-
-İlgili, ayrıca ertelenmiş kod işi: post-mutation `setVersion(...).catch(() => {})` çağrıları
-erişilebilirlik hatalarıyla beklenmeyen hataları ayırmıyor. Retryable event işinin başarısızlığı
-korunmalı; beklenmeyen hataların sessizce yutulması ayrı düzeltilmelidir.
 
 ## 9. Uygulama öncesi kararlar ve doğrulama senaryoları
 

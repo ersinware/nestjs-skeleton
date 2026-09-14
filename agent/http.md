@@ -28,6 +28,8 @@ Paths are version-neutral and relative to the global prefix.
 - Every DTO field requires a schema-valid `example`, declared directly or inherited through mapped DTOs/composed decorators.
 - Reuse matching decorators from `src/core/http/validation/decorator/`; override labels only when needed. One-off fields use raw validators + `@ApiProperty`; compose on the second use of the same field contract and migrate both uses.
 - Keep OpenAPI constraints aligned with field contracts. HTTP validation errors need field-label-based custom messages, supplied by decorators or constraints.
+- Opt into `Trim()` for text fields; name/email decorators include it, names also use NFC. Preserve credentials, machine identifiers, and interior whitespace; never turn blank strings into missing values. Response name/email decorators require `{ normalize: false }`: `toClassOnly` includes response `plainToInstance` calls.
+- Publish regex `.source` as OpenAPI `pattern`; `script/spectral-unicode.mjs` preserves built-in Spectral example checks while adapting Unicode patterns. Other regex flags need separate handling.
 - Validate inputs; optional fields use direct/inherited/composed `@IsOptional()`. Responses add no raw validators; document constraints through `@ApiProperty` or existing composed field decorators.
 - Properties are `readonly`; use `?` for optional fields and `!` for required fields without initialization. Preserve applicable exposure, documentation, and input validation.
 - Convert read-models to response DTOs at HTTP edges with `plainToInstance` or explicit DTO construction; return annotations alone do not filter fields ([CQRS](architecture.md#cqrs)).

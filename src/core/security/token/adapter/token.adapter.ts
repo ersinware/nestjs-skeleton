@@ -8,14 +8,24 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { JsonWebTokenError } from 'jsonwebtoken';
-import { ENV } from 'src/core/config';
+import { ENV, parseTtlToSeconds } from 'src/core/config';
+import type { SessionIdentity } from 'src/core/security/session';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
-import type { GeneratedTokens, ITokenPort } from 'src/core/security/token/port/token.port';
+import type { ITokenPort, TokenPairWithSession } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
-import type { Principal } from 'src/shared/domain/principal';
+import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
+
+/** Fixed claim catalogs avoid rebuilding lookup arrays on each authenticated request. */
+const PERMISSIONS: ReadonlySet<unknown> = new Set(Object.values(Permission));
+
+/** Allowed principal kinds for runtime validation of decoded JWT claims. */
+const PRINCIPAL_TYPES: ReadonlySet<unknown> = new Set(Object.values(PrincipalType));
+
+/** Session and credential identifiers are server-generated UUID v4 values. */
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Implements {@link ITokenPort} with signed JWTs, using separate secrets and lifetimes
@@ -24,10 +34,13 @@ import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exc
 @Injectable()
 export class TokenAdapter implements ITokenPort {
     /** Access token lifetime, read once at boot — config is immutable after validation. */
-    private readonly accessTtl: NonNullable<JwtSignOptions['expiresIn']>;
+    private readonly accessTtl: number;
 
     /** Refresh token lifetime, read once at boot — config is immutable after validation. */
-    private readonly refreshTtl: NonNullable<JwtSignOptions['expiresIn']>;
+    private readonly refreshTtl: number;
+
+    /** Fixed maximum login lifetime in seconds for every principal kind. */
+    private readonly sessionTtlByPrincipalType: Readonly<Record<PrincipalType, number>>;
 
     /** Access token signing secret, read once at boot — config is immutable after validation. */
     private readonly accessSecret: string;
@@ -52,8 +65,12 @@ export class TokenAdapter implements ITokenPort {
         private readonly jwtService: JwtService,
         configService: ConfigService,
     ) {
-        this.accessTtl = configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_ACCESS_TTL);
-        this.refreshTtl = configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_REFRESH_TTL);
+        this.accessTtl = parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL));
+        this.refreshTtl = parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL));
+        this.sessionTtlByPrincipalType = {
+            [PrincipalType.ADMIN]: parseTtlToSeconds(configService.getOrThrow<string>(ENV.SESSION_ABSOLUTE_TTL_ADMIN)),
+            [PrincipalType.USER]: parseTtlToSeconds(configService.getOrThrow<string>(ENV.SESSION_ABSOLUTE_TTL_USER)),
+        } satisfies Record<PrincipalType, number>;
         this.accessSecret = configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
         this.refreshSecret = configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET);
         this.inviteTtl = configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_INVITE_TTL);
@@ -61,63 +78,70 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Generates a signed access/refresh token pair, minting the refresh token's JTI.
-     *
-     * @param principal The verified principal, embedded as the subject and kind of both tokens; its permissions go into the access token only
-     * @param sessionVersion The session version to stamp into both tokens
-     * @returns The signed token pair and the refresh token's JTI
+     * Creates a fresh session identity and signs its first credential pair.
+     * @param principal Verified owner and current permissions.
+     * @param sessionVersion Current account version.
+     * @returns Credentials and the exact metadata required by the session store.
      */
-    async generateTokens(principal: Principal, sessionVersion: number): Promise<GeneratedTokens> {
-        const refreshTokenJti = crypto.randomUUID();
-
-        return Promise.all([
-            this.generateAccessToken(principal, sessionVersion),
-            this.generateRefreshToken(principal, refreshTokenJti, sessionVersion),
-        ]).then(([accessToken, refreshToken]) => ({ accessToken, refreshToken, refreshTokenJti }));
+    async generateTokens(principal: Principal, sessionVersion: number): Promise<TokenPairWithSession> {
+        return this.refreshTokens(principal, sessionVersion, {
+            sid: crypto.randomUUID(),
+            sessionExpiresAt: Math.floor(Date.now() / 1000) + this.sessionTtlByPrincipalType[principal.type],
+        });
     }
 
     /**
-     * Signs an access token carrying the principal, its kind, its permissions, and the session version.
-     *
-     * @param principal The verified principal the token is minted for
-     * @param sessionVersion The session version the token is minted at
-     * @returns The signed access token
+     * Signs a credential pair while preserving the supplied session identity and absolute deadline.
+     * @param principal Verified owner and current permissions.
+     * @param sessionVersion Current account version.
+     * @param identity Session identity whose deadline must remain unchanged.
+     * @returns Credentials and the exact metadata required by the session store.
      */
-    private async generateAccessToken(principal: Principal, sessionVersion: number): Promise<string> {
-        return this.jwtService.signAsync(
-            {
+    async refreshTokens(
+        principal: Principal,
+        sessionVersion: number,
+        identity: SessionIdentity,
+    ): Promise<TokenPairWithSession> {
+        const now = Math.floor(Date.now() / 1000);
+
+        if (identity.sessionExpiresAt <= now) {
+            throw new UnauthenticatedException();
+        }
+
+        const refreshTokenJti = crypto.randomUUID(),
+            refreshExpiresAt = Math.min(now + this.refreshTtl, identity.sessionExpiresAt),
+            accessExpiresAt = Math.min(now + this.accessTtl, identity.sessionExpiresAt),
+            claims = {
                 sub: principal.id,
                 principalType: principal.type,
-                permissions: principal.permissions,
+                sid: identity.sid,
+                sessionExpiresAt: identity.sessionExpiresAt,
                 sessionVersion,
-                type: AuthTokenType.ACCESS,
+                iat: now,
             },
-            {
-                secret: this.accessSecret,
-                algorithm: 'HS256',
-                expiresIn: this.accessTtl,
-            },
-        );
-    }
+            [accessToken, refreshToken] = await Promise.all([
+                this.jwtService.signAsync(
+                    { ...claims, permissions: principal.permissions, exp: accessExpiresAt, type: AuthTokenType.ACCESS },
+                    { secret: this.accessSecret, algorithm: 'HS256' },
+                ),
+                this.jwtService.signAsync(
+                    { ...claims, jti: refreshTokenJti, exp: refreshExpiresAt, type: AuthTokenType.REFRESH },
+                    { secret: this.refreshSecret, algorithm: 'HS256' },
+                ),
+            ]);
 
-    /**
-     * Signs a refresh token carrying the principal, its kind, the session version, and the JTI that
-     * session storage tracks for rotation and reuse detection. No permissions: a refresh re-reads them.
-     *
-     * @param principal The verified principal the token is minted for
-     * @param jti The unique token identifier session storage tracks
-     * @param sessionVersion The session version the token is minted at
-     * @returns The signed refresh token
-     */
-    private async generateRefreshToken(principal: Principal, jti: string, sessionVersion: number): Promise<string> {
-        return this.jwtService.signAsync(
-            { sub: principal.id, principalType: principal.type, jti, sessionVersion, type: AuthTokenType.REFRESH },
-            {
-                secret: this.refreshSecret,
-                algorithm: 'HS256',
-                expiresIn: this.refreshTtl,
+        return {
+            accessToken,
+            refreshToken,
+            session: {
+                sessionVersion,
+                sid: identity.sid,
+                sessionExpiresAt: identity.sessionExpiresAt,
+                principalType: principal.type,
+                refreshTokenJti,
+                refreshExpiresAt,
             },
-        );
+        };
     }
 
     /**
@@ -145,7 +169,17 @@ export class TokenAdapter implements ITokenPort {
      * @returns The decoded access token payload
      */
     async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
-        return this.verifyToken<AccessTokenPayload>(token, this.accessSecret, AuthTokenType.ACCESS);
+        const payload = await this.verifyToken<AccessTokenPayload>(token, this.accessSecret, AuthTokenType.ACCESS);
+        this.assertSessionClaims(payload);
+
+        if (
+            !Array.isArray(payload.permissions) ||
+            !payload.permissions.every((permission) => PERMISSIONS.has(permission))
+        ) {
+            throw new UnauthenticatedException();
+        }
+
+        return payload;
     }
 
     /**
@@ -155,7 +189,31 @@ export class TokenAdapter implements ITokenPort {
      * @returns The decoded refresh token payload
      */
     async verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
-        return this.verifyToken<RefreshTokenPayload>(token, this.refreshSecret, AuthTokenType.REFRESH);
+        const payload = await this.verifyToken<RefreshTokenPayload>(token, this.refreshSecret, AuthTokenType.REFRESH);
+
+        this.assertSessionClaims(payload);
+        this.assertRefreshJti(payload.jti);
+
+        return payload;
+    }
+
+    /**
+     * Allows an expired rotated credential to close its still-live session.
+     * @param token Signed refresh credential.
+     * @returns Verified owner and session identity.
+     */
+    async verifyLogoutToken(token: string): Promise<RefreshTokenPayload> {
+        const payload = await this.verifyToken<RefreshTokenPayload>(
+            token,
+            this.refreshSecret,
+            AuthTokenType.REFRESH,
+            true,
+        );
+
+        this.assertSessionClaims(payload);
+        this.assertRefreshJti(payload.jti);
+
+        return payload;
     }
 
     /**
@@ -168,7 +226,7 @@ export class TokenAdapter implements ITokenPort {
         const payload = await this.verifyToken<InviteTokenPayload>(token, this.inviteSecret, AuthTokenType.INVITE);
 
         if (!Number.isSafeInteger(payload.revocationVersion) || payload.revocationVersion < 0) {
-            throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT);
+            throw new UnauthenticatedException();
         }
 
         return payload;
@@ -180,15 +238,21 @@ export class TokenAdapter implements ITokenPort {
      * @param token The JWT token string
      * @param secret The per-type signing secret to validate the signature
      * @param expectedType The type this verification method is responsible for
+     * @param ignoreExpiration Allow credential expiry only for session closure.
      * @returns The decoded token payload
      */
     private async verifyToken<T extends { type: AuthTokenType }>(
         token: string,
         secret: string,
         expectedType: AuthTokenType,
+        ignoreExpiration = false,
     ): Promise<T> {
         try {
-            const payload = await this.jwtService.verifyAsync<T>(token, { secret, algorithms: ['HS256'] });
+            const payload = await this.jwtService.verifyAsync<T>(token, {
+                secret,
+                algorithms: ['HS256'],
+                ignoreExpiration,
+            });
 
             this.assertTokenType(payload.type, expectedType);
 
@@ -216,6 +280,39 @@ export class TokenAdapter implements ITokenPort {
     private assertTokenType(actual: AuthTokenType, expected: AuthTokenType) {
         if (actual !== expected) {
             throw new UnauthenticatedException(`Token type mismatch: expected '${expected}'.`);
+        }
+    }
+
+    /**
+     * Rejects legacy or malformed session claims before using them as store keys or authorization data.
+     * @param payload Signature-verified session claims.
+     */
+    private assertSessionClaims(payload: AccessTokenPayload | RefreshTokenPayload) {
+        if (
+            typeof payload.sub !== 'string' ||
+            payload.sub.length === 0 ||
+            typeof payload.sid !== 'string' ||
+            !UUID_V4_PATTERN.test(payload.sid) ||
+            !PRINCIPAL_TYPES.has(payload.principalType) ||
+            !Number.isSafeInteger(payload.sessionVersion) ||
+            payload.sessionVersion < 0 ||
+            !Number.isSafeInteger(payload.sessionExpiresAt) ||
+            payload.sessionExpiresAt <= Math.floor(Date.now() / 1000) ||
+            !Number.isSafeInteger(payload.exp) ||
+            payload.exp <= 0 ||
+            payload.exp > payload.sessionExpiresAt
+        ) {
+            throw new UnauthenticatedException();
+        }
+    }
+
+    /**
+     * Rejects missing credential identifiers before rotation or logout.
+     * @param jti Verified refresh identifier.
+     */
+    private assertRefreshJti(jti: string) {
+        if (typeof jti !== 'string' || !UUID_V4_PATTERN.test(jti)) {
+            throw new UnauthenticatedException();
         }
     }
 }

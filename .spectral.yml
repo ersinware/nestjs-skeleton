@@ -1,4 +1,7 @@
-extends: spectral:oas
+extends:
+    - spectral:oas
+    - ./script/spectral-unicode.mjs
+
 rules:
     info-contact: error
     info-description: error

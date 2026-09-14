@@ -3,6 +3,7 @@
  * @description Decoded JWT access token payload shape.
  */
 
+import type { SessionIdentity } from 'src/core/security/session';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { Permission, PrincipalType } from 'src/shared/domain/principal';
 
@@ -11,7 +12,10 @@ import type { Permission, PrincipalType } from 'src/shared/domain/principal';
  * the authorization guard decides without a store round-trip; a permission change bumps the
  * session version, which retires every token minted before it.
  */
-export type AccessTokenPayload = {
+export type AccessTokenPayload = SessionIdentity & {
+    /** Signed credential expiry in Unix seconds. */
+    readonly exp: number;
+
     /** Principal identifier. */
     sub: string;
 

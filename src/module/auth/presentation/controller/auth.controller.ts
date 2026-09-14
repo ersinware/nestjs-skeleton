@@ -125,28 +125,22 @@ export class AuthController {
     }
 
     /**
-     * Revokes the session bound to the provided refresh token. Idempotent: an invalid or
-     * already-revoked token still answers 204.
-     *
-     * @param principal The verified principal of the current request
-     * @param dto The refresh token identifying the session to revoke
-     * @throws {InvalidInputException} If the payload is invalid
-     * @throws {UnauthenticatedException} If the user is not authenticated
+     * Closes the session identified by a signed refresh credential, even after rotation or credential expiry.
+     * @param dto Refresh credential identifying the session; no access token is required.
+     * @throws {InvalidInputException} If the payload is invalid.
      */
     @Post('logout')
-    @Authenticated()
+    @Public()
     @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiBearerAuth()
     @ApiOperation({
         summary: 'Log out a session',
         description:
-            'Revokes the session bound to the provided refresh token. Responds 204 even if the token is invalid or already revoked.',
+            'Closes the refresh token session, including its access tokens. Accepts an expired refresh credential within the absolute session lifetime. Invalid or already-closed credentials return 204. No access token is required.',
     })
-    @ApiNoContentResponse({ description: 'Session revoked.' })
+    @ApiNoContentResponse({ description: 'Logout processed; discard local credentials.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
-    @ApiDefaultUnauthenticatedResponse()
-    async logout(@CurrentPrincipal() principal: Principal, @Body() dto: PostRefreshDto) {
-        await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken, principal));
+    async logout(@Body() dto: PostRefreshDto) {
+        await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken));
     }
 
     /**

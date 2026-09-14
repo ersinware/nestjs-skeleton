@@ -3,6 +3,7 @@
  * @description Public entry point of the config concern. Nothing outside may import past this barrel.
  */
 
+export { parseTtlToSeconds } from 'src/core/config/duration.util';
 export { resolveEnvFilePath } from 'src/core/config/environment/env-file.util';
 export { ENV } from 'src/core/config/environment/env.constant';
 export { validateConfig } from 'src/core/config/environment/env.validation';

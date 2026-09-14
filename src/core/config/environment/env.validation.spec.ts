@@ -38,6 +38,9 @@ describe('env.validation.config', () => {
         REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 1,
         REDIS_SESSION_COMMAND_TIMEOUT: 0.5,
 
+        SESSION_ABSOLUTE_TTL_ADMIN: '8h',
+        SESSION_ABSOLUTE_TTL_USER: '7d',
+        SESSION_ROTATION_GRACE_TTL: '30s',
         JWT_ACCESS_SECRET: 'access-secret-at-least-32-bytes!',
         JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'refresh-secret-at-least-32-bytes',
@@ -45,7 +48,6 @@ describe('env.validation.config', () => {
         JWT_INVITE_SECRET: 'invite-secret-at-least-32-bytes!',
         JWT_INVITE_TTL: '3d',
         ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
-        SESSION_ROTATION_GRACE_TTL: '30s',
 
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
@@ -140,6 +142,10 @@ describe('env.validation.config', () => {
         ['REDIS_SESSION_COMMAND_TIMEOUT', 0],
         ['HEALTH_HEAP_LIMIT_MB', 0],
         ['HEALTH_RSS_LIMIT_MB', -1],
+        ['SESSION_ABSOLUTE_TTL_ADMIN', '0h'],
+        ['SESSION_ABSOLUTE_TTL_ADMIN', '8hours'],
+        ['SESSION_ABSOLUTE_TTL_USER', '0d'],
+        ['SESSION_ABSOLUTE_TTL_USER', '7days'],
         ['JWT_ACCESS_TTL', '0s'],
         ['JWT_REFRESH_TTL', '0d'],
         ['JWT_INVITE_TTL', '00h'],

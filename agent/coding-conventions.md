@@ -18,6 +18,7 @@
 ### Environment & Route Constants
 
 - Numeric app duration env values use seconds; convert at library boundaries. String TTLs require `s`/`m`/`h`/`d`.
+- Keep environment validation in `env.validation.ts`; consumers and conversion utilities must not repeat it.
 - Boot-validate app env in `EnvironmentVariables`: explicit number/boolean conversion, no implicit conversion or blank/boolean-to-number coercion. Match consumer formats, choices, integer requirements and bounds; allow fractional durations where supported. Preserve intentional empty values; enforce technical limits, not arbitrary capacity caps.
 - Read through `ConfigService` + `ENV`: typed `getOrThrow` for required values, `get` for optional ones. Optional env uses `?:` and `@IsOptional()`; where empty means unset, use `@Transform(emptyToUndefined)` and handle `''` in readers because raw-env fallback may restore it.
 - Within a provider, read keys used at multiple code sites once into constructor-initialized `private readonly` fields.

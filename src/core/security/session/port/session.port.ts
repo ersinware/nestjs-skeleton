@@ -1,98 +1,99 @@
 /**
  * @file session.port.ts
- * @description Contract for managing refresh sessions and session versions in the session store.
+ * @description Atomic session lifecycle and account-wide access-version contracts.
  */
 
-/**
- * Dependency injection token for the {@link ISessionPort} contract.
- */
+import type { SessionIdentity } from 'src/core/security/session/session-identity.type';
+import type { PrincipalType } from 'src/shared/domain/principal';
+
+/** Injection token for the session store. */
 export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
-/**
- * The three mutually exclusive outcomes of an atomic refresh-session rotation. Exists so the caller
- * can react to each case: replay within grace rejects only that request and requires audit,
- * whereas a post-grace replay is the RFC 9700 reuse signal that must revoke the whole session family.
- */
+/** Signed token metadata used to register exactly the lifetime issued by the token port. */
+export type SessionRegistration = SessionIdentity & {
+    /** Account version stamped into the issued token pair. */
+    readonly sessionVersion: number;
+
+    /** Owning principal context. */
+    readonly principalType: PrincipalType;
+
+    /** Current refresh credential identifier. */
+    readonly refreshTokenJti: string;
+
+    /** Refresh credential expiry in Unix seconds. */
+    readonly refreshExpiresAt: number;
+};
+
+/** Rotation outcomes distinguish a dead session from reuse within a live session. */
 export enum RotateOutcome {
-    /** The old session existed and was atomically swapped for the new one. */
+    /** Current refresh credential was atomically replaced while preserving the session deadline. */
     ROTATED = 'ROTATED',
 
-    /** The old session was already consumed but its tombstone is still within the grace window — concurrency and theft cannot be distinguished. */
+    /** Already-rotated credential was replayed within grace; rotation was denied without closing the session. */
     CONCURRENT_REPLAY = 'CONCURRENT_REPLAY',
 
-    /** The old session was gone with no tombstone — a replay after the grace window, i.e. refresh-token reuse. */
+    /** Non-current credential was reused outside grace; the session was atomically closed. */
     REUSE_DETECTED = 'REUSE_DETECTED',
+
+    /** Rotation was denied because the session is missing, expired, or fails deadline/version checks. */
+    SESSION_CLOSED = 'SESSION_CLOSED',
 }
 
-/**
- * Contract for managing refresh sessions and session versions in the session store.
- */
+/** Session mutations accept token-generated registrations and are awaited before returning credentials or logout success. */
 export interface ISessionPort {
     /**
-     * Registers a new refresh session for a principal.
-     *
-     * @param id The principal identifier.
-     * @param jti The JWT ID of the refresh token.
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     * Opens a new session and mirrors its version atomically; never replaces an existing sid.
+     * @param id Principal identifier.
+     * @param session Signed token lifetimes, identity, and account version.
+     * @returns False if superseded or already registered.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
-    openSession(id: string, jti: string): Promise<void>;
+    openSession(id: string, session: SessionRegistration): Promise<boolean>;
 
     /**
-     * Atomically mirrors a committed version and opens a session unless a newer version is stored.
-     *
-     * @param id The principal identifier.
-     * @param jti The fresh refresh token identifier.
-     * @param version The committed version used to sign the tokens.
-     * @returns Whether the session was opened; false means a newer version superseded it.
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     * Replaces only the current credential of an existing live session, preserving its deadline.
+     * Reuse outside grace closes that session in the same operation before returning.
+     * @param id Principal identifier.
+     * @param oldJti Presented refresh credential identifier.
+     * @param session Replacement credential with the original session identity.
+     * @returns The atomic rotation decision.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
-    openSessionAtVersion(id: string, jti: string, version: number): Promise<boolean>;
+    rotateSession(id: string, oldJti: string, session: SessionRegistration): Promise<RotateOutcome>;
 
     /**
-     * Atomically closes the current session and opens the next one in a single round trip, so no
-     * intermediate state can be observed by a concurrent refresh — the old session doubles as the
-     * single-use gate. A short-lived tombstone written in the same step classifies the outcome as a
-     * real rotation, replay inside the grace window, or post-grace reuse. Only successful rotation
-     * mirrors the monotonic-max version and renews its TTL in the same atomic operation.
-     *
-     * @param id The principal identifier.
-     * @param oldJti The JWT ID of the refresh token being rotated away.
-     * @param newJti The JWT ID of the newly issued refresh token.
-     * @param version The version used to sign the new tokens.
-     * @returns The rotation outcome the caller must react to.
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     * Deletes the stable session; rotation never recreates missing sessions.
+     * @param id Principal identifier.
+     * @param principalType Owning context.
+     * @param sid Verified session identifier, independent of credential rotation.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
-    rotateSession(id: string, oldJti: string, newJti: string, version: number): Promise<RotateOutcome>;
+    closeSession(id: string, principalType: PrincipalType, sid: string): Promise<void>;
 
     /**
-     * Removes a specific refresh session for a principal.
-     *
-     * @param id The principal identifier.
-     * @param jti The JWT ID of the refresh token.
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     * Checks the account floor and session liveness in one atomic store read.
+     * @param id Principal identifier.
+     * @param principalType Owning context.
+     * @param sid Verified session identifier.
+     * @param version Access token version.
+     * @returns Whether both checks admit this access token.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
-    closeSession(id: string, jti: string): Promise<void>;
+    isSessionActive(id: string, principalType: PrincipalType, sid: string, version: number): Promise<boolean>;
 
     /**
-     * Advances the cached session version with a monotonic-max write: the stored value moves only
-     * when `version` is strictly greater, so a racing stale write cannot resurrect revoked tokens.
-     * Every write renews the key's TTL, keeping a live session's key alive for the fail-closed
-     * guard. The DB is the authority; this mirrors it for the guard's hot path.
-     *
-     * @param id The principal identifier.
-     * @param version The candidate session version (the aggregate's monotonic counter).
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     * Advances the account access floor monotonically and renews its independent retention.
+     * @param id Principal identifier.
+     * @param version Candidate access floor.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
     setVersion(id: string, version: number): Promise<void>;
 
     /**
-     * Reads the cached session version: the minimum version a token must carry to be accepted.
-     * Login and refresh keep every live session's key alive, so a missing key means no live
-     * session — the caller must fail closed, never substitute a permissive default.
-     *
-     * @param id The principal identifier.
-     * @returns The version, or null when no live session exists.
-     * @throws {DependencyUnavailableException} When the session store is unreachable.
+     * Reads the account access floor without an accepting default.
+     * @param id Principal identifier.
+     * @returns Stored floor or null.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
     getVersion(id: string): Promise<number | null>;
 }

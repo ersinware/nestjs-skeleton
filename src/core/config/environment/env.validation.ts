@@ -27,6 +27,8 @@ import {
     ValidateIf,
     validateSync,
 } from 'class-validator';
+import { parseTtlToSeconds } from 'src/core/config/duration.util';
+import { ENV } from 'src/core/config/environment/env.constant';
 import { Environment } from 'src/core/config/environment/node-env.enum';
 import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 
@@ -168,8 +170,23 @@ function transformToBoolean<T>({ value }: { value: T }): boolean | T {
 function IsJwtTtl(): PropertyDecorator {
     return applyDecorators(
         IsString(),
-        Matches(/^0*[1-9]\d*[smhd]$/, {
-            message: '$property must be a positive duration followed by s, m, h, or d (e.g., "15m", "7d")',
+        ValidateBy({
+            name: 'isJwtTtl',
+            validator: {
+                validate: (value: unknown): boolean => {
+                    if (typeof value !== 'string' || !/^(\d+)([smhd])$/.test(value)) return false;
+
+                    const seconds = parseTtlToSeconds(value);
+
+                    return (
+                        Number.isSafeInteger(seconds) &&
+                        seconds > 0 &&
+                        Number.isSafeInteger((Math.floor(Date.now() / 1000) + seconds) * 1000)
+                    );
+                },
+                defaultMessage: () =>
+                    '$property must be a positive duration with an s/m/h/d suffix and a safely representable millisecond expiry',
+            },
         }),
     );
 }
@@ -374,6 +391,41 @@ export class EnvironmentVariables {
     @Max(MAX_TIMER_SECONDS)
     readonly REDIS_SESSION_COMMAND_TIMEOUT!: number;
 
+    /** Maximum administrator login lifetime, independent of refresh activity. */
+    @IsJwtTtl()
+    readonly SESSION_ABSOLUTE_TTL_ADMIN!: string;
+
+    /** Maximum end-user login lifetime, independent of refresh activity. */
+    @IsJwtTtl()
+    readonly SESSION_ABSOLUTE_TTL_USER!: string;
+
+    /**
+     * Grace window (e.g. '10s') during which replay of a just-rotated refresh token is audited and
+     * rejected as a conflict without full session-family revocation. Timing cannot prove legitimacy.
+     * Limited to 1–60 seconds: Redis requires positive expiry and longer grace delays reuse remediation.
+     */
+    @IsString()
+    @ValidateBy({
+        name: 'isRotationGraceTtl',
+        validator: {
+            validate: (value: unknown): boolean => {
+                const match = typeof value === 'string' ? /^(\d+)([smhd])$/.exec(value) : null;
+
+                if (!match) {
+                    return false;
+                }
+
+                const unitSeconds: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 },
+                    seconds = Number(match[1]) * unitSeconds[match[2]!]!;
+
+                return Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 60;
+            },
+            defaultMessage: () =>
+                '$property must be a duration from 1 to 60 seconds with an s/m/h/d suffix (e.g., "30s", "1m")',
+        },
+    })
+    readonly SESSION_ROTATION_GRACE_TTL!: string;
+
     /**
      * Secret key for signing JWT access tokens.
      */
@@ -422,33 +474,6 @@ export class EnvironmentVariables {
     @IsString()
     @IsHttpUrl()
     readonly ADMIN_INVITE_URL!: string;
-
-    /**
-     * Grace window (e.g. '10s') during which replay of a just-rotated refresh token is audited and
-     * rejected as a conflict without full session-family revocation. Timing cannot prove legitimacy.
-     * Limited to 1–60 seconds: Redis requires positive expiry and longer grace delays reuse remediation.
-     */
-    @IsString()
-    @ValidateBy({
-        name: 'isRotationGraceTtl',
-        validator: {
-            validate: (value: unknown): boolean => {
-                const match = typeof value === 'string' ? /^(\d+)([smhd])$/.exec(value) : null;
-
-                if (!match) {
-                    return false;
-                }
-
-                const unitSeconds: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 },
-                    seconds = Number(match[1]) * unitSeconds[match[2]!]!;
-
-                return Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 60;
-            },
-            defaultMessage: () =>
-                '$property must be a duration from 1 to 60 seconds with an s/m/h/d suffix (e.g., "30s", "1m")',
-        },
-    })
-    readonly SESSION_ROTATION_GRACE_TTL!: string;
 
     /**
      * Heap memory limit (in MB) for system health checks.
@@ -577,6 +602,11 @@ export function validateConfig(config: Record<string, unknown>): EnvironmentVari
 
     if (errors.length > 0) {
         throw new Error(errors.toString());
+    }
+
+    // Session records expire with refresh credentials and must cover the access lifetime.
+    if (parseTtlToSeconds(validatedConfig.JWT_REFRESH_TTL) < parseTtlToSeconds(validatedConfig.JWT_ACCESS_TTL)) {
+        throw new Error(`${ENV.JWT_REFRESH_TTL} must be greater than or equal to ${ENV.JWT_ACCESS_TTL}.'`);
     }
 
     return validatedConfig;

@@ -322,6 +322,9 @@ describe('GlobalExceptionFilter', () => {
 
             it('should not name the acting principal as the audit target', async () => {
                 const accessTokenPayload: AccessTokenPayload = {
+                    sid: 'session-1',
+                    exp: 2000000000,
+                    sessionExpiresAt: 2000000000,
                     sub: 'user-1',
                     principalType: PrincipalType.USER,
                     permissions: [],

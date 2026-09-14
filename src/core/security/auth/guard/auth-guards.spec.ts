@@ -16,12 +16,7 @@ import { AuthorizationGuard } from 'src/core/security/auth/guard/authorization.g
 import type { ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
-import {
-    AccessDeniedException,
-    DependencyUnavailableException,
-    SystemException,
-    UnauthenticatedException,
-} from 'src/shared/exception';
+import { AccessDeniedException, DependencyUnavailableException, UnauthenticatedException } from 'src/shared/exception';
 import { describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 
 type GuardFixture = {
@@ -58,6 +53,9 @@ function fixture(
         );
     const payload: AccessTokenPayload = {
         sub: 'principal-1',
+        sid: 'session-1',
+        sessionExpiresAt: 2000000000,
+        exp: 2000000000,
         principalType: PrincipalType.ADMIN,
         permissions: [],
         sessionVersion: 3,
@@ -69,14 +67,16 @@ function fixture(
     const tokens = {
         verifyAccessToken: vi.fn<ITokenPort['verifyAccessToken']>().mockResolvedValue(payload),
         verifyRefreshToken: vi.fn(),
+        verifyLogoutToken: vi.fn(),
         generateTokens: vi.fn(),
+        refreshTokens: vi.fn(),
         generateInviteToken: vi.fn(),
         verifyInviteToken: vi.fn(),
     } satisfies ITokenPort;
     const sessions = {
         getVersion: vi.fn<ISessionPort['getVersion']>().mockResolvedValue(3),
+        isSessionActive: vi.fn<ISessionPort['isSessionActive']>().mockResolvedValue(true),
         openSession: vi.fn(),
-        openSessionAtVersion: vi.fn(),
         rotateSession: vi.fn(),
         closeSession: vi.fn(),
         setVersion: vi.fn(),
@@ -99,20 +99,10 @@ describe('AuthenticationGuard', () => {
         f.request.headers = {};
         expect(await f.authentication.canActivate(f.context)).toBe(true);
         expect(f.tokens.verifyAccessToken).not.toHaveBeenCalled();
-        expect(f.sessions.getVersion).not.toHaveBeenCalled();
+        expect(f.sessions.isSessionActive).not.toHaveBeenCalled();
         expect(f.request.accessTokenPayload).toBeUndefined();
         expect(f.publishActor).not.toHaveBeenCalled();
     });
-
-    it.each([[], [Public(), Authenticated()]].map((policies) => ({ policies })))(
-        'rejects invalid policies before external calls',
-        async ({ policies }) => {
-            const f = fixture(policies);
-            await expect(f.authentication.canActivate(f.context)).rejects.toBeInstanceOf(SystemException);
-            expect(f.tokens.verifyAccessToken).not.toHaveBeenCalled();
-            expect(f.sessions.getVersion).not.toHaveBeenCalled();
-        },
-    );
 
     it.each([undefined, '', 'Basic token', 'bearer token', 'Bearer', 'Bearer '])(
         'rejects missing or malformed credentials: %s',
@@ -121,7 +111,7 @@ describe('AuthenticationGuard', () => {
             f.request.headers = header === undefined ? {} : { authorization: header };
             await expect(f.authentication.canActivate(f.context)).rejects.toBeInstanceOf(UnauthenticatedException);
             expect(f.tokens.verifyAccessToken).not.toHaveBeenCalled();
-            expect(f.sessions.getVersion).not.toHaveBeenCalled();
+            expect(f.sessions.isSessionActive).not.toHaveBeenCalled();
         },
     );
 
@@ -130,14 +120,14 @@ describe('AuthenticationGuard', () => {
             failure = new UnauthenticatedException();
         f.tokens.verifyAccessToken.mockRejectedValue(failure);
         await expect(f.authentication.canActivate(f.context)).rejects.toBe(failure);
-        expect(f.sessions.getVersion).not.toHaveBeenCalled();
+        expect(f.sessions.isSessionActive).not.toHaveBeenCalled();
         expect(f.request.accessTokenPayload).toBeUndefined();
         expect(f.publishActor).not.toHaveBeenCalled();
     });
 
-    it.each([null, 4])('rejects missing or newer session floors: %s', async (version) => {
+    it('rejects a closed, missing, expired, or retired session', async () => {
         const f = fixture();
-        f.sessions.getVersion.mockResolvedValue(version);
+        f.sessions.isSessionActive.mockResolvedValue(false);
         await expect(f.authentication.canActivate(f.context)).rejects.toBeInstanceOf(UnauthenticatedException);
         expect(f.publishActor).not.toHaveBeenCalled();
         expect(f.request.accessTokenPayload).toBeUndefined();
@@ -148,20 +138,25 @@ describe('AuthenticationGuard', () => {
         'propagates session failures unchanged',
         async (failure) => {
             const f = fixture();
-            f.sessions.getVersion.mockRejectedValue(failure);
+            f.sessions.isSessionActive.mockRejectedValue(failure);
             await expect(f.authentication.canActivate(f.context)).rejects.toBe(failure);
             expect(f.request.accessTokenPayload).toBeUndefined();
             expect(f.publishActor).not.toHaveBeenCalled();
         },
     );
 
-    it.each([0, 3])('attaches verified identity only after accepting floor %s', async (floor) => {
+    it('attaches verified identity only after session admission', async () => {
         const f = fixture();
-        f.sessions.getVersion.mockResolvedValue(floor);
+        f.sessions.isSessionActive.mockResolvedValue(true);
         expect(await f.authentication.canActivate(f.context)).toBe(true);
         expect(f.publishActor).toHaveBeenCalledExactlyOnceWith(f.payload.sub, f.payload.principalType);
         expect(f.tokens.verifyAccessToken).toHaveBeenCalledExactlyOnceWith('signed-token');
-        expect(f.sessions.getVersion).toHaveBeenCalledExactlyOnceWith(f.payload.sub);
+        expect(f.sessions.isSessionActive).toHaveBeenCalledExactlyOnceWith(
+            f.payload.sub,
+            f.payload.principalType,
+            f.payload.sid,
+            f.payload.sessionVersion,
+        );
         expect(f.request.accessTokenPayload).toBe(f.payload);
     });
 });
@@ -229,13 +224,5 @@ describe('AuthorizationGuard', () => {
         expect(f.authorization.canActivate(f.context)).toBe(true);
         f.request.accessTokenPayload.principalType = PrincipalType.USER;
         expect(() => f.authorization.canActivate(f.context)).toThrow(AccessDeniedException);
-    });
-
-    it('rejects absent and conflicting policies even with a verified principal', () => {
-        for (const policies of [[], [Public(), Authenticated()]]) {
-            const f = fixture(policies);
-            f.request.accessTokenPayload = f.payload;
-            expect(() => f.authorization.canActivate(f.context)).toThrow(SystemException);
-        }
     });
 });

@@ -25,10 +25,19 @@ import {
  * travels to the auditor alone, as {@link AuditRecordInput.reason}, never as exception context.
  */
 enum AuthRejectionReason {
+    /** No account matches the email within the requested principal context. */
     ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
+
+    /** The account is banned from authenticating. */
     INACTIVE_ACCOUNT = 'ACCOUNT_IS_INACTIVE',
+
+    /** The account has no password yet and requires activation. */
     PENDING_ACCOUNT = 'ACCOUNT_PENDING_ACTIVATION',
+
+    /** The supplied password does not match the stored password hash. */
     INVALID_PASSWORD = 'INVALID_PASSWORD',
+
+    /** Session opening was rejected because a newer account version or the same session already exists. */
     SESSION_SUPERSEDED = 'SESSION_SUPERSEDED',
 }
 
@@ -77,7 +86,7 @@ export async function login(
         throw error;
     }
 
-    const { id, password: currentPassword, sessionVersion } = identity;
+    const { id, password: currentPassword } = identity;
 
     if (identity.isBanned) {
         await ports.hashingPort.simulateVerify(password);
@@ -97,20 +106,20 @@ export async function login(
         throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, id);
     }
 
-    const tokens = await ports.tokenPort.generateTokens(
+    const tokenPairWithSession = await ports.tokenPort.generateTokens(
         { id, type: principalType, permissions: identity.permissions },
-        sessionVersion,
+        identity.sessionVersion,
     );
 
     // Mirror the version and open the session together; a newer Redis floor means this login's
     // auth snapshot was superseded. Session availability failures propagate without issuing tokens.
-    if (!(await ports.sessionPort.openSessionAtVersion(id, tokens.refreshTokenJti, sessionVersion))) {
+    if (!(await ports.sessionPort.openSession(id, tokenPairWithSession.session))) {
         throw await denyLogin(ports.auditPort, AuthRejectionReason.SESSION_SUPERSEDED, id);
     }
 
     await ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
 
-    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+    return { accessToken: tokenPairWithSession.accessToken, refreshToken: tokenPairWithSession.refreshToken };
 }
 
 /**

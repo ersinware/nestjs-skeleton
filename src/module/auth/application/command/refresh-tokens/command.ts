@@ -11,8 +11,8 @@ import { Command } from '@nestjs/cqrs';
  */
 export enum RefreshTokensMessage {
     /**
-     * Targets a refresh that lost a concurrent rotation race: a newer session already exists, so the
-     * client should simply retry with its latest token pair. Benign — not refresh-token reuse.
+     * The credential was consumed within grace. Timing does not prove legitimacy; clients without
+     * the winning token pair must authenticate again instead of retrying the consumed credential.
      */
     CONCURRENT_REFRESH = 'A newer session already exists; retry with the latest token.',
 }
