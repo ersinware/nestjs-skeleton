@@ -9,4 +9,10 @@ export {
     type ISessionCleanerPort,
 } from 'src/core/security/session/port/session-cleaner.port';
 export { TOKEN_SESSION_HEALTH_PORT, type ISessionHealthPort } from 'src/core/security/session/port/session-health.port';
-export { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session/port/session.port';
+export {
+    RotateOutcome,
+    TOKEN_SESSION_PORT,
+    type ISessionPort,
+    type SessionRegistration,
+} from 'src/core/security/session/port/session.port';
+export type { SessionIdentity } from 'src/core/security/session/session-identity.type';

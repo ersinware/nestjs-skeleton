@@ -7,6 +7,7 @@ import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { QueryPaginationDto } from 'src/core/http/pagination/dto/query-pagination.dto';
+import { Trim } from 'src/core/http/validation/decorator/trim.decorator';
 
 const SEARCH_MIN_LENGTH = 1,
     SEARCH_MAX_LENGTH = 100;
@@ -23,6 +24,7 @@ export class QuerySearchDto extends QueryPaginationDto {
      */
     @Expose()
     @IsOptional()
+    @Trim()
     @IsString({ message: 'Search term must be a string.' })
     @MinLength(SEARCH_MIN_LENGTH, {
         message: `Search term must be at least ${SEARCH_MIN_LENGTH} character long.`,

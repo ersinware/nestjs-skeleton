@@ -1,12 +1,12 @@
 /**
  * @file authentication.guard.ts
- * @description Global authentication guard verifying JWT access tokens and the cached session version.
+ * @description Global authentication guard verifying JWT access tokens, stable sessions, and account access floors.
  */
 
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { publishAuditActor } from 'src/core/observability/audit';
-import { resolveAuthPolicy } from 'src/core/security/auth/auth-policy';
+import { isPublicAuthPolicy } from 'src/core/security/auth/auth-policy';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -14,7 +14,7 @@ import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exc
 
 /**
  * Global authentication guard: verifies the JWT access token and enforces the cached session
- * version, so a session bump evicts already-issued tokens instantly.
+ * version together with the stable session; logout takes effect at the next admission check.
  */
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
@@ -34,12 +34,11 @@ export class AuthenticationGuard implements CanActivate {
      *
      * @param context Execution context of the request.
      * @returns A promise resolving to true if authenticated.
-     * @throws {SystemException} If the endpoint access policy is invalid.
      * @throws {UnauthenticatedException} if the token or the session-version check fails.
      * @throws {DependencyUnavailableException} if the cache is unreachable — fails closed rather than skipping the session-version check.
      */
     async canActivate(context: ExecutionContext): Promise<boolean> {
-        if (resolveAuthPolicy(this.reflector, context.getClass(), context.getHandler()).public) {
+        if (isPublicAuthPolicy(this.reflector, context.getClass(), context.getHandler())) {
             return true;
         }
 
@@ -56,16 +55,18 @@ export class AuthenticationGuard implements CanActivate {
             throw new UnauthenticatedException();
         }
 
-        const payload = await this.tokenPort.verifyAccessToken(token),
-            // Deliberately unguarded — the port's DependencyUnavailableException propagates, so the guard
-            // fails closed: without the cached version, instant session eviction cannot be honoured, and
-            // rejecting with a retryable 503 beats admitting a possibly-revoked token.
-            currentVersion = await this.sessionPort.getVersion(payload.sub);
+        const payload = await this.tokenPort.verifyAccessToken(token);
 
-        // Login and refresh keep every live session's version key alive, so a missing key means the
-        // session is dead: fail closed. 401 rather than 503 — the store answered definitively, and
-        // re-authenticating rewrites the key.
-        if (currentVersion === null || payload.sessionVersion < currentVersion) {
+        // One authoritative read checks both individual logout and account-wide access retirement.
+        // Availability failures propagate as 503; missing or closed state denies with 401.
+        if (
+            !(await this.sessionPort.isSessionActive(
+                payload.sub,
+                payload.principalType,
+                payload.sid,
+                payload.sessionVersion,
+            ))
+        ) {
             throw new UnauthenticatedException();
         }
 

@@ -43,11 +43,11 @@ export default tseslint.config(
     },
     {
         /**
-         * Neither file is in `tsconfig.json`'s `include`, so the type-checked preset dies on a parse
-         * error here. Disabling only the type-checked rules keeps both files LINTED — adding them to
+         * These files are outside `tsconfig.json`'s `include`. Disabling only the type-checked
+         * rules keeps them linted — adding them to
          * `ignores` instead would exempt them from every rule.
          */
-        files: ['eslint.config.mjs', '.lintstagedrc.js'],
+        files: ['eslint.config.mjs', '.lintstagedrc.js', 'script/spectral-unicode.mjs'],
         extends: [tseslint.configs.disableTypeChecked],
         languageOptions: {
             parserOptions: {

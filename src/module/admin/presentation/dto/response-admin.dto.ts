@@ -26,14 +26,14 @@ export class ResponseAdminDto {
      * The email address of the admin.
      */
     @Expose()
-    @IsEmailAddress()
+    @IsEmailAddress({ normalize: false })
     readonly email!: string;
 
     /**
      * The full name of the admin.
      */
     @Expose()
-    @IsPersonName()
+    @IsPersonName({ normalize: false })
     readonly name!: string;
 
     /**

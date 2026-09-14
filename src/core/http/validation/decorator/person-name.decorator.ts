@@ -5,7 +5,9 @@
 
 import { applyDecorators } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { Trim } from 'src/core/http/validation/decorator/trim.decorator';
 
 const NAME_MIN_LENGTH = 2,
     NAME_MAX_LENGTH = 100,
@@ -17,10 +19,21 @@ const NAME_MIN_LENGTH = 2,
  * Single source of the person-name field contract: enforces length bounds, an initial letter,
  * and Unicode letters/marks with spaces, periods, apostrophes, and hyphens.
  *
- * @returns A decorator that validates and documents a person-name property.
+ * @param options Disable normalization on response DTOs to preserve stored values.
+ * @returns A decorator that normalizes, validates and documents a person-name property.
  */
-export function IsPersonName() {
+export function IsPersonName(options: { readonly normalize?: boolean } = {}): PropertyDecorator {
     return applyDecorators(
+        ...(options.normalize === false
+            ? []
+            : [
+                  Trim(),
+                  Transform(
+                      ({ value }: { value: unknown }): unknown =>
+                          typeof value === 'string' ? value.normalize('NFC') : value,
+                      { toClassOnly: true },
+                  ),
+              ]),
         IsString({ message: `${NAME_LABEL} must be a string.` }),
         IsNotEmpty({ message: `${NAME_LABEL} cannot be empty.` }),
         MinLength(NAME_MIN_LENGTH, {
@@ -37,7 +50,9 @@ export function IsPersonName() {
             pattern: NAME_REGEX.source,
             minLength: NAME_MIN_LENGTH,
             maxLength: NAME_MAX_LENGTH,
-            description: `${NAME_LABEL}.`,
+            description:
+                `${NAME_LABEL}; starts with a letter and allows letters, combining marks, spaces, periods, apostrophes, and hyphens.` +
+                (options.normalize === false ? '' : ' Trimmed and Unicode-normalized to NFC before validation.'),
             example: 'John Doe',
         }),
     );

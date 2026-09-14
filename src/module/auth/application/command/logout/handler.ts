@@ -9,12 +9,12 @@ import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observa
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
-import { ExceptionKind, UnauthenticatedException, isExceptionOfKind } from 'src/shared/exception';
+import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Handler for the LogoutCommand.
  * Closes the single session the verified refresh token names; an unverifiable token is a silent
- * no-op, because the end state — no such session — already holds.
+ * no-op, without claiming that malformed credentials identified a server-side session.
  */
 @CommandHandler(LogoutCommand)
 export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void> {
@@ -40,7 +40,7 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
         let payload;
 
         try {
-            payload = await this.tokenPort.verifyRefreshToken(command.refreshToken);
+            payload = await this.tokenPort.verifyLogoutToken(command.refreshToken);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                 return;
@@ -49,12 +49,8 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
             throw error;
         }
 
-        if (payload.sub !== command.principal.id || payload.principalType !== command.principal.type) {
-            throw new UnauthenticatedException();
-        }
+        await this.sessionPort.closeSession(payload.sub, payload.principalType, payload.sid);
 
-        await this.sessionPort.closeSession(payload.sub, payload.jti);
-
-        await this.auditPort.record({ action: AuditAction.LOGOUT });
+        await this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
     }
 }

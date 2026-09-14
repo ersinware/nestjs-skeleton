@@ -1,141 +1,145 @@
 /**
  * @file session.adapter.ts
- * @description Redis implementation of the session port for user and admin refresh sessions.
+ * @description Redis session authority with atomic rotation, closure, and access admission.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { ENV } from 'src/core/config';
+import { ENV, parseTtlToSeconds } from 'src/core/config';
 import { isRedisUnavailable } from 'src/core/redis';
-import type { ISessionPort } from 'src/core/security/session/port/session.port';
-import { RotateOutcome } from 'src/core/security/session/port/session.port';
+import {
+    RotateOutcome,
+    type ISessionPort,
+    type SessionRegistration,
+} from 'src/core/security/session/port/session.port';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
+import type { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
-/**
- * Seconds per TTL unit, keyed exactly by the units the TTL regex admits — parsing needs no
- * fallback branch.
- */
-const TTL_UNIT_SECONDS: Record<string, number> = {
-    s: 1,
-    m: 60,
-    h: 60 * 60,
-    d: 24 * 60 * 60,
-};
-
-/**
- * Single source of the Redis keys used by session and version operations.
- */
+/** The principal hash tag colocates keys used by each atomic operation. */
 const SessionKeys = {
-    session: (id: string, jti: string) => `session:${id}:${jti}`,
-    tombstone: (id: string, jti: string) => `rotated:${id}:${jti}`,
-    version: (id: string) => `version:${id}`,
+    /** Identifies the account-wide minimum accepted access-token version. */
+    version: (id: string): string => `auth:{${id}}:version`,
+
+    /**  Identifies the stable session record, including its credential deadlines. */
+    session: (id: string, type: PrincipalType, sid: string): string => `auth:{${id}}:${type}:session:${sid}`,
+
+    /** Identifies the grace marker for a consumed refresh credential. */
+    tombstone: (id: string, type: PrincipalType, sid: string, jti: string): string =>
+        `auth:{${id}}:${type}:rotated:${sid}:${jti}`,
 };
 
 /**
- * Atomic three-state rotation. Deleting the old session and opening the new one is one indivisible
- * step, so two concurrent refreshes carrying the same token cannot both rotate — only the first call
- * observes the old key. A short-lived tombstone on the old jti classifies replay by timing, not by intent:
- *   - old session deleted → rotate, write tombstone, return 1.
- *   - old session gone, tombstone present → replay within grace, return 0.
- *   - old session gone, no tombstone → post-grace replay, i.e. reuse, return -1.
- * Successful rotation also mirrors the monotonic-max version and renews its TTL; replay leaves it untouched.
- * KEYS[1] = old session; KEYS[2] = new session; KEYS[3] = tombstone (old jti); KEYS[4] = version.
- * ARGV[1] = session ttl seconds; ARGV[2] = grace ttl seconds; ARGV[3] = version.
+ * KEYS: version, session. ARGV: registration JSON, independent version TTL.
+ * Token issuance owns deadlines; opening rejects newer account versions and existing session records.
+ */
+const OPEN_SESSION_LUA = `
+local session = cjson.decode(ARGV[1])
+local storedVersion = redis.call('GET', KEYS[1])
+if storedVersion and tonumber(storedVersion) > session.sessionVersion then
+    return 0
+end
+if redis.call('EXISTS', KEYS[2]) == 1 then
+    return 0
+end
+redis.call('SET', KEYS[2], ARGV[1], 'EXAT', session.refreshExpiresAt)
+redis.call('SET', KEYS[1], session.sessionVersion, 'EX', math.max(tonumber(ARGV[2]), redis.call('TTL', KEYS[1])))
+return 1
+`;
+
+/**
+ * KEYS: session, old credential tombstone, version.
+ * ARGV: old jti, replacement JSON, version TTL, grace TTL.
+ * Missing/expired sessions never rotate. A live-session replay outside grace closes the family
+ * before returning, independently of downstream account-wide revocation delivery.
  */
 const ROTATE_SESSION_LUA = `
-if redis.call('EXISTS', KEYS[1]) == 1 then
-  local stored = redis.call('GET', KEYS[4])
-  local version = tonumber(ARGV[3])
-  if stored then
-    version = math.max(tonumber(stored), version)
-  end
-  redis.call('DEL', KEYS[1])
-  redis.call('SET', KEYS[2], '1', 'EX', ARGV[1])
-  redis.call('SET', KEYS[3], '1', 'EX', ARGV[2])
-  redis.call('SET', KEYS[4], version, 'EX', ARGV[1])
-  return 1
+local storedSessionJson = redis.call('GET', KEYS[1])
+if not storedSessionJson then
+    return -2
 end
-if redis.call('EXISTS', KEYS[3]) == 1 then
-  return 0
+local now = tonumber(redis.call('TIME')[1])
+local storedSession = cjson.decode(storedSessionJson)
+local replacementSession = cjson.decode(ARGV[2])
+if storedSession.sessionExpiresAt <= now or storedSession.refreshExpiresAt <= now then
+    return -2
 end
-return -1
+local storedVersion = redis.call('GET', KEYS[3])
+if storedVersion and tonumber(storedVersion) > replacementSession.sessionVersion then
+    return -2
+end
+if storedSession.refreshTokenJti ~= ARGV[1] then
+    if redis.call('EXISTS', KEYS[2]) == 1 then
+        return 0
+    end
+    redis.call('DEL', KEYS[1])
+    return -1
+end
+redis.call('SET', KEYS[1], cjson.encode(replacementSession), 'EXAT', replacementSession.refreshExpiresAt)
+redis.call('SET', KEYS[2], '1', 'EX', ARGV[4])
+redis.call('SET', KEYS[3], replacementSession.sessionVersion, 'EX', math.max(tonumber(ARGV[3]), redis.call('TTL', KEYS[3])))
+return 1
 `;
 
-/**
- * Monotonic-max write of the session version: advances the stored value only when the incoming one
- * is strictly greater, so it never regresses under out-of-order or concurrent writes. Atomic across
- * the read-compare-write. Both branches renew the TTL, so a live session's key cannot expire under
- * the fail-closed guard.
- * KEYS[1] = version key; ARGV[1] = version; ARGV[2] = ttl seconds.
- */
+/** KEYS: version, session. ARGV: access version. Read-only admission has no TTL renewal. */
+const CHECK_SESSION_LUA = `
+local storedVersion = redis.call('GET', KEYS[1])
+if not storedVersion or tonumber(ARGV[1]) < tonumber(storedVersion) then
+    return 0
+end
+local storedSessionJson = redis.call('GET', KEYS[2])
+if not storedSessionJson then
+    return 0
+end
+local storedSession = cjson.decode(storedSessionJson)
+if storedSession.sessionExpiresAt <= tonumber(redis.call('TIME')[1]) then
+    return 0
+end
+return 1
+`;
+
+/** KEYS: version. ARGV: candidate floor, retention independent of any individual session. */
 const VERSION_LUA = `
-local stored = redis.call('GET', KEYS[1])
-if stored and tonumber(stored) >= tonumber(ARGV[1]) then
-  redis.call('EXPIRE', KEYS[1], ARGV[2])
-  return 0
+local storedVersion = redis.call('GET', KEYS[1])
+local version = tonumber(ARGV[1])
+if storedVersion then
+    version = math.max(tonumber(storedVersion), version)
 end
-redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+redis.call('SET', KEYS[1], version, 'EX', math.max(tonumber(ARGV[2]), redis.call('TTL', KEYS[1])))
 return 1
 `;
 
-/**
- * Opens a session and mirrors its version without an observable intermediate state. A newer
- * stored floor rejects the opening. This cannot detect DB changes not yet mirrored to Redis.
- * KEYS[1] = version; KEYS[2] = new session; ARGV[1] = version; ARGV[2] = ttl seconds.
- */
-const OPEN_SESSION_AT_VERSION_LUA = `
-local stored = redis.call('GET', KEYS[1])
-if stored and tonumber(stored) > tonumber(ARGV[1]) then
-  return 0
-end
-redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
-redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
-return 1
-`;
-
-/**
- * Manages refresh sessions and session versions directly in the session store Redis.
- */
+/** All instances coordinate through the session Redis; missing state always denies access. */
 @Injectable()
 export class SessionAdapter implements ISessionPort {
-    /**
-     * Refresh-token lifetime in seconds — the TTL of every session key and of the version key
-     * (the longest a token carrying a stale version can live).
-     */
-    private readonly refreshTtlSeconds: number;
+    /** Retains account floors for at least either credential's configured lifetime. */
+    private readonly versionTtlSeconds: number;
 
-    /**
-     * Rotation grace window in seconds — the TTL of the tombstone that identifies replay within grace.
-     */
+    /** Per-consumed-credential grace, allowing several rapid rotations without losing history. */
     private readonly rotationGraceTtlSeconds: number;
 
     /**
-     * TTLs are parsed once here: they are boot-validated constants, so an invalid format fails the
-     * application at startup instead of on the hot path.
-     *
-     * @param redis The session store Redis client.
-     * @param configService Configuration reader.
-     * @throws {SystemException} When a configured TTL format cannot be parsed — a configuration bug.
+     * @param redis Session authority connection.
+     * @param configService Boot-validated lifetimes.
      */
     constructor(
         @Inject(TOKEN_SESSION_CONNECTION) private readonly redis: Redis,
         configService: ConfigService,
     ) {
-        this.refreshTtlSeconds = this.parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL));
-        this.rotationGraceTtlSeconds = this.parseTtlToSeconds(
+        this.versionTtlSeconds = Math.max(
+            parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL)),
+            parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL)),
+        );
+        this.rotationGraceTtlSeconds = parseTtlToSeconds(
             configService.getOrThrow<string>(ENV.SESSION_ROTATION_GRACE_TTL),
         );
     }
 
     /**
-     * Translates recognized Redis availability failures at the port boundary.
-     * Other failures propagate unchanged, whether thrown synchronously or rejected asynchronously.
-     *
-     * @param operation The Redis operation to execute
-     * @returns The operation's result
-     * @throws {DependencyUnavailableException} When the session store operation fails
+     * Translates availability failures only; programming and Redis command errors propagate.
+     * @param operation Required session operation.
+     * @returns Operation result.
      */
     private async run<T>(operation: () => Promise<T>): Promise<T> {
         try {
@@ -144,130 +148,116 @@ export class SessionAdapter implements ISessionPort {
             if (isRedisUnavailable(error)) {
                 throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
             }
-
             throw error;
         }
     }
 
     /**
-     * Registers a new refresh session for a principal.
-     *
-     * @param id The principal identifier.
-     * @param jti The JWT ID of the refresh token.
+     * Registers freshly authenticated credentials without exposing intermediate state.
+     * @param id Principal identifier.
+     * @param session Signed identity and deadlines.
+     * @returns Whether registration succeeded.
      */
-    async openSession(id: string, jti: string) {
-        await this.run(() => this.redis.set(SessionKeys.session(id, jti), '1', 'EX', this.refreshTtlSeconds));
-    }
-
-    /**
-     * Opens a replacement session only if its committed version has not been superseded in Redis.
-     *
-     * @param id The principal identifier.
-     * @param jti The fresh refresh token identifier.
-     * @param version The committed token version.
-     * @returns Whether the replacement session was opened.
-     */
-    async openSessionAtVersion(id: string, jti: string, version: number): Promise<boolean> {
+    async openSession(id: string, session: SessionRegistration): Promise<boolean> {
         return (
             (await this.run(() =>
                 this.redis.eval(
-                    OPEN_SESSION_AT_VERSION_LUA,
+                    OPEN_SESSION_LUA,
                     2,
                     SessionKeys.version(id),
-                    SessionKeys.session(id, jti),
-                    version,
-                    this.refreshTtlSeconds,
+                    SessionKeys.session(id, session.principalType, session.sid),
+                    JSON.stringify(session),
+                    this.versionTtlSeconds,
                 ),
             )) === 1
         );
     }
 
     /**
-     * Rotates a refresh session via the rotation Lua script — see {@link ROTATE_SESSION_LUA} for the
-     * atomicity and classification semantics.
-     *
-     * @param id The principal identifier.
-     * @param oldJti The JWT ID of the refresh token being rotated away.
-     * @param newJti The JWT ID of the newly issued refresh token.
-     * @param version The version used to sign the new tokens.
-     * @returns The rotation outcome.
+     * Atomically admits one refresh winner or rejects and classifies the credential.
+     * @param id Principal identifier.
+     * @param oldJti Presented refresh identifier.
+     * @param session Replacement with unchanged identity and absolute deadline.
+     * @returns Rotation decision.
      */
-    async rotateSession(id: string, oldJti: string, newJti: string, version: number): Promise<RotateOutcome> {
+    async rotateSession(id: string, oldJti: string, session: SessionRegistration): Promise<RotateOutcome> {
         const result = await this.run(() =>
             this.redis.eval(
                 ROTATE_SESSION_LUA,
-                4,
-                SessionKeys.session(id, oldJti),
-                SessionKeys.session(id, newJti),
-                SessionKeys.tombstone(id, oldJti),
+                3,
+                SessionKeys.session(id, session.principalType, session.sid),
+                SessionKeys.tombstone(id, session.principalType, session.sid, oldJti),
                 SessionKeys.version(id),
-                this.refreshTtlSeconds,
+                oldJti,
+                JSON.stringify(session),
+                this.versionTtlSeconds,
                 this.rotationGraceTtlSeconds,
-                version,
             ),
         );
 
-        if (result === 1) {
-            return RotateOutcome.ROTATED;
+        switch (result) {
+            case 1:
+                return RotateOutcome.ROTATED;
+            case 0:
+                return RotateOutcome.CONCURRENT_REPLAY;
+            case -1:
+                return RotateOutcome.REUSE_DETECTED;
+            case -2:
+                return RotateOutcome.SESSION_CLOSED;
+            default:
+                throw new SystemException('Unexpected session rotation result.');
         }
-
-        if (result === 0) {
-            return RotateOutcome.CONCURRENT_REPLAY;
-        }
-
-        return RotateOutcome.REUSE_DETECTED;
     }
 
     /**
-     * Removes a specific refresh session for a principal.
-     *
-     * @param id The principal identifier.
-     * @param jti The JWT ID of the refresh token.
+     * Deletes the stable session; subsequent access and rotation reject the missing record.
+     * @param id Principal identifier.
+     * @param principalType Owning context.
+     * @param sid Signature-verified session identifier.
      */
-    async closeSession(id: string, jti: string) {
-        await this.run(() => this.redis.del(SessionKeys.session(id, jti)));
+    async closeSession(id: string, principalType: PrincipalType, sid: string) {
+        await this.run(() => this.redis.del(SessionKeys.session(id, principalType, sid)));
     }
 
     /**
-     * Advances the session version via the monotonic-max Lua script. TTL-bounded to the
-     * refresh-token lifetime, the longest a token carrying a stale version can live.
-     *
-     * @param id The principal identifier.
-     * @param version The candidate session version.
+     * Reads session validity and account floor in one round trip.
+     * @param id Principal identifier.
+     * @param principalType Owning context.
+     * @param sid Signature-verified session identifier.
+     * @param version Issued access version.
+     * @returns Whether the access token is admitted.
+     */
+    async isSessionActive(id: string, principalType: PrincipalType, sid: string, version: number): Promise<boolean> {
+        return (
+            (await this.run(() =>
+                this.redis.eval(
+                    CHECK_SESSION_LUA,
+                    2,
+                    SessionKeys.version(id),
+                    SessionKeys.session(id, principalType, sid),
+                    version,
+                ),
+            )) === 1
+        );
+    }
+
+    /**
+     * Mirrors the monotonic account access floor without sweeping sessions.
+     * @param id Principal identifier.
+     * @param version Candidate floor.
      */
     async setVersion(id: string, version: number) {
-        await this.run(() => this.redis.eval(VERSION_LUA, 1, SessionKeys.version(id), version, this.refreshTtlSeconds));
+        await this.run(() => this.redis.eval(VERSION_LUA, 1, SessionKeys.version(id), version, this.versionTtlSeconds));
     }
 
     /**
-     * Reads the cached session version. Absence is returned as null, never coerced to a permissive
-     * default — the guard fails closed on it.
-     *
-     * @param id The principal identifier.
-     * @returns The version, or null when no live session exists.
+     * Reads the mirrored account floor.
+     * @param id Principal identifier.
+     * @returns Stored floor or null.
      */
     async getVersion(id: string): Promise<number | null> {
         const version = await this.run(() => this.redis.get(SessionKeys.version(id)));
 
         return version === null ? null : Number(version);
-    }
-
-    /**
-     * Converts a TTL expression (e.g. '15m', '7d') into seconds.
-     *
-     * @param ttl The TTL string to convert.
-     * @returns The duration in seconds.
-     * @throws {SystemException} When the format is invalid.
-     */
-    private parseTtlToSeconds(ttl: string): number {
-        const matches = ttl.match(/^(\d+)([smhd])$/);
-
-        if (!matches) {
-            throw new SystemException(`Invalid TTL format: "${ttl}". Expected format like "15m", "7d", "1h", "30s".`, {
-                context: { class: this.constructor.name, method: this.parseTtlToSeconds.name },
-            });
-        }
-
-        return parseInt(matches[1]!, 10) * TTL_UNIT_SECONDS[matches[2]!]!;
     }
 }

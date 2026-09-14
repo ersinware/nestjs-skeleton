@@ -7,31 +7,39 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { ENV } from 'src/core/config';
 import { SessionAdapter } from 'src/core/security/session/adapter/session.adapter';
+import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException } from 'src/shared/exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('SessionAdapter', () => {
     const redis = {
-        set: vi.fn(),
+        eval: vi.fn(),
+        del: vi.fn(),
     };
 
     let adapter: SessionAdapter;
 
     beforeEach(() => {
-        vi.clearAllMocks();
-
         const configService = new ConfigService({
             [ENV.JWT_REFRESH_TTL]: '7d',
+            [ENV.JWT_ACCESS_TTL]: '15m',
             [ENV.SESSION_ROTATION_GRACE_TTL]: '30s',
         });
 
         adapter = new SessionAdapter(redis as unknown as Redis, configService);
     });
 
+    it('translates an unavailable session deletion without reporting logout success', async () => {
+        redis.del.mockRejectedValueOnce(new Error('Connection is closed.'));
+        await expect(adapter.closeSession('id', PrincipalType.USER, 'sid')).rejects.toBeInstanceOf(
+            DependencyUnavailableException,
+        );
+    });
+
     describe('error translation', () => {
         it.each(['Connection is closed.', 'Command timed out'])('should translate %s', async (message) => {
-            redis.set.mockRejectedValueOnce(new Error(message));
-            await expect(adapter.openSession('id', 'jti')).rejects.toBeInstanceOf(DependencyUnavailableException);
+            redis.eval.mockRejectedValueOnce(new Error(message));
+            await expect(adapter.setVersion('id', 1)).rejects.toBeInstanceOf(DependencyUnavailableException);
         });
 
         it.each([
@@ -41,26 +49,26 @@ describe('SessionAdapter', () => {
             'ERR Lua script failure',
         ])('should preserve %s', async (message) => {
             const error = Object.assign(new Error(message), { name: 'ReplyError' });
-            redis.set.mockRejectedValueOnce(error);
-            await expect(adapter.openSession('id', 'jti')).rejects.toBe(error);
+            redis.eval.mockRejectedValueOnce(error);
+            await expect(adapter.setVersion('id', 1)).rejects.toBe(error);
         });
 
         it('should preserve asynchronous programming errors', async () => {
             const error = new TypeError('Unexpected bug');
-            redis.set.mockRejectedValueOnce(error);
-            await expect(adapter.openSession('id', 'jti')).rejects.toBe(error);
+            redis.eval.mockRejectedValueOnce(error);
+            await expect(adapter.setVersion('id', 1)).rejects.toBe(error);
         });
 
         it.each(['LOADING dataset', 'BUSY script', 'TRYAGAIN later'])('should translate %s', async (message) => {
-            redis.set.mockRejectedValueOnce(Object.assign(new Error(message), { name: 'ReplyError' }));
-            await expect(adapter.openSession('id', 'jti')).rejects.toBeInstanceOf(DependencyUnavailableException);
+            redis.eval.mockRejectedValueOnce(Object.assign(new Error(message), { name: 'ReplyError' }));
+            await expect(adapter.setVersion('id', 1)).rejects.toBeInstanceOf(DependencyUnavailableException);
         });
         it('should translate an asynchronous Redis rejection and preserve its cause', async () => {
             const driverError = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
 
-            redis.set.mockRejectedValueOnce(driverError);
+            redis.eval.mockRejectedValueOnce(driverError);
 
-            const operation = adapter.openSession('principal-id', 'refresh-token-id');
+            const operation = adapter.setVersion('principal-id', 1);
 
             await expect(operation).rejects.toBeInstanceOf(DependencyUnavailableException);
             await expect(operation).rejects.toHaveProperty('cause', driverError);
@@ -69,19 +77,19 @@ describe('SessionAdapter', () => {
         it('should propagate an existing dependency exception unchanged', async () => {
             const dependencyError = new DependencyUnavailableException('Session store unavailable');
 
-            redis.set.mockRejectedValueOnce(dependencyError);
+            redis.eval.mockRejectedValueOnce(dependencyError);
 
-            await expect(adapter.openSession('principal-id', 'refresh-token-id')).rejects.toBe(dependencyError);
+            await expect(adapter.setVersion('principal-id', 1)).rejects.toBe(dependencyError);
         });
 
         it('should propagate a synchronous error without translating it', async () => {
             const programmingError = new TypeError('Invalid Redis arguments');
 
-            redis.set.mockImplementationOnce(() => {
+            redis.eval.mockImplementationOnce(() => {
                 throw programmingError;
             });
 
-            await expect(adapter.openSession('principal-id', 'refresh-token-id')).rejects.toBe(programmingError);
+            await expect(adapter.setVersion('principal-id', 1)).rejects.toBe(programmingError);
         });
     });
 });

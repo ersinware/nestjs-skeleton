@@ -3,6 +3,7 @@
  * @description Decoded JWT refresh token payload shape.
  */
 
+import type { SessionIdentity } from 'src/core/security/session';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
@@ -10,7 +11,10 @@ import type { PrincipalType } from 'src/shared/domain/principal';
  * Decoded JWT refresh token payload. Carries no permissions: a refresh re-reads the account from the
  * primary and mints the access token from that fresh state, so nothing stale can be carried over.
  */
-export type RefreshTokenPayload = {
+export type RefreshTokenPayload = SessionIdentity & {
+    /** Signed credential expiry in Unix seconds. */
+    readonly exp: number;
+
     /** Principal identifier. */
     sub: string;
 

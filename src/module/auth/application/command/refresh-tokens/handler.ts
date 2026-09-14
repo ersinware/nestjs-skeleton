@@ -24,6 +24,7 @@ import { UserIntegrationEvent } from 'src/shared/domain/user';
 import {
     ExceptionKind,
     ResourceConflictException,
+    SystemException,
     UnauthenticatedException,
     isExceptionOfKind,
 } from 'src/shared/exception';
@@ -38,6 +39,15 @@ const REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE = {
     [PrincipalType.USER]: UserIntegrationEvent.REFRESH_REUSE_DETECTED,
     [PrincipalType.ADMIN]: AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
 } as const satisfies Record<PrincipalType, string>;
+
+/**
+ * Rejects unhandled rotation outcomes before any reuse remediation.
+ * @param outcome Outcome missing an explicit handler branch.
+ * @returns Never returns normally.
+ */
+function rejectUnhandledRotateOutcome(outcome: never): never {
+    throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`);
+}
 
 /**
  * Handler for the RefreshTokensCommand.
@@ -112,21 +122,21 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
         // The access token is minted from the freshly read permissions, never from the old token:
         // a refresh is exactly where a permission change reaches the client.
-        const tokens = await this.tokenPort.generateTokens(
+        const tokenPairWithSession = await this.tokenPort.refreshTokens(
                 { id: sub, type: principalType, permissions: identity.permissions },
                 identity.sessionVersion,
+                { sid: payload.sid, sessionExpiresAt: payload.sessionExpiresAt },
             ),
             // The atomic rotation is both the single-use gate and the classifier: the grace
             // tombstone distinguishes replay within grace from post-window reuse, not concurrency from theft.
-            outcome = await this.sessionPort.rotateSession(
-                sub,
-                payload.jti,
-                tokens.refreshTokenJti,
-                identity.sessionVersion,
-            );
+            outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokenPairWithSession.session);
 
         if (outcome === RotateOutcome.ROTATED) {
-            return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+            return { accessToken: tokenPairWithSession.accessToken, refreshToken: tokenPairWithSession.refreshToken };
+        }
+
+        if (outcome === RotateOutcome.SESSION_CLOSED) {
+            throw new UnauthenticatedException();
         }
 
         if (outcome === RotateOutcome.CONCURRENT_REPLAY) {
@@ -137,6 +147,10 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             });
 
             throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
+        }
+
+        if (outcome !== RotateOutcome.REUSE_DETECTED) {
+            return rejectUnhandledRotateOutcome(outcome);
         }
 
         // RotateOutcome.REUSE_DETECTED. The event and the record are one act — the fact and the

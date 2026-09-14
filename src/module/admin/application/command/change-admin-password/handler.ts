@@ -66,7 +66,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      */
     async execute(command: ChangeAdminPasswordCommand): Promise<ChangeAdminPasswordResult> {
-        const { id, currentPassword, newPassword } = command,
+        const { id, newPassword } = command,
             admin = await this.adminWriterPort.load(id);
 
         if (!admin) {
@@ -87,7 +87,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
             });
         }
 
-        if (!(await this.hashingPort.verify(hashedPassword, currentPassword))) {
+        if (!(await this.hashingPort.verify(hashedPassword, command.currentPassword))) {
             throw new InvalidInputException(ChangeAdminPasswordMessage.CURRENT_PASSWORD_MISMATCH);
         }
 
@@ -99,7 +99,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
         await this.adminWriterPort.save(admin);
         await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
 
-        const tokens = await this.tokenPort.generateTokens(
+        const tokenPairWithSession = await this.tokenPort.generateTokens(
             { id, type: PrincipalType.ADMIN, permissions: admin.permissions },
             admin.sessionVersion,
         );
@@ -107,7 +107,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
         // The password is already committed. Session unavailability cannot undo it; event
         // reconciliation remains responsible for propagating the session version mirror.
         try {
-            if (!(await this.sessionPort.openSessionAtVersion(id, tokens.refreshTokenJti, admin.sessionVersion))) {
+            if (!(await this.sessionPort.openSession(id, tokenPairWithSession.session))) {
                 return { session: 'login_required' };
             }
         } catch (error) {
@@ -118,6 +118,10 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
             throw error;
         }
 
-        return { session: 'created', accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+        return {
+            session: 'created',
+            accessToken: tokenPairWithSession.accessToken,
+            refreshToken: tokenPairWithSession.refreshToken,
+        };
     }
 }
