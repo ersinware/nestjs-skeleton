@@ -4,7 +4,7 @@
  */
 
 /** Seconds in each admitted duration unit. */
-const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+const UNIT_SECONDS: Readonly<Record<string, number>> = { s: 1, m: 60, h: 3600, d: 86400 };
 
 /**
  * Converts a boot-validated duration to seconds without repeating configuration validation.

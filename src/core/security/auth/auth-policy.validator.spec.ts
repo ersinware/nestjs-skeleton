@@ -20,8 +20,11 @@ import { describe, expect, it } from 'vitest';
  * @param controllers Registered controllers to discover.
  * @returns Completion after bootstrap and resource cleanup.
  */
-async function bootstrap(controllers: Type<unknown>[]): Promise<void> {
-    const module = await Test.createTestingModule({ imports: [AuthPolicyModule], controllers }).compile();
+async function bootstrap(controllers: readonly Type<unknown>[]): Promise<void> {
+    const module = await Test.createTestingModule({
+        imports: [AuthPolicyModule],
+        controllers: [...controllers],
+    }).compile();
     try {
         await module.init();
     } finally {

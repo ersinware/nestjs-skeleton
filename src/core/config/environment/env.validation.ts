@@ -59,7 +59,7 @@ const MAX_TIMER_SECONDS = 2_147_483_647 / 1000;
  */
 function IsEnvNumber(integer = false): PropertyDecorator {
     return applyDecorators(
-        Transform(({ value }: { value: unknown }) =>
+        Transform(({ value }: { readonly value: unknown }) =>
             typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value)
                 ? Number(value)
                 : value,
@@ -110,7 +110,7 @@ function IsTrustedProxyList(): PropertyDecorator {
  * @param params The transform parameter object.
  * @returns `undefined` for an empty string, the original value otherwise.
  */
-function emptyToUndefined<T>({ value }: { value: T }): T | undefined {
+function emptyToUndefined<T>({ value }: { readonly value: T }): T | undefined {
     return value === '' ? undefined : value;
 }
 
@@ -150,7 +150,7 @@ function IsEnvBoolean(): PropertyDecorator {
  * @param params The transform parameter object.
  * @returns The converted boolean, or the original value if it is not a recognized boolean string.
  */
-function transformToBoolean<T>({ value }: { value: T }): boolean | T {
+function transformToBoolean<T>({ value }: { readonly value: T }): boolean | T {
     if (value === 'true' || value === true) {
         return true;
     }
@@ -415,7 +415,7 @@ export class EnvironmentVariables {
                     return false;
                 }
 
-                const unitSeconds: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 },
+                const unitSeconds: Readonly<Record<string, number>> = { s: 1, m: 60, h: 3600, d: 86400 },
                     seconds = Number(match[1]) * unitSeconds[match[2]!]!;
 
                 return Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 60;

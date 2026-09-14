@@ -172,7 +172,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
      * @param key The indicator to narrow.
      * @returns The healthy indicator state.
      */
-    private assertHealthy(result: HealthCheckResult, key: HealthIndicatorKey): { status: 'up' } {
+    private assertHealthy(result: HealthCheckResult, key: HealthIndicatorKey): { readonly status: 'up' } {
         if (result.details[key]?.status !== 'up') {
             throw new SystemException(`Indicator "${key}" missing or not up in a passed health check.`, {
                 context: { class: this.constructor.name, method: this.assertHealthy.name, key },

@@ -89,9 +89,9 @@ async function bootstrap() {
         error,
         data,
     }: {
-        message: string;
-        error?: unknown;
-        data?: Record<string, unknown>;
+        readonly message: string;
+        readonly error?: unknown;
+        readonly data?: Readonly<Record<string, unknown>>;
     }): LogPayload {
         return {
             class: 'build-doc.ts',

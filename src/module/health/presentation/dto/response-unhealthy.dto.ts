@@ -45,21 +45,21 @@ export class ResponseUnhealthyDto {
      */
     @Expose()
     @ApiProperty(createUnhealthyInfoSchema('States of the indicators still healthy.'))
-    readonly info!: Partial<Record<HealthIndicatorKey, unknown>>;
+    readonly info!: Readonly<Partial<Record<HealthIndicatorKey, unknown>>>;
 
     /**
      * Per-indicator failure of the components that are down, each with its message.
      */
     @Expose()
     @ApiProperty(createUnhealthyErrorSchema('Failures of the indicators that are down.'))
-    readonly error!: Partial<Record<HealthIndicatorKey, unknown>>;
+    readonly error!: Readonly<Partial<Record<HealthIndicatorKey, unknown>>>;
 
     /**
      * Combined per-indicator state — the union of `info` and `error`.
      */
     @Expose()
     @ApiProperty(createUnhealthyDetailsSchema('Combined states of all indicators.'))
-    readonly details!: Record<HealthIndicatorKey, unknown>;
+    readonly details!: Readonly<Record<HealthIndicatorKey, unknown>>;
 }
 
 /**

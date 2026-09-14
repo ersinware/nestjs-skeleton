@@ -29,7 +29,7 @@ export interface ICachePort {
         key: string,
         value: unknown,
         ttlSeconds?: number,
-        options?: { useJitter?: boolean; jitterMaxPercent?: number },
+        options?: { readonly useJitter?: boolean; readonly jitterMaxPercent?: number },
     ): Promise<void>;
 
     /**

@@ -54,7 +54,7 @@ export class HealthExceptionTriggerController {
 class TestValidationDto {
     @IsNotEmpty()
     @IsString()
-    name!: string;
+    readonly name!: string;
 }
 
 @Public()

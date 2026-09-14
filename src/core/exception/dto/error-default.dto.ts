@@ -37,7 +37,7 @@ export class ErrorDefaultDto {
         description: 'List of error messages detailing what went wrong',
         example: ['This is an error message.', 'This is another error message.'],
     })
-    readonly message: string[];
+    readonly message: readonly string[];
 
     /**
      * A short, standard text description of the HTTP error status.
@@ -58,7 +58,11 @@ export class ErrorDefaultDto {
      *
      * @param fields The status code, messages, and status text of the failed request
      */
-    constructor(fields: { statusCode: HttpStatus; message: string[]; statusText: string }) {
+    constructor(fields: {
+        readonly statusCode: HttpStatus;
+        readonly message: readonly string[];
+        readonly statusText: string;
+    }) {
         this.statusCode = fields.statusCode;
         this.message = fields.message;
         this.statusText = fields.statusText;

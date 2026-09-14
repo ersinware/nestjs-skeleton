@@ -18,7 +18,7 @@ import type { OptionsTestApp } from 'test/shared/interface/e2e-spec.interface';
 export async function createTestApp(options?: OptionsTestApp): Promise<NestFastifyApplication> {
     const builder = Test.createTestingModule({
         imports: [AppModule],
-        controllers: options?.extraControllers ?? [],
+        controllers: [...(options?.extraControllers ?? [])],
     });
 
     (options?.overrides ?? []).forEach((override) => {

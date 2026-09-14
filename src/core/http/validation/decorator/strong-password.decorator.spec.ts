@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 class TestPasswordDto {
     @IsStrongPassword('The password')
-    password!: string;
+    readonly password!: string;
 }
 
 describe('IsStrongPassword', () => {
@@ -23,8 +23,7 @@ describe('IsStrongPassword', () => {
             'Password123',
             'Password123!=',
         ].forEach((password) => {
-            const dto = new TestPasswordDto();
-            dto.password = password;
+            const dto = Object.assign(new TestPasswordDto(), { password });
 
             const errors = validateSync(dto);
             expect(errors.length).toBe(0);
@@ -32,24 +31,21 @@ describe('IsStrongPassword', () => {
     });
 
     it('should fail validation if there is no uppercase letter', () => {
-        const dto = new TestPasswordDto();
-        dto.password = 'password123!';
+        const dto = Object.assign(new TestPasswordDto(), { password: 'password123!' });
 
         const errors = validateSync(dto);
         expect(errors.length).toBe(1);
     });
 
     it('should fail validation if there is no lowercase letter', () => {
-        const dto = new TestPasswordDto();
-        dto.password = 'PASSWORD123!';
+        const dto = Object.assign(new TestPasswordDto(), { password: 'PASSWORD123!' });
 
         const errors = validateSync(dto);
         expect(errors.length).toBe(1);
     });
 
     it('should fail validation if there is no digit', () => {
-        const dto = new TestPasswordDto();
-        dto.password = 'Password!!!';
+        const dto = Object.assign(new TestPasswordDto(), { password: 'Password!!!' });
 
         const errors = validateSync(dto);
         expect(errors.length).toBe(1);

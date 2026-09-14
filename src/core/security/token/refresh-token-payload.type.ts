@@ -16,17 +16,17 @@ export type RefreshTokenPayload = SessionIdentity & {
     readonly exp: number;
 
     /** Principal identifier. */
-    sub: string;
+    readonly sub: string;
 
     /** Which bounded context owns the principal's account. */
-    principalType: PrincipalType;
+    readonly principalType: PrincipalType;
 
     /** Unique token identifier; session storage tracks it for rotation and reuse detection. */
-    jti: string;
+    readonly jti: string;
 
     /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
-    sessionVersion: number;
+    readonly sessionVersion: number;
 
     /** Discriminator rejecting an access token presented as a refresh token. */
-    type: AuthTokenType.REFRESH;
+    readonly type: AuthTokenType.REFRESH;
 };

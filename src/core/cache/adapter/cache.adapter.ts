@@ -72,7 +72,10 @@ export class CacheAdapter implements ICachePort {
         key: string,
         value: unknown,
         ttlSeconds?: number,
-        { useJitter = false, jitterMaxPercent = 10 }: { useJitter?: boolean; jitterMaxPercent?: number } = {},
+        {
+            useJitter = false,
+            jitterMaxPercent = 10,
+        }: { readonly useJitter?: boolean; readonly jitterMaxPercent?: number } = {},
     ) {
         if (!key) {
             throw new SystemException(EMPTY_KEY_ERROR_MESSAGE, {

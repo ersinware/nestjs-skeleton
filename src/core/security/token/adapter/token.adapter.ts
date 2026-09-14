@@ -241,7 +241,7 @@ export class TokenAdapter implements ITokenPort {
      * @param ignoreExpiration Allow credential expiry only for session closure.
      * @returns The decoded token payload
      */
-    private async verifyToken<T extends { type: AuthTokenType }>(
+    private async verifyToken<T extends { readonly type: AuthTokenType }>(
         token: string,
         secret: string,
         expectedType: AuthTokenType,

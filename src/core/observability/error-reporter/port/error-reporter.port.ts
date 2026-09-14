@@ -12,7 +12,7 @@ export type ErrorReportContext = {
     readonly method: string;
     /** Missing or empty messages fall back to the normalized error's message. */
     readonly message?: string;
-    readonly data?: Record<string, unknown>;
+    readonly data?: Readonly<Record<string, unknown>>;
 };
 
 /** Reports failures selected by the handling boundary without classifying or rethrowing them. */

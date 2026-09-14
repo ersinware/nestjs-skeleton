@@ -11,7 +11,7 @@ import { DependencyUnavailableException, DependencyUnavailableMessage } from 'sr
  * errno codes, and the PostgreSQL SQLSTATEs for connection exceptions (class 08), operator-initiated
  * shutdown (57Pxx), and connection-slot exhaustion (53300).
  */
-const CONNECTION_FAILURE_CODES = new Set([
+const CONNECTION_FAILURE_CODES: ReadonlySet<string> = new Set([
     'ECONNREFUSED',
     'ECONNRESET',
     'ENOTFOUND',
@@ -35,7 +35,7 @@ const CONNECTION_FAILURE_CODES = new Set([
  * The driver's own connection-lifecycle failures carry no code, only a message: the pool's
  * checkout timeout, and a socket the server closed mid-query.
  */
-const CONNECTION_FAILURE_MESSAGES = ['timeout exceeded when trying to connect', 'Connection terminated'];
+const CONNECTION_FAILURE_MESSAGES = ['timeout exceeded when trying to connect', 'Connection terminated'] as const;
 
 /**
  * Reports whether the given error is (or wraps) a PostgreSQL unique-constraint violation. Walks the
@@ -82,7 +82,7 @@ export function translateConnectionFailure(error: unknown): unknown {
  */
 function isConnectionFailure(error: unknown): boolean {
     for (let current = error; current instanceof Error; current = current.cause) {
-        const code = (current as { code?: unknown }).code;
+        const code = (current as { readonly code?: unknown }).code;
 
         if (typeof code === 'string' && CONNECTION_FAILURE_CODES.has(code)) {
             return true;

@@ -23,7 +23,7 @@ type PolicyDecorator = ClassDecorator & MethodDecorator;
  * @param methodPolicies Endpoint declarations.
  * @returns The resolved endpoint policy.
  */
-function resolve(classPolicies: PolicyDecorator[], methodPolicies: PolicyDecorator[]): AuthPolicy {
+function resolve(classPolicies: readonly PolicyDecorator[], methodPolicies: readonly PolicyDecorator[]): AuthPolicy {
     class ControllerFixture {
         /** Endpoint whose metadata is under test. */
         endpoint(this: void) {}

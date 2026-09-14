@@ -12,7 +12,10 @@ import { Transform } from 'class-transformer';
  * @returns A property transformation for fields whose boundary whitespace is insignificant.
  */
 export function Trim(): PropertyDecorator {
-    return Transform(({ value }: { value: unknown }): unknown => (typeof value === 'string' ? value.trim() : value), {
-        toClassOnly: true,
-    });
+    return Transform(
+        ({ value }: { readonly value: unknown }): unknown => (typeof value === 'string' ? value.trim() : value),
+        {
+            toClassOnly: true,
+        },
+    );
 }

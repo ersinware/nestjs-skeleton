@@ -9,14 +9,13 @@ import { describe, expect, it } from 'vitest';
 
 class TestNameDto {
     @IsPersonName()
-    name!: string;
+    readonly name!: string;
 }
 
 describe('IsPersonName', () => {
     it('should pass validation for names without numbers or null character', () => {
         ['John Doe', 'Jean-Luc Picard', "Mary O'Donnell", 'Dr. Smith', 'Ahmet Yılmaz', '王伟'].forEach((name) => {
-            const dto = new TestNameDto();
-            dto.name = name;
+            const dto = Object.assign(new TestNameDto(), { name });
 
             const errors = validateSync(dto);
             expect(errors.length).toBe(0);
@@ -25,8 +24,7 @@ describe('IsPersonName', () => {
 
     it('should fail validation for names containing numbers', () => {
         ['John1', 'John Doe 3', '12345', 'John Doe 0'].forEach((name) => {
-            const dto = new TestNameDto();
-            dto.name = name;
+            const dto = Object.assign(new TestNameDto(), { name });
 
             const errors = validateSync(dto);
             expect(errors.length).toBe(1);
@@ -34,8 +32,7 @@ describe('IsPersonName', () => {
     });
 
     it('should fail validation for names containing the null character', () => {
-        const dto = new TestNameDto();
-        dto.name = 'John\x00Doe';
+        const dto = Object.assign(new TestNameDto(), { name: 'John\x00Doe' });
 
         const errors = validateSync(dto);
         expect(errors.length).toBe(1);

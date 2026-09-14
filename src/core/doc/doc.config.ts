@@ -38,13 +38,15 @@ type APITag = 'health' | 'auth' | 'user' | 'admin' | 'audit-trail';
  * OpenAPI configuration details for each active version. Keyed by APIVersion, so activating a new
  * version fails compilation until its entry — including every tag description — is provided.
  */
-export const VERSION_CONFIG: Record<
-    APIVersion,
-    {
-        title: string;
-        description: string;
-        tags: Record<APITag, string>;
-    }
+export const VERSION_CONFIG: Readonly<
+    Record<
+        APIVersion,
+        {
+            readonly title: string;
+            readonly description: string;
+            readonly tags: Readonly<Record<APITag, string>>;
+        }
+    >
 > = {
     [VERSION_1]: {
         title: 'Skeleton API V1',

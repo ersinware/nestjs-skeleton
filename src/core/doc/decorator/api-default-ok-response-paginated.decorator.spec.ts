@@ -21,7 +21,7 @@ class FlatTestDto {
         description: 'The flat DTO name.',
         example: 'John Doe',
     })
-    name!: string;
+    readonly name!: string;
 }
 
 /**
@@ -58,11 +58,11 @@ type SwaggerResponseMetadata = {
     /**
      * Swagger response description.
      */
-    description?: string;
+    readonly description?: string;
     /**
      * Resolved type schema constructor.
      */
-    type?: Type<unknown>;
+    readonly type?: Type<unknown>;
 };
 
 /**
@@ -72,23 +72,23 @@ type SwaggerPropertyMetadata = {
     /**
      * The property type constructor or type identifier.
      */
-    type?: unknown;
+    readonly type?: unknown;
     /**
      * Indicates if the property represents an array.
      */
-    isArray?: boolean;
+    readonly isArray?: boolean;
     /**
      * Indicates if the property is required.
      */
-    required?: boolean;
+    readonly required?: boolean;
     /**
      * The documented example value.
      */
-    example?: unknown;
+    readonly example?: unknown;
     /**
      * The property description text.
      */
-    description?: string;
+    readonly description?: string;
 };
 
 describe('ApiDefaultOkResponsePaginated', () => {
