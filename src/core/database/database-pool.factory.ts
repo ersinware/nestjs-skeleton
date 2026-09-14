@@ -13,12 +13,13 @@ import { ENV } from 'src/core/config';
  *
  * @param configService Source of the pool limits
  * @param connectionString The endpoint to connect to
+ * @param max Maximum connections for this pool
  * @returns The configured pool
  */
-export function createDatabasePool(configService: ConfigService, connectionString: string): Pool {
+export function createDatabasePool(configService: ConfigService, connectionString: string, max: number): Pool {
     const pool = new Pool({
         connectionString,
-        max: configService.getOrThrow<number>(ENV.DATABASE_POOL_SIZE),
+        max,
         // Timeout env values are seconds; pg expects milliseconds except maxLifetimeSeconds.
         connectionTimeoutMillis: configService.getOrThrow<number>(ENV.DATABASE_CONNECT_TIMEOUT) * 1000,
         statement_timeout: configService.getOrThrow<number>(ENV.DATABASE_STATEMENT_TIMEOUT) * 1000,

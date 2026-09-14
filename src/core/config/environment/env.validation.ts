@@ -258,12 +258,21 @@ export class EnvironmentVariables {
     readonly DATABASE_REPLICA_URL?: string;
 
     /**
-     * Maximum number of connections in the database connection pool.
+     * Maximum number of connections in the primary pool per process.
      */
     @IsEnvNumber(true)
     @Min(1)
     @Max(Number.MAX_SAFE_INTEGER)
     readonly DATABASE_POOL_SIZE!: number;
+
+    /**
+     * Replica pool limit per process; defaults to DATABASE_POOL_SIZE when omitted.
+     */
+    @IsOptional()
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(Number.MAX_SAFE_INTEGER)
+    readonly DATABASE_REPLICA_POOL_SIZE?: number;
 
     /**
      * Maximum wait in seconds to acquire or establish a database connection.

@@ -46,7 +46,11 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
         {
             provide: TOKEN_DATABASE_CONNECTION,
             useFactory: (configService: ConfigService): Pool =>
-                createDatabasePool(configService, configService.getOrThrow<string>(ENV.DATABASE_URL)),
+                createDatabasePool(
+                    configService,
+                    configService.getOrThrow<string>(ENV.DATABASE_URL),
+                    configService.getOrThrow<number>(ENV.DATABASE_POOL_SIZE),
+                ),
             inject: [ConfigService],
         },
         {
@@ -56,7 +60,14 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
             useFactory: (configService: ConfigService, primaryPool: Pool): Pool => {
                 const replicaUrl = configService.get<string>(ENV.DATABASE_REPLICA_URL);
 
-                return replicaUrl ? createDatabasePool(configService, replicaUrl) : primaryPool;
+                return replicaUrl
+                    ? createDatabasePool(
+                          configService,
+                          replicaUrl,
+                          configService.get<number>(ENV.DATABASE_REPLICA_POOL_SIZE) ??
+                              configService.getOrThrow<number>(ENV.DATABASE_POOL_SIZE),
+                      )
+                    : primaryPool;
             },
             inject: [ConfigService, TOKEN_DATABASE_CONNECTION],
         },
