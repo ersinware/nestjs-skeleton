@@ -38,7 +38,7 @@
 - Password-change outcomes both return 200: `session: created` includes fresh tokens; recognized session unavailability or a newer Redis version yields `session: login_required` without tokens, instructing clients to discard old tokens and sign in with the new password. Session failure does not undo the password change; unexpected errors propagate.
 - Rotation accepts one winner; replay leaves the version key untouched. Within 1–60-second grace, await `REFRESH_CONCURRENT_REPLAY` audit and return 409 without revocation; timing does not prove legitimacy. Outside grace, atomically delete the session, return 401, and request full account revocation. Never return the winning pair to a replaying credential; clients without it must reauthenticate.
 - Revocation mirror pushes are best-effort; token issuance requires the awaited session operations above. Event reconciliation remains required even after successful synchronization: read current primary versions, including soft-deleted principals, and await writes with failures propagated ([Events & Messaging](events-and-messaging.md#events--messaging)). Neither reliable delivery nor max writes make DB/Redis revocation immediate or atomic; stale mirrors can admit old access tokens until synchronization or expiry.
-- Use separate Redis stores: session with AOF, cache without. Recovery must address lost keys and restored stale sessions/versions; see [unresolved recovery options](../docs/issue/session-recovery-and-revocation.md).
+- Use separate Redis stores: session with AOF, cache without. Recovery must address lost keys and restored stale sessions/versions.
 
 ### Email HTML
 
