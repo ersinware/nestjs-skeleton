@@ -19,6 +19,7 @@ describe('env.validation.config', () => {
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_REPLICA_URL: undefined,
         DATABASE_POOL_SIZE: 10,
+        DATABASE_REPLICA_POOL_SIZE: undefined,
         DATABASE_CONNECT_TIMEOUT: 2,
         DATABASE_STATEMENT_TIMEOUT: 4,
         DATABASE_QUERY_TIMEOUT: 5,
