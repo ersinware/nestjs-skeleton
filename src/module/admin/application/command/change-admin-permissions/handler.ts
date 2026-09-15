@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -24,12 +25,14 @@ export class ChangeAdminPermissionsCommandHandler implements ICommandHandler<Cha
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and persist the admin aggregate
      * @param sessionPort The port used to push the bumped session version to Redis
      * @param auditPort The port used to record the change
      * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -58,11 +61,15 @@ export class ChangeAdminPermissionsCommandHandler implements ICommandHandler<Cha
             return;
         }
 
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({
-            action: AuditAction.ADMIN_PERMISSIONS_CHANGED,
-            targetId: admin.id,
-            detail: { granted: change.granted, revoked: change.revoked },
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({
+                    action: AuditAction.ADMIN_PERMISSIONS_CHANGED,
+                    targetId: admin.id,
+                    detail: { granted: change.granted, revoked: change.revoked },
+                }),
+            ]);
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next

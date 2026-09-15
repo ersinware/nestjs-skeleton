@@ -41,8 +41,9 @@ export type AuditRecordInput = {
 export interface IAuditPort {
     /**
      * Records one audit entry, completing the input with the identity, transport and correlation
-     * data the caller cannot see. Resolves only once the record is durable; a failed write fails
-     * the caller.
+     * data the caller cannot see. In a transaction, resolution confirms the insert only;
+     * durability requires the outer run() to commit. Outside a transaction, waits for durable
+     * acceptance. Failed writes must propagate out of the transaction callback to roll it back.
      *
      * @param input What happened and to whom.
      * @throws {DependencyUnavailableException} When the audit store is unreachable

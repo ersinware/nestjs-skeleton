@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -22,10 +23,12 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and persist the admin aggregate
      * @param auditPort The port used to record the unban
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -51,7 +54,11 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
             return;
         }
 
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: admin.id });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({ action: AuditAction.ADMIN_UNBANNED, targetId: admin.id }),
+            ]);
+        });
     }
 }

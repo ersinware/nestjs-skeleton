@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_USER_WRITER_PORT,
@@ -21,10 +22,12 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param userWriterPort The port used to load and save the user aggregate
      * @param auditPort The port used to record the profile change for the audit trail
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -56,7 +59,11 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             return;
         }
 
-        await this.userWriterPort.save(user);
-        await this.auditPort.record({ action: AuditAction.USER_UPDATED });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.userWriterPort.save(user),
+                this.auditPort.record({ action: AuditAction.USER_UPDATED }),
+            ]);
+        });
     }
 }

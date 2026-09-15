@@ -2,6 +2,7 @@
 
 Required delivery model: transactional outbox + at-least-once delivery. Outbox/relay are not implemented yet; follow the [implementation plan](../transactional-outbox-implementation-plan.md). Missing guarantees are gaps, never exemptions. Run API and consumers in the same NestJS process per application instance; no separate worker deployment.
 
+- Until outbox migration, keep `emitAsync` immediate/non-durable; delivery may precede commit or survive rollback.
 - Publish through `IEventPublisherPort` / `TOKEN_EVENT_PUBLISHER_PORT`; only `src/core/event-bus/` uses `EventEmitter2`. Persist events atomically with originating DB changes; acknowledge durable acceptance, not downstream completion. Dispatch only committed events.
 - Generate `eventId` once per logical event before persistence; preserve it across retries/replays. Metadata-only `DispatchedDomainEvent` carries `aggregateId` and `eventId`; consumers re-read authoritative state through owned ports/facades, never infer historical state ([Audit](observability.md#audit)).
 - Consumers tolerate duplicate, concurrent, and out-of-order delivery. Prefer idempotent reconciliation; otherwise deduplicate by `(consumer, eventId)` atomically with DB effects. External effects require provider idempotency or explicit duplicate tolerance; use email-provider idempotency when available, otherwise duplicate emails are acceptable.

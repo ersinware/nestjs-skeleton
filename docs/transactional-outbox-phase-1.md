@@ -77,14 +77,14 @@ Her uygulama instance’ı API ve bütün consumer’ları tek NestJS process’
 
 | Girdi                                   | Başlangıç bütçesi                                                                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Primary business pool / process         | Mevcut `.env.example` değeri 25                                                                                                    |
+| Primary business pool / process         | `DATABASE_POOL_SIZE=10`; API ve consumer’lar ortak kullanır                                                                        |
 | Delivery pool / process                 | 5 bağlantı; Faz 3'te ayrı doğrulanmış konfigürasyon                                                                                |
 | Replica pool                            | Process başına `DATABASE_REPLICA_POOL_SIZE` (`.env.example`: 10); verilmezse `DATABASE_POOL_SIZE`. Primary alias ise yeni pool yok |
 | Aktif job / uygulama process’i          | Başlangıçta her source queue için 1, toplam en fazla 8; ayrı notification queue'ları korunur                                       |
 | Tasarım yükü                            | Sürekli 10, 5 dakikalık burst 50 logical event/s; en fazla 2 source delivery/event. Follow-up notification ayrıca sayılır          |
 | Sağlıklı bağımlılıklarda gecikme hedefi | Güvenlik/cache enqueue→completion p99 ≤5 s; notification p99 ≤60 s; ölçülene kadar SLO sağlandı denmez                             |
 
-Primary bağlantı üst sınırı: `eşzamanlı uygulama process sayısı × (DATABASE_POOL_SIZE + delivery pool limiti) + migration ve diğer istemciler`. Process sayısı rolling deployment örtüşmesini de kapsar. Örneğin 4 uygulama process’i ve 25+5 limitleriyle uygulama toplamı en fazla 120 bağlantıdır; bu ölçülmüş ihtiyaç veya başlangıçta açılan bağlantı sayısı değildir. API/consumer veya kuyruk sayıları ayrıca çarpılmaz. Ayrı replica sunucusunun bütçesi ayrı hesaplanır; aynı sunucuya yönelen ek pool’lar o sunucunun toplamına eklenir. DB limitinin en az %20’si ayrılır.
+Primary bağlantı üst sınırı: `eşzamanlı uygulama process sayısı × (DATABASE_POOL_SIZE + delivery pool limiti) + migration ve diğer istemciler`. Process sayısı rolling deployment örtüşmesini de kapsar. Örneğin 4 uygulama process’i ve 10+5 limitleriyle uygulama toplamı en fazla 60 bağlantıdır; bu ölçülmüş ihtiyaç veya başlangıçta açılan bağlantı sayısı değildir. API/consumer veya kuyruk sayıları ayrıca çarpılmaz. Ayrı replica sunucusunun bütçesi ayrı hesaplanır; aynı sunucuya yönelen ek pool’lar o sunucunun toplamına eklenir. DB limitinin en az %20’si ayrılır.
 
 10 event/s × 2 delivery × 30 gün ≈ **51,84 milyon source job**; follow-up, DLQ ve indeks maliyeti eklenir. Faz 3 storage/index/vacuum, Faz 11 yük/backlog drain, CPU/I/O ve Gmail quota doğrulamasını kapsar. Bütçe yetmezse retention sessizce azaltılmaz; kapasite/arşiv kararı yeniden değerlendirilir.
 
@@ -92,6 +92,6 @@ Pool timeout'ları [database pool factory](../src/core/database/database-pool.fa
 
 ## 6. Sonraki faz ve doğrulama
 
-Sonraki iş Faz 2: context-scoped transaction ve audit katılımı. Atomiklik, inbox/Gmail sınırları ve Faz 8'in Redis reuse capture engeli için [ana plan](../transactional-outbox-implementation-plan.md) geçerlidir. Reuse ayrı notification üretir; logout-all mail üretmez.
+Faz 2 kodu uygulandı; runtime doğrulaması bekliyor. Sıradaki iş Faz 3 pg-boss storage/migration. Atomiklik, inbox/Gmail sınırları ve Faz 8'in Redis reuse capture engeli için [ana plan](../transactional-outbox-implementation-plan.md) geçerlidir. Reuse ayrı notification üretir; logout-all mail üretmez.
 
-Kaynak/config incelemesi yapıldı; test, lint, format, build veya entegrasyon deneyi çalıştırılmadı. Runtime, kapasite ve failover kabulü ilgili fazlarda doğrulanmalıdır.
+Faz 1'de kaynak/config incelemesi yapıldı; test, lint, format, build veya entegrasyon deneyi çalıştırılmadı. Runtime, kapasite ve failover kabulü ilgili fazlarda doğrulanmalıdır.

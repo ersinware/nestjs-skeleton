@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -23,12 +24,14 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param userWriterPort The port used to load and save the user aggregate
      * @param sessionPort The port used to push the session version to Redis
      * @param auditPort The port used to record the deletion for the audit trail
      * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -49,8 +52,12 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
         }
 
         user.markAsDeleted();
-        await this.userWriterPort.save(user);
-        await this.auditPort.record({ action: AuditAction.USER_DELETED });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.userWriterPort.save(user),
+                this.auditPort.record({ action: AuditAction.USER_DELETED }),
+            ]);
+        });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis.

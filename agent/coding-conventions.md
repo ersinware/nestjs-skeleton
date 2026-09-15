@@ -1,5 +1,9 @@
 # Coding Conventions
 
+### Blocks
+
+- Always use braces for control-flow bodies.
+
 ### JSDoc
 
 - Files start with matching `@file` + `@description`; classes/interfaces/methods/functions require purpose/rationale JSDoc.

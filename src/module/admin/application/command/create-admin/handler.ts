@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { CreateAdminCommand } from 'src/module/admin/application/command/create-admin/command';
 import {
@@ -22,10 +23,12 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to persist the admin aggregate
      * @param auditPort The port used to record the creation for the audit trail
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -44,7 +47,11 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
             password: null,
         });
 
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id }),
+            ]);
+        });
     }
 }

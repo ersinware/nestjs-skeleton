@@ -4,13 +4,13 @@
  */
 
 /**
- * Dependency injection token for the Drizzle client on the primary connection: every write, every
- * read that feeds a write decision, and every cacheable query.
+ * Dependency injection token for the primary Drizzle proxy: joins the ambient transaction
+ * for writes, write-decision reads and cacheable queries; otherwise uses the primary client.
  */
 export const TOKEN_DATABASE_CLIENT = Symbol('TOKEN_DATABASE_CLIENT');
 
 /**
  * Dependency injection token for the Drizzle client on the replica connection: reads that accept
- * replication lag. Resolves to the primary client when no replica is configured.
+ * replication lag. Uses the primary proxy when no replica is configured.
  */
 export const TOKEN_DATABASE_REPLICA_CLIENT = Symbol('TOKEN_DATABASE_REPLICA_CLIENT');

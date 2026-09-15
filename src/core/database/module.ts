@@ -11,15 +11,18 @@ import { Pool } from 'pg';
 import { ENV } from 'src/core/config';
 import { DatabaseCleanerAdapter } from 'src/core/database/adapter/database-cleaner.adapter';
 import { DatabaseHealthAdapter } from 'src/core/database/adapter/database-health.adapter';
+import { TransactionAdapter } from 'src/core/database/adapter/transaction.adapter';
 import { TOKEN_DATABASE_CLIENT, TOKEN_DATABASE_REPLICA_CLIENT } from 'src/core/database/database-client.token';
 import { createDatabasePool } from 'src/core/database/database-pool.factory';
 import { DatabaseRole } from 'src/core/database/database-role.enum';
+import { transactionStorage } from 'src/core/database/database-transaction.storage';
 import { TOKEN_DATABASE_CLEANER_PORT } from 'src/core/database/port/database-cleaner.port';
 import {
     TOKEN_DATABASE_HEALTH_PORT,
     TOKEN_DATABASE_REPLICA_HEALTH_PORT,
     type IDatabaseHealthPort,
 } from 'src/core/database/port/database-health.port';
+import { TOKEN_TRANSACTION_PORT } from 'src/core/database/port/transaction.port';
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
@@ -37,8 +40,8 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
 
 /**
  * Provides the primary and replica Drizzle clients and their health ports. Without a replica URL,
- * every replica-bound provider collapses onto its primary counterpart — one pool, one client, one
- * probe — so the deployment alone decides whether a real replica serves the replica token.
+ * replica reads and health reuse the primary client/pool. The primary proxy selects
+ * the ambient transaction; a separately configured replica client does not use ALS.
  */
 @Module({
     imports: [LoggerModule],
@@ -77,7 +80,18 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
             // overrides the driver's zone-dependent date parsers on every query (raw `execute`
             // included) and appends `+0000` itself. The pools are module-private, so no query can
             // reach the driver's own parsers.
-            useFactory: (pool: Pool): NodePgDatabase => drizzle({ client: pool }),
+            useFactory: (pool: Pool): NodePgDatabase => {
+                const db = drizzle({ client: pool });
+
+                return new Proxy(db, {
+                    get: (_target, property): unknown => {
+                        const client = transactionStorage.getStore() ?? db,
+                            member: unknown = Reflect.get(client, property, client);
+
+                        return typeof member === 'function' ? member.bind(client) : member;
+                    },
+                });
+            },
             inject: [TOKEN_DATABASE_CONNECTION],
         },
         {
@@ -86,6 +100,7 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
                 replicaPool === primaryPool ? primaryClient : drizzle({ client: replicaPool }),
             inject: [TOKEN_DATABASE_REPLICA_CONNECTION, TOKEN_DATABASE_CONNECTION, TOKEN_DATABASE_CLIENT],
         },
+        { provide: TOKEN_TRANSACTION_PORT, useClass: TransactionAdapter },
         {
             provide: TOKEN_DATABASE_CLEANER_PORT,
             useClass: DatabaseCleanerAdapter,
@@ -122,6 +137,7 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
     exports: [
         TOKEN_DATABASE_CLIENT,
         TOKEN_DATABASE_REPLICA_CLIENT,
+        TOKEN_TRANSACTION_PORT,
         TOKEN_DATABASE_HEALTH_PORT,
         TOKEN_DATABASE_REPLICA_HEALTH_PORT,
     ],

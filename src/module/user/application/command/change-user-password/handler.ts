@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -38,6 +39,7 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param userWriterPort The port used to load and save the user aggregate
      * @param hashingPort The port used to verify and hash passwords
      * @param sessionPort The port used to synchronize the version and open a fresh session
@@ -45,6 +47,7 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
      * @param tokenPort The port used to sign the replacement token pair
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
@@ -87,8 +90,12 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
         }
 
         user.changePassword(await this.hashingPort.hash(newPassword));
-        await this.userWriterPort.save(user);
-        await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.userWriterPort.save(user),
+                this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED }),
+            ]);
+        });
 
         const tokenPairWithSession = await this.tokenPort.generateTokens(
             { id, type: PrincipalType.USER, permissions: user.permissions },

@@ -1,6 +1,6 @@
 # pg-boss ile Transactional Outbox / Inbox Implementasyon Planı
 
-Durum: [Faz 1 kararları](docs/transactional-outbox-phase-1.md) tamamlandı; outbox henüz uygulanmadı. Sıradaki iş Faz 2.
+Durum: [Faz 1 kararları](docs/transactional-outbox-phase-1.md) tamamlandı; Faz 2 transaction/audit kodu uygulandı, runtime doğrulaması bekliyor; outbox henüz uygulanmadı. Sıradaki iş Faz 3.
 
 ## 1. Amaç, kapsam ve kararlar
 
@@ -106,25 +106,24 @@ await eventPublisher.accept(event);
 
 // Event + audit: aggregate mutation gerekmez; event aggregateId taşır.
 await transaction.run(async () => {
-    await eventPublisher.accept(event);
-    await audit.record(auditInput);
+    await Promise.all([eventPublisher.accept(event), audit.record(auditInput)]);
 });
 
 // Mutation + audit + event(ler).
 // Yetkilendirme, aggregate load ve hashing mümkün olduğunca bu bloğun önündedir.
 await transaction.run(async () => {
-    await writer.save(aggregate); // aggregate event'lerini aynı transaction'a ekler
-    await audit.record(auditInput);
+    // save, aggregate event'lerini de aynı transaction'a ekleyecek.
+    await Promise.all([writer.save(aggregate), audit.record(auditInput)]);
 });
 ```
 
-Bu örnek planlanan API'dir, mevcut derlenebilir kod değildir. Somut isimler Faz 2'de belirlenir. `run` callback'i yalnızca kısa DB işlerini kapsar; Redis/Gmail/network çağrıları ve pipeline dispatch içine alınmaz.
+Faz 2: `ITransactionPort.run`, ALS'de doğrudan Drizzle transaction'ı tutar; `DatabaseModule` içindeki primary proxy mevcut writer/audit adapter'larını buna yönlendirir. User/Admin `save + audit` birlikte beklenir. Örnekteki `accept` ve writer outbox kabulü sonraki fazlardadır.
 
-Teknik adapter'lar async-scope içindeki aynı Drizzle transaction'ını çözer. Kapsam transaction'ın sahibi context ve DB kimliğini taşır; başka context'in business writer'ı bu kapsamı kullanamaz. Core audit ve producer'ın delivery deposu izin verilen teknik katılımcılardır. İç içe çağrı bağımsız commit açmaz; başka DB/context'e katılım reddedilir. Scope callback dışına kaçamaz, detached promise başlatılamaz.
+İç `run` aynı transaction'a katılır; yalnız dış çağrı commit eder. Hatalar dış callback'e taşınmalıdır; otomatik retry veya runtime context/kapalı transaction kontrolü yoktur. Bağımsız yazmalar `Promise.all` ile, bağımlılar sırayla beklenir. DB işleri/metotları callback dışına taşınmaz; network/pipeline çağrıları içine alınmaz. Replica seçimi: [Data & State](agent/data-and-state.md).
 
-`record`/`accept` transaction içindeyken resolve olması yalnızca insert'in başarılı olmasıdır; dayanıklılık garantisi dıştaki `run` commit'inde oluşur. Transaction dışında her port dönüşü kendi commit'ini bekler. Mevcut `IAuditPort` JSDoc'u bu ayrımı anlatacak.
+`record`/planlanan `accept`, transaction içinde insert'i; dışında kendi commit'ini bekler. Mutation + audit + outbox aynı `run` içinde tutulur; event-only kabul kendi transaction'ını açar. Audit-only read/refusal kayıtları korunur.
 
-Mutation writer'ları geçiş tamamlanınca aktif mutation transaction'ı gerektirir; yanlışlıkla audit'ten ayrı commit sessizce yapılamaz. Event-only publisher ise transaction yokken güvenli biçimde kendi transaction'ını açar. Bu API aggregate load/save zorunluluğunu kaldırır; event'in `aggregateId` alanı yine zorunludur. Audit-only read/refusal kayıtları çalışmaya devam eder.
+Outbox geçişine kadar `emitAsync` commit öncesi veya rollback'e rağmen teslim edebilir. Consumer'lar producer'ın ALS transaction'ını miras alabilir; istenmeyen katılım/kapanmış transaction erişimi sonraki outbox fazlarında giderilir.
 
 Transaction başarısızlığında aggregate event listesi tüketilip kaybolmamalı. Event'ler bir kez hazırlanır; commit sonrasında temizlenir veya başarısız aggregate instance'ının tekrar kullanımı açıkça engellenir. Belirsiz commit sonucu bütün handler'ı körlemesine tekrar çalıştırarak yeni event ID üretmeye yol açmamalı. HTTP request idempotency ayrı bir konudur; event dedup bunu otomatik çözmez.
 
@@ -376,7 +375,7 @@ Her satır kendi başına incelenebilir ve commit edilebilir bir iş paketidir. 
 | Faz / önerilen commit                                               | Bağımlılık        | Kapsam ve somut çıktı                                                                                                                                                                                                                       | Bitiş/kabul ölçütü                                                                                                                  |
 | ------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | 1 — `docs: finalize durable delivery contracts and capacity limits` | Yok               | Kesin pg-boss sürümü; runtime/SWC uyumu; queue API ve kaynak kontrolü; retention/replay sayıları; arşiv gerekip gerekmediği; event/consumer envanteri ve şema/pool bütçesi. Gerekli dar rehber istisnalarını tanımla                        | Inbox/mail/Redis sınırları açık; bilinmeyen paket davranışları karar verilmiş. Paket prototipi gerekiyorsa ayrı doğrulama işi       |
-| 2 — `feat: add context scoped transaction and audit participation`  | 1                 | Teknik transaction port/scope, primary transaction çözümleme ve audit adapter katılımı; standalone audit korunur                                                                                                                            | Commit/rollback scope'u kesin; cross-context DB mutation engeli; audit acceptance JSDoc'u doğru                                     |
+| 2 — `feat: add ALS transaction and audit participation`             | 1                 | Transaction port, ALS ve primary DB proxy; mevcut writer/audit adapter’ları değişmez; standalone audit korunur                                                                                                                              | Callback başarı/hatasında commit/rollback; ALS ile aynı transaction; audit acceptance JSDoc’u doğru                                 |
 | 3 — `feat: add pg-boss storage and deployment migrations`           | 1                 | Bağımlılık/lockfile, teknik şemalar, one-off migration/queue provisioning, config validation, kontrollü pool lifecycle                                                                                                                      | Ortak NestJS startup schema uyumunu kontrol eder; runtime DDL gerektirmez; henüz producer geçişi yok                                |
 | 4 — `feat: add durable event acceptance and consumer routing`       | 2, 3              | Üç alanlı event ve ayrı opsiyonel telemetry kayıt sözleşmesi, eventType içinde sürüm, stable IDs, queue/consumer kataloğu, tek transaction'da bütün hedef enqueue, event-only API, audit+event API; gerekiyorsa minimal event/target arşivi | Payload/snapshot yok; partial fan-out ve missing route sessiz başarı değil; public port vendor bağımsız                             |
 | 5 — `feat: add delivery workers retries and dead-letter policies`   | 4                 | Hedefli in-process dispatch, wrapper/ESLint kuralı, startup registration, pg-boss worker, retry/timeout/DLQ politikaları, temel error reporting                                                                                             | Bir consumer'ın hatası diğerini tekrarlatmaz; iş hatası pg-boss'a ulaşır; no-subscriber başarı yok                                  |
