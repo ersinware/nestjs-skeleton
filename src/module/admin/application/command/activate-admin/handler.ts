@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -29,12 +30,14 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param tokenPort The port used to verify the invite token
      * @param hashingPort The port used to hash the initial password
      * @param auditPort The port used to record the activation, or its rejection, for the audit trail
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
@@ -81,8 +84,12 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         }
 
         admin.activate(await this.hashingPort.hash(command.password));
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id }),
+            ]);
+        });
     }
 
     /**

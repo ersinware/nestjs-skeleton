@@ -15,12 +15,11 @@ export const TOKEN_EVENT_PUBLISHER_PORT = Symbol('TOKEN_EVENT_PUBLISHER_PORT');
  */
 export interface IEventPublisherPort {
     /**
-     * Emits an event and awaits every listener.
+     * Emits immediately and awaits every listener; delivery is not coordinated with DB commit.
      *
      * @param event The name of the event to emit.
      * @param payload The minimal-metadata payload delivered to every listener.
-     * @throws {Error} Whatever a listener rejects with — awaiting delivery propagates listener
-     * failures to the emitter.
+     * @throws {Error} Whatever a listener rejects with; awaiting delivery propagates listener failures.
      */
     emitAsync(event: string, payload: DispatchedDomainEvent): Promise<void>;
 }

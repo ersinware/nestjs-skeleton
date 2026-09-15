@@ -15,7 +15,7 @@
 
 ### Audit
 
-- `IAuditPort` records evidence, not diagnostics: append-only primary `audit.audit` ([Data & State](data-and-state.md#data--state)), independent of log level/sampling and active in tests. Audit loss is unacceptable.
+- `IAuditPort` records evidence, not diagnostics: append-only primary `audit.audit` ([Data & State](data-and-state.md#data--state)), independent of log level/sampling and active in tests. Durability requires outer commit in a transaction, insert completion otherwise. Audit loss is unacceptable.
 - Fact owners write immutable mutation evidence directly to `audit.audit` through `IAuditPort`, in the same DB transaction as the mutation and its outbox records ([Events & Messaging](events-and-messaging.md#events--messaging)); failure rolls back all three. Capture facts, time, trace, and verified context at mutation time. Never defer audit persistence to an outbox consumer or reconstruct history from current state.
 - Use `@Audited` / `AuditInterceptor` only for reads/disclosures: await durable audit acceptance before emitting results; audit failure fails the response, handler failure creates no disclosure record. Filter 403 ownership: [Exceptions](exceptions.md#exceptions); its audit failures follow error reporting without replacing the original response.
 - `auditContextHook` (`main.ts`, `onRequest`) seeds transport before guards; authentication adds verified, session-checked identity before authorization. Never publish unverified payloads; interceptors are too late.

@@ -12,4 +12,5 @@ export {
     TOKEN_DATABASE_REPLICA_HEALTH_PORT,
     type IDatabaseHealthPort,
 } from 'src/core/database/port/database-health.port';
+export { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database/port/transaction.port';
 export { aggregateTimestamps, defaultTimestamps } from 'src/core/database/timestamp-column.util';

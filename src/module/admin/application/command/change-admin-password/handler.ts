@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -39,6 +40,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param hashingPort The port used to verify and hash passwords
      * @param sessionPort The port used to synchronize the version and open a fresh session
@@ -46,6 +48,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
      * @param tokenPort The port used to sign the replacement token pair
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
@@ -96,8 +99,12 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
         }
 
         admin.changePassword(await this.hashingPort.hash(newPassword));
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED }),
+            ]);
+        });
 
         const tokenPairWithSession = await this.tokenPort.generateTokens(
             { id, type: PrincipalType.ADMIN, permissions: admin.permissions },

@@ -65,6 +65,10 @@ export function isUniqueViolation(error: unknown): boolean {
  * @returns The taxonomy exception when the database is unreachable, the original error otherwise
  */
 export function translateConnectionFailure(error: unknown): unknown {
+    if (error instanceof DependencyUnavailableException) {
+        return error;
+    }
+
     if (isConnectionFailure(error)) {
         return new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
     }

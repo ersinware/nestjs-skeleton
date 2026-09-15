@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -22,10 +23,12 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and persist the admin
      * @param auditPort The port used to record the re-invitation for the audit trail
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -46,7 +49,11 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
         }
 
         admin.reInvite(command.actor);
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({ action: AuditAction.ADMIN_INVITED, targetId: admin.id });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({ action: AuditAction.ADMIN_INVITED, targetId: admin.id }),
+            ]);
+        });
     }
 }

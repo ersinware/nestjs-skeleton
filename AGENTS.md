@@ -5,7 +5,7 @@
 - Explain guide conflicts and their impact; propose compliant alternatives. Explicit rule revisions are intentional changes.
 - Limit work to the task and necessary related updates; exclude unrelated refactors, features, and tests.
 - Verify current behavior/structure claims against code/configuration; distinguish implementation from plans.
-- Write/update tests or run tests, lint, or formatting only on explicit request; report verification and skipped checks.
+- Write/update tests or run tests, type checks, builds, lint, or formatting only on explicit request; report verification and skipped checks.
 - After each change, assess `AGENTS.md` and `agent/`; update only guidance needed for future work, within the same task. Do not record change history.
 - Guide edits: use the fewest words that preserve clarity and meaning; state each rule once in its owning section. Cross-reference when useful; use examples/rationale only to resolve ambiguity. Keep ESLint implementation details in configuration comments.
 

@@ -16,6 +16,12 @@ import type { DispatchedDomainEvent } from 'src/shared/application/event';
 export class EventPublisherAdapter implements IEventPublisherPort {
     constructor(private readonly eventEmitter: EventEmitter2) {}
 
+    /**
+     * Dispatches immediately without transaction coordination.
+     *
+     * @param event Event name
+     * @param payload Event identity and aggregate reference
+     */
     async emitAsync(event: string, payload: DispatchedDomainEvent) {
         await this.eventEmitter.emitAsync(event, payload);
     }

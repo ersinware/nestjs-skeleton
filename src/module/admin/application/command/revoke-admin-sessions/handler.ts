@@ -6,6 +6,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import type { EmailPayload } from 'src/core/email';
 import { TOKEN_EMAILER_PORT, escapeHtml, type IEmailerPort } from 'src/core/email';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
@@ -27,6 +28,7 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param emailerPort The port used to send the security notice
      * @param sessionPort The port used to push the session version to Redis
@@ -34,6 +36,7 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
      * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
@@ -58,8 +61,12 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
 
         // The save is the security outcome: the DB counters are what every later refresh is
         // checked against.
-        await this.adminWriterPort.save(admin);
-        await this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.adminWriterPort.save(admin),
+                this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id }),
+            ]);
+        });
 
         // Best-effort instant eviction of the access tokens. Redis being unreachable only delays
         // the cut-off; unexpected failures are reported without changing the response.

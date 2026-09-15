@@ -5,6 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import {
@@ -23,11 +24,13 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
     /**
      * Initializes the handler with the required ports.
      *
+     * @param transactionPort The commit boundary for the business write and audit
      * @param userWriterPort The port used to persist the user aggregate
      * @param hashingPort The port used to hash passwords
      * @param auditPort The port used to record the registration for the audit trail
      */
     constructor(
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -48,7 +51,11 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
                 password: await this.hashingPort.hash(password),
             });
 
-        await this.userWriterPort.save(user);
-        await this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id });
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.userWriterPort.save(user),
+                this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id }),
+            ]);
+        });
     }
 }
