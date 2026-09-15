@@ -315,6 +315,14 @@ export class EnvironmentVariables {
     readonly DATABASE_MAX_LIFETIME!: number;
 
     /**
+     * Maximum number of connections in the independent pg-boss pool per process.
+     */
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(Number.MAX_SAFE_INTEGER)
+    readonly OUTBOX_POOL_SIZE!: number;
+
+    /**
      * Hostname or IP address of the Redis Cache server.
      */
     @IsString()

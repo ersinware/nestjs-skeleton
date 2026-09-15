@@ -8,28 +8,27 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
-import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
+import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
 import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
-import { uuidv7 } from 'uuidv7';
 
 /**
  * Persists and reconstitutes the User aggregate, translating driver errors at the port boundary
- * and dispatching the aggregate's domain events after the write.
+ * and enqueueing its domain events in the same transaction.
  */
 @Injectable()
 export class UserWriterAdapter implements IUserWriterPort {
     /**
-     * Injects the database connection and the event publisher.
+     * Injects the database connection and durable event writer.
      *
      * @param db The Drizzle database client
-     * @param eventPublisherPort The port the aggregate's domain events are dispatched through
+     * @param outboxWriterPort Persists events atomically with the aggregate
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
-        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
+        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
     ) {}
 
     /**
@@ -55,8 +54,7 @@ export class UserWriterAdapter implements IUserWriterPort {
     }
 
     /**
-     * Upserts the aggregate's snapshot under the optimistic lock, then dispatches the domain events
-     * it accumulated.
+     * Upserts the aggregate under the optimistic lock and queues its events in the caller's transaction.
      *
      * @param user The aggregate to save
      */
@@ -100,7 +98,9 @@ export class UserWriterAdapter implements IUserWriterPort {
             throw new ResourceConflictException(ResourceConflictMessage.CONCURRENT_MODIFICATION);
         }
 
-        this.publishDomainEvents(user);
+        await this.outboxWriterPort.save(
+            ...user.pullDomainEvents().map((event) => ({ eventType: event.type, aggregateId: event.aggregateId })),
+        );
     }
 
     /**
@@ -121,19 +121,5 @@ export class UserWriterAdapter implements IUserWriterPort {
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });
-    }
-
-    /**
-     * Dispatches after SQL succeeds without awaiting listeners. An outer transaction may still
-     * roll back; listener failures are suppressed and delivery is not retried.
-     *
-     * @param user The aggregate whose domain events are dispatched
-     */
-    private publishDomainEvents(user: User) {
-        for (const event of user.pullDomainEvents()) {
-            this.eventPublisherPort
-                .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
-                .catch(() => {});
-        }
     }
 }

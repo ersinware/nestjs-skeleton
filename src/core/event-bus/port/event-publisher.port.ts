@@ -21,5 +21,5 @@ export interface IEventPublisherPort {
      * @param payload The minimal-metadata payload delivered to every listener.
      * @throws {Error} Whatever a listener rejects with; awaiting delivery propagates listener failures.
      */
-    emitAsync(event: string, payload: DispatchedDomainEvent): Promise<void>;
+    publish(event: string, payload: DispatchedDomainEvent): Promise<void>;
 }

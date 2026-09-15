@@ -37,4 +37,4 @@ Mutation evidence and event delivery require both [Events & Messaging](agent/eve
 
 NestJS / SWC; Fastify; PostgreSQL / Drizzle (`pg`); Redis (`ioredis`); Gmail (`googleapis`); Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud; Vitest / Supertest / Spectral / Schemathesis.
 
-Current event transport: in-process `@nestjs/event-emitter` ([Events & Messaging](agent/events-and-messaging.md#events--messaging)).
+Current event delivery: pg-boss transactional outbox → in-process `@nestjs/event-emitter` ([Events & Messaging](agent/events-and-messaging.md#events--messaging)).

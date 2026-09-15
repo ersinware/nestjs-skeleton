@@ -24,9 +24,9 @@ export class EventPublisherAdapter implements IEventPublisherPort {
      * Dispatches immediately without transaction coordination.
      *
      * @param event Event name
-     * @param payload Event identity and aggregate reference
+     * @param payload Aggregate reference
      */
-    async emitAsync(event: string, payload: DispatchedDomainEvent) {
+    async publish(event: string, payload: DispatchedDomainEvent) {
         await this.eventEmitter.emitAsync(event, payload);
     }
 }

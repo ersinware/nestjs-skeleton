@@ -16,6 +16,7 @@ import { ResponseAuditTrailRecordDto } from 'src/module/audit-trail/presentation
 export class ResponseAuditTrailRecordSummaryDto extends PickType(ResponseAuditTrailRecordDto, [
     'id',
     'action',
+    'route',
     'targetId',
     'actorId',
     'occurredAt',

@@ -3,8 +3,9 @@
  * @description Refresh propagation of immutable session identity, account revocation, and atomic decisions.
  */
 
-import type { IEventPublisherPort } from 'src/core/event-bus';
+import type { ITransactionPort } from 'src/core/database';
 import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
+import type { IOutboxWriterPort } from 'src/core/outbox';
 import { RotateOutcome, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, type ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
@@ -23,7 +24,8 @@ describe('RefreshTokensCommandHandler', () => {
     const refreshTokens = vi.fn<ITokenPort['refreshTokens']>();
     const getAuthState = vi.fn<IIdentityReaderPort['getAuthState']>();
     const rotateSession = vi.fn<ISessionPort['rotateSession']>();
-    const emitAsync = vi.fn<IEventPublisherPort['emitAsync']>();
+    const save = vi.fn<IOutboxWriterPort['save']>();
+    const run = vi.fn<ITransactionPort['run']>();
     const record = vi.fn<IAuditPort['record']>();
     const session = {
         sessionVersion: 2,
@@ -59,12 +61,14 @@ describe('RefreshTokensCommandHandler', () => {
             permissions: [Permission.HEALTH_DETAIL_READ],
         });
         rotateSession.mockResolvedValue(RotateOutcome.ROTATED);
-        emitAsync.mockResolvedValue(undefined);
+        save.mockResolvedValue(undefined);
+        run.mockImplementation(async (cb: () => Promise<unknown>) => cb());
         handler = new RefreshTokensCommandHandler(
             { verifyRefreshToken, refreshTokens } as unknown as ITokenPort,
             { getAuthState } as unknown as IIdentityReaderPort,
             { rotateSession } as unknown as ISessionPort,
-            { emitAsync },
+            { save },
+            { run } as unknown as ITransactionPort,
             { record },
         );
     });
@@ -95,7 +99,7 @@ describe('RefreshTokensCommandHandler', () => {
     it('does not treat logout or expiry as a new account-wide reuse event', async () => {
         rotateSession.mockResolvedValueOnce(RotateOutcome.SESSION_CLOSED);
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(UnauthenticatedException);
-        expect(emitAsync).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
     });
 
@@ -105,13 +109,13 @@ describe('RefreshTokensCommandHandler', () => {
             ResourceConflictException,
         );
         expect(record).toHaveBeenCalledWith({ action: AuditAction.REFRESH_CONCURRENT_REPLAY, targetId: 'user-1' });
-        expect(emitAsync).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
     });
 
     it('requests wider revocation after the store has closed a reused session', async () => {
         rotateSession.mockResolvedValueOnce(RotateOutcome.REUSE_DETECTED);
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(UnauthenticatedException);
-        expect(emitAsync).toHaveBeenCalledTimes(1);
+        expect(save).toHaveBeenCalledTimes(1);
         expect(record).toHaveBeenCalledWith({ action: AuditAction.REFRESH_REUSE_DETECTED, targetId: 'user-1' });
     });
 
@@ -119,6 +123,6 @@ describe('RefreshTokensCommandHandler', () => {
         const failure = new DependencyUnavailableException();
         rotateSession.mockRejectedValueOnce(failure);
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBe(failure);
-        expect(emitAsync).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
     });
 });

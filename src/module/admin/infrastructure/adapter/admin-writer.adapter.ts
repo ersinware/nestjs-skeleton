@@ -8,28 +8,27 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
-import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
+import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { admin as adminSchema } from 'src/module/admin/infrastructure/admin.schema';
 import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
-import { uuidv7 } from 'uuidv7';
 
 /**
  * Persists and reconstitutes the Admin aggregate, translating driver errors at the port boundary
- * and dispatching the aggregate's domain events after the write.
+ * and enqueueing its domain events in the same transaction.
  */
 @Injectable()
 export class AdminWriterAdapter implements IAdminWriterPort {
     /**
-     * Injects the database connection and the event publisher.
+     * Injects the database connection and durable event writer.
      *
      * @param db The Drizzle database client
-     * @param eventPublisherPort The port the aggregate's domain events are dispatched through
+     * @param outboxWriterPort Persists events atomically with the aggregate
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
-        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
+        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
     ) {}
 
     /**
@@ -55,8 +54,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Upserts the aggregate's snapshot under the optimistic lock, then dispatches the domain events
-     * it accumulated.
+     * Upserts the aggregate under the optimistic lock and queues its events in the caller's transaction.
      *
      * @param admin The aggregate to save
      */
@@ -100,7 +98,9 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             throw new ResourceConflictException(ResourceConflictMessage.CONCURRENT_MODIFICATION);
         }
 
-        this.publishDomainEvents(admin);
+        await this.outboxWriterPort.save(
+            ...admin.pullDomainEvents().map((event) => ({ eventType: event.type, aggregateId: event.aggregateId })),
+        );
     }
 
     /**
@@ -121,19 +121,5 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
         });
-    }
-
-    /**
-     * Dispatches after SQL succeeds without awaiting listeners. An outer transaction may still
-     * roll back; listener failures are suppressed and delivery is not retried.
-     *
-     * @param admin The aggregate whose domain events are dispatched
-     */
-    private publishDomainEvents(admin: Admin) {
-        for (const event of admin.pullDomainEvents()) {
-            this.eventPublisherPort
-                .emitAsync(event.type, { aggregateId: event.aggregateId, eventId: uuidv7() })
-                .catch(() => {});
-        }
     }
 }

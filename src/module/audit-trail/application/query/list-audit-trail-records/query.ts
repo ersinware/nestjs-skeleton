@@ -50,6 +50,7 @@ export type ListAuditTrailRecordsResult = {
     readonly data: readonly {
         readonly id: string;
         readonly action: AuditAction;
+        readonly route: string | null;
         readonly targetId: string | null;
         readonly actorId: string | null;
         readonly occurredAt: Date;
