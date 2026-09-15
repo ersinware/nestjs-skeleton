@@ -124,9 +124,8 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Dispatches the aggregate's accumulated domain events, after the row is written so a listener
-     * that re-reads the admin observes the new state. Fire-and-forget: a failing listener must not
-     * fail the command that already persisted the row.
+     * Dispatches after SQL succeeds without awaiting listeners. An outer transaction may still
+     * roll back; listener failures are suppressed and delivery is not retried.
      *
      * @param admin The aggregate whose domain events are dispatched
      */

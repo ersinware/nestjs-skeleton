@@ -25,8 +25,6 @@ describe('env.validation.config', () => {
         DATABASE_QUERY_TIMEOUT: 5,
         DATABASE_IDLE_TIMEOUT: 10,
         DATABASE_MAX_LIFETIME: 30,
-        DELIVERY_POOL_SIZE: 10,
-        DELIVERY_MIGRATION_TIMEOUT: 10,
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,
         REDIS_CACHE_PASSWORD: 'redis-password',
@@ -133,16 +131,6 @@ describe('env.validation.config', () => {
         ['REDIS_SESSION_PORT', 65536],
         ['DATABASE_POOL_SIZE', 0],
         ['DATABASE_POOL_SIZE', Number.MAX_SAFE_INTEGER + 1],
-        ['DELIVERY_POOL_SIZE', 0],
-        ['DELIVERY_POOL_SIZE', 1.5],
-        ['DELIVERY_POOL_SIZE', ''],
-        ['DELIVERY_POOL_SIZE', true],
-        ['DELIVERY_POOL_SIZE', Number.MAX_SAFE_INTEGER + 1],
-        ['DELIVERY_MIGRATION_TIMEOUT', 0],
-        ['DELIVERY_MIGRATION_TIMEOUT', 1.5],
-        ['DELIVERY_MIGRATION_TIMEOUT', ''],
-        ['DELIVERY_MIGRATION_TIMEOUT', true],
-        ['DELIVERY_MIGRATION_TIMEOUT', 2147484],
         ['REDIS_CACHE_MAX_RETRIES_PER_REQUEST', -1],
         ['REDIS_SESSION_MAX_RETRIES_PER_REQUEST', -1],
         ['DATABASE_CONNECT_TIMEOUT', 0],
@@ -168,18 +156,6 @@ describe('env.validation.config', () => {
         ['SENTRY_DSN', 'https://sentry.example'],
     ] as const)('should reject invalid %s: %s', (key, value) => {
         expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);
-    });
-
-    it('converts delivery settings and applies defaults when omitted', () => {
-        const config = { ...validConfig } as Record<string, unknown>;
-        delete config['DELIVERY_POOL_SIZE'];
-        delete config['DELIVERY_MIGRATION_TIMEOUT'];
-
-        expect(validateConfig(config)).toMatchObject({ DELIVERY_POOL_SIZE: 5, DELIVERY_MIGRATION_TIMEOUT: 900 });
-        expect(validateConfig({ ...config, DELIVERY_POOL_SIZE: '2', DELIVERY_MIGRATION_TIMEOUT: '30' })).toMatchObject({
-            DELIVERY_POOL_SIZE: 2,
-            DELIVERY_MIGRATION_TIMEOUT: 30,
-        });
     });
 
     it.each(['1s', '10s', '30s', '60s', '1m'])('accepts bounded session rotation grace %s', (value) => {

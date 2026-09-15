@@ -4,4 +4,3 @@
  */
 
 export type { DispatchedDomainEvent } from 'src/shared/application/event/dispatched-domain-event.type';
-export type { DurableEvent } from 'src/shared/application/event/durable-event.type';

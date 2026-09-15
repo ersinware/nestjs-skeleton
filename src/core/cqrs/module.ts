@@ -16,8 +16,7 @@ import { TracingBehavior } from 'src/core/cqrs/tracing.behavior';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 
 /**
- * The composition point for the CQRS pipelines. The behavior order lives here and nowhere else: a
- * new cross-cutting behavior (transaction, metrics, outbox) is added by binding it into these lists.
+ * Defines the CQRS pipelines and their behavior order.
  */
 @Module({
     imports: [CqrsModule, CacheModule, ErrorReporterModule],

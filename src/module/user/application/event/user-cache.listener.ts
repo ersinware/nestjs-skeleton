@@ -11,9 +11,7 @@ import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
 import type { DispatchedDomainEvent } from 'src/shared/application/event';
 
 /**
- * Complements best-effort pipeline eviction using the same CacheKeys helper. Failed deletions
- * reject delivery; durable retries require the pending outbox/relay. Repeated deletion needs no
- * inbox, but cannot prevent concurrent stale cache fills.
+ * Complements best-effort pipeline eviction using the same CacheKeys helper.
  */
 @Injectable()
 export class UserCacheListener {

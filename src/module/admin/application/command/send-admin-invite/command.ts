@@ -6,8 +6,7 @@
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Emails a fresh activation invitation to a pending admin. Idempotent under redelivery: a repeated
- * send simply issues a newer link.
+ * Emails a fresh activation invitation to a pending admin.
  */
 export class SendAdminInviteCommand extends Command<void> {
     /**

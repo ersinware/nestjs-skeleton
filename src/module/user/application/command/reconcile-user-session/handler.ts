@@ -16,8 +16,7 @@ import {
 
 /**
  * Pushes the user's current DB session version into Redis. Re-reading the version from the database
- * makes the outcome converge under duplicate, out-of-order, and concurrent delivery, so no inbox is
- * needed: the write is idempotent by construction.
+ * and applying Redis max semantics makes repeated and concurrent synchronization idempotent.
  */
 @CommandHandler(ReconcileUserSessionCommand)
 export class ReconcileUserSessionCommandHandler implements ICommandHandler<ReconcileUserSessionCommand, void> {

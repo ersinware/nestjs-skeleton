@@ -46,8 +46,7 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * @param command The logout all command parameters
      */
     async execute(command: LogoutAllCommand) {
-        // Await listener completion with the current in-process transport. The outbox implementation
-        // must persist the revocation request and audit together before acknowledging acceptance.
+        // Await owner revocation before recording logout success.
         await this.eventPublisherPort.emitAsync(LOGOUT_ALL_EVENT_BY_PRINCIPAL_TYPE[command.principalType], {
             aggregateId: command.id,
             eventId: uuidv7(),

@@ -16,7 +16,7 @@
 ### Audit
 
 - `IAuditPort` records evidence, not diagnostics: append-only primary `audit.audit` ([Data & State](data-and-state.md#data--state)), independent of log level/sampling and active in tests. Durability requires outer commit in a transaction, insert completion otherwise. Audit loss is unacceptable.
-- Fact owners write immutable mutation evidence directly to `audit.audit` through `IAuditPort`, in the same DB transaction as the mutation and its outbox records ([Events & Messaging](events-and-messaging.md#events--messaging)); failure rolls back all three. Capture facts, time, trace, and verified context at mutation time. Never defer audit persistence to an outbox consumer or reconstruct history from current state.
+- Fact owners persist mutation audit in the same DB transaction as the mutation; failure rolls back both. Capture facts, time, trace, and verified context at mutation time. Never defer audit persistence to an event consumer or reconstruct history from current state.
 - Use `@Audited` / `AuditInterceptor` only for reads/disclosures: await durable audit acceptance before emitting results; audit failure fails the response, handler failure creates no disclosure record. Filter 403 ownership: [Exceptions](exceptions.md#exceptions); its audit failures follow error reporting without replacing the original response.
 - `auditContextHook` (`main.ts`, `onRequest`) seeds transport before guards; authentication adds verified, session-checked identity before authorization. Never publish unverified payloads; interceptors are too late.
 - Audit actors travel via AsyncLocalStorage, never command payloads; absent non-HTTP actors leave unattributed records. Business actors remain explicit ([Authentication & Authorization](security-and-sessions.md#authentication--authorization)).
@@ -26,6 +26,6 @@
 ### Dependency Outages
 
 - Per application instance and client/pool, log observed outage transitions once: `warn` + driver error + `ConnectionLogMessage.LOST`, then `info` + `RESTORED`. Identify the connection; vocabulary belongs in `core/observability/logger`.
-- Redis client events own transition logs; PostgreSQL health probes own business-pool transition logs; `job-queue` SQL/idle-client failures own delivery-pool transitions. Keep pool error listeners without duplicate reporting; share the probe when replica aliases primary.
+- Redis client events own transition logs; PostgreSQL health probes own database-pool transition logs. Keep pool error listeners without duplicate reporting; share the probe when replica aliases primary.
 - Suppress duplicate outage logs/Sentry, preserving failure semantics ([Adapters](data-and-state.md#adapters), [Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics), [Exceptions](exceptions.md#exceptions), [Events & Messaging](events-and-messaging.md#events--messaging)).
 - Require regular external health checks and Grafana Cloud alerts, including separate cache monitoring ([Health Probes](http.md#health-probes)); transition logs are diagnostic.
