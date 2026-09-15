@@ -1,7 +1,6 @@
 /**
  * @file database-pool.factory.ts
- * @description Factory building a configured node-postgres pool, shared by the primary and the
- * replica connection so pool policy lives in one place.
+ * @description Factory building configured business and delivery pools with shared connection limits.
  */
 
 import { ConfigService } from '@nestjs/config';
@@ -33,8 +32,8 @@ export function createDatabasePool(configService: ConfigService, connectionStrin
 
     // An idle pooled client the server drops surfaces here, and with no listener the driver
     // escalates it to an uncaught exception. The client is already discarded by the pool and the
-    // next checkout reconnects, so nothing is left to do; the outage is recorded once, by the
-    // health probe (§ Dependency outages).
+    // next checkout reconnects, so the connection owner records the outage once: business health probes or delivery SQL
+    // observations (§ Dependency outages).
     pool.on('error', () => {});
 
     return pool;

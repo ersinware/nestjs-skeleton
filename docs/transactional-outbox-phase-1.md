@@ -4,8 +4,8 @@
 
 ## 1. Paket ve runtime kararı
 
-- **pg-boss 12.31.1**; Faz 3'te exact dependency ve lockfile. Sürüme bağlı davranışlarda bu tag esas alınır: ESM, Node `>=22.12.0`, şema 41. [Paket bildirimi](https://github.com/timgit/pg-boss/blob/12.31.1/package.json)
-- Runtime hedefi CI ile aynı Node 24. [Nest SWC](../nest-cli.json) CommonJS çıktısı korunur; infrastructure named `PgBoss` / `fromDrizzle` import eder. Senkron ESM yüklemesi bağımlılık ağacında top-level await olmamasını gerektirir. Faz 3'te kilitli bağımlılıklar, gerçek SWC çıktısı ve production container ile yükleme/Drizzle uyumu doğrulanmadan faz kapanmaz. [Node yükleme sözleşmesi](https://nodejs.org/docs/latest-v22.x/api/modules.html#loading-ecmascript-modules-using-require)
+- **pg-boss 12.31.1**; exact dependency ve lockfile mevcut. Sürüme bağlı davranışlarda bu tag esas alınır: ESM, Node `>=22.12.0`, şema 41. [Paket bildirimi](https://github.com/timgit/pg-boss/blob/12.31.1/package.json)
+- Runtime hedefi CI ile aynı Node 24. [Nest SWC](../nest-cli.json) CommonJS çıktısı korunur; infrastructure named `PgBoss` / `fromDrizzle` import eder. Senkron ESM yüklemesi bağımlılık ağacında top-level await olmamasını gerektirir. SWC/production imajı yükleme sonuçları [Faz 3 raporunda](transactional-outbox-phase-3.md); transaction üzerinden Drizzle enqueue doğrulaması Faz 4 kapsamındadır. [Node yükleme sözleşmesi](https://nodejs.org/docs/latest-v22.x/api/modules.html#loading-ecmascript-modules-using-require)
 - Yerel/CI PostgreSQL hedefi [18.4](../docker-compose.yml); pg-boss için PostgreSQL eklentisi kurulmaz. Faz 3/11'de RDS/Aurora engine, writer endpoint, DDL yetkileri ve failover ayrıca doğrulanır.
 
 ## 2. Kullanılacak paket sözleşmeleri
@@ -78,7 +78,7 @@ Her uygulama instance’ı API ve bütün consumer’ları tek NestJS process’
 | Girdi                                   | Başlangıç bütçesi                                                                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Primary business pool / process         | `DATABASE_POOL_SIZE=10`; API ve consumer’lar ortak kullanır                                                                        |
-| Delivery pool / process                 | 5 bağlantı; Faz 3'te ayrı doğrulanmış konfigürasyon                                                                                |
+| Delivery pool / process                 | `DELIVERY_POOL_SIZE=5`; üç şema için ortak limit                                                                                   |
 | Replica pool                            | Process başına `DATABASE_REPLICA_POOL_SIZE` (`.env.example`: 10); verilmezse `DATABASE_POOL_SIZE`. Primary alias ise yeni pool yok |
 | Aktif job / uygulama process’i          | Başlangıçta her source queue için 1, toplam en fazla 8; ayrı notification queue'ları korunur                                       |
 | Tasarım yükü                            | Sürekli 10, 5 dakikalık burst 50 logical event/s; en fazla 2 source delivery/event. Follow-up notification ayrıca sayılır          |
@@ -92,6 +92,6 @@ Pool timeout'ları [database pool factory](../src/core/database/database-pool.fa
 
 ## 6. Sonraki faz ve doğrulama
 
-Faz 2 kodu uygulandı; runtime doğrulaması bekliyor. Sıradaki iş Faz 3 pg-boss storage/migration. Atomiklik, inbox/Gmail sınırları ve Faz 8'in Redis reuse capture engeli için [ana plan](../transactional-outbox-implementation-plan.md) geçerlidir. Reuse ayrı notification üretir; logout-all mail üretmez.
+Faz 2 transaction/audit kodu uygulandı; atomiklik doğrulaması bekliyor. Faz 3 storage/migration sonuçları ve açık kontroller [faz raporunda](transactional-outbox-phase-3.md). Sıradaki implementasyon Faz 4 kalıcı kabul API’si. Atomiklik, inbox/Gmail sınırları ve Faz 8'in Redis reuse capture engeli için [ana plan](../transactional-outbox-implementation-plan.md) geçerlidir. Reuse ayrı notification üretir; logout-all mail üretmez.
 
 Faz 1'de kaynak/config incelemesi yapıldı; test, lint, format, build veya entegrasyon deneyi çalıştırılmadı. Runtime, kapasite ve failover kabulü ilgili fazlarda doğrulanmalıdır.

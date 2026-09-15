@@ -6,7 +6,8 @@
 
 ### JSDoc
 
-- Files start with matching `@file` + `@description`; classes/interfaces/methods/functions require purpose/rationale JSDoc.
+- Use multiline JSDoc (`/**`, ` * ...`, ` */` on separate lines); separate the summary from tags with an empty ` *` line.
+- Files start with matching `@file` + `@description`; classes/interfaces/methods/functions and variables or fields declared outside function/method bodies require purpose/rationale JSDoc.
 - Comments explain current rationale briefly; no filler/history/code narration.
 - Document contract failures with `@throws {ExceptionType}` at their declaration (interface methods, facades, etc.), not again in implementations: taxonomy, health/cleaner failures and caller-caught library errors, including propagation and async rejection. Omit universal unexpected-error tags.
 - Require `@param` for each parameter without TS types, and `@returns` except for `void` / `Promise<void>` (omit it). Describe return meaning, including decorator factories, not raw types.
