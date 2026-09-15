@@ -10,6 +10,7 @@ import { EmailModule } from 'src/core/email';
 import { EventBusModule } from 'src/core/event-bus';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
+import { OutboxModule } from 'src/core/outbox';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -55,6 +56,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         ErrorReporterModule,
         DatabaseModule,
         EventBusModule,
+        OutboxModule,
         HashingModule,
         SessionModule,
         TokenModule,

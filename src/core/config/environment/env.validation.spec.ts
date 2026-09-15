@@ -16,6 +16,7 @@ describe('env.validation.config', () => {
         PORT: 3000,
         NODE_ENV: Environment.DEVELOPMENT,
         TRUST_PROXY: 'false',
+
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_REPLICA_URL: undefined,
         DATABASE_POOL_SIZE: 10,
@@ -25,6 +26,9 @@ describe('env.validation.config', () => {
         DATABASE_QUERY_TIMEOUT: 5,
         DATABASE_IDLE_TIMEOUT: 10,
         DATABASE_MAX_LIFETIME: 30,
+
+        OUTBOX_POOL_SIZE: 5,
+
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,
         REDIS_CACHE_PASSWORD: 'redis-password',

@@ -5,8 +5,9 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
@@ -28,7 +29,6 @@ import {
     UnauthenticatedException,
     isExceptionOfKind,
 } from 'src/shared/exception';
-import { uuidv7 } from 'uuidv7';
 
 /**
  * The reuse integration event each kind's owning module listens for. Exhaustive over
@@ -39,15 +39,6 @@ const REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE = {
     [PrincipalType.USER]: UserIntegrationEvent.REFRESH_REUSE_DETECTED,
     [PrincipalType.ADMIN]: AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
 } as const satisfies Record<PrincipalType, string>;
-
-/**
- * Rejects unhandled rotation outcomes before any reuse remediation.
- * @param outcome Outcome missing an explicit handler branch.
- * @returns Never returns normally.
- */
-function rejectUnhandledRotateOutcome(outcome: never): never {
-    throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`);
-}
 
 /**
  * Handler for the RefreshTokensCommand.
@@ -62,14 +53,16 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @param tokenPort The port used to verify the old and generate the new token pair
      * @param identityReaderPort The port used to read the principal's auth state
      * @param sessionPort The port used to atomically rotate the refresh session
-     * @param eventPublisherPort The port used to publish the reuse-detection event
+     * @param outboxWriterPort The port used to persist the reuse-detection event
+     * @param transactionPort Commits the event and audit together
      * @param auditPort The port used to record refresh-reuse decisions
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
+        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
@@ -80,7 +73,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
      * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
-     * @throws {DependencyUnavailableException} When the session cache or audit store is unreachable.
+     * @throws {DependencyUnavailableException} When the session cache, outbox, or audit store is unreachable.
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
@@ -153,22 +146,31 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             return rejectUnhandledRotateOutcome(outcome);
         }
 
-        // RotateOutcome.REUSE_DETECTED. The event and the record are one act — the fact and the
-        // reaction it schedules — kept adjacent and first, because everything below can fail. Only
-        // this handler can tell a replayed refresh token from any other 401; left to the filter it
-        // would be filed as one more expired token. The owning module is reachable only
-        // asynchronously and auth has no aggregate, so the event is emitted here. The emit is
-        // fire-and-forget: a failing listener must not turn the 401 into a 503.
-        this.eventPublisherPort
-            .emitAsync(REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE[principalType], { aggregateId: sub, eventId: uuidv7() })
-            .catch(() => {});
-        await this.auditPort.record({
-            action: AuditAction.REFRESH_REUSE_DETECTED,
-            targetId: sub,
+        // Commit the reuse evidence and revocation request before rejecting the credential.
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.outboxWriterPort.save({
+                    eventType: REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE[principalType],
+                    aggregateId: sub,
+                }),
+                this.auditPort.record({
+                    action: AuditAction.REFRESH_REUSE_DETECTED,
+                    targetId: sub,
+                }),
+            ]);
         });
 
         // No context: the reuse is audited above, and the response must stay indistinguishable from
         // every other rejected refresh.
         throw new UnauthenticatedException();
     }
+}
+
+/**
+ * Rejects unhandled rotation outcomes before any reuse remediation.
+ * @param outcome Outcome missing an explicit handler branch.
+ * @returns Never returns normally.
+ */
+function rejectUnhandledRotateOutcome(outcome: never): never {
+    throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`);
 }

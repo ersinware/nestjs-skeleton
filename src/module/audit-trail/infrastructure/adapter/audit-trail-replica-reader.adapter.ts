@@ -50,6 +50,7 @@ export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPor
                     .select({
                         id: audit.id,
                         action: audit.action,
+                        route: audit.route,
                         targetId: audit.targetId,
                         actorId: audit.actorId,
                         occurredAt: audit.occurredAt,

@@ -8,7 +8,7 @@ import { Logger as NestLogger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import * as fs from 'fs';
-import { Logger } from 'nestjs-pino';
+
 import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, GLOBAL_PREFIX, VERSION_1 } from 'src/core/config';
@@ -24,11 +24,12 @@ async function bootstrap() {
 
     try {
         app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
-            logger: ['error', 'warn'],
+            logger: ['error'],
             abortOnError: false,
+            preview: true,
         });
 
-        const logger = app.get(Logger);
+        const logger = new NestLogger('BuildSwagger');
 
         app.enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1 }).setGlobalPrefix(GLOBAL_PREFIX);
 
@@ -63,17 +64,7 @@ async function bootstrap() {
     } catch (error) {
         const _error = error instanceof Error ? error : new Error(String(error));
 
-        try {
-            if (!app) {
-                throw new Error('App not initialized', { cause: _error });
-            }
-
-            app.get(Logger).error(createLogPayload({ message: _error.message, error: _error }));
-        } catch {
-            new NestLogger('BuildSwagger').error(
-                createLogPayload({ message: _error.message, data: { stack: _error.stack } }),
-            );
-        }
+        new NestLogger('BuildSwagger').error(createLogPayload({ message: _error.message, error: _error }));
 
         process.exit(1);
     }
@@ -90,7 +81,7 @@ async function bootstrap() {
         data,
     }: {
         readonly message: string;
-        readonly error?: unknown;
+        readonly error?: Error;
         readonly data?: Readonly<Record<string, unknown>>;
     }): LogPayload {
         return {

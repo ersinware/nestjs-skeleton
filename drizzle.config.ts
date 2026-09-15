@@ -20,7 +20,7 @@ if (!fs.existsSync('/.dockerenv') && databaseUrl.includes('@postgres:')) {
 }
 
 export default defineConfig({
-    // The audit trail is the only core-owned schema; every other table belongs to a bounded context.
+    // Discover application-owned tables only; pg-boss manages its own pgboss schema.
     schema: ['./src/module/*/infrastructure/*.schema.ts', './src/core/observability/audit/audit.schema.ts'],
     out: './drizzle',
     dialect: 'postgresql',

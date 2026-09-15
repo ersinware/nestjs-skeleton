@@ -5,13 +5,13 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_EVENT_PUBLISHER_PORT, type IEventPublisherPort } from 'src/core/event-bus';
+import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 import { AdminIntegrationEvent } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { UserIntegrationEvent } from 'src/shared/domain/user';
-import { uuidv7 } from 'uuidv7';
 
 /**
  * The logout-all event each kind's owning module listens for. Exhaustive over {@link PrincipalType}
@@ -31,11 +31,13 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
     /**
      * Initializes the handler with the required ports.
      *
-     * @param eventPublisherPort The port used to publish the logout-all event
+     * @param outboxWriterPort The port used to persist the logout-all event
+     * @param transactionPort Commits the event and audit together
      * @param auditPort The port used to record the logout
      */
     constructor(
-        @Inject(TOKEN_EVENT_PUBLISHER_PORT) private readonly eventPublisherPort: IEventPublisherPort,
+        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
+        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
@@ -46,13 +48,15 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * @param command The logout all command parameters
      */
     async execute(command: LogoutAllCommand) {
-        // Await owner revocation before recording logout success.
-        await this.eventPublisherPort.emitAsync(LOGOUT_ALL_EVENT_BY_PRINCIPAL_TYPE[command.principalType], {
-            aggregateId: command.id,
-            eventId: uuidv7(),
+        await this.transactionPort.run(async () => {
+            await Promise.all([
+                this.outboxWriterPort.save({
+                    eventType: LOGOUT_ALL_EVENT_BY_PRINCIPAL_TYPE[command.principalType],
+                    aggregateId: command.id,
+                }),
+                // The verified principal already identifies the actor in the audit context.
+                this.auditPort.record({ action: AuditAction.LOGOUT_ALL }),
+            ]);
         });
-
-        // No `targetId`: `id` comes from the access token, so it is the actor the context already names.
-        await this.auditPort.record({ action: AuditAction.LOGOUT_ALL });
     }
 }
