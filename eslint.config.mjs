@@ -95,7 +95,6 @@ export default tseslint.config(
                 { type: 'core', pattern: 'src/core/doc' },
                 { type: 'core', pattern: 'src/core/email' },
                 { type: 'core', pattern: 'src/core/event-bus' },
-                { type: 'core', pattern: 'src/core/job-queue' },
                 { type: 'core', pattern: 'src/core/exception' },
                 { type: 'core', pattern: 'src/core/http' },
                 { type: 'bootstrap', pattern: 'src/{instrument,tracing}.ts', mode: 'file' },
@@ -107,7 +106,7 @@ export default tseslint.config(
                 { type: 'infrastructure', pattern: 'src/module/*/infrastructure/**', capture: ['module'] },
                 { type: 'presentation', pattern: 'src/module/*/presentation/**', capture: ['module'] },
             ],
-            'boundaries/ignore': ['src/main.ts', 'src/app.module.ts', 'src/script/job-queue-migration.ts'],
+            'boundaries/ignore': ['src/main.ts', 'src/app.module.ts'],
             /**
              * Without this mapping the graph rules cannot parse `.ts` dependency files: the graph
              * they build is EMPTY and every one of them — `no-cycle` above all — passes silently.

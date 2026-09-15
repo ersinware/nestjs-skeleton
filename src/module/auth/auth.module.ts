@@ -19,7 +19,6 @@ import { LogoutCommandHandler } from 'src/module/auth/application/command/logout
 import { TOKEN_IDENTITY_READER_PORT } from 'src/module/auth/application/command/port/identity-reader.port';
 import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
 import { IdentityReaderAdapter } from 'src/module/auth/infrastructure/adapter/identity-reader.adapter';
-import { AUTH_DELIVERY_ROUTES } from 'src/module/auth/infrastructure/auth-delivery.constant';
 import { AuthController } from 'src/module/auth/presentation/controller/auth.controller';
 import { UserModule } from 'src/module/user';
 
@@ -31,7 +30,7 @@ import { UserModule } from 'src/module/user';
     imports: [
         AuditModule,
         ErrorReporterModule,
-        EventBusModule.register(AUTH_DELIVERY_ROUTES),
+        EventBusModule,
         HashingModule,
         TokenModule,
         SessionModule,

@@ -1,6 +1,6 @@
 /**
  * @file cache-eviction.adapter.ts
- * @description Redis cache eviction that propagates failures to event consumers.
+ * @description Redis implementation of the cache eviction port.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -9,7 +9,9 @@ import { TOKEN_CACHE_CONNECTION } from 'src/core/cache/cache-connection.token';
 import type { ICacheEvictionPort } from 'src/core/cache/port/cache-eviction.port';
 import { SystemException } from 'src/shared/exception';
 
-/** Exposes failed deletions to the delivery owner without per-attempt logging. */
+/**
+ * Deletes Redis keys and lets the caller handle failures.
+ */
 @Injectable()
 export class CacheEvictionAdapter implements ICacheEvictionPort {
     /**

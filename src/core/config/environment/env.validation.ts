@@ -315,22 +315,6 @@ export class EnvironmentVariables {
     readonly DATABASE_MAX_LIFETIME!: number;
 
     /**
-     * Maximum connections shared by all delivery schemas per process.
-     */
-    @IsEnvNumber(true)
-    @Min(1)
-    @Max(Number.MAX_SAFE_INTEGER)
-    readonly DELIVERY_POOL_SIZE: number = 5;
-
-    /**
-     * Migration statement and background-completion wait limits, each in seconds.
-     */
-    @IsEnvNumber(true)
-    @Min(1)
-    @Max(MAX_TIMER_SECONDS)
-    readonly DELIVERY_MIGRATION_TIMEOUT: number = 900;
-
-    /**
      * Hostname or IP address of the Redis Cache server.
      */
     @IsString()

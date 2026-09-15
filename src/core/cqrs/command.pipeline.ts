@@ -1,8 +1,6 @@
 /**
  * @file command.pipeline.ts
- * @description Wraps the framework CommandBus in a behavior chain so cross-cutting write concerns
- * (tracing and cache invalidation today; transaction/outbox later) apply uniformly to every dispatched
- * command without a handler ever knowing they exist.
+ * @description Dispatches commands to NestJS CommandBus through an injected, ordered behavior chain.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -30,9 +28,8 @@ export interface ICommandBehavior {
 }
 
 /**
- * The single write entry point every edge (controller, facade, listener, cron) dispatches through
- * instead of the raw CommandBus, so a command cannot bypass the behavior chain. Non-participating
- * behaviors pass a command straight through, so routing every write here is free.
+ * Composes behaviors around CommandBus execution in their registration order.
+ * Each behavior decides whether and when to invoke the next step.
  */
 @Injectable()
 export class CommandPipeline {
