@@ -13,11 +13,11 @@ export enum AdminIntegrationEvent {
      * Auth detected refresh-token reuse for this admin. The admin module reacts by revoking every session
      * and emailing the account owner a security notice.
      */
-    REFRESH_REUSE_DETECTED = 'admin.refresh_reuse_detected',
+    REFRESH_REUSE_DETECTED = 'admin.refresh_reuse_detected.v1',
 
     /**
      * The admin asked to be signed out of every device. Auth closes the refresh sessions it owns;
      * the admin module bumps the session counters that kill the outstanding access tokens.
      */
-    LOGOUT_ALL_REQUESTED = 'admin.logout_all_requested',
+    LOGOUT_ALL_REQUESTED = 'admin.logout_all_requested.v1',
 }

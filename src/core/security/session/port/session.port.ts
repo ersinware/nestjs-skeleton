@@ -6,7 +6,9 @@
 import type { SessionIdentity } from 'src/core/security/session/session-identity.type';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
-/** Injection token for the session store. */
+/**
+ * Dependency injection token representing the {@link ISessionPort} contract.
+ */
 export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
 
 /** Signed token metadata used to register exactly the lifetime issued by the token port. */

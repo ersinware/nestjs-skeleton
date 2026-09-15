@@ -4,7 +4,7 @@
  */
 
 /**
- * Dependency injection token representing the configured raw Redis connection of the cache concern.
+ * Dependency injection token representing the configured raw {@link Redis} connection of the cache concern.
  * Internal wiring: only the cache adapters inject it — consumers reach Redis through the ports.
  * Its description names the connection in the connection-level LOST/RESTORED logs, so it must stay
  * distinguishable from the other Redis connections (e.g. the session store).

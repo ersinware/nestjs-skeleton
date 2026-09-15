@@ -153,7 +153,6 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (isUpdated) {
             this.props.updatedAt = new Date();
-            this.addDomainEvent(new DomainEvent(AdminEvent.UPDATED, this.id));
         }
 
         return isUpdated;
@@ -291,7 +290,7 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Unbans the admin and emits an UNBANNED event. Does not bump the session version — the version is
+     * Unbans the admin without bumping the session version — the version is
      * monotonic and re-login mints a token at the current version. A no-op when the account is not
      * banned.
      *
@@ -311,8 +310,6 @@ export class Admin extends PrincipalAggregateRoot {
 
         this.props.isBanned = false;
         this.props.updatedAt = new Date();
-
-        this.addDomainEvent(new DomainEvent(AdminEvent.UNBANNED, this.id));
 
         return true;
     }

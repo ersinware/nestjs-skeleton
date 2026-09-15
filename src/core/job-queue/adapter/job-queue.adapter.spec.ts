@@ -1,12 +1,13 @@
 /**
- * @file delivery-storage.spec.ts
+ * @file job-queue.adapter.spec.ts
  * @description Verifies error ownership and cleanup when delivery lifecycle operations fail.
  */
 
 import 'reflect-metadata';
 
 import { ConfigService } from '@nestjs/config';
-import { DeliveryStorage } from 'src/core/event-bus/delivery-storage';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { JobQueueAdapter } from 'src/core/job-queue/adapter/job-queue.adapter';
 import { ConnectionLogMessage } from 'src/core/observability/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,11 +28,12 @@ vi.mock('src/core/database', async (importOriginal) => ({
     ...(await importOriginal<typeof import('src/core/database')>()),
     createDatabasePool: () => dependencies.pool,
 }));
-vi.mock('src/core/event-bus/delivery-schema.util', () => ({ assertDeliverySchema: dependencies.inspect }));
+vi.mock('src/core/job-queue/job-queue-schema.util', () => ({ assertJobQueueSchema: dependencies.inspect }));
 vi.mock('pg-boss', async () => {
     const { EventEmitter } = await import('node:events');
 
     return {
+        fromDrizzle: vi.fn(),
         PgBoss: class extends EventEmitter {
             /**
              * Allows individual clients to reject startup.
@@ -53,21 +55,27 @@ vi.mock('pg-boss', async () => {
     };
 });
 
-describe('DeliveryStorage lifecycle', () => {
+describe('JobQueueAdapter lifecycle', () => {
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const reporter = { report: vi.fn() };
-    let storage: DeliveryStorage;
+    let storage: JobQueueAdapter;
 
     beforeEach(() => {
         dependencies.clients.length = 0;
         dependencies.pool.end.mockReset().mockResolvedValue(undefined);
         dependencies.pool.query.mockReset().mockResolvedValue({ rows: [] });
         dependencies.inspect.mockReset().mockResolvedValue(undefined);
-        storage = new DeliveryStorage(
+        storage = new JobQueueAdapter(
             new ConfigService({ DATABASE_URL: 'postgres://unused', DELIVERY_POOL_SIZE: 2 }),
             logger,
             reporter,
+            {} as NodePgDatabase,
+            { run: vi.fn() },
         );
+
+        for (const schema of ['first_jobs', 'second_jobs', 'third_jobs']) {
+            storage.register({ schema, queues: ['sample.task'] });
+        }
     });
 
     it('closes all clients and the shared pool exactly once for concurrent shutdown calls', async () => {
@@ -138,7 +146,7 @@ describe('DeliveryStorage lifecycle', () => {
 
         expect(reporter.report).toHaveBeenCalledExactlyOnceWith(
             error,
-            expect.objectContaining({ class: 'DeliveryStorage' }),
+            expect.objectContaining({ class: 'JobQueueAdapter' }),
         );
         expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -149,11 +157,11 @@ describe('DeliveryStorage lifecycle', () => {
         dependencies.clients[0]!.emit('error', error);
 
         expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ message: 'vendor warning', data: { schema: 'user_delivery' } }),
+            expect.objectContaining({ message: 'vendor warning', data: { schema: 'first_jobs' } }),
         );
         expect(reporter.report).toHaveBeenCalledExactlyOnceWith(
             error,
-            expect.objectContaining({ class: 'DeliveryStorage' }),
+            expect.objectContaining({ class: 'JobQueueAdapter' }),
         );
     });
 });

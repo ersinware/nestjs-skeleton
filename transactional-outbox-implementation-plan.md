@@ -1,6 +1,6 @@
 # pg-boss ile Transactional Outbox / Inbox Implementasyon Planı
 
-Durum: [Faz 1 kararları](docs/transactional-outbox-phase-1.md) tamamlandı; Faz 2 transaction/audit kodu uygulandı. [Faz 3 storage/migration](docs/transactional-outbox-phase-3.md) yerel PostgreSQL ve production imajında doğrulandı; bulut/kapasite kontrolleri açık. Kalıcı publish/consumer henüz uygulanmadı; sıradaki implementasyon Faz 4.
+Durum: [Faz 1 kararları](docs/transactional-outbox-phase-1.md) tamamlandı; Faz 2 transaction/audit kodu uygulandı. [Faz 3 storage/migration](docs/transactional-outbox-phase-3.md) yerel PostgreSQL ve production imajında doğrulandı; bulut/kapasite kontrolleri açık. [Faz 4 kalıcı kabul ve routing API’si](docs/transactional-outbox-phase-4.md) uygulandı; çalıştırılarak doğrulanmadı. Producer geçişi/consumer henüz uygulanmadı; sıradaki implementasyon Faz 5.
 
 ## 1. Amaç, kapsam ve kararlar
 
@@ -84,7 +84,7 @@ Kalıcı event sözleşmesi yalnızca üç alandır; ayrı bir `payload` alanı 
 }
 ```
 
-Bu gösterim planlanan kalıcı sözleşmedir; mevcut event tipi adlarının sürümlü biçime geçirilmesi Faz 4 kapsamındadır. Alanlar job'ın JSON verisinde taşınabilir; her biri için ayrıca PostgreSQL sütunu açılması gerekmez. pg-boss'un kendi job yönetim alanları bu event sözleşmesinin parçası değildir.
+Üç alanlı sözleşme ve mevcut event enum’larının `.v1` değerleri Faz 4’te uygulandı. Alanlar job'ın JSON verisinde taşınabilir; her biri için ayrıca PostgreSQL sütunu açılması gerekmez. pg-boss'un kendi job yönetim alanları bu event sözleşmesinin parçası değildir.
 
 - `eventId` bir mantıksal event için bir kez UUID v7 olarak üretilir. Job retry, DLQ ve redrive yeni mantıksal event değildir.
 - pg-boss job ID'si delivery kimliğidir; özellikle redrive sırasında değişebilir. Inbox job ID'si üzerinden kurulmaz.
@@ -102,11 +102,11 @@ Bu gösterim planlanan kalıcı sözleşmedir; mevcut event tipi adlarının sü
 
 ```ts
 // Yalnızca event: port kendi kısa transaction'ını açar.
-await eventPublisher.accept(event);
+await eventPublisher.publish(event);
 
 // Event + audit: aggregate mutation gerekmez; event aggregateId taşır.
 await transaction.run(async () => {
-    await Promise.all([eventPublisher.accept(event), audit.record(auditInput)]);
+    await Promise.all([eventPublisher.publish(event), audit.record(auditInput)]);
 });
 
 // Mutation + audit + event(ler).
@@ -117,11 +117,11 @@ await transaction.run(async () => {
 });
 ```
 
-Faz 2: `ITransactionPort.run`, ALS'de doğrudan Drizzle transaction'ı tutar; `DatabaseModule` içindeki primary proxy mevcut writer/audit adapter'larını buna yönlendirir. User/Admin `save + audit` birlikte beklenir. Örnekteki `accept` ve writer outbox kabulü sonraki fazlardadır.
+Faz 2: `ITransactionPort.run`, ALS'de doğrudan Drizzle transaction'ı tutar; `DatabaseModule` içindeki primary proxy mevcut writer/audit adapter'larını buna yönlendirir. User/Admin `save + audit` birlikte beklenir. `publish` Faz 4’te uygulandı; writer outbox geçişi Faz 9a/9b’dedir.
 
 İç `run` aynı transaction'a katılır; yalnız dış çağrı commit eder. Hatalar dış callback'e taşınmalıdır; otomatik retry veya runtime context/kapalı transaction kontrolü yoktur. Bağımsız yazmalar `Promise.all` ile, bağımlılar sırayla beklenir. DB işleri/metotları callback dışına taşınmaz; network/pipeline çağrıları içine alınmaz. Replica seçimi: [Data & State](agent/data-and-state.md).
 
-`record`/planlanan `accept`, transaction içinde insert'i; dışında kendi commit'ini bekler. Mutation + audit + outbox aynı `run` içinde tutulur; event-only kabul kendi transaction'ını açar. Audit-only read/refusal kayıtları korunur.
+`record`/`publish`, transaction içinde insert'i; dışında kendi commit'ini bekler. Mutation + audit + outbox aynı `run` içinde tutulur; event-only kabul kendi transaction'ını açar. Audit-only read/refusal kayıtları korunur.
 
 Outbox geçişine kadar `emitAsync` commit öncesi veya rollback'e rağmen teslim edebilir. Consumer'lar producer'ın ALS transaction'ını miras alabilir; istenmeyen katılım/kapanmış transaction erişimi sonraki outbox fazlarında giderilir.
 
@@ -129,7 +129,9 @@ Transaction başarısızlığında aggregate event listesi tüketilip kaybolmama
 
 ### 4.4 Fan-out ve teslim
 
-Producer routing kataloğu bütün gerekli hedefleri bilir. Application yalnızca event'i kabul ettirir; hedef seçimini adapter yapar. Her hedef job'ı **aynı ilk transaction'da** eklenir. Bir hedefin enqueue işlemi başarısızsa bütün transaction rollback olur. Consumer'ların iş değişiklikleri bu transaction'a katılmaz.
+Modüller schema/kuyruk/event hedeflerini `defineDeliveryRoutes` ile tanımlar; event başına tekrar hedef reddedilir. Runtime ve `src/script/job-queue-migration.ts` aynı katalogları kullanır. `event-bus` hedef seçimini ve kuyruk envanterini, `job-queue` pg-boss/provisioning/pool/lifecycle ve atomik yazımı yönetir; sınır `IJobQueuePort` olur. Mail kuyrukları Faz 7’de eklenir.
+
+Her hedef job’ı ilk transaction’da eklenir; biri başarısızsa tamamı rollback olur. Consumer işlemleri producer transaction’ına katılmaz.
 
 ```text
 Producer transaction

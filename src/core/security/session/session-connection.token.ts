@@ -4,7 +4,7 @@
  */
 
 /**
- * Token for the configured session store Redis client. The session store is not a cache — it is
+ * Dependency injection token representing the configured session store {@link Redis} client. The session store is not a cache — it is
  * the authoritative store for sessions — so its connection lives with the session concern.
  */
 export const TOKEN_SESSION_CONNECTION = Symbol('TOKEN_SESSION_CONNECTION');

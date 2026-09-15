@@ -1,5 +1,5 @@
 /**
- * @file delivery-migration.ts
+ * @file job-queue-migration.ts
  * @description One-off deployment entry point for vendor migrations and queue provisioning.
  */
 
@@ -12,8 +12,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { PgBoss } from 'pg-boss';
 import { ENV, resolveEnvFilePath, validateConfig } from 'src/core/config';
-import { assertDeliverySchema } from 'src/core/event-bus/delivery-schema.util';
-import { DELIVERY_TOPOLOGY } from 'src/core/event-bus/delivery-topology.constant';
+import { assertJobQueueSchema } from 'src/core/job-queue/job-queue-schema.util';
+import { createJobQueueTopology } from 'src/core/job-queue/job-queue-topology.util';
+import type { JobQueueDefinition } from 'src/core/job-queue/port/job-queue.port';
 import { SystemException } from 'src/shared/exception';
 
 /**
@@ -22,15 +23,17 @@ import { SystemException } from 'src/shared/exception';
 @Module({
     imports: [ConfigModule.forRoot({ envFilePath: resolveEnvFilePath(), validate: validateConfig })],
 })
-class DeliveryMigrationModule {}
+class JobQueueMigrationModule {}
 
 /**
  * Applies pg-boss DDL with deployment credentials; never called from application startup.
  * Background migration completion and index drift are checked before successful exit.
+ *
+ * @param definitions Queue inventories supplied by the deployment composition root
  */
-async function migrate() {
+export async function migrateJobQueues(definitions: readonly JobQueueDefinition[]) {
     try {
-        const app = await NestFactory.createApplicationContext(DeliveryMigrationModule, {
+        const app = await NestFactory.createApplicationContext(JobQueueMigrationModule, {
             logger: false,
             abortOnError: false,
         });
@@ -57,7 +60,7 @@ async function migrate() {
             });
 
             try {
-                for (const { schema, queues } of DELIVERY_TOPOLOGY) {
+                for (const { schema, queues } of definitions.map(createJobQueueTopology)) {
                     if (backgroundError) {
                         break;
                     }
@@ -118,7 +121,7 @@ async function migrate() {
                             break;
                         }
 
-                        await assertDeliverySchema(boss, schema, queues);
+                        await assertJobQueueSchema(boss, schema, queues);
 
                         const drift = await boss.detectSchemaDrift();
 
@@ -158,8 +161,4 @@ async function migrate() {
         console.error('Delivery migration failed.', error);
         process.exitCode = 1;
     }
-}
-
-if (require.main === module) {
-    void migrate();
 }

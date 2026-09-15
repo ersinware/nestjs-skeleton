@@ -3,7 +3,9 @@
  * @description Contract for paired operational logging and exception tracking.
  */
 
-/** Injection token for the error reporter contract. */
+/**
+ * Dependency injection token representing the {@link IErrorReporterPort} contract.
+ */
 export const TOKEN_ERROR_REPORTER_PORT = Symbol('TOKEN_ERROR_REPORTER_PORT');
 
 /** Reporting location with optional message and structured log data. */

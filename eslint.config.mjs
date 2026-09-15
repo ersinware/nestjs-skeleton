@@ -95,6 +95,7 @@ export default tseslint.config(
                 { type: 'core', pattern: 'src/core/doc' },
                 { type: 'core', pattern: 'src/core/email' },
                 { type: 'core', pattern: 'src/core/event-bus' },
+                { type: 'core', pattern: 'src/core/job-queue' },
                 { type: 'core', pattern: 'src/core/exception' },
                 { type: 'core', pattern: 'src/core/http' },
                 { type: 'bootstrap', pattern: 'src/{instrument,tracing}.ts', mode: 'file' },
@@ -106,7 +107,7 @@ export default tseslint.config(
                 { type: 'infrastructure', pattern: 'src/module/*/infrastructure/**', capture: ['module'] },
                 { type: 'presentation', pattern: 'src/module/*/presentation/**', capture: ['module'] },
             ],
-            'boundaries/ignore': ['src/main.ts', 'src/app.module.ts'],
+            'boundaries/ignore': ['src/main.ts', 'src/app.module.ts', 'src/script/job-queue-migration.ts'],
             /**
              * Without this mapping the graph rules cannot parse `.ts` dependency files: the graph
              * they build is EMPTY and every one of them — `no-cycle` above all — passes silently.
@@ -300,7 +301,7 @@ export default tseslint.config(
             'boundaries/no-unknown': 'error',
             /**
              * `no-unknown` explicitly skips targets in `boundaries/ignore`, so without this rule any
-             * file may import `src/main.ts` or `src/app.module.ts` unchecked. The composition roots
+             * file may import an ignored composition root unchecked. The composition roots
              * must see everything; nothing may see them.
              */
             'boundaries/no-ignored': 'error',
