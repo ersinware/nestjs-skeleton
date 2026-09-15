@@ -88,6 +88,9 @@ jobs:
             - name: Push database schema
               run: npm run db:push -- --force
 
+            - name: Provision delivery storage
+              run: npm run db:delivery:migrate
+
             # DO NOT REMOVE THIS COMMAND!
             # - name: Run end-to-end tests
             #   run: npm run test:e2e

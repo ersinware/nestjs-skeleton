@@ -1,7 +1,8 @@
 # Events & Messaging
 
-Required delivery model: transactional outbox + at-least-once delivery. Outbox/relay are not implemented yet; follow the [implementation plan](../transactional-outbox-implementation-plan.md). Missing guarantees are gaps, never exemptions. Run API and consumers in the same NestJS process per application instance; no separate worker deployment.
+Required delivery model: transactional outbox + at-least-once delivery. Durable publishing/consumption are not implemented yet; follow the [implementation plan](../transactional-outbox-implementation-plan.md). Missing guarantees are gaps, never exemptions. Run API and consumers in the same NestJS process per application instance; no separate worker deployment.
 
+- Require successful `db:delivery:migrate` completion before rollout ([deployment](../docs/transactional-outbox-phase-3.md)); runtime never migrates or reindexes. All schema clients share one `DELIVERY_POOL_SIZE` pool.
 - Until outbox migration, keep `emitAsync` immediate/non-durable; delivery may precede commit or survive rollback.
 - Publish through `IEventPublisherPort` / `TOKEN_EVENT_PUBLISHER_PORT`; only `src/core/event-bus/` uses `EventEmitter2`. Persist events atomically with originating DB changes; acknowledge durable acceptance, not downstream completion. Dispatch only committed events.
 - Generate `eventId` once per logical event before persistence; preserve it across retries/replays. Metadata-only `DispatchedDomainEvent` carries `aggregateId` and `eventId`; consumers re-read authoritative state through owned ports/facades, never infer historical state ([Audit](observability.md#audit)).

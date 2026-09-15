@@ -1,6 +1,6 @@
 # pg-boss ile Transactional Outbox / Inbox Implementasyon Planı
 
-Durum: [Faz 1 kararları](docs/transactional-outbox-phase-1.md) tamamlandı; Faz 2 transaction/audit kodu uygulandı, runtime doğrulaması bekliyor; outbox henüz uygulanmadı. Sıradaki iş Faz 3.
+Durum: [Faz 1 kararları](docs/transactional-outbox-phase-1.md) tamamlandı; Faz 2 transaction/audit kodu uygulandı. [Faz 3 storage/migration](docs/transactional-outbox-phase-3.md) yerel PostgreSQL ve production imajında doğrulandı; bulut/kapasite kontrolleri açık. Kalıcı publish/consumer henüz uygulanmadı; sıradaki implementasyon Faz 4.
 
 ## 1. Amaç, kapsam ve kararlar
 
@@ -23,7 +23,7 @@ Anlaşılan kararlar:
 
 **Sonuç:** pg-boss, aynı DB transaction'ına katılan outbox depolaması ve teslimat yürütücüsü olarak uygun. Genel bir uygulama inbox'ı, dış servislerde exactly-once etkisi veya sınırsız event arşivi sağlaması beklenmemeli. Kurumsal yeterlilik; aşağıdaki atomiklik, retention, failover ve yük kabul kriterleriyle doğrulanacak. Kaynak incelemesi kapasite benchmark'ının yerine geçmez.
 
-Araştırmada resmi release listesinde `12.31.1` görüldü. İncelenen paket ESM ve Node `>=22.12.0` istiyor; pg-boss belgeleri PostgreSQL 13+ gereksinimi belirtiyor. Faz 1, `12.31.1` sürümünü seçti ve tag kaynaklarını inceledi; Faz 3 paketi lockfile'a sabitleyecek ve gerçek runtime/migration uyumunu doğrulayacak. Yeni bir sürüm otomatik olarak daha güvenli kabul edilmeyecek. [Release listesi](https://github.com/timgit/pg-boss/releases), [12.31.1 paket bildirimi](https://github.com/timgit/pg-boss/blob/12.31.1/package.json), [resmi proje](https://github.com/timgit/pg-boss)
+Araştırmada resmi release listesinde `12.31.1` görüldü. İncelenen paket ESM ve Node `>=22.12.0` istiyor; pg-boss belgeleri PostgreSQL 13+ gereksinimi belirtiyor. Faz 1, `12.31.1` sürümünü seçti ve tag kaynaklarını inceledi; Faz 3 paketi lockfile'a sabitledi; yerel runtime, production imajı ve gerçek migration/upgrade sonuçları [faz raporunda](docs/transactional-outbox-phase-3.md). Yeni bir sürüm otomatik olarak daha güvenli kabul edilmeyecek. [Release listesi](https://github.com/timgit/pg-boss/releases), [12.31.1 paket bildirimi](https://github.com/timgit/pg-boss/blob/12.31.1/package.json), [resmi proje](https://github.com/timgit/pg-boss)
 
 | İhtiyaç              | Araştırma bulgusu                                                                             | Projeye kalan sorumluluk                                                      |
 | -------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
