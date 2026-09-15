@@ -30,7 +30,7 @@ Native retry jitter içerir. Cleanup, süresi dolan pending/retry job'ı DLQ'ya 
 
 ## 3. Event ve consumer kataloğu
 
-Event `{ eventId, eventType, aggregateId }`; ayrı opsiyonel telemetry `{ traceId, traceparent }`. Aşağıdaki `.v1` adları Faz 4/producer geçişlerinde uygulanacak, şu anki enum değerleri değildir. Queue adı sabit consumerId ile aynıdır; DLQ adı `<consumerId>.dlq`. Aynı consumer'a giden birden çok eventType aynı queue'yu kullanır.
+Event `{ eventId, eventType, aggregateId }`; ayrı opsiyonel telemetry `{ traceId, traceparent }`. Mevcut enum’lar ve route kayıtları Faz 4’te `.v1` oldu; yeni notification event’leri Faz 7’de eklenir. Queue adı sabit consumerId ile aynıdır; DLQ adı `<consumerId>.dlq`. Aynı consumer'a giden birden çok eventType aynı queue'yu kullanır.
 
 | Producer şeması  | Kalıcı eventType                                                                                                                | ConsumerId                                          | Etki / tekrar koruması                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -46,9 +46,9 @@ Event `{ eventId, eventType, aggregateId }`; ayrı opsiyonel telemetry `{ traceI
 
 Kaynak envanter: [User event enum](../src/module/user/domain/event/user-event.enum.ts), [Admin event enum](../src/module/admin/domain/event/admin-event.enum.ts), [User auth event'leri](../src/shared/domain/user/event/user-integration-event.enum.ts), [Admin auth event'leri](../src/shared/domain/admin/event/admin-integration-event.enum.ts); [User listener'ları](../src/module/user/application/event), [Admin listener'ları](../src/module/admin/application/event).
 
-**Hedefsiz event'ler:** Consumersız `admin.updated` ve `admin.unbanned` üretimi Faz 9b'de kaldırılır; mutation/audit korunur. Diğer bilinmeyen/hedefsiz event kabulü hatadır; event üretmeyen işlemlere sırf outbox için event eklenmez.
+**Hedefsiz event'ler:** Admin profil güncelleme ve ban kaldırma işlemleri event üretmez; mutation/audit korunur. Diğer bilinmeyen/hedefsiz event kabulü hatadır; event üretmeyen işlemlere sırf outbox için event eklenmez.
 
-Toplam **8 source queue + 8 DLQ**, üç producer şemasına dağılır: user 3+3, admin 3+3, auth 2+2. Auth şemasındaki worker'ın User/Admin komutunu çalıştırması, auth business transaction'ına katılım değildir; consumer kendi owner transaction'ını açar.
+Faz 7 sonrası hedef **8 source queue + 8 DLQ** (şimdi 6+6), üç producer şemasına dağılır: user 3+3, admin 3+3, auth 2+2. Auth şemasındaki worker'ın User/Admin komutunu çalıştırması, auth business transaction'ına katılım değildir; consumer kendi owner transaction'ını açar.
 
 ## 4. Retention ve recovery kararı
 
@@ -92,6 +92,6 @@ Pool timeout'ları [database pool factory](../src/core/database/database-pool.fa
 
 ## 6. Sonraki faz ve doğrulama
 
-Faz 2 transaction/audit kodu uygulandı; atomiklik doğrulaması bekliyor. Faz 3 storage/migration sonuçları ve açık kontroller [faz raporunda](transactional-outbox-phase-3.md). Sıradaki implementasyon Faz 4 kalıcı kabul API’si. Atomiklik, inbox/Gmail sınırları ve Faz 8'in Redis reuse capture engeli için [ana plan](../transactional-outbox-implementation-plan.md) geçerlidir. Reuse ayrı notification üretir; logout-all mail üretmez.
+Faz 2 transaction/audit kodu uygulandı; atomiklik doğrulaması bekliyor. Faz 3 storage/migration sonuçları ve açık kontroller [faz raporunda](transactional-outbox-phase-3.md). [Faz 4 kalıcı kabul API’si](transactional-outbox-phase-4.md) uygulandı; doğrulaması bekliyor. Sıradaki implementasyon Faz 5 consumer’larıdır. Atomiklik, inbox/Gmail sınırları ve Faz 8'in Redis reuse capture engeli için [ana plan](../transactional-outbox-implementation-plan.md) geçerlidir. Reuse ayrı notification üretir; logout-all mail üretmez.
 
 Faz 1'de kaynak/config incelemesi yapıldı; test, lint, format, build veya entegrasyon deneyi çalıştırılmadı. Runtime, kapasite ve failover kabulü ilgili fazlarda doğrulanmalıdır.

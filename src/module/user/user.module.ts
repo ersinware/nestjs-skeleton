@@ -40,6 +40,7 @@ import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-us
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
 import { UserReplicaReaderAdapter } from 'src/module/user/infrastructure/adapter/user-replica-reader.adapter';
 import { UserWriterAdapter } from 'src/module/user/infrastructure/adapter/user-writer.adapter';
+import { USER_DELIVERY_ROUTES } from 'src/module/user/infrastructure/user-delivery.constant';
 import { UserController } from 'src/module/user/presentation/controller/user.controller';
 import { UserFacade } from 'src/module/user/user.facade';
 
@@ -53,7 +54,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         ErrorReporterModule,
         DatabaseModule,
         CacheModule,
-        EventBusModule,
+        EventBusModule.register(USER_DELIVERY_ROUTES),
         HashingModule,
         SessionModule,
         TokenModule,

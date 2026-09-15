@@ -1,13 +1,13 @@
 # Faz 3 — pg-boss storage ve deployment migration
 
-Storage/migration yerel PostgreSQL ve production imajında doğrulandı. Producer hâlâ `emitAsync` kullanır; atomik kalıcı kabul Faz 4, consumer/retry politikaları Faz 5 kapsamındadır.
+İlk storage/migration sürümü yerel PostgreSQL ve production imajında doğrulandı; aşağıdaki sonuçlar güncel kodun doğrulaması değildir. Producer hâlâ `emitAsync` kullanır; kalıcı yayınlama API’si [Faz 4’te](transactional-outbox-phase-4.md) uygulandı, consumer/retry politikaları Faz 5’tedir.
 
 ## Kurulan yapı
 
 - `pg-boss` package/lockfile’da exact `12.31.1`. Hedef Node 24, PostgreSQL 18.4.
-- [Teknik topoloji](../src/core/event-bus/delivery-topology.constant.ts): `user_delivery`, `admin_delivery`, `auth_delivery`; toplam 8 source queue + 8 DLQ. Event→consumer eşlemesi değildir; sonraki fazların consumer kuyrukları da önceden hazırlanır.
+- [Teknik topoloji üretimi](../src/core/event-bus/delivery-topology.util.ts): `user_delivery`, `admin_delivery`, `auth_delivery`; şu anda 6 source queue + 6 DLQ. Yalnızca modüllerin route hedeflerinden türetilir; Faz 7’de iki mail kuyruğu ve DLQ’ları eklenir; deployment giriş noktası `src/script/job-queue-migration.ts` aynı tanımları kullanır.
 - `standard`, partition/notification kapalı; pending ve terminal retention ayrı ayrı 30 gün. Retry/timeout politikaları Faz 5’te açıkça atanacak; bu fazda job gönderilmez.
-- [DeliveryStorage](../src/core/event-bus/delivery-storage.ts): üç PgBoss nesnesi aynı primary endpoint’te tek pool kullanır. `DELIVERY_POOL_SIZE` varsayılanı 5; bağlantı timeout’ları mevcut `DATABASE_*` ayarlarından gelir. Business pool ve replica değişmez.
+- [JobQueueAdapter](../src/core/job-queue/adapter/job-queue.adapter.ts): üç PgBoss nesnesi aynı primary endpoint’te tek pool kullanır. `DELIVERY_POOL_SIZE` varsayılanı 5; bağlantı timeout’ları mevcut `DATABASE_*` ayarlarından gelir. Business pool ve replica değişmez.
 - Startup `migrate: false` ile sürümü; ayrıca eksik background migration, kuyruk, DLQ bağlantısı ve retention ayarlarını kontrol eder. Uyumsuzlukta HTTP dinlemeye başlamaz. `supervise: true`, `schedule: false`, `useListenNotify: false`, `reindex: false`; runtime DDL çalıştırmaz.
 - PgBoss error/warning listener’ları start öncesinde bağlanır. Delivery bağlantı kaybı/geri gelişi SQL ve idle-client olaylarından bir kez loglanır; beklenmeyen background hataları error reporter’a gider. Başlangıç hatası korunur; cleanup hataları ayrı sınıflandırılır, bağlantı kesintileri Sentry’ye gönderilmez. Kapanışta tüm PgBoss nesneleri durdurulur, ortak pool bir kez kapanır; ardından business pool’ları kapanır.
 
@@ -39,9 +39,9 @@ Storage/migration yerel PostgreSQL ve production imajında doğrulandı. Produce
 | İki gerçek PostgreSQL kesintisi ve idle bağlantı kaybı            | Her kesintide tek LOST/RESTORED; SQL hatası korunur, beklenen outage error reporter’a gönderilmez            |
 | Eşzamanlı shutdown ve birleşen hatalar                            | Pool bir kez kapanır; startup hatası korunur, cleanup hataları kaybolmaz                                     |
 
-[7 lifecycle testi](../src/core/event-bus/delivery-storage.spec.ts) ve delivery sınırlarını/defaultlarını da kapsayan [110 env testi](../src/core/config/environment/env.validation.spec.ts) geçti. Gerçek DB kontrolleri ve migration hata enjeksiyonları bu çalışma için geçici harness’lerle ayrıca çalıştırıldı; `npm test` bunları çalıştırmaz.
+[7 lifecycle testi](../src/core/job-queue/adapter/job-queue.adapter.spec.ts) ve delivery sınırlarını/defaultlarını da kapsayan [110 env testi](../src/core/config/environment/env.validation.spec.ts) geçti. Gerçek DB kontrolleri ve migration hata enjeksiyonları bu çalışma için geçici harness’lerle ayrıca çalıştırıldı; `npm test` bunları çalıştırmaz.
 
-SWC build, TypeScript kontrolü, production image build ve değişen TypeScript dosyalarının hedefli lint kontrolü geçti. Tüm proje test/lint paketi çalıştırılmadı. Bu sonuçlar test anındaki kod içindir; sonraki 900 saniye timeout ve cleanup hata sınıflandırması değişiklikleri yeniden doğrulanmadı.
+SWC build, TypeScript kontrolü, production image build ve değişen TypeScript dosyalarının hedefli lint kontrolü geçti. Tüm proje test/lint paketi çalıştırılmadı. Sonraki `job-queue` ayrımı/test uyarlaması, 900 saniye timeout ve cleanup hata sınıflandırması yeniden doğrulanmadı.
 
 ## Sonraki faz/ortam doğrulamaları
 

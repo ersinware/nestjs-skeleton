@@ -16,6 +16,7 @@
 
 - Use `interface` for behavior contracts; `type` for data shapes and type compositions.
 - Data-shape properties and exposed collection views are `readonly` unless their owner deliberately mutates them.
+- Do not repeat TypeScript guarantees as runtime checks for typed internal values; validate external input and invariants not enforced by types.
 - Give class members the narrowest visibility: `private` for implementation details, `protected` only for subclass contracts, and public only for consumers or framework contracts. A parameter used only while the constructor runs remains a plain parameter; retained dependencies are `private readonly`, while retained public command/query data is `readonly`.
 - Keep `exactOptionalPropertyTypes`; ban `?: X | undefined`. Omit absent keys via conditional spread, never conditional `undefined`; for `unknown`, use an explicit boolean check (`x !== undefined`) before spreading. Drizzle update-set column exclusion is exempt (`id: undefined`, `createdAt: undefined`).
 - Explicitly type all function/method returns except `void` / `Promise<void>`, which implementations infer; interface returns are always explicit.

@@ -43,6 +43,7 @@ import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-
 import { AdminReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-reader.adapter';
 import { AdminReplicaReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-replica-reader.adapter';
 import { AdminWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-writer.adapter';
+import { ADMIN_DELIVERY_ROUTES } from 'src/module/admin/infrastructure/admin-delivery.constant';
 import { AdminController } from 'src/module/admin/presentation/controller/admin.controller';
 
 /**
@@ -54,7 +55,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         AuditModule,
         ErrorReporterModule,
         DatabaseModule,
-        EventBusModule,
+        EventBusModule.register(ADMIN_DELIVERY_ROUTES),
         HashingModule,
         SessionModule,
         TokenModule,

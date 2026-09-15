@@ -13,11 +13,11 @@ export enum UserIntegrationEvent {
      * Auth detected refresh-token reuse for this user. The user module reacts by revoking every session
      * and emailing the account owner a security notice.
      */
-    REFRESH_REUSE_DETECTED = 'user.refresh_reuse_detected',
+    REFRESH_REUSE_DETECTED = 'user.refresh_reuse_detected.v1',
 
     /**
      * The user asked to be signed out of every device. Auth closes the refresh sessions it owns;
      * the user module bumps the session counters that kill the outstanding access tokens.
      */
-    LOGOUT_ALL_REQUESTED = 'user.logout_all_requested',
+    LOGOUT_ALL_REQUESTED = 'user.logout_all_requested.v1',
 }

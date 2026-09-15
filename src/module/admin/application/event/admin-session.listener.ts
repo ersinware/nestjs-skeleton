@@ -26,7 +26,7 @@ export class AdminSessionListener {
 
     /**
      * Reconciles session versions for accounts that may have sessions. INVITED is excluded because
-     * pending accounts cannot log in; UNBANNED does not advance a version.
+     * pending accounts cannot log in; unbanning does not advance a version.
      *
      * @param event The event carrying the admin id
      */

@@ -18,7 +18,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 - `src/module/<context>/domain/` and `src/shared/`: no npm or I/O; Node builtins allowed without I/O. Elsewhere, npm remains subject to architectural constraints.
 - `src/module/<context>/application/` uses core contracts (ports/exceptions/types/utils), never adapters or direct DB/cache clients. Barrel access does not guarantee symbol suitability ([Barrels](architecture.md#barrels)).
-- Classify all `src/**/*.ts` except composition roots `src/main.ts` and `src/app.module.ts`; neither may be imported.
+- Classify all `src/**/*.ts` except composition roots `src/main.ts`, `src/app.module.ts`, and `src/script/job-queue-migration.ts`; none may be imported.
 - No unresolved/unclassified dependencies, cycles (including same-layer), or self-imports. No devDependencies in `src/` except `*.spec.ts`.
 - In `src/` and `test/`, project imports use absolute `src/` or `test/` paths, never relative. Boundaries cover `src/`; test boundaries: [Testing Rules](testing.md#testing-rules).
 

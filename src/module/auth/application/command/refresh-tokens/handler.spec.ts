@@ -24,6 +24,7 @@ describe('RefreshTokensCommandHandler', () => {
     const getAuthState = vi.fn<IIdentityReaderPort['getAuthState']>();
     const rotateSession = vi.fn<ISessionPort['rotateSession']>();
     const emitAsync = vi.fn<IEventPublisherPort['emitAsync']>();
+    const publish = vi.fn<IEventPublisherPort['publish']>();
     const record = vi.fn<IAuditPort['record']>();
     const session = {
         sessionVersion: 2,
@@ -60,11 +61,12 @@ describe('RefreshTokensCommandHandler', () => {
         });
         rotateSession.mockResolvedValue(RotateOutcome.ROTATED);
         emitAsync.mockResolvedValue(undefined);
+        publish.mockResolvedValue(undefined);
         handler = new RefreshTokensCommandHandler(
             { verifyRefreshToken, refreshTokens } as unknown as ITokenPort,
             { getAuthState } as unknown as IIdentityReaderPort,
             { rotateSession } as unknown as ISessionPort,
-            { emitAsync },
+            { emitAsync, publish },
             { record },
         );
     });

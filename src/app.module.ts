@@ -11,7 +11,6 @@ import { CacheModule } from 'src/core/cache';
 import { resolveEnvFilePath, validateConfig } from 'src/core/config';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
-import { EventBusModule } from 'src/core/event-bus';
 import { GlobalExceptionFilter } from 'src/core/exception';
 import { HttpCacheInterceptor, NotEmptyBodyPipe, ResponseInterceptor } from 'src/core/http';
 import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
@@ -40,7 +39,6 @@ import { UserModule } from 'src/module/user';
         LoggerModule,
         AuditModule,
         ErrorReporterModule,
-        EventBusModule,
         CacheModule,
         DatabaseModule,
         EmailModule,

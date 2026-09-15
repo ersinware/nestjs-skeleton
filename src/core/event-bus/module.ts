@@ -1,27 +1,35 @@
 /**
  * @file module.ts
- * @description Wires the in-process publisher and the pre-provisioned delivery storage.
+ * @description Wires context-specific publishers over shared delivery storage.
  */
 
-import { Module } from '@nestjs/common';
+import { Module, type DynamicModule } from '@nestjs/common';
 import { EventPublisherAdapter } from 'src/core/event-bus/adapter/event-publisher.adapter';
-import { DeliveryStorage } from 'src/core/event-bus/delivery-storage';
+import { TOKEN_DELIVERY_ROUTES, type DeliveryRoutes } from 'src/core/event-bus/delivery-routes.type';
 import { TOKEN_EVENT_PUBLISHER_PORT } from 'src/core/event-bus/port/event-publisher.port';
-import { ErrorReporterModule } from 'src/core/observability/error-reporter';
-import { LoggerModule } from 'src/core/observability/logger';
+import { JobQueueModule } from 'src/core/job-queue';
 
 /**
- * Provides the event publisher. Each module that publishes events imports it explicitly.
+ * Keeps the storage singleton while giving each producer its own acceptance routes.
  */
 @Module({
-    imports: [LoggerModule, ErrorReporterModule],
-    providers: [
-        DeliveryStorage,
-        {
-            provide: TOKEN_EVENT_PUBLISHER_PORT,
-            useClass: EventPublisherAdapter,
-        },
-    ],
-    exports: [TOKEN_EVENT_PUBLISHER_PORT],
+    imports: [JobQueueModule],
 })
-export class EventBusModule {}
+export class EventBusModule {
+    /**
+     * Registers the producer's allowed event-to-consumer mapping.
+     *
+     * @param routes Producer schema and versioned event targets
+     * @returns Publisher module scoped to this routing catalog
+     */
+    static register(routes: DeliveryRoutes): DynamicModule {
+        return {
+            module: EventBusModule,
+            providers: [
+                { provide: TOKEN_DELIVERY_ROUTES, useValue: routes },
+                { provide: TOKEN_EVENT_PUBLISHER_PORT, useClass: EventPublisherAdapter },
+            ],
+            exports: [TOKEN_EVENT_PUBLISHER_PORT],
+        };
+    }
+}
