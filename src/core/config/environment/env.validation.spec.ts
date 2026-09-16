@@ -27,7 +27,7 @@ describe('env.validation.config', () => {
         DATABASE_IDLE_TIMEOUT: 10,
         DATABASE_MAX_LIFETIME: 30,
 
-        OUTBOX_POOL_SIZE: 5,
+        JOB_QUEUE_POOL_SIZE: 5,
 
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,

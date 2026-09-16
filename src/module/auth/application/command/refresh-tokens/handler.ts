@@ -172,5 +172,10 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
  * @returns Never returns normally.
  */
 function rejectUnhandledRotateOutcome(outcome: never): never {
-    throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`);
+    throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`, {
+        context: {
+            class: RefreshTokensCommandHandler.name,
+            method: rejectUnhandledRotateOutcome.name,
+        },
+    });
 }

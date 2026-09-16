@@ -98,6 +98,7 @@ export default tseslint.config(
                 { type: 'core', pattern: 'src/core/exception' },
                 { type: 'core', pattern: 'src/core/http' },
                 { type: 'core', pattern: 'src/core/outbox' },
+                { type: 'core', pattern: 'src/core/job-queue' },
                 { type: 'bootstrap', pattern: 'src/{instrument,tracing}.ts', mode: 'file' },
                 { type: 'moduleIndex', pattern: 'src/module/*/index.ts', mode: 'file', capture: ['module'] },
                 { type: 'facade', pattern: 'src/module/*/*.facade.ts', mode: 'file', capture: ['module'] },

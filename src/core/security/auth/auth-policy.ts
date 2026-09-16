@@ -105,7 +105,12 @@ export function resolveAuthPolicy(
         permissionLists.some((value) => !Array.isArray(value) || value.length === 0) ||
         permissions.some((value) => !Object.values(Permission).includes(value))
     ) {
-        throw new SystemException(`Invalid auth metadata: ${controller.name}.${handler.name}`);
+        throw new SystemException(`Invalid auth metadata: ${controller.name}.${handler.name}`, {
+            context: {
+                class: 'auth-policy.ts',
+                method: resolveAuthPolicy.name,
+            },
+        });
     }
 
     if (
@@ -120,7 +125,12 @@ export function resolveAuthPolicy(
         (principalType !== undefined &&
             permissions.some((permission) => PERMISSION_HOLDER[permission] !== principalType))
     ) {
-        throw new SystemException(`Missing or conflicting auth policy: ${controller.name}.${handler.name}`);
+        throw new SystemException(`Missing or conflicting auth policy: ${controller.name}.${handler.name}`, {
+            context: {
+                class: 'auth-policy.ts',
+                method: resolveAuthPolicy.name,
+            },
+        });
     }
 
     return policy;

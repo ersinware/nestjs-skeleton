@@ -205,7 +205,12 @@ export class SessionAdapter implements ISessionPort {
             case -2:
                 return RotateOutcome.SESSION_CLOSED;
             default:
-                throw new SystemException('Unexpected session rotation result.');
+                throw new SystemException('Unexpected session rotation result.', {
+                    context: {
+                        class: this.constructor.name,
+                        method: this.rotateSession.name,
+                    },
+                });
         }
     }
 
