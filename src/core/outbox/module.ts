@@ -36,7 +36,7 @@ import { DependencyUnavailableException } from 'src/shared/exception';
             ): Promise<PgBoss> => {
                 const boss = new PgBoss({
                     connectionString: configService.getOrThrow<string>(ENV.DATABASE_URL),
-                    max: configService.getOrThrow<number>(ENV.OUTBOX_POOL_SIZE),
+                    max: configService.getOrThrow<number>(ENV.JOB_QUEUE_POOL_SIZE),
                     connectionTimeoutMillis: configService.getOrThrow<number>(ENV.DATABASE_CONNECT_TIMEOUT) * 1000,
                     schedule: false,
                 });

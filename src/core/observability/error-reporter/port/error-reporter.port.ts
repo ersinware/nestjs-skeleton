@@ -8,12 +8,28 @@
  */
 export const TOKEN_ERROR_REPORTER_PORT = Symbol('TOKEN_ERROR_REPORTER_PORT');
 
-/** Reporting location with optional message and structured log data. */
+/**
+ * Reporting location with optional message and structured log data.
+ */
 export type ErrorReportContext = {
+    /**
+     * The name of the class where the error occurred.
+     */
     readonly class: string;
+
+    /**
+     * The name of the method where the error occurred.
+     */
     readonly method: string;
-    /** Missing or empty messages fall back to the normalized error's message. */
+
+    /**
+     * Missing or empty messages fall back to the normalized error's message.
+     */
     readonly message?: string;
+
+    /**
+     * Additional structured data to include in the log and exception tracking.
+     */
     readonly data?: Readonly<Record<string, unknown>>;
 };
 

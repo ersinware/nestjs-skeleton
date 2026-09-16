@@ -320,7 +320,7 @@ export class EnvironmentVariables {
     @IsEnvNumber(true)
     @Min(1)
     @Max(Number.MAX_SAFE_INTEGER)
-    readonly OUTBOX_POOL_SIZE!: number;
+    readonly JOB_QUEUE_POOL_SIZE!: number;
 
     /**
      * Hostname or IP address of the Redis Cache server.
