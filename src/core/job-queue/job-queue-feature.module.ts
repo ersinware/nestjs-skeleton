@@ -4,14 +4,31 @@
  */
 
 import { Inject, Module, OnApplicationBootstrap } from '@nestjs/common';
-import { PgBoss, type Job as PgBossJob } from 'pg-boss';
+import { PgBoss, type Job as PgBossJob, type Queue, type UpdateQueueOptions } from 'pg-boss';
 import { translateConnectionFailure } from 'src/core/database';
 import { JobQueueDatabaseAdapter } from 'src/core/job-queue/adapter/job-queue-database.adapter';
 import { type IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { Job } from 'src/core/job-queue/job.type';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
-import { DependencyUnavailableException } from 'src/shared/exception';
+import { DependencyUnavailableException, SystemException } from 'src/shared/exception';
+
+/**
+ * Mutable defaults applied to every application-owned queue at startup.
+ */
+const JOB_QUEUE_MUTABLE_OPTIONS = {
+    retryLimit: 10,
+    retryDelay: 15,
+    retryBackoff: true,
+} as const satisfies UpdateQueueOptions;
+
+/**
+ * Immutable queue layout expected by every application-owned queue.
+ */
+const JOB_QUEUE_IMMUTABLE_OPTIONS = {
+    policy: 'standard',
+    partition: false,
+} as const satisfies Pick<Queue, 'policy' | 'partition'>;
 
 /**
  * Identifies the consumers registered by a feature module.
@@ -39,17 +56,16 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
     ) {}
 
     /**
-     * Creates each queue and starts its worker in the declared transaction mode.
+     * Reconciles each queue and starts its worker in the declared transaction mode.
      */
     async onApplicationBootstrap() {
         for (const consumer of this.consumers) {
             try {
                 await this.boss.createQueue(consumer.name, {
-                    policy: 'standard',
-                    retryLimit: 10,
-                    retryDelay: 15,
-                    retryBackoff: true,
+                    ...JOB_QUEUE_MUTABLE_OPTIONS,
+                    ...JOB_QUEUE_IMMUTABLE_OPTIONS,
                 });
+                await this.reconcileQueueOptions(consumer.name);
             } catch (error) {
                 if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {
                     this.errorReporterPort.report(error, {
@@ -86,6 +102,38 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                     this.consume(consumer, jobs),
                 );
             }
+        }
+    }
+
+    /**
+     * Rejects incompatible immutable options and reconciles mutable options when needed.
+     *
+     * @param name Queue name to reconcile
+     */
+    private async reconcileQueueOptions(name: string) {
+        const queue = await this.boss.getQueue(name);
+
+        if (
+            queue?.policy !== JOB_QUEUE_IMMUTABLE_OPTIONS.policy ||
+            queue.partition !== JOB_QUEUE_IMMUTABLE_OPTIONS.partition
+        ) {
+            throw new SystemException(
+                `Job queue "${name}" has immutable options incompatible with the application configuration.`,
+                {
+                    context: {
+                        class: JobQueueFeatureModule.name,
+                        method: this.reconcileQueueOptions.name,
+                    },
+                },
+            );
+        }
+
+        if (
+            queue.retryLimit !== JOB_QUEUE_MUTABLE_OPTIONS.retryLimit ||
+            queue.retryDelay !== JOB_QUEUE_MUTABLE_OPTIONS.retryDelay ||
+            queue.retryBackoff !== JOB_QUEUE_MUTABLE_OPTIONS.retryBackoff
+        ) {
+            await this.boss.updateQueue(name, JOB_QUEUE_MUTABLE_OPTIONS);
         }
     }
 
