@@ -55,7 +55,10 @@
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "db:push": "drizzle-kit push",
-        "db:studio": "drizzle-kit studio"
+        "db:studio": "drizzle-kit studio",
+        "job-queue:migrate": "pg-boss migrate",
+        "job-queue:doctor": "pg-boss doctor",
+        "deploy:migrate": "npm run db:migrate && npm run job-queue:migrate && npm run job-queue:doctor"
     },
     "dependencies": {
         "@fastify/otel": "^0.20.1",
@@ -86,7 +89,7 @@
         "jsonwebtoken": "^9.0.3",
         "nestjs-pino": "^4.6.1",
         "pg": "^8.23.0",
-        "pg-boss": "^12.32.0",
+        "pg-boss": "^12.33.2",
         "pino-http": "^11.0.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.1",

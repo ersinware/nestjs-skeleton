@@ -6,7 +6,7 @@
 import { BeforeApplicationShutdown, Inject, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PgBoss } from 'pg-boss';
-import { ENV } from 'src/core/config';
+import { ENV, Environment } from 'src/core/config';
 import { createDatabasePool, translateConnectionFailure } from 'src/core/database';
 import { JobQueueDatabaseAdapter } from 'src/core/job-queue/adapter/job-queue-database.adapter';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
@@ -39,10 +39,12 @@ import { DependencyUnavailableException } from 'src/shared/exception';
             provide: TOKEN_JOB_QUEUE_CLIENT,
             useFactory: async (
                 jobQueueDatabaseAdapter: JobQueueDatabaseAdapter,
+                configService: ConfigService,
                 errorReporterPort: IErrorReporterPort,
             ): Promise<PgBoss> => {
                 const boss = new PgBoss({
                     db: jobQueueDatabaseAdapter,
+                    migrate: configService.getOrThrow<Environment>(ENV.NODE_ENV) !== Environment.PRODUCTION,
                     schedule: false,
                 });
 
@@ -63,7 +65,7 @@ import { DependencyUnavailableException } from 'src/shared/exception';
                     throw error;
                 }
             },
-            inject: [JobQueueDatabaseAdapter, TOKEN_ERROR_REPORTER_PORT],
+            inject: [JobQueueDatabaseAdapter, ConfigService, TOKEN_ERROR_REPORTER_PORT],
         },
     ],
     exports: [TOKEN_JOB_QUEUE_CLIENT, JobQueueDatabaseAdapter],
