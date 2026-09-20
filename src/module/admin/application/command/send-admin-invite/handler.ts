@@ -18,7 +18,7 @@ import {
 
 /**
  * Emails the activation invitation for a pending admin. Re-reads the account and silently skips one
- * that no longer needs an invitation, so event redelivery can never invite a deleted, banned, or
+ * that no longer needs an invitation, so job redelivery can never invite a deleted, banned, or
  * active account.
  */
 @CommandHandler(SendAdminInviteCommand)

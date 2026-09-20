@@ -8,9 +8,9 @@
  */
 export type JobDefinition = {
     /**
-     * Idempotency key shared across delivery attempts.
+     * Logical delivery identifier retained across retry attempts.
      */
-    readonly eventId: string;
+    readonly deliveryId: string;
 
     /**
      * Aggregate identifier used to re-read authoritative state.

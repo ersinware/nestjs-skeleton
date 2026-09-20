@@ -74,11 +74,11 @@ class TransactionalProbeConsumer implements IJobConsumer {
         await this.transactionPort.run(async () => {
             await this.db.execute(sql`
                 INSERT INTO public.job_queue_transaction_probe (id)
-                VALUES (${job.eventId})
+                VALUES (${job.deliveryId})
             `);
             await this.jobQueueWriterPort.enqueue([
                 {
-                    eventId: job.eventId,
+                    deliveryId: job.deliveryId,
                     aggregateId: job.aggregateId,
                     queueName: CHILD_QUEUE,
                 },
@@ -153,8 +153,8 @@ describe('Transactional pg-boss consumer', () => {
     });
 
     it('rolls application writes and child jobs back before retrying a failed job', async () => {
-        const eventId = '00000000-0000-7000-8000-000000000001';
-        const jobId = await boss.send(PROBE_QUEUE, { eventId, aggregateId: FAILURE_AGGREGATE_ID });
+        const deliveryId = '00000000-0000-7000-8000-000000000001';
+        const jobId = await boss.send(PROBE_QUEUE, { deliveryId, aggregateId: FAILURE_AGGREGATE_ID });
 
         expect(jobId).not.toBeNull();
         await expect
@@ -165,12 +165,12 @@ describe('Transactional pg-boss consumer', () => {
             .toBe('retry');
 
         const rows = await db.execute<{ id: string }>(sql`
-            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${eventId}
+            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
         `);
         const childJobs = await boss.findJobs<Job>(CHILD_QUEUE);
 
         expect(rows.rows).toHaveLength(0);
-        expect(childJobs.some((job) => job.data.eventId === eventId)).toBe(false);
+        expect(childJobs.some((job) => job.data.deliveryId === deliveryId)).toBe(false);
         expect(report).toHaveBeenCalledWith(
             expect.objectContaining({ message: 'Intentional transactional consumer failure.' }),
             expect.objectContaining({ class: 'JobQueueFeatureModule', method: 'boss.work' }),
@@ -178,8 +178,8 @@ describe('Transactional pg-boss consumer', () => {
     });
 
     it('commits application writes, child jobs, and job completion together', async () => {
-        const eventId = '00000000-0000-7000-8000-000000000002';
-        const jobId = await boss.send(PROBE_QUEUE, { eventId, aggregateId: 'successful-consumer' });
+        const deliveryId = '00000000-0000-7000-8000-000000000002';
+        const jobId = await boss.send(PROBE_QUEUE, { deliveryId, aggregateId: 'successful-consumer' });
 
         expect(jobId).not.toBeNull();
         await expect
@@ -190,11 +190,11 @@ describe('Transactional pg-boss consumer', () => {
             .toBe('completed');
 
         const rows = await db.execute<{ id: string }>(sql`
-            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${eventId}
+            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
         `);
         const childJobs = await boss.findJobs<Job>(CHILD_QUEUE);
 
-        expect(rows.rows).toStrictEqual([{ id: eventId }]);
-        expect(childJobs.some((job) => job.data.eventId === eventId)).toBe(true);
+        expect(rows.rows).toStrictEqual([{ id: deliveryId }]);
+        expect(childJobs.some((job) => job.data.deliveryId === deliveryId)).toBe(true);
     });
 });

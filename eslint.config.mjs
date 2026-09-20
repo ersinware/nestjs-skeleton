@@ -75,7 +75,6 @@ export default tseslint.config(
              */
             'boundaries/elements': [
                 { type: 'shared', pattern: 'src/shared/domain/*' },
-                { type: 'shared', pattern: 'src/shared/application/*' },
                 { type: 'shared', pattern: 'src/shared/exception' },
                 { type: 'shared', pattern: 'src/shared/pagination' },
                 { type: 'shared', pattern: 'src/shared/search' },
@@ -94,10 +93,8 @@ export default tseslint.config(
                 { type: 'core', pattern: 'src/core/database' },
                 { type: 'core', pattern: 'src/core/doc' },
                 { type: 'core', pattern: 'src/core/email' },
-                { type: 'core', pattern: 'src/core/event-bus' },
                 { type: 'core', pattern: 'src/core/exception' },
                 { type: 'core', pattern: 'src/core/http' },
-                { type: 'core', pattern: 'src/core/outbox' },
                 { type: 'core', pattern: 'src/core/job-queue' },
                 { type: 'bootstrap', pattern: 'src/{instrument,tracing}.ts', mode: 'file' },
                 { type: 'moduleIndex', pattern: 'src/module/*/index.ts', mode: 'file', capture: ['module'] },
@@ -337,30 +334,6 @@ export default tseslint.config(
     },
     {
         files: ['src/**/*.ts', 'test/**/*.ts'],
-        rules: {
-            'no-restricted-imports': [
-                'error',
-                {
-                    patterns: [RELATIVE_IMPORT_PATTERN],
-                    paths: [
-                        {
-                            /**
-                             * Only the emitter class is banned. `@OnEvent` and `EventEmitterModule`
-                             * are the subscribe and wiring sides, which have no port to go through.
-                             */
-                            name: '@nestjs/event-emitter',
-                            importNames: ['EventEmitter2'],
-                            message:
-                                'Publish through IEventPublisherPort (TOKEN_EVENT_PUBLISHER_PORT) so the transport stays swappable (agent/events-and-messaging.md#events--messaging).',
-                        },
-                    ],
-                },
-            ],
-        },
-    },
-    {
-        /** The event bus adapter IS the seam that owns the transport, so it is the one legal caller. */
-        files: ['src/core/event-bus/**/*.ts'],
         rules: {
             'no-restricted-imports': ['error', { patterns: [RELATIVE_IMPORT_PATTERN] }],
         },

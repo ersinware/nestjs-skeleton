@@ -132,7 +132,7 @@ export async function login(
  *
  * The exception therefore carries NO context. Context is a diagnostic channel read on 5xx; a
  * deliberate 401 that has already been audited has nothing left to say to an operator, and leaving
- * it attached would duplicate the same event into the operational log as a `warn`.
+ * it attached would duplicate the same refusal into the operational log as a `warn`.
  *
  * @param auditPort The port the failed attempt is recorded on
  * @param reason Why the attempt was rejected — the audit record's own vocabulary

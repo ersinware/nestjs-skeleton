@@ -5,9 +5,10 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { randomUUID } from 'node:crypto';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
@@ -19,9 +20,9 @@ import {
     RefreshTokensMessage,
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
-import { AdminIntegrationEvent } from 'src/shared/domain/admin';
+import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
-import { UserIntegrationEvent } from 'src/shared/domain/user';
+import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 import {
     ExceptionKind,
     ResourceConflictException,
@@ -31,13 +32,12 @@ import {
 } from 'src/shared/exception';
 
 /**
- * The reuse integration event each kind's owning module listens for. Exhaustive over
- * {@link PrincipalType} (a new kind fails compilation here) so the remediation cannot silently
- * route to the wrong module.
+ * The refresh-reuse queue owned by each principal context. Exhaustive over {@link PrincipalType}
+ * so a new kind fails compilation here instead of routing remediation nowhere.
  */
-const REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE = {
-    [PrincipalType.USER]: UserIntegrationEvent.REFRESH_REUSE_DETECTED,
-    [PrincipalType.ADMIN]: AdminIntegrationEvent.REFRESH_REUSE_DETECTED,
+const REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE = {
+    [PrincipalType.USER]: UserSessionRevocationJobQueue.REFRESH_REUSE,
+    [PrincipalType.ADMIN]: AdminSessionRevocationJobQueue.REFRESH_REUSE,
 } as const satisfies Record<PrincipalType, string>;
 
 /**
@@ -53,15 +53,15 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @param tokenPort The port used to verify the old and generate the new token pair
      * @param identityReaderPort The port used to read the principal's auth state
      * @param sessionPort The port used to atomically rotate the refresh session
-     * @param outboxWriterPort The port used to persist the reuse-detection event
-     * @param transactionPort Commits the event and audit together
+     * @param jobQueueWriterPort The port used to persist the reuse-remediation job
+     * @param transactionPort Commits the job and audit together
      * @param auditPort The port used to record refresh-reuse decisions
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
+        @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -73,7 +73,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
      * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
-     * @throws {DependencyUnavailableException} When the session cache, outbox, or audit store is unreachable.
+     * @throws {DependencyUnavailableException} When the session cache, job queue, or audit store is unreachable.
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
@@ -149,10 +149,13 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // Commit the reuse evidence and revocation request before rejecting the credential.
         await this.transactionPort.run(async () => {
             await Promise.all([
-                this.outboxWriterPort.save({
-                    eventType: REFRESH_REUSE_EVENT_BY_PRINCIPAL_TYPE[principalType],
-                    aggregateId: sub,
-                }),
+                this.jobQueueWriterPort.enqueue([
+                    {
+                        deliveryId: randomUUID(),
+                        aggregateId: sub,
+                        queueName: REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE[principalType],
+                    },
+                ]),
                 this.auditPort.record({
                     action: AuditAction.REFRESH_REUSE_DETECTED,
                     targetId: sub,

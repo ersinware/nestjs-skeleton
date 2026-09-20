@@ -44,7 +44,7 @@ export class ListAuditTrailRecordsQuery extends Query<ListAuditTrailRecordsResul
 
 /**
  * One page of records plus the total row count matching the filters. A row carries only what
- * identifies the event (who did what to whom, and when); the rest belongs to the single-record read.
+ * identifies the action (who did what to whom, and when); the rest belongs to the single-record read.
  */
 export type ListAuditTrailRecordsResult = {
     readonly data: readonly {

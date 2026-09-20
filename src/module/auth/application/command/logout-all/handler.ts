@@ -5,21 +5,22 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { randomUUID } from 'node:crypto';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
-import { AdminIntegrationEvent } from 'src/shared/domain/admin';
+import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
-import { UserIntegrationEvent } from 'src/shared/domain/user';
+import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 
 /**
- * The logout-all event each kind's owning module listens for. Exhaustive over {@link PrincipalType}
- * so a new kind fails compilation here instead of routing nowhere.
+ * The logout-all queue owned by each principal context. Exhaustive over {@link PrincipalType} so a
+ * new kind fails compilation here instead of routing nowhere.
  */
-const LOGOUT_ALL_EVENT_BY_PRINCIPAL_TYPE = {
-    [PrincipalType.USER]: UserIntegrationEvent.LOGOUT_ALL_REQUESTED,
-    [PrincipalType.ADMIN]: AdminIntegrationEvent.LOGOUT_ALL_REQUESTED,
+const LOGOUT_ALL_QUEUE_BY_PRINCIPAL_TYPE = {
+    [PrincipalType.USER]: UserSessionRevocationJobQueue.LOGOUT_ALL,
+    [PrincipalType.ADMIN]: AdminSessionRevocationJobQueue.LOGOUT_ALL,
 } as const satisfies Record<PrincipalType, string>;
 
 /**
@@ -31,12 +32,12 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
     /**
      * Initializes the handler with the required ports.
      *
-     * @param outboxWriterPort The port used to persist the logout-all event
-     * @param transactionPort Commits the event and audit together
+     * @param jobQueueWriterPort The port used to persist the logout-all job
+     * @param transactionPort Commits the job and audit together
      * @param auditPort The port used to record the logout
      */
     constructor(
-        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
+        @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -50,10 +51,13 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
     async execute(command: LogoutAllCommand) {
         await this.transactionPort.run(async () => {
             await Promise.all([
-                this.outboxWriterPort.save({
-                    eventType: LOGOUT_ALL_EVENT_BY_PRINCIPAL_TYPE[command.principalType],
-                    aggregateId: command.id,
-                }),
+                this.jobQueueWriterPort.enqueue([
+                    {
+                        deliveryId: randomUUID(),
+                        aggregateId: command.id,
+                        queueName: LOGOUT_ALL_QUEUE_BY_PRINCIPAL_TYPE[command.principalType],
+                    },
+                ]),
                 // The verified principal already identifies the actor in the audit context.
                 this.auditPort.record({ action: AuditAction.LOGOUT_ALL }),
             ]);

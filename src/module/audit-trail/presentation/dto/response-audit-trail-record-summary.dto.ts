@@ -8,7 +8,7 @@ import { Exclude } from 'class-transformer';
 import { ResponseAuditTrailRecordDto } from 'src/module/audit-trail/presentation/dto/response-audit-trail-record.dto';
 
 /**
- * The listing row: only the fields that identify an event. Picked from the full record so the two
+ * The listing row: only the fields that identify an action. Picked from the full record so the two
  * schemas cannot drift.
  */
 @Exclude()

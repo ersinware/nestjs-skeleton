@@ -17,7 +17,7 @@ export const TOKEN_AUDIT_PORT = Symbol('TOKEN_AUDIT_PORT');
 export type AuditDetail = Readonly<Record<string, string | readonly string[]>>;
 
 /**
- * What the caller supplies — the meaning of the event and nothing else. IP, user agent and trace
+ * What the caller supplies — the meaning of the action and nothing else. IP, user agent and trace
  * are the adapter's to fill from the ambient context. No success/failure field: each
  * {@link AuditAction} states its own outcome.
  */

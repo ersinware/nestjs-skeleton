@@ -6,7 +6,6 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CacheModule } from 'src/core/cache';
 import { resolveEnvFilePath, validateConfig } from 'src/core/config';
 import { DatabaseModule } from 'src/core/database';
@@ -35,7 +34,6 @@ import { UserModule } from 'src/module/user';
             envFilePath: resolveEnvFilePath(),
             validate: validateConfig,
         }),
-        EventEmitterModule.forRoot(),
         LoggerModule,
         AuditModule,
         ErrorReporterModule,

@@ -6,9 +6,9 @@
 import { Module } from '@nestjs/common';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
+import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
-import { OutboxModule } from 'src/core/outbox';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -32,7 +32,7 @@ import { UserModule } from 'src/module/user';
         AuditModule,
         ErrorReporterModule,
         DatabaseModule,
-        OutboxModule,
+        JobQueueModule,
         HashingModule,
         TokenModule,
         SessionModule,

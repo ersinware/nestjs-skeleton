@@ -1,6 +1,6 @@
 /**
  * @file audit-action.enum.ts
- * @description Closed vocabulary of the events this system considers audit-worthy.
+ * @description Closed vocabulary of the actions this system considers audit-worthy.
  */
 
 /**

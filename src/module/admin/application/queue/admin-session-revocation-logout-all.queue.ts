@@ -7,6 +7,7 @@ import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
 import { IJobConsumer, Job } from 'src/core/job-queue';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
+import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { SessionRevocationReason } from 'src/shared/domain/principal';
 
 /**
@@ -17,7 +18,7 @@ export class AdminSessionRevocationLogoutAllQueue implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
-    readonly name = 'admin.session-revocation.logout-all.queue.v1';
+    readonly name = AdminSessionRevocationJobQueue.LOGOUT_ALL;
 
     /**
      * Revocation state, audit, produced jobs, and job completion must commit together.

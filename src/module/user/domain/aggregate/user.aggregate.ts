@@ -255,7 +255,7 @@ export class User extends PrincipalAggregateRoot {
             case SessionRevocationReason.REFRESH_REUSE:
                 this.addJob([
                     {
-                        eventId: randomUUID(),
+                        deliveryId: randomUUID(),
                         aggregateId: this.id,
                         queueName: UserJobQueue.REFRESH_REUSE_NOTICE,
                     },
@@ -296,7 +296,7 @@ export class User extends PrincipalAggregateRoot {
     private addCacheInvalidationJob() {
         this.addJob([
             {
-                eventId: randomUUID(),
+                deliveryId: randomUUID(),
                 aggregateId: this.id,
                 queueName: UserJobQueue.CACHE_INVALIDATE,
             },
@@ -309,7 +309,7 @@ export class User extends PrincipalAggregateRoot {
     private addSessionReconciliationJob() {
         this.addJob([
             {
-                eventId: randomUUID(),
+                deliveryId: randomUUID(),
                 aggregateId: this.id,
                 queueName: UserJobQueue.SESSION_RECONCILE,
             },

@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles CreateAdminCommand. Creates and persists a passwordless Admin aggregate, whose INVITED event triggers the invitation email.
+ * @description Handles CreateAdminCommand. Creates and persists a passwordless Admin aggregate whose durable job triggers the invitation email.
  */
 
 import { Inject } from '@nestjs/common';

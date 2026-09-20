@@ -8,6 +8,7 @@ import { CommandPipeline } from 'src/core/cqrs';
 import { type IJobConsumer, type Job } from 'src/core/job-queue';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
 import { SessionRevocationReason } from 'src/shared/domain/principal';
+import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 
 /**
  * Consumes logout-all revocation jobs for users.
@@ -17,7 +18,7 @@ export class UserSessionRevocationLogoutAllQueue implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
-    readonly name = 'user.session-revocation.logout-all.queue.v1';
+    readonly name = UserSessionRevocationJobQueue.LOGOUT_ALL;
 
     /**
      * Revocation state, audit, produced jobs, and job completion must commit together.
