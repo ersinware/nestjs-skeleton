@@ -13,8 +13,8 @@ import type { ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 /**
  * A command that dirties one or more cache keys. Eviction is coarser than event-driven invalidation
  * — it fires whenever the command succeeds, even if the handler no-op'd — but same-module, immediate,
- * and independent of event delivery. Redis outages and concurrent fills can leave stale entries.
- * Cross-module cache reactions still belong on domain events.
+ * and independent of durable job delivery. Redis outages and concurrent fills can leave stale entries.
+ * Durable cache reactions belong on aggregate jobs.
  */
 export interface ICacheInvalidatingCommand {
     /**

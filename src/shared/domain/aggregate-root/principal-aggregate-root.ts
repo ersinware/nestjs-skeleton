@@ -1,6 +1,6 @@
 /**
  * @file principal-aggregate-root.ts
- * @description Base class for Aggregate Roots that authenticate: owns the permission set, the two session counters, and the one administration rule every kind shares.
+ * @description Defines shared permission and session state for job-producing principals.
  */
 
 import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root/soft-deletable-aggregate-root';
@@ -8,8 +8,7 @@ import { PERMISSION_HOLDER, PrincipalType, type Permission, type Principal } fro
 import { InvalidInputException, SystemException } from 'src/shared/exception';
 
 /**
- * What a permission change did: the permissions that were added and the ones taken away, as the
- * audit record's evidence of the transition.
+ * Permissions granted and revoked by a permission-set replacement.
  */
 export type PermissionChange = {
     readonly granted: readonly Permission[];
@@ -17,46 +16,38 @@ export type PermissionChange = {
 };
 
 /**
- * Base class for Aggregate Roots that are principals — accounts that log in, hold permissions and
- * carry the session counters. Owns them the way `SoftDeletableAggregateRoot` owns `deletedAt`, so
- * the permission mechanics have exactly one home. Opt-in: only an account that authenticates is a
- * principal.
- *
- * Administration knows one universal rule here: only an ADMIN ever administers, because every
- * administering permission is admin-held. Whatever a kind adds on top — a rank hierarchy among
- * its own accounts — is that kind's invariant and lives in its aggregate, by refining
- * {@link assertAdministrableBy}; this class names no concrete permission.
+ * Base for job-producing principals that own permissions and session counters.
  */
 export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot {
     /**
-     * The kind of principal the concrete aggregate is; decides which permissions it may hold.
+     * Principal kind used to validate permission ownership.
      */
     protected abstract readonly principalType: PrincipalType;
 
     /**
-     * Mutable backing state for the permissions the principal currently holds.
+     * Permissions currently held by the principal.
      */
     private _permissions: Permission[];
 
     /**
-     * Monotonic token version used to retire previously issued access tokens.
+     * Monotonic floor for access tokens.
      */
     private _sessionVersion: number;
 
     /**
-     * Session version recorded at the most recent full access-and-refresh-token revocation.
+     * Session-version floor for refresh tokens.
      */
     private _revocationVersion: number;
 
     /**
-     * Initializes the principal base state.
+     * Initializes the principal's permissions and session state.
      *
      * @param id The unique identifier
      * @param version The persisted version the state was loaded at; 0 for a new aggregate
      * @param deletedAt The persisted deletion timestamp, or null while the aggregate is live
      * @param permissions The permissions the principal currently holds
      * @param sessionVersion The persisted session version
-     * @param revocationVersion The persisted session version of the last full revocation
+     * @param revocationVersion The persisted version of the last full revocation
      */
     protected constructor(
         id: string,
@@ -73,18 +64,14 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Retires every outstanding ACCESS token while leaving refresh tokens alive: the next refresh
-     * re-reads the account and mints an access token from its current state. The cut-off for a
-     * change the token's claims must reflect (permissions) but that revokes nothing.
+     * Retires all outstanding access tokens while leaving refresh tokens alive.
      */
     protected retireAccessTokens() {
         this._sessionVersion++;
     }
 
     /**
-     * Revokes every outstanding session, access and refresh tokens alike: the principal must sign
-     * in again. Subclasses call it from the mutations that end a session's right to exist (ban,
-     * deletion, password change, refresh-token reuse) or invalidate pending invitations.
+     * Revokes all outstanding access and refresh tokens.
      */
     protected revokeAllSessions() {
         this._sessionVersion++;
@@ -92,14 +79,10 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Guards the one invariant that holds for EVERY administration of ANY principal: only an admin
-     * administers. The first statement of every administering mutator, after `assertNotDeleted`, so
-     * the answer never depends on what the action would have changed. A kind with rules among its
-     * own accounts overrides this, calls `super`, and adds them.
+     * Rejects administrative mutations performed by non-admin principals.
      *
      * @param actor The verified principal performing the administration
-     * @throws {SystemException} When a non-admin actor reaches the mutation — no permission admits
-     * one past the guard, so only a bug can
+     * @throws {SystemException} When a non-admin actor reaches the mutation
      */
     protected assertAdministrableBy(actor: Principal) {
         if (actor.type !== PrincipalType.ADMIN) {
@@ -116,15 +99,11 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Replaces the permission set with `permissions`, enforcing only that every permission is one
-     * this kind of principal may hold — who may make the change, and with which set, is decided by
-     * the subclass before it calls this. A change retires the access tokens: they carry the
-     * permissions, so the old set must die with them, while the refresh token survives to fetch the
-     * new one. Subclasses wrap this to stamp their timestamp and emit their event.
+     * Replaces the permission set after validating that this principal kind may hold every entry.
      *
      * @param permissions The complete permission set the principal should hold afterwards
-     * @returns The permissions granted and revoked, or null when the set already held and nothing changed
-     * @throws {InvalidInputException} When the set holds a permission this kind of principal may not hold
+     * @returns The permissions granted and revoked, or null when nothing changed
+     * @throws {InvalidInputException} When this principal kind may not hold a requested permission
      */
     protected applyPermissions(permissions: readonly Permission[]): PermissionChange | null {
         const target = [...new Set(permissions)],
@@ -150,23 +129,27 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Gets the permissions the principal holds.
+     * Returns the principal's permissions.
+     *
+     * @returns Current permissions
      */
     get permissions(): readonly Permission[] {
         return this._permissions;
     }
 
     /**
-     * Gets the monotonic session version: the version new tokens are minted at, and the floor an
-     * ACCESS token must reach to be accepted by the auth guard.
+     * Returns the access-token session floor.
+     *
+     * @returns Current session version
      */
     get sessionVersion(): number {
         return this._sessionVersion;
     }
 
     /**
-     * Gets the session version of the last full revocation: the floor a REFRESH token must reach
-     * to be rotated. Trails `sessionVersion` by exactly the bumps that retired access tokens only.
+     * Returns the refresh-token session floor.
+     *
+     * @returns Session version of the latest full revocation
      */
     get revocationVersion(): number {
         return this._revocationVersion;

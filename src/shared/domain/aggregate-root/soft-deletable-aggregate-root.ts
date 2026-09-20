@@ -1,21 +1,22 @@
 /**
  * @file soft-deletable-aggregate-root.ts
- * @description Base class for Aggregate Roots whose deletion is a soft one. Owns the deletion timestamp and the "a soft-deleted aggregate is immutable" invariant.
+ * @description Defines soft-deletion state for job-producing aggregate roots.
  */
 
 import { AggregateRoot } from 'src/shared/domain/aggregate-root/aggregate-root';
 import { SystemException } from 'src/shared/exception';
 
 /**
- * Base class for Aggregate Roots that are soft-deleted rather than removed. Owns `deletedAt` the way
- * `AggregateRoot` owns `id`, so the timestamp has exactly one home. Opt-in on purpose: soft deletion
- * is a domain decision, not a property of every aggregate, so it does not sit on `AggregateRoot`.
+ * Base for job-producing aggregates that become immutable after soft deletion.
  */
 export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
+    /**
+     * Persisted deletion timestamp, or null while the aggregate is active.
+     */
     private _deletedAt: Date | null;
 
     /**
-     * Initializes the soft-deletable base state.
+     * Initializes the aggregate with its deletion state.
      *
      * @param id The unique identifier
      * @param version The persisted version the state was loaded at; 0 for a new aggregate
@@ -27,8 +28,7 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
     }
 
     /**
-     * Stamps the deletion timestamp. Subclasses call this from their own `markAsDeleted`, which stays
-     * theirs to own: the surrounding state changes and the emitted event differ per aggregate.
+     * Records the deletion timestamp.
      *
      * @param deletedAt The moment the aggregate was deleted
      */
@@ -37,11 +37,9 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
     }
 
     /**
-     * Guards the "a soft-deleted aggregate is immutable" invariant. Writers load only non-deleted
-     * rows, so reaching this guard means a broken code path handed a deleted aggregate to a
-     * mutator — a system fault surfaced as 500 + Sentry, never a client error.
+     * Guards the invariant that a soft-deleted aggregate is immutable.
      *
-     * @param method The mutating method that was called, recorded as the exception origin
+     * @param method The mutating method that was called
      * @throws {SystemException} When the aggregate has been soft-deleted
      */
     protected assertNotDeleted(method: string) {
@@ -53,7 +51,9 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
     }
 
     /**
-     * Gets the moment the aggregate was soft-deleted, or null while it is still live.
+     * Returns the deletion timestamp, or null while the aggregate is active.
+     *
+     * @returns Persisted deletion timestamp or null
      */
     get deletedAt(): Date | null {
         return this._deletedAt;

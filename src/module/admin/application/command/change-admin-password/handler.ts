@@ -111,7 +111,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
             admin.sessionVersion,
         );
 
-        // The password is already committed. Session unavailability cannot undo it; event
+        // The password is already committed. Session unavailability cannot undo it; job
         // reconciliation remains responsible for propagating the session version mirror.
         try {
             if (!(await this.sessionPort.openSession(id, tokenPairWithSession.session))) {

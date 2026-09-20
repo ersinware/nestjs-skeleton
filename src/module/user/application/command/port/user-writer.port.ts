@@ -24,7 +24,7 @@ export interface IUserWriterPort {
     load(id: string): Promise<User | null>;
 
     /**
-     * Persists the aggregate (insert or update), then dispatches the domain events it accumulated.
+     * Persists the aggregate and its accumulated jobs in the caller's transaction.
      *
      * @param user The aggregate to save
      * @throws {ResourceConflictException} When the email address is already in use, or when the row

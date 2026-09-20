@@ -8,8 +8,8 @@ import { Command } from '@nestjs/cqrs';
 
 /**
  * Command to reconcile a user's Redis session version with the database. Deriving the version from the
- * re-readable database (rather than the triggering event) makes the outcome converge under duplicate,
- * out-of-order, and concurrent delivery regardless of the event verb.
+ * re-readable database (rather than the triggering job) makes the outcome converge under duplicate,
+ * out-of-order, and concurrent delivery.
  */
 export class ReconcileUserSessionCommand extends Command<void> {
     /**

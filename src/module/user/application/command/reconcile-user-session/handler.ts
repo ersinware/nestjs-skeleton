@@ -1,8 +1,7 @@
 /**
  * @file handler.ts
  * @description Handles ReconcileUserSessionCommand by reading the user's current DB session version
- * (including soft-deleted rows) and pushing it into Redis, so a revocation converges regardless of the
- * event verb that triggered it.
+ * (including soft-deleted rows) and pushing it into Redis, so repeated delivery converges.
  */
 
 import { Inject } from '@nestjs/common';

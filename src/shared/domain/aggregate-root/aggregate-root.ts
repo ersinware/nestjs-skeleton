@@ -1,27 +1,28 @@
 /**
  * @file aggregate-root.ts
- * @description Base class for all Aggregate Roots in the domain. Owns the identity and the persistence version, and handles domain event accumulation.
+ * @description Defines an aggregate root that accumulates durable jobs.
  */
 
-import { DomainEvent } from 'src/shared/domain/event';
+import type { JobDefinition } from 'src/shared/domain/job';
 
 /**
- * Base class every Aggregate Root extends. Owns the identity and the persistence version, and
- * accumulates the domain events a mutation raises until the writer adapter pulls and dispatches them.
+ * Base for aggregates that raise durable jobs with their state changes.
  */
 export abstract class AggregateRoot {
+    /**
+     * Aggregate identity.
+     */
     readonly id: string;
 
     /**
-     * The persisted version this in-memory state was loaded at (0 for a new aggregate). The
-     * optimistic-lock token: a writer saves only if the row still carries it, and stores it
-     * incremented, so two handlers that loaded the same state cannot both write — the second
-     * decided on a row that no longer exists and is refused. The aggregate never advances it: the
-     * version counts persisted writes, not in-memory mutations, so it belongs to the writer.
+     * The persisted version this in-memory state was loaded at. Writers own its advancement.
      */
     readonly version: number;
 
-    private readonly _domainEvents: DomainEvent[] = [];
+    /**
+     * Jobs raised since the last pull.
+     */
+    private readonly jobs: JobDefinition[] = [];
 
     /**
      * Initializes the aggregate identity and persistence version.
@@ -35,24 +36,23 @@ export abstract class AggregateRoot {
     }
 
     /**
-     * Adds a domain event to the aggregate.
-     * @param event The event to add
+     * Adds durable jobs raised by an aggregate mutation.
+     *
+     * @param jobs The jobs to enqueue with the aggregate write
      */
-    protected addDomainEvent(event: DomainEvent) {
-        this._domainEvents.push(event);
+    protected addJob(jobs: readonly JobDefinition[]) {
+        this.jobs.push(...jobs);
     }
 
     /**
-     * Hands over the uncommitted domain events and clears them in one step, so the internal list is
-     * never exposed to mutation. Called by the writer adapter when it dispatches them — not by the
-     * application layer.
+     * Returns and clears jobs raised since the previous pull.
      *
-     * @returns The domain events accumulated since the last pull
+     * @returns The jobs accumulated since the last pull
      */
-    pullDomainEvents(): readonly DomainEvent[] {
-        const events = [...this._domainEvents];
-        this._domainEvents.length = 0;
+    pullJobs(): readonly JobDefinition[] {
+        const jobs = [...this.jobs];
+        this.jobs.length = 0;
 
-        return events;
+        return jobs;
     }
 }
