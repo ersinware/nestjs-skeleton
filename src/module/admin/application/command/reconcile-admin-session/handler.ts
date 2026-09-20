@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handler for ReconcileAdminSessionCommand.
+ * @description Reconciles an admin's persisted session version with the session store.
  */
 
 import { Inject } from '@nestjs/common';
@@ -13,25 +13,24 @@ import {
 } from 'src/module/admin/application/query/get-admin-session-version/port';
 
 /**
- * Pushes the admin's current DB session version into Redis. Re-reading the version from the database
- * and applying Redis max semantics makes repeated and concurrent synchronization idempotent.
+ * Pushes the current database session version to the session store.
  */
 @CommandHandler(ReconcileAdminSessionCommand)
 export class ReconcileAdminSessionCommandHandler implements ICommandHandler<ReconcileAdminSessionCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
-     * @param sessionPort The port that writes the session version to Redis
      * @param sessionVersionPort The port that reads the admin's session version, including soft-deleted rows
+     * @param sessionPort The port that writes the session version to Redis
      */
     constructor(
-        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_GET_ADMIN_SESSION_VERSION_PORT)
         private readonly sessionVersionPort: IGetAdminSessionVersionPort,
+        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
     ) {}
 
     /**
-     * Executes the reconciliation.
+     * Reconciles the session version for the requested admin.
      *
      * @param command The command payload
      */

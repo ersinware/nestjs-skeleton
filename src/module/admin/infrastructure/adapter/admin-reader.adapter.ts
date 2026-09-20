@@ -1,6 +1,6 @@
 /**
  * @file admin-reader.adapter.ts
- * @description Drizzle implementation of the admin query ports that must read the primary.
+ * @description Reads current admin projections from the primary database.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -13,28 +13,33 @@ import { type IGetAdminByIdPort } from 'src/module/admin/application/query/get-a
 import { type GetAdminByIdResult } from 'src/module/admin/application/query/get-admin-by-id/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import { type IGetAdminNoticeRecipientPort } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
+import { type GetAdminNoticeRecipientResult } from 'src/module/admin/application/query/get-admin-notice-recipient/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
 import { type GetAdminSessionVersionResult } from 'src/module/admin/application/query/get-admin-session-version/query';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 
 /**
- * Implements the admin query ports on the primary connection with direct projection queries: selects
- * only each read-model's columns and maps rows straight to flat results, never through the
- * aggregate. Every port here feeds a write decision (login, refresh, session reconciliation) or a
- * read-your-own-writes lookup, so a replica's lag is not acceptable; lag-tolerant reads live in the
- * replica reader. Methods are ordered by expected call frequency.
+ * Implements admin queries that require current primary-database state.
  */
 @Injectable()
 export class AdminReaderAdapter
-    implements IGetAdminAuthStatePort, IGetAdminCredentialsByEmailPort, IGetAdminByIdPort, IGetAdminSessionVersionPort
+    implements
+        IGetAdminAuthStatePort,
+        IGetAdminCredentialsByEmailPort,
+        IGetAdminByIdPort,
+        IGetAdminNoticeRecipientPort,
+        IGetAdminSessionVersionPort
 {
     /**
+     * Initializes the adapter with the primary database client.
+     *
      * @param db The Drizzle client on the primary connection
      */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
 
     /**
-     * Reads an admin's public read-model by identifier.
+     * Reads an admin projection by identifier.
      *
      * @param id The unique identifier of the target admin
      * @returns The admin projection, or null when no non-deleted admin exists
@@ -90,6 +95,28 @@ export class AdminReaderAdapter
     }
 
     /**
+     * Reads the current recipient details for an admin notice.
+     *
+     * @param id The unique identifier of the target admin
+     * @returns The notice recipient details, or null when no non-deleted admin exists
+     */
+    async getNoticeRecipient(id: string): Promise<GetAdminNoticeRecipientResult | null> {
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ email: admin.email, name: admin.name })
+                        .from(admin)
+                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
      * Reads an admin's session version. Deliberately omits the soft-delete filter so a deleted admin
      * resolves to its (revoked) version and reconciliation can still converge.
      *
@@ -113,7 +140,7 @@ export class AdminReaderAdapter
     }
 
     /**
-     * Reads an admin's ban status, session counters and permissions.
+     * Reads an admin's authentication state.
      *
      * @param id The unique identifier of the target admin
      * @returns The auth state, or null when no non-deleted admin exists

@@ -27,13 +27,6 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
     }
 
     /**
-     * Gets the moment the aggregate was soft-deleted, or null while it is still live.
-     */
-    get deletedAt(): Date | null {
-        return this._deletedAt;
-    }
-
-    /**
      * Stamps the deletion timestamp. Subclasses call this from their own `markAsDeleted`, which stays
      * theirs to own: the surrounding state changes and the emitted event differ per aggregate.
      *
@@ -57,5 +50,12 @@ export abstract class SoftDeletableAggregateRoot extends AggregateRoot {
                 context: { class: this.constructor.name, method, id: this.id },
             });
         }
+    }
+
+    /**
+     * Gets the moment the aggregate was soft-deleted, or null while it is still live.
+     */
+    get deletedAt(): Date | null {
+        return this._deletedAt;
     }
 }
