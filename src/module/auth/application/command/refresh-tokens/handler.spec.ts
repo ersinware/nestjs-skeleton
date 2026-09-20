@@ -4,14 +4,16 @@
  */
 
 import type { ITransactionPort } from 'src/core/database';
+import type { IJobQueueWriterPort } from 'src/core/job-queue';
 import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
-import type { IOutboxWriterPort } from 'src/core/outbox';
 import { RotateOutcome, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, type ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
 import { RefreshTokensCommand } from 'src/module/auth/application/command/refresh-tokens/command';
 import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
+import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
+import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 import {
     DependencyUnavailableException,
     ResourceConflictException,
@@ -24,7 +26,7 @@ describe('RefreshTokensCommandHandler', () => {
     const refreshTokens = vi.fn<ITokenPort['refreshTokens']>();
     const getAuthState = vi.fn<IIdentityReaderPort['getAuthState']>();
     const rotateSession = vi.fn<ISessionPort['rotateSession']>();
-    const save = vi.fn<IOutboxWriterPort['save']>();
+    const enqueue = vi.fn<IJobQueueWriterPort['enqueue']>();
     const run = vi.fn<ITransactionPort['run']>();
     const record = vi.fn<IAuditPort['record']>();
     const session = {
@@ -61,13 +63,13 @@ describe('RefreshTokensCommandHandler', () => {
             permissions: [Permission.HEALTH_DETAIL_READ],
         });
         rotateSession.mockResolvedValue(RotateOutcome.ROTATED);
-        save.mockResolvedValue(undefined);
+        enqueue.mockResolvedValue(undefined);
         run.mockImplementation(async (cb: () => Promise<unknown>) => cb());
         handler = new RefreshTokensCommandHandler(
             { verifyRefreshToken, refreshTokens } as unknown as ITokenPort,
             { getAuthState } as unknown as IIdentityReaderPort,
             { rotateSession } as unknown as ISessionPort,
-            { save },
+            { enqueue },
             { run } as unknown as ITransactionPort,
             { record },
         );
@@ -96,10 +98,10 @@ describe('RefreshTokensCommandHandler', () => {
         expect(rotateSession).not.toHaveBeenCalled();
     });
 
-    it('does not treat logout or expiry as a new account-wide reuse event', async () => {
+    it('does not treat logout or expiry as new account-wide reuse', async () => {
         rotateSession.mockResolvedValueOnce(RotateOutcome.SESSION_CLOSED);
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(UnauthenticatedException);
-        expect(save).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
     });
 
@@ -109,20 +111,40 @@ describe('RefreshTokensCommandHandler', () => {
             ResourceConflictException,
         );
         expect(record).toHaveBeenCalledWith({ action: AuditAction.REFRESH_CONCURRENT_REPLAY, targetId: 'user-1' });
-        expect(save).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('requests wider revocation after the store has closed a reused session', async () => {
+    it.each([
+        { principalType: PrincipalType.USER, queueName: UserSessionRevocationJobQueue.REFRESH_REUSE },
+        { principalType: PrincipalType.ADMIN, queueName: AdminSessionRevocationJobQueue.REFRESH_REUSE },
+    ])('routes $principalType reuse remediation to its owner queue', async ({ principalType, queueName }) => {
+        verifyRefreshToken.mockResolvedValueOnce({
+            sub: 'principal-1',
+            principalType,
+            sid: session.sid,
+            sessionExpiresAt: session.sessionExpiresAt,
+            exp: 1900000000,
+            jti: 'old-jti',
+            sessionVersion: 1,
+            type: AuthTokenType.REFRESH,
+        });
         rotateSession.mockResolvedValueOnce(RotateOutcome.REUSE_DETECTED);
+
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(UnauthenticatedException);
-        expect(save).toHaveBeenCalledTimes(1);
-        expect(record).toHaveBeenCalledWith({ action: AuditAction.REFRESH_REUSE_DETECTED, targetId: 'user-1' });
+        expect(run).toHaveBeenCalledTimes(1);
+        const job = enqueue.mock.calls[0]?.[0][0];
+        expect(job?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
+        expect(job).toMatchObject({ aggregateId: 'principal-1', queueName });
+        expect(record).toHaveBeenCalledWith({
+            action: AuditAction.REFRESH_REUSE_DETECTED,
+            targetId: 'principal-1',
+        });
     });
 
     it('does not return generated tokens after a required session failure', async () => {
         const failure = new DependencyUnavailableException();
         rotateSession.mockRejectedValueOnce(failure);
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBe(failure);
-        expect(save).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
     });
 });

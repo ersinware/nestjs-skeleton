@@ -26,7 +26,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 - Cross-context reads use the owner's read-only facade through a consumer-owned port/adapter ([Layer Isolation](architecture.md#layer-isolation), [CQRS](architecture.md#cqrs)).
 - Facades expose queries/read-only prechecks and return flat query read-models, never Drizzle objects, aggregates, or presentation DTOs. Omit facades without cross-context readers.
-- Cross-context mutations use durable jobs with transport-neutral shared contracts ([Events & Messaging](events-and-messaging.md#events--messaging)).
+- Cross-context mutations use durable jobs with owner-defined shared contracts ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - No `forwardRef()`; redesign cyclic dependencies.
 
 ## Dependency Injection
@@ -34,7 +34,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Port bindings: Symbol token in the interface file; consumers `@Inject(TOKEN)`; module `{ provide: TOKEN, useClass: Adapter }`. Share identically configured adapters across ports with `useExisting`.
 - Value-parameterized adapters: undecorated classes + `useFactory`.
 - Redefined DI constructors must annotate token dependencies with `@Inject` at their new parameter positions, including those forwarded to `super`.
-- Register local providers; import modules exporting external providers. No project `@Global()` modules; exceptions: global `ConfigModule` and `EventEmitterModule.forRoot()`. Verify DI wiring separately; ESLint checks import boundaries.
+- Register local providers; import modules exporting external providers. No project `@Global()` modules; global `ConfigModule` is the exception. Verify DI wiring separately; ESLint checks import boundaries.
 
 ## CQRS
 
@@ -42,13 +42,13 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Dispatched queries extend `Query<T>`; queries never mutate business state. Infer dispatch results from queries; explicit return signatures use query-owned read-models, never domain types.
 - In `src/module/<context>/application/query/<name>/`, keep results in `query.ts`, outbound contracts in `port.ts`; add `handler.ts` for pipeline dispatch, omit it for direct port reads.
 - Outbound query handlers use one purpose-specific local port; compose sources behind it in adapters, even for forwarding/merging ([Adapters](data-and-state.md#adapters)). Static permission catalogs need no outbound port.
-- Controllers/facades/listeners/queue consumers/crons dispatch through pipelines, never raw buses or direct handler calls. Exceptions: liveness ([Health Probes](http.md#health-probes)), cache eviction ([Events & Messaging](events-and-messaging.md#events--messaging)).
+- Controllers/facades/listeners/queue consumers/crons dispatch through pipelines, never raw buses or direct handler calls. Exceptions: liveness ([Health Probes](http.md#health-probes)), cache eviction ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Handlers inject ports directly, never pipelines/buses; write decisions must not use cached reads ([Data & State](data-and-state.md#data--state)).
 - Payload/result fields and arrays are `readonly`; preserve cache-key/result stability. HTTP mapping: [DTOs & Responses](http.md#dtos--responses).
 - Pipelines wrap Nest buses, never override their tokens. `CqrsPipelineModule` re-exports `CqrsModule` for handler registration; behavior order belongs in `src/core/cqrs/module.ts`.
 - `TracingBehavior`: outermost on both pipelines; one named span per dispatch, recording errors and rethrowing unchanged ([Exceptions](exceptions.md#exceptions)).
 - `QueryCachingBehavior`: query-owned opt-in cache-aside via `ICacheableQuery` (`cacheKey()`, `cacheTtlSeconds`). Cache writes are fire-and-forget; catch unexpected rejections, error-log and capture via observability ports without rethrowing.
-- `CacheInvalidationBehavior`: `ICacheInvalidatingCommand` opts into awaited best-effort eviction of `invalidatedKeys()` after handler success ([Events & Messaging](events-and-messaging.md#events--messaging)).
+- `CacheInvalidationBehavior`: `ICacheInvalidatingCommand` opts into awaited best-effort eviction of `invalidatedKeys()` after handler success ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 
 ## Project Structure
 
@@ -66,19 +66,19 @@ Module layout; create only needed parts. Omit `domain/` without an owned aggrega
 src/module/<context>/
   index.ts  <context>.module.ts  <context>.facade.ts
   domain/
-    aggregate/  event/  job/
+    aggregate/  job/
   application/
     command/port/       # ports shared by commands
     command/<name>/     # command.ts, handler.ts; local port.ts if needed
     query/<name>/       # files: architecture.md#cqrs
-    event/  queue/  cron/
+    queue/  cron/
   infrastructure/
     adapter/  <context>.schema.ts
   presentation/
     controller/  dto/  listener/  decorator/
 ```
 
-Facade eligibility: [Module Isolation](architecture.md#module-isolation). Listener and queue-consumer placement: [Events & Messaging](events-and-messaging.md#events--messaging).
+Facade eligibility: [Module Isolation](architecture.md#module-isolation). Listener and queue-consumer placement: [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
 Test placement: [Testing Rules](testing.md#testing-rules).
 
 ### Placement & Naming
@@ -90,7 +90,7 @@ Within `src/`, group by ownership and reasons to change, never TS kind. Placemen
 3. Shared vocabulary gets a content-named file at the owning concept root.
 
 - Separate contracts whose meanings/change drivers diverge; merge only when they represent the same concept. Split growing concepts into meaningfully named sub-concepts, never arbitrary file/kind buckets.
-- Use singular role folders from the first file: adapter, port, command, query, listener, queue, cron, event, job, controller, dto, decorator, guard, filter, hook, interceptor, pipe.
+- Use singular role folders from the first file: adapter, port, command, query, listener, queue, cron, job, controller, dto, decorator, guard, filter, hook, interceptor, pipe.
 - Keep module/facade/schema files flat; module schemas: `infrastructure/<context>.schema.ts`. Identify data sources in filenames, not folders ([Adapters](data-and-state.md#adapters)).
 - Use kebab-case names and dot-separated suffixes. Concept/use-case names may be plural when meaningful; role folders remain singular.
 - No kind/generic buckets or bare filenames (`type`, `enum`, `constant`, `util`, `interface`, `class`, `payload`, `common`, `shared`, `helper`, `misc`); never nest pillar names (`shared`, `core`, `module`) below source pillars.

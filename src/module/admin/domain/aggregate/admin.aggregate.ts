@@ -313,7 +313,7 @@ export class Admin extends PrincipalAggregateRoot {
             case SessionRevocationReason.REFRESH_REUSE:
                 this.addJob([
                     {
-                        eventId: randomUUID(),
+                        deliveryId: randomUUID(),
                         aggregateId: this.id,
                         queueName: AdminJobQueue.REFRESH_REUSE_NOTICE,
                     },
@@ -356,7 +356,7 @@ export class Admin extends PrincipalAggregateRoot {
     private addInvitationJob() {
         this.addJob([
             {
-                eventId: randomUUID(),
+                deliveryId: randomUUID(),
                 aggregateId: this.id,
                 queueName: AdminJobQueue.INVITE,
             },
@@ -369,7 +369,7 @@ export class Admin extends PrincipalAggregateRoot {
     private addSessionReconciliationJob() {
         this.addJob([
             {
-                eventId: randomUUID(),
+                deliveryId: randomUUID(),
                 aggregateId: this.id,
                 queueName: AdminJobQueue.SESSION_RECONCILE,
             },
