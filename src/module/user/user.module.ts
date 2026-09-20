@@ -8,10 +8,9 @@ import { CacheModule } from 'src/core/cache';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
-import { EventBusModule } from 'src/core/event-bus';
+import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
-import { OutboxModule } from 'src/core/outbox';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -23,21 +22,25 @@ import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
+import { SendUserRefreshReuseNoticeCommandHandler } from 'src/module/user/application/command/send-user-refresh-reuse-notice/handler';
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
-import { UserCacheListener } from 'src/module/user/application/event/user-cache.listener';
-import { UserSessionRevocationListener } from 'src/module/user/application/event/user-session-revocation.listener';
-import { UserSessionListener } from 'src/module/user/application/event/user-session.listener';
 import { GetUserAuthStateQueryHandler } from 'src/module/user/application/query/get-user-auth-state/handler';
 import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
 import { TOKEN_GET_USER_BY_ID_PORT } from 'src/module/user/application/query/get-user-by-id/port';
 import { GetUserCredentialsByEmailQueryHandler } from 'src/module/user/application/query/get-user-credentials-by-email/handler';
 import { TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/user/application/query/get-user-credentials-by-email/port';
+import { TOKEN_GET_USER_NOTICE_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-notice-recipient/port';
 import { TOKEN_GET_USER_SESSION_VERSION_PORT } from 'src/module/user/application/query/get-user-session-version/port';
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
+import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
+import { UserRefreshReuseNoticeQueue } from 'src/module/user/application/queue/user-refresh-reuse-notice.queue';
+import { UserSessionRevocationLogoutAllQueue } from 'src/module/user/application/queue/user-session-revocation-logout-all.queue';
+import { UserSessionRevocationRefreshReuseQueue } from 'src/module/user/application/queue/user-session-revocation-refresh-reuse.queue';
+import { UserSessionQueue } from 'src/module/user/application/queue/user-session.queue';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
 import { UserReplicaReaderAdapter } from 'src/module/user/infrastructure/adapter/user-replica-reader.adapter';
 import { UserWriterAdapter } from 'src/module/user/infrastructure/adapter/user-writer.adapter';
@@ -45,8 +48,8 @@ import { UserController } from 'src/module/user/presentation/controller/user.con
 import { UserFacade } from 'src/module/user/user.facade';
 
 /**
- * Wires the user bounded context: binds every port token to its adapter, registers the handlers and
- * listeners, and exports only the facade — the sole surface other modules may consume.
+ * Wires the user bounded context: binds every port token to its adapter, registers handlers and job
+ * consumers, and exports only the facade — the sole surface other modules may consume.
  */
 @Module({
     imports: [
@@ -54,13 +57,22 @@ import { UserFacade } from 'src/module/user/user.facade';
         ErrorReporterModule,
         DatabaseModule,
         CacheModule,
-        EventBusModule,
-        OutboxModule,
+        JobQueueModule,
         HashingModule,
         SessionModule,
         TokenModule,
         EmailModule,
         CqrsPipelineModule,
+        JobQueueModule.forFeature(
+            [
+                UserCacheQueue,
+                UserRefreshReuseNoticeQueue,
+                UserSessionQueue,
+                UserSessionRevocationLogoutAllQueue,
+                UserSessionRevocationRefreshReuseQueue,
+            ],
+            [CacheModule, CqrsPipelineModule],
+        ),
     ],
     controllers: [UserController],
     providers: [
@@ -73,20 +85,19 @@ import { UserFacade } from 'src/module/user/user.facade';
         UnbanUserCommandHandler,
         ChangeUserPermissionsCommandHandler,
         RevokeUserSessionsCommandHandler,
+        SendUserRefreshReuseNoticeCommandHandler,
         ReconcileUserSessionCommandHandler,
         ListUsersQueryHandler,
         ListUserPermissionCatalogQueryHandler,
         GetUserByIdQueryHandler,
         GetUserCredentialsByEmailQueryHandler,
         GetUserAuthStateQueryHandler,
-        UserCacheListener,
-        UserSessionRevocationListener,
-        UserSessionListener,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
         { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_GET_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_USER_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_LIST_USERS_PORT, useClass: UserReplicaReaderAdapter },
     ],
     exports: [UserFacade],

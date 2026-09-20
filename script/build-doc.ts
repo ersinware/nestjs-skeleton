@@ -8,7 +8,6 @@ import { Logger as NestLogger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import * as fs from 'fs';
-
 import * as path from 'path';
 import { AppModule } from 'src/app.module';
 import { ACTIVE_VERSIONS, GLOBAL_PREFIX, VERSION_1 } from 'src/core/config';

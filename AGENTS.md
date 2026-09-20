@@ -37,4 +37,4 @@ Mutation evidence and durable delivery require both [Events & Messaging](agent/e
 
 NestJS / SWC; Fastify; PostgreSQL / Drizzle (`pg`); Redis (`ioredis`); Gmail (`googleapis`); Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud; Vitest / Supertest / Spectral / Schemathesis.
 
-Delivery migration: Admin uses `core/job-queue`; User and Auth still use the legacy pg-boss outbox and in-process event bus. Migrate User, then Auth, to `core/job-queue`; afterwards remove `core/outbox` and the unused event-bus path ([Events & Messaging](agent/events-and-messaging.md#events--messaging)).
+Delivery migration: Admin and User use `core/job-queue`; Auth still uses the legacy pg-boss outbox and in-process event bus. Migrate Auth next, then remove `core/outbox` and the unused event-bus path ([Events & Messaging](agent/events-and-messaging.md#events--messaging)).

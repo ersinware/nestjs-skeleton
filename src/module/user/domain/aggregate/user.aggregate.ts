@@ -1,12 +1,13 @@
 /**
  * @file user.aggregate.ts
- * @description The User aggregate root — owns the state and invariants of an end-user account.
+ * @description Defines the state and invariants of a user account.
  */
 
-import { UserEvent } from 'src/module/user/domain/event/user-event.enum';
+import { randomUUID } from 'node:crypto';
+import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
-import { DomainEvent } from 'src/shared/domain/event';
-import { PrincipalType, type Permission, type Principal } from 'src/shared/domain/principal';
+import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
+import { SystemException } from 'src/shared/exception';
 
 /**
  * The module-owned state of a User aggregate.
@@ -140,7 +141,7 @@ export class User extends PrincipalAggregateRoot {
 
         if (isUpdated) {
             this.props.updatedAt = new Date();
-            this.addDomainEvent(new DomainEvent(UserEvent.UPDATED, this.id));
+            this.addCacheInvalidationJob();
         }
 
         return isUpdated;
@@ -159,13 +160,11 @@ export class User extends PrincipalAggregateRoot {
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(UserEvent.PASSWORD_CHANGED, this.id));
+        this.addSessionReconciliationJob();
     }
 
     /**
-     * Replaces the user's permission set, retiring the access tokens that carried the old set while
-     * refresh tokens survive to fetch the new one, and emits a PERMISSIONS_CHANGED event. A no-op when the
-     * requested set already holds.
+     * Replaces the user's permission set and queues cache and session reconciliation when it changes.
      *
      * @param permissions The complete set the user should hold afterwards
      * @param actor The verified principal making the change
@@ -182,15 +181,15 @@ export class User extends PrincipalAggregateRoot {
 
         if (change) {
             this.props.updatedAt = new Date();
-            this.addDomainEvent(new DomainEvent(UserEvent.PERMISSIONS_CHANGED, this.id));
+            this.addCacheInvalidationJob();
+            this.addSessionReconciliationJob();
         }
 
         return change;
     }
 
     /**
-     * Bans the user. Bumps the session version to instantly evict existing tokens, and emits a
-     * BANNED event. A no-op when the account is already banned.
+     * Bans the user and queues cache and session reconciliation. A no-op when already banned.
      *
      * @param actor The verified principal imposing the ban
      * @returns Whether the account actually transitioned — the caller persists, audits, and evicts
@@ -209,15 +208,14 @@ export class User extends PrincipalAggregateRoot {
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(UserEvent.BANNED, this.id));
+        this.addCacheInvalidationJob();
+        this.addSessionReconciliationJob();
 
         return true;
     }
 
     /**
-     * Unbans the user and emits an UNBANNED event. Does not bump the session version — the version is
-     * monotonic and re-login mints a token at the current version. A no-op when the account is not
-     * banned.
+     * Unbans the user and queues cache invalidation without lowering the session version.
      *
      * @param actor The verified principal lifting the ban
      * @returns Whether the account actually transitioned — the caller persists and audits only on a
@@ -235,26 +233,40 @@ export class User extends PrincipalAggregateRoot {
         this.props.isBanned = false;
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(UserEvent.UNBANNED, this.id));
+        this.addCacheInvalidationJob();
 
         return true;
     }
 
     /**
-     * Revokes every active session after refresh-token reuse was detected for this account. Bumps the
-     * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
-     * SESSIONS_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
-     * owner can simply sign back in (and is separately advised, not forced, to change their password).
+     * Revokes every active session and raises reason-specific follow-up jobs without banning the user.
      *
+     * @param reason Why every session is being revoked
      * @throws {SystemException} When the account has been soft-deleted
      */
-    revokeSessions() {
+    revokeSessions(reason: SessionRevocationReason) {
         this.assertNotDeleted(this.revokeSessions.name);
 
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
+        this.addSessionReconciliationJob();
 
-        this.addDomainEvent(new DomainEvent(UserEvent.SESSIONS_REVOKED, this.id));
+        switch (reason) {
+            case SessionRevocationReason.REFRESH_REUSE:
+                this.addJob([
+                    {
+                        eventId: randomUUID(),
+                        aggregateId: this.id,
+                        queueName: UserJobQueue.REFRESH_REUSE_NOTICE,
+                    },
+                ]);
+
+                break;
+            case SessionRevocationReason.LOGOUT_ALL:
+                break;
+            default:
+                assertSessionRevocationReasonExhausted(reason, this.revokeSessions.name);
+        }
     }
 
     /**
@@ -274,36 +286,101 @@ export class User extends PrincipalAggregateRoot {
         this.revokeAllSessions();
         this.props.updatedAt = now;
 
-        this.addDomainEvent(new DomainEvent(UserEvent.DELETED, this.id));
+        this.addCacheInvalidationJob();
+        this.addSessionReconciliationJob();
     }
 
-    /** The email address. */
+    /**
+     * Raises durable cache invalidation for the current user projection.
+     */
+    private addCacheInvalidationJob() {
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: UserJobQueue.CACHE_INVALIDATE,
+            },
+        ]);
+    }
+
+    /**
+     * Raises durable session-version reconciliation for the current user.
+     */
+    private addSessionReconciliationJob() {
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: UserJobQueue.SESSION_RECONCILE,
+            },
+        ]);
+    }
+
+    /**
+     * Returns the email address.
+     *
+     * @returns Current email address
+     */
     get email(): string {
         return this.props.email;
     }
 
-    /** The display name. */
+    /**
+     * Returns the display name.
+     *
+     * @returns Current display name
+     */
     get name(): string {
         return this.props.name;
     }
 
-    /** The hashed password. */
+    /**
+     * Returns the password hash.
+     *
+     * @returns Current password hash
+     */
     get password(): string {
         return this.props.password;
     }
 
-    /** Whether the account is banned. */
+    /**
+     * Returns whether the account is banned.
+     *
+     * @returns Current ban state
+     */
     get isBanned(): boolean {
         return this.props.isBanned;
     }
 
-    /** The creation timestamp. */
+    /**
+     * Returns the creation timestamp.
+     *
+     * @returns Creation timestamp
+     */
     get createdAt(): Date {
         return this.props.createdAt;
     }
 
-    /** The last-update timestamp. */
+    /**
+     * Returns the last-update timestamp.
+     *
+     * @returns Last-update timestamp
+     */
     get updatedAt(): Date {
         return this.props.updatedAt;
     }
+}
+
+/**
+ * Rejects an unhandled session revocation reason.
+ *
+ * @param reason Unhandled reason
+ * @param method Calling aggregate method
+ * @returns Never returns normally
+ * @throws {SystemException} Always
+ */
+function assertSessionRevocationReasonExhausted(reason: never, method: string): never {
+    throw new SystemException(`Unhandled session revocation reason: ${String(reason)}.`, {
+        context: { class: User.name, method },
+    });
 }

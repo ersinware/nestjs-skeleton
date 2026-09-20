@@ -8,27 +8,26 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
-import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
+import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import type { IUserWriterPort } from 'src/module/user/application/command/port/user-writer.port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { user as userSchema } from 'src/module/user/infrastructure/user.schema';
 import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
 
 /**
- * Persists and reconstitutes the User aggregate, translating driver errors at the port boundary
- * and enqueueing its domain events in the same transaction.
+ * Loads and saves User aggregates and persists their jobs in the same transaction.
  */
 @Injectable()
 export class UserWriterAdapter implements IUserWriterPort {
     /**
-     * Injects the database connection and durable event writer.
+     * Initializes the adapter with the required persistence dependencies.
      *
      * @param db The Drizzle database client
-     * @param outboxWriterPort Persists events atomically with the aggregate
+     * @param jobQueueWriterPort Persists jobs atomically with the aggregate
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
-        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
+        @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
     ) {}
 
     /**
@@ -54,7 +53,7 @@ export class UserWriterAdapter implements IUserWriterPort {
     }
 
     /**
-     * Upserts the aggregate under the optimistic lock and queues its events in the caller's transaction.
+     * Upserts the aggregate under the optimistic lock and queues its jobs in the caller's transaction.
      *
      * @param user The aggregate to save
      */
@@ -98,9 +97,7 @@ export class UserWriterAdapter implements IUserWriterPort {
             throw new ResourceConflictException(ResourceConflictMessage.CONCURRENT_MODIFICATION);
         }
 
-        await this.outboxWriterPort.save(
-            ...user.pullDomainEvents().map((event) => ({ eventType: event.type, aggregateId: event.aggregateId })),
-        );
+        await this.jobQueueWriterPort.enqueue(user.pullJobs());
     }
 
     /**

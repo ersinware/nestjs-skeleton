@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
-import { PrincipalAggregateRootNew, type PermissionChange } from 'src/shared/domain/aggregate-root';
+import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
 import { AccessDeniedException, ResourceConflictException, SystemException } from 'src/shared/exception';
 
@@ -37,7 +37,7 @@ type AdminSnapshot = {
 /**
  * Owns admin lifecycle, authorization hierarchy, permissions, and session revocation.
  */
-export class Admin extends PrincipalAggregateRootNew {
+export class Admin extends PrincipalAggregateRoot {
     /**
      * Principal kind used to validate permission ownership.
      */
@@ -89,13 +89,7 @@ export class Admin extends PrincipalAggregateRootNew {
             });
 
         if (!props.password) {
-            admin.addJob([
-                {
-                    eventId: randomUUID(),
-                    aggregateId: admin.id,
-                    queueName: AdminJobQueue.INVITE,
-                },
-            ]);
+            admin.addInvitationJob();
         }
 
         return admin;
@@ -179,13 +173,7 @@ export class Admin extends PrincipalAggregateRootNew {
 
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
-        this.addJob([
-            {
-                eventId: randomUUID(),
-                aggregateId: this.id,
-                queueName: AdminJobQueue.INVITE,
-            },
-        ]);
+        this.addInvitationJob();
     }
 
     /**
@@ -220,13 +208,7 @@ export class Admin extends PrincipalAggregateRootNew {
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
-        this.addJob([
-            {
-                eventId: randomUUID(),
-                aggregateId: this.id,
-                queueName: AdminJobQueue.SESSION_RECONCILE,
-            },
-        ]);
+        this.addSessionReconciliationJob();
     }
 
     /**
@@ -260,13 +242,7 @@ export class Admin extends PrincipalAggregateRootNew {
 
         if (change) {
             this.props.updatedAt = new Date();
-            this.addJob([
-                {
-                    eventId: randomUUID(),
-                    aggregateId: this.id,
-                    queueName: AdminJobQueue.SESSION_RECONCILE,
-                },
-            ]);
+            this.addSessionReconciliationJob();
         }
 
         return change;
@@ -292,13 +268,7 @@ export class Admin extends PrincipalAggregateRootNew {
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
-        this.addJob([
-            {
-                eventId: randomUUID(),
-                aggregateId: this.id,
-                queueName: AdminJobQueue.SESSION_RECONCILE,
-            },
-        ]);
+        this.addSessionReconciliationJob();
 
         return true;
     }
@@ -337,13 +307,7 @@ export class Admin extends PrincipalAggregateRootNew {
 
         this.props.updatedAt = new Date();
 
-        this.addJob([
-            {
-                eventId: randomUUID(),
-                aggregateId: this.id,
-                queueName: AdminJobQueue.SESSION_RECONCILE,
-            },
-        ]);
+        this.addSessionReconciliationJob();
 
         switch (reason) {
             case SessionRevocationReason.REFRESH_REUSE:
@@ -383,6 +347,26 @@ export class Admin extends PrincipalAggregateRootNew {
         this.revokeAllSessions();
         this.props.updatedAt = now;
 
+        this.addSessionReconciliationJob();
+    }
+
+    /**
+     * Raises durable invitation delivery for the current admin.
+     */
+    private addInvitationJob() {
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: AdminJobQueue.INVITE,
+            },
+        ]);
+    }
+
+    /**
+     * Raises durable session-version reconciliation for the current admin.
+     */
+    private addSessionReconciliationJob() {
         this.addJob([
             {
                 eventId: randomUUID(),

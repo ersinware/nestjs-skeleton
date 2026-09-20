@@ -13,6 +13,8 @@ import { type IGetUserByIdPort } from 'src/module/user/application/query/get-use
 import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { type GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import { type IGetUserNoticeRecipientPort } from 'src/module/user/application/query/get-user-notice-recipient/port';
+import { type GetUserNoticeRecipientResult } from 'src/module/user/application/query/get-user-notice-recipient/query';
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
 import { user } from 'src/module/user/infrastructure/user.schema';
@@ -26,7 +28,12 @@ import { user } from 'src/module/user/infrastructure/user.schema';
  */
 @Injectable()
 export class UserReaderAdapter
-    implements IGetUserAuthStatePort, IGetUserByIdPort, IGetUserCredentialsByEmailPort, IGetUserSessionVersionPort
+    implements
+        IGetUserAuthStatePort,
+        IGetUserByIdPort,
+        IGetUserCredentialsByEmailPort,
+        IGetUserNoticeRecipientPort,
+        IGetUserSessionVersionPort
 {
     /**
      * @param db The Drizzle client on the primary connection
@@ -81,6 +88,28 @@ export class UserReaderAdapter
                         })
                         .from(user)
                         .where(and(eq(user.email, email), isNull(user.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads the current recipient details for a user notice.
+     *
+     * @param id The unique identifier of the target user
+     * @returns The notice recipient details, or null when no non-deleted user exists
+     */
+    async getNoticeRecipient(id: string): Promise<GetUserNoticeRecipientResult | null> {
+        try {
+            return (
+                (
+                    await this.db
+                        .select({ email: user.email, name: user.name })
+                        .from(user)
+                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
                         .limit(1)
                 )[0] ?? null
             );
