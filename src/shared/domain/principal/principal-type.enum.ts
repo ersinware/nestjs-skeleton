@@ -9,9 +9,13 @@
  * every context. Authority is NOT expressed here — that is the principal's permission set.
  */
 export enum PrincipalType {
-    /** An administrator account, owned by the admin bounded context. */
+    /**
+     * An administrator account, owned by the admin bounded context.
+     */
     ADMIN = 'admin',
 
-    /** An end-user account, owned by the user bounded context. */
+    /**
+     * An end-user account, owned by the user bounded context.
+     */
     USER = 'user',
 }

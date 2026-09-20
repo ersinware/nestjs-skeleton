@@ -8,24 +8,38 @@
  * logging, unlike an `instanceof` check that dies at any process or transport boundary.
  */
 export enum ExceptionKind {
-    /** The requested resource does not exist or is not visible to the caller. */
+    /**
+     * The requested resource does not exist or is not visible to the caller.
+     */
     RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
 
-    /** The request conflicts with the current state of the resource (e.g. duplicate data, lost race). */
+    /**
+     * The request conflicts with the current state of the resource (e.g. duplicate data, lost race).
+     */
     RESOURCE_CONFLICT = 'RESOURCE_CONFLICT',
 
-    /** The caller is not authenticated or presented invalid credentials. */
+    /**
+     * The caller is not authenticated or presented invalid credentials.
+     */
     UNAUTHENTICATED = 'UNAUTHENTICATED',
 
-    /** The caller is authenticated but lacks permission for the operation. */
+    /**
+     * The caller is authenticated but lacks permission for the operation.
+     */
     ACCESS_DENIED = 'ACCESS_DENIED',
 
-    /** The input is invalid or violates a business rule in the current state. */
+    /**
+     * The input is invalid or violates a business rule in the current state.
+     */
     INVALID_INPUT = 'INVALID_INPUT',
 
-    /** A required dependency is unreachable; the condition is transient and retryable. */
+    /**
+     * A required dependency is unreachable; the condition is transient and retryable.
+     */
     DEPENDENCY_UNAVAILABLE = 'DEPENDENCY_UNAVAILABLE',
 
-    /** An unexpected internal failure with no more specific category. */
+    /**
+     * An unexpected internal failure with no more specific category.
+     */
     SYSTEM = 'SYSTEM',
 }

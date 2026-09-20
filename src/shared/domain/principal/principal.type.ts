@@ -12,12 +12,18 @@ import type { PrincipalType } from 'src/shared/domain/principal/principal-type.e
  * tier hierarchy), so a business rule never reads HTTP or a token payload itself.
  */
 export type Principal = {
-    /** The principal identifier. */
+    /**
+     * The principal identifier.
+     */
     readonly id: string;
 
-    /** The bounded context that owns the account. */
+    /**
+     * The bounded context that owns the account.
+     */
     readonly type: PrincipalType;
 
-    /** The permissions the principal held when its access token was minted. */
+    /**
+     * The permissions the principal held when its access token was minted.
+     */
     readonly permissions: readonly Permission[];
 };

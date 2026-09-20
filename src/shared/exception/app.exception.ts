@@ -11,13 +11,19 @@ import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
  * free-form so the taxonomy never learns a downstream observability concept.
  */
 export type ExceptionContext = {
-    /** Name of the class that threw. */
+    /**
+     * Name of the class that threw.
+     */
     readonly class: string;
 
-    /** Name of the method that threw. */
+    /**
+     * Name of the method that threw.
+     */
     readonly method: string;
 
-    /** Any further detail the thrower considers useful when the failure is investigated. */
+    /**
+     * Any further detail the thrower considers useful when the failure is investigated.
+     */
     readonly [key: string]: unknown;
 };
 
@@ -26,7 +32,9 @@ export type ExceptionContext = {
  * meaning — strictly the underlying error — and gives forensic data its own `context` field.
  */
 export type AppExceptionOptions = ErrorOptions & {
-    /** Forensic metadata for observability adapters; never rendered to a client. */
+    /**
+     * Forensic metadata for observability adapters; never rendered to a client.
+     */
     readonly context?: ExceptionContext;
 };
 
@@ -36,10 +44,14 @@ export type AppExceptionOptions = ErrorOptions & {
  * `instanceof AppException` check replaces per-class chains in protocol adapters.
  */
 export abstract class AppException extends Error {
-    /** The transport-neutral failure category protocol adapters translate into their own status vocabulary. */
+    /**
+     * The transport-neutral failure category protocol adapters translate into their own status vocabulary.
+     */
     abstract readonly kind: ExceptionKind;
 
-    /** Forensic metadata the thrower attached, consumed by observability adapters only. */
+    /**
+     * Forensic metadata the thrower attached, consumed by observability adapters only.
+     */
     readonly context?: ExceptionContext;
 
     /**
