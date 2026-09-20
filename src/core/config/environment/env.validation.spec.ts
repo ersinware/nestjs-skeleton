@@ -10,8 +10,7 @@ import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tr
 import { describe, expect, it } from 'vitest';
 
 describe('env.validation.config', () => {
-    // `satisfies` binds the baseline to the declared contract: a variable added to
-    // EnvironmentVariables without a value here — or removed there but left here — fails compilation.
+    // Keep fixture keys aligned with EnvironmentVariables at compile time.
     const validConfig = {
         PORT: 3000,
         NODE_ENV: Environment.DEVELOPMENT,
@@ -19,7 +18,7 @@ describe('env.validation.config', () => {
 
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_REPLICA_URL: undefined,
-        DATABASE_POOL_SIZE: 10,
+        DATABASE_POOL_SIZE: 15,
         DATABASE_REPLICA_POOL_SIZE: undefined,
         DATABASE_CONNECT_TIMEOUT: 2,
         DATABASE_STATEMENT_TIMEOUT: 4,
@@ -27,7 +26,7 @@ describe('env.validation.config', () => {
         DATABASE_IDLE_TIMEOUT: 10,
         DATABASE_MAX_LIFETIME: 30,
 
-        JOB_QUEUE_POOL_SIZE: 5,
+        JOB_QUEUE_POOL_SIZE: 10,
 
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,
@@ -96,14 +95,14 @@ describe('env.validation.config', () => {
         const result = validateConfig({
             ...validConfig,
             PORT: '4000',
-            DATABASE_POOL_SIZE: '15',
+            DATABASE_POOL_SIZE: '20',
             REDIS_CACHE_TLS: 'true',
             REDIS_SESSION_TLS: 'false',
             OTEL_SDK_DISABLED: 'false',
         });
 
         expect(result.PORT).toBe(4000);
-        expect(result.DATABASE_POOL_SIZE).toBe(15);
+        expect(result.DATABASE_POOL_SIZE).toBe(20);
         expect(result.REDIS_CACHE_TLS).toBe(true);
         expect(result.REDIS_SESSION_TLS).toBe(false);
         expect(result.OTEL_SDK_DISABLED).toBe(false);

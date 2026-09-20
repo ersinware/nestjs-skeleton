@@ -81,29 +81,6 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Gets the permissions the principal holds.
-     */
-    get permissions(): readonly Permission[] {
-        return this._permissions;
-    }
-
-    /**
-     * Gets the monotonic session version: the version new tokens are minted at, and the floor an
-     * ACCESS token must reach to be accepted by the auth guard.
-     */
-    get sessionVersion(): number {
-        return this._sessionVersion;
-    }
-
-    /**
-     * Gets the session version of the last full revocation: the floor a REFRESH token must reach
-     * to be rotated. Trails `sessionVersion` by exactly the bumps that retired access tokens only.
-     */
-    get revocationVersion(): number {
-        return this._revocationVersion;
-    }
-
-    /**
      * Guards the one invariant that holds for EVERY administration of ANY principal: only an admin
      * administers. The first statement of every administering mutator, after `assertNotDeleted`, so
      * the answer never depends on what the action would have changed. A kind with rules among its
@@ -159,5 +136,28 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
         this.retireAccessTokens();
 
         return { granted, revoked };
+    }
+
+    /**
+     * Gets the permissions the principal holds.
+     */
+    get permissions(): readonly Permission[] {
+        return this._permissions;
+    }
+
+    /**
+     * Gets the monotonic session version: the version new tokens are minted at, and the floor an
+     * ACCESS token must reach to be accepted by the auth guard.
+     */
+    get sessionVersion(): number {
+        return this._sessionVersion;
+    }
+
+    /**
+     * Gets the session version of the last full revocation: the floor a REFRESH token must reach
+     * to be rotated. Trails `sessionVersion` by exactly the bumps that retired access tokens only.
+     */
+    get revocationVersion(): number {
+        return this._revocationVersion;
     }
 }

@@ -1,12 +1,12 @@
 /**
  * @file admin.aggregate.ts
- * @description The Admin aggregate root — owns the state and invariants of an admin account.
+ * @description Defines the state and invariants of an admin account.
  */
 
-import { AdminEvent } from 'src/module/admin/domain/event/admin-event.enum';
-import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
-import { DomainEvent } from 'src/shared/domain/event';
-import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
+import { randomUUID } from 'node:crypto';
+import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
+import { PrincipalAggregateRootNew, type PermissionChange } from 'src/shared/domain/aggregate-root';
+import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
 import { AccessDeniedException, ResourceConflictException, SystemException } from 'src/shared/exception';
 
 /**
@@ -15,7 +15,7 @@ import { AccessDeniedException, ResourceConflictException, SystemException } fro
 type AdminProps = {
     email: string;
     name: string;
-    /** Null until the invited admin activates the account by setting a password. */
+    //  Null until the invited admin activates the account.
     password: string | null;
     isBanned: boolean;
     createdAt: Date;
@@ -23,9 +23,7 @@ type AdminProps = {
 };
 
 /**
- * The full persistable state of an Admin: the module-owned props plus the identity, persistence
- * version, deletion timestamp, permissions and session counters owned by the aggregate-root bases. Consumed by
- * reconstitution, produced by {@link Admin.toSnapshot}.
+ * Persistable state of an Admin aggregate.
  */
 type AdminSnapshot = {
     readonly id: string;
@@ -37,25 +35,21 @@ type AdminSnapshot = {
 } & Readonly<AdminProps>;
 
 /**
- * The Admin aggregate root. Owns every admin invariant: profile updates, ban/unban transitions,
- * session revocation through the monotonic version counter, permission changes, soft-delete
- * immutability, and the administration hierarchy among admins.
- *
- * The hierarchy has three tiers. ROOT (one account, `admin:root`) appoints and dismisses MANAGERS
- * (the manage permission) and may administer anyone; nobody administers root. A manager
- * administers ORDINARY admins only — gives and takes every ordinary permission, bans, deletes; a
- * manager is administered by root alone, in every respect. Nobody administers their own account.
- * Every administrative mutation takes the acting principal so these rules can decide.
+ * Owns admin lifecycle, authorization hierarchy, permissions, and session revocation.
  */
-export class Admin extends PrincipalAggregateRoot {
+export class Admin extends PrincipalAggregateRootNew {
+    /**
+     * Principal kind used to validate permission ownership.
+     */
     protected readonly principalType = PrincipalType.ADMIN;
 
+    /**
+     * Admin-specific state.
+     */
     private props: AdminProps;
 
     /**
-     * Splits the snapshot along the ownership boundary: id, version, deletedAt, permissions and the
-     * session counters go to the aggregate-root bases that own them, the rest becomes the module-owned
-     * state.
+     * Initializes the aggregate from persisted state.
      *
      * @param snapshot The full aggregate state
      */
@@ -73,9 +67,7 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Creates a new Admin with a fresh lifecycle state and no permissions — authority is granted
-     * afterwards, by an admin who holds it. A passwordless account is pending activation and emits
-     * an INVITED event; one created with a password is active from the start and emits nothing.
+     * Creates an admin and queues an invitation when no password is supplied.
      *
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
@@ -97,7 +89,13 @@ export class Admin extends PrincipalAggregateRoot {
             });
 
         if (!props.password) {
-            admin.addDomainEvent(new DomainEvent(AdminEvent.INVITED, admin.id));
+            admin.addJob([
+                {
+                    eventId: randomUUID(),
+                    aggregateId: admin.id,
+                    queueName: AdminJobQueue.INVITE,
+                },
+            ]);
         }
 
         return admin;
@@ -114,7 +112,9 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Returns the full aggregate state for persistence.
+     * Returns the aggregate state for persistence.
+     *
+     * @returns Persistable aggregate state
      */
     toSnapshot(): AdminSnapshot {
         return {
@@ -129,11 +129,10 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Updates the basic profile information of the admin.
-     * Only applies changes if the provided values differ from the current state.
+     * Applies changed profile fields.
      *
-     * @returns Whether any field actually changed — the caller records the audit entry only on a real
-     * transition, so a request that matched the current state leaves no fabricated trail.
+     * @param payload Profile fields to update
+     * @returns Whether any field changed
      * @throws {SystemException} When the account has been soft-deleted
      */
     updateProfile(payload: { readonly name?: string; readonly email?: string }): boolean {
@@ -159,7 +158,7 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Invalidates earlier invitations before requesting a replacement for a pending account.
+     * Revokes existing invitations and queues a replacement for a pending admin.
      *
      * @param actor The verified principal requesting the invitation
      * @throws {SystemException} When the account is deleted or the actor is not an admin
@@ -180,16 +179,20 @@ export class Admin extends PrincipalAggregateRoot {
 
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
-        this.addDomainEvent(new DomainEvent(AdminEvent.INVITED, this.id));
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: AdminJobQueue.INVITE,
+            },
+        ]);
     }
 
     /**
-     * Activates a pending account by setting its first password. The transition itself spends the
-     * invitation: once a password exists, every outstanding invite token is rejected.
+     * Activates a pending admin by setting its first password.
      *
      * @param password The Argon2-hashed initial password
-     * @throws {SystemException} When the account is soft-deleted or already active — the activation
-     * flow filters both, so reaching either here is a broken code path
+     * @throws {SystemException} When the account is soft-deleted or already active
      */
     activate(password: string) {
         this.assertNotDeleted(this.activate.name);
@@ -205,9 +208,9 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Changes the admin's password and bumps the session version so that every token minted before
-     * this change is instantly rejected by the auth guard.
+     * Changes the password and revokes existing sessions.
      *
+     * @param password Argon2 password hash
      * @throws {SystemException} When the account has been soft-deleted
      */
     changePassword(password: string) {
@@ -217,34 +220,35 @@ export class Admin extends PrincipalAggregateRoot {
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(AdminEvent.PASSWORD_CHANGED, this.id));
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: AdminJobQueue.SESSION_RECONCILE,
+            },
+        ]);
     }
 
     /**
-     * Replaces the admin's permission set, retiring the access tokens that carried the old set while
-     * refresh tokens survive to fetch the new one, and emits a PERMISSIONS_CHANGED event. A no-op when the
-     * requested set already holds.
+     * Replaces permissions and retires access tokens carrying the previous set.
      *
      * @param permissions The complete set the admin should hold afterwards
      * @param actor The verified principal making the change
-     * @returns What was granted and revoked, or null when nothing changed — the caller persists and
-     * audits only on a real transition
+     * @returns Granted and revoked permissions, or null when unchanged
      * @throws {SystemException} When the account has been soft-deleted
-     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root, grants the root marker, or appoints a manager without being root
+     * @throws {AccessDeniedException} When the actor or requested hierarchy change is forbidden
      * @throws {InvalidInputException} When the set holds a permission an admin may not hold
      */
     changePermissions(permissions: readonly Permission[], actor: Principal): PermissionChange | null {
         this.assertNotDeleted(this.changePermissions.name);
         this.assertAdministrableBy(actor);
 
-        // Root is never in a requested set: the root account itself is not administrable, so a set
-        // carrying the marker can only be an attempt to grant it.
+        // Root is provisioned outside this mutation and cannot be granted.
         if (permissions.includes(Permission.ADMIN_ROOT)) {
             throw new AccessDeniedException('The root permission is held by exactly one account and is never granted.');
         }
 
-        // A set carrying the manage marker is root's alone: from a non-root actor it is either an
-        // appointment, or a change on a manager that assertAdministrableBy refused already.
+        // Only root may appoint a permission manager.
         if (
             permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
             !actor.permissions.includes(Permission.ADMIN_ROOT)
@@ -256,21 +260,25 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (change) {
             this.props.updatedAt = new Date();
-            this.addDomainEvent(new DomainEvent(AdminEvent.PERMISSIONS_CHANGED, this.id));
+            this.addJob([
+                {
+                    eventId: randomUUID(),
+                    aggregateId: this.id,
+                    queueName: AdminJobQueue.SESSION_RECONCILE,
+                },
+            ]);
         }
 
         return change;
     }
 
     /**
-     * Bans the admin. Bumps the session version to instantly evict existing tokens, and emits a
-     * BANNED event. A no-op when the account is already banned.
+     * Bans the admin and revokes existing sessions.
      *
      * @param actor The verified principal imposing the ban
-     * @returns Whether the account actually transitioned — the caller persists, audits, and evicts
-     * only on a real ban, so a repeated request triggers none of them.
+     * @returns Whether the account transitioned to banned
      * @throws {SystemException} When the account has been soft-deleted
-     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root
+     * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     ban(actor: Principal): boolean {
         this.assertNotDeleted(this.ban.name);
@@ -284,21 +292,24 @@ export class Admin extends PrincipalAggregateRoot {
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(AdminEvent.BANNED, this.id));
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: AdminJobQueue.SESSION_RECONCILE,
+            },
+        ]);
 
         return true;
     }
 
     /**
-     * Unbans the admin without bumping the session version — the version is
-     * monotonic and re-login mints a token at the current version. A no-op when the account is not
-     * banned.
+     * Unbans the admin without lowering session floors.
      *
      * @param actor The verified principal lifting the ban
-     * @returns Whether the account actually transitioned — the caller persists and audits only on a
-     * real unban, so lifting a ban that was never in place triggers neither.
+     * @returns Whether the account transitioned to unbanned
      * @throws {SystemException} When the account has been soft-deleted
-     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root
+     * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     unban(actor: Principal): boolean {
         this.assertNotDeleted(this.unban.name);
@@ -315,29 +326,48 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Revokes every active session after refresh-token reuse was detected for this account. Bumps the
-     * session version so all outstanding access and refresh tokens are instantly rejected, and emits a
-     * SESSIONS_REVOKED event. Deliberately does NOT ban: the credentials are still valid, so the
-     * owner can simply sign back in (and is separately advised, not forced, to change their password).
+     * Revokes all sessions and raises reason-specific follow-up jobs without banning the admin.
      *
+     * @param reason Why every session is being revoked
      * @throws {SystemException} When the account has been soft-deleted
      */
-    revokeSessions() {
+    revokeSessions(reason: SessionRevocationReason) {
         this.assertNotDeleted(this.revokeSessions.name);
-
         this.revokeAllSessions();
+
         this.props.updatedAt = new Date();
 
-        this.addDomainEvent(new DomainEvent(AdminEvent.SESSIONS_REVOKED, this.id));
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: AdminJobQueue.SESSION_RECONCILE,
+            },
+        ]);
+
+        switch (reason) {
+            case SessionRevocationReason.REFRESH_REUSE:
+                this.addJob([
+                    {
+                        eventId: randomUUID(),
+                        aggregateId: this.id,
+                        queueName: AdminJobQueue.REFRESH_REUSE_NOTICE,
+                    },
+                ]);
+
+                break;
+            case SessionRevocationReason.LOGOUT_ALL:
+                break;
+            default:
+                assertSessionRevocationReasonExhausted(reason, this.revokeSessions.name);
+        }
     }
 
     /**
-     * Soft-deletes the admin account: sets the deletion timestamp, bans the account, bumps the
-     * session version for a permanent cut-off, and emits a DELETED event. A no-op when already
-     * deleted.
+     * Soft-deletes and bans the admin, then revokes existing sessions.
      *
      * @param actor The verified principal deleting the account
-     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root
+     * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     markAsDeleted(actor: Principal) {
         this.assertAdministrableBy(actor);
@@ -353,17 +383,21 @@ export class Admin extends PrincipalAggregateRoot {
         this.revokeAllSessions();
         this.props.updatedAt = now;
 
-        this.addDomainEvent(new DomainEvent(AdminEvent.DELETED, this.id));
+        this.addJob([
+            {
+                eventId: randomUUID(),
+                aggregateId: this.id,
+                queueName: AdminJobQueue.SESSION_RECONCILE,
+            },
+        ]);
     }
 
     /**
-     * Refines the universal rule with the rank hierarchy: never one's own account; never root; a
-     * manager by root alone — managers hold no rank over each other, so the only answer to one
-     * administering another is root.
+     * Enforces self, root, and permission-manager administration restrictions.
      *
      * @param actor The verified principal performing the administration
      * @throws {SystemException} When a non-admin actor reaches the mutation
-     * @throws {AccessDeniedException} When the actor targets themselves, root, or a manager without being root
+     * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     protected override assertAdministrableBy(actor: Principal) {
         super.assertAdministrableBy(actor);
@@ -384,33 +418,71 @@ export class Admin extends PrincipalAggregateRoot {
         }
     }
 
-    /** The email address. */
+    /**
+     * Returns the email address.
+     *
+     * @returns Current email address
+     */
     get email(): string {
         return this.props.email;
     }
 
-    /** The display name. */
+    /**
+     * Returns the display name.
+     *
+     * @returns Current display name
+     */
     get name(): string {
         return this.props.name;
     }
 
-    /** The hashed password, or null while the account is pending activation. */
+    /**
+     * Returns the password hash, or null while activation is pending.
+     *
+     * @returns Password hash or null
+     */
     get password(): string | null {
         return this.props.password;
     }
 
-    /** Whether the account is banned. */
+    /**
+     * Returns whether the account is banned.
+     *
+     * @returns Current ban state
+     */
     get isBanned(): boolean {
         return this.props.isBanned;
     }
 
-    /** The creation timestamp. */
+    /**
+     * Returns the creation timestamp.
+     *
+     * @returns Creation timestamp
+     */
     get createdAt(): Date {
         return this.props.createdAt;
     }
 
-    /** The last-update timestamp. */
+    /**
+     * Returns the last-update timestamp.
+     *
+     * @returns Last-update timestamp
+     */
     get updatedAt(): Date {
         return this.props.updatedAt;
     }
+}
+
+/**
+ * Rejects an unhandled session revocation reason.
+ *
+ * @param reason Unhandled reason
+ * @param method Calling aggregate method
+ * @returns Never returns normally
+ * @throws {SystemException} Always
+ */
+function assertSessionRevocationReasonExhausted(reason: never, method: string): never {
+    throw new SystemException(`Unhandled session revocation reason: ${String(reason)}.`, {
+        context: { class: Admin.name, method },
+    });
 }

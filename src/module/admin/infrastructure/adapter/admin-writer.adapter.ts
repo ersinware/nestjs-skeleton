@@ -8,27 +8,26 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
-import { TOKEN_OUTBOX_WRITER_PORT, type IOutboxWriterPort } from 'src/core/outbox';
+import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { admin as adminSchema } from 'src/module/admin/infrastructure/admin.schema';
 import { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception';
 
 /**
- * Persists and reconstitutes the Admin aggregate, translating driver errors at the port boundary
- * and enqueueing its domain events in the same transaction.
+ * Loads and saves Admin aggregates and persists their jobs in the same transaction.
  */
 @Injectable()
 export class AdminWriterAdapter implements IAdminWriterPort {
     /**
-     * Injects the database connection and durable event writer.
+     * Initializes the adapter with the required persistence dependencies.
      *
      * @param db The Drizzle database client
-     * @param outboxWriterPort Persists events atomically with the aggregate
+     * @param jobQueueWriterPort Persists jobs atomically with the aggregate
      */
     constructor(
         @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
-        @Inject(TOKEN_OUTBOX_WRITER_PORT) private readonly outboxWriterPort: IOutboxWriterPort,
+        @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
     ) {}
 
     /**
@@ -54,7 +53,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     }
 
     /**
-     * Upserts the aggregate under the optimistic lock and queues its events in the caller's transaction.
+     * Upserts the aggregate under the optimistic lock and queues its jobs in the caller's transaction.
      *
      * @param admin The aggregate to save
      */
@@ -98,13 +97,14 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             throw new ResourceConflictException(ResourceConflictMessage.CONCURRENT_MODIFICATION);
         }
 
-        await this.outboxWriterPort.save(
-            ...admin.pullDomainEvents().map((event) => ({ eventType: event.type, aggregateId: event.aggregateId })),
-        );
+        await this.jobQueueWriterPort.enqueue(admin.pullJobs());
     }
 
     /**
-     * Maps a database row to the Admin aggregate root.
+     * Reconstitutes an Admin aggregate from a database row.
+     *
+     * @param row Persisted admin row
+     * @returns Reconstituted aggregate
      */
     private mapToDomain(row: InferSelectModel<typeof adminSchema>): Admin {
         return Admin.reconstitute({
