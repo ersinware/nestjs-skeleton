@@ -8,9 +8,13 @@
  * so query contracts never learn HTTP.
  */
 export type PaginationParams = {
-    /** The current page number. */
+    /**
+     * The current page number.
+     */
     readonly page: number;
 
-    /** The number of items per page. */
+    /**
+     * The number of items per page.
+     */
     readonly limit: number;
 };

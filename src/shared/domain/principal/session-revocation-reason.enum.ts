@@ -9,9 +9,13 @@
  * handler, not to the code that requested the revocation.
  */
 export enum SessionRevocationReason {
-    /** A rotated refresh token was replayed — it may have been stolen. */
+    /**
+     * A rotated refresh token was replayed — it may have been stolen.
+     */
     REFRESH_REUSE = 'refresh_reuse',
 
-    /** The account owner asked to be signed out of every device. */
+    /**
+     * The account owner asked to be signed out of every device.
+     */
     LOGOUT_ALL = 'logout_all',
 }

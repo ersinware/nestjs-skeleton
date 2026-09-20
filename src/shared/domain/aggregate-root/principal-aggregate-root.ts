@@ -28,13 +28,24 @@ export type PermissionChange = {
  * {@link assertAdministrableBy}; this class names no concrete permission.
  */
 export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot {
-    /** The kind of principal the concrete aggregate is; decides which permissions it may hold. */
+    /**
+     * The kind of principal the concrete aggregate is; decides which permissions it may hold.
+     */
     protected abstract readonly principalType: PrincipalType;
 
+    /**
+     * Mutable backing state for the permissions the principal currently holds.
+     */
     private _permissions: Permission[];
 
+    /**
+     * Monotonic token version used to retire previously issued access tokens.
+     */
     private _sessionVersion: number;
 
+    /**
+     * Session version recorded at the most recent full access-and-refresh-token revocation.
+     */
     private _revocationVersion: number;
 
     /**
