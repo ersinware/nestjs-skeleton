@@ -13,6 +13,8 @@ import { type IGetAdminByIdPort } from 'src/module/admin/application/query/get-a
 import { type GetAdminByIdResult } from 'src/module/admin/application/query/get-admin-by-id/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import { type IGetAdminInviteRecipientPort } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
+import { type GetAdminInviteRecipientResult } from 'src/module/admin/application/query/get-admin-invite-recipient/query';
 import { type IGetAdminNoticeRecipientPort } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
 import { type GetAdminNoticeRecipientResult } from 'src/module/admin/application/query/get-admin-notice-recipient/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
@@ -28,6 +30,7 @@ export class AdminReaderAdapter
         IGetAdminAuthStatePort,
         IGetAdminCredentialsByEmailPort,
         IGetAdminByIdPort,
+        IGetAdminInviteRecipientPort,
         IGetAdminNoticeRecipientPort,
         IGetAdminSessionVersionPort
 {
@@ -86,6 +89,39 @@ export class AdminReaderAdapter
                         })
                         .from(admin)
                         .where(and(eq(admin.email, email), isNull(admin.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads the current details required to invite an eligible pending admin.
+     *
+     * @param id The unique identifier of the target admin
+     * @returns The invitation details, or null when the admin is no longer eligible
+     */
+    async getInviteRecipient(id: string): Promise<GetAdminInviteRecipientResult | null> {
+        try {
+            return (
+                (
+                    await this.db
+                        .select({
+                            email: admin.email,
+                            name: admin.name,
+                            revocationVersion: admin.revocationVersion,
+                        })
+                        .from(admin)
+                        .where(
+                            and(
+                                eq(admin.id, id),
+                                eq(admin.isBanned, false),
+                                isNull(admin.password),
+                                isNull(admin.deletedAt),
+                            ),
+                        )
                         .limit(1)
                 )[0] ?? null
             );

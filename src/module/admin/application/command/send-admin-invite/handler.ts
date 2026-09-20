@@ -10,11 +10,11 @@ import { ENV } from 'src/core/config';
 import type { EmailPayload } from 'src/core/email';
 import { TOKEN_EMAILER_PORT, escapeHtml, type IEmailerPort } from 'src/core/email';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import {
-    TOKEN_ADMIN_WRITER_PORT,
-    type IAdminWriterPort,
-} from 'src/module/admin/application/command/port/admin-writer.port';
 import { SendAdminInviteCommand } from 'src/module/admin/application/command/send-admin-invite/command';
+import {
+    TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT,
+    type IGetAdminInviteRecipientPort,
+} from 'src/module/admin/application/query/get-admin-invite-recipient/port';
 
 /**
  * Emails the activation invitation for a pending admin. Re-reads the account and silently skips one
@@ -26,13 +26,14 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
     /**
      * Initializes the handler with the required ports.
      *
-     * @param adminWriterPort The port used to re-read the admin's current state
+     * @param inviteRecipientPort The port used to read the admin's current invitation details
      * @param tokenPort The port used to mint the invite token
      * @param emailerPort The port used to send the invitation email
      * @param configService Provides the activation page's base URL
      */
     constructor(
-        @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
+        @Inject(TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT)
+        private readonly inviteRecipientPort: IGetAdminInviteRecipientPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         private readonly configService: ConfigService,
@@ -44,19 +45,19 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
      * @param command The command payload
      */
     async execute(command: SendAdminInviteCommand) {
-        const admin = await this.adminWriterPort.load(command.id);
+        const recipient = await this.inviteRecipientPort.getInviteRecipient(command.id);
 
-        // The account may have been deleted, banned, or activated since the emit; activation rejects
-        // all three states, so the invitation would be dead.
-        if (!admin || admin.isBanned || admin.password !== null) {
+        // The account may have been deleted, banned, or activated since the emit; the query hides
+        // all three states because an invitation for any of them would be dead.
+        if (!recipient) {
             return;
         }
 
         await this.emailerPort.sendEmail(
             this.buildInviteEmail(
-                admin.email,
-                admin.name,
-                await this.tokenPort.generateInviteToken(admin.id, admin.revocationVersion),
+                recipient.email,
+                recipient.name,
+                await this.tokenPort.generateInviteToken(command.id, recipient.revocationVersion),
             ),
         );
     }
