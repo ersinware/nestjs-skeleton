@@ -69,13 +69,13 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
 
             const options = {
                 batchSize: 1,
-                pollingIntervalSeconds: 2,
+                pollingIntervalSeconds: consumer.workerOptions?.pollingIntervalSeconds ?? 1,
+                localConcurrency: consumer.workerOptions?.localConcurrency ?? (consumer.transactional ? 3 : 5),
             } as const;
 
             if (consumer.transactional) {
                 const transactionalOptions = {
                     ...options,
-                    localConcurrency: 3,
                     transactional: true,
                 } as const;
 
@@ -88,9 +88,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                         ),
                 );
             } else {
-                await this.boss.work<Job>(consumer.name, { ...options, localConcurrency: 5 }, (jobs) =>
-                    this.consume(consumer, jobs),
-                );
+                await this.boss.work<Job>(consumer.name, options, (jobs) => this.consume(consumer, jobs));
             }
         }
     }

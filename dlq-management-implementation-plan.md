@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and protected operations exist, but source queues do not yet route failed jobs to it.
+Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and protected operations exist. Current startup reconciliation defaults source routing to `deadLetter: null`; enabling it remains Phase 6 work.
 
 The implementation must preserve the existing at-least-once delivery model, transactional job production, bounded retries, module boundaries, authorization, audit durability, and horizontally scaled runtime.
 
@@ -12,12 +12,12 @@ The implementation must preserve the existing at-least-once delivery model, tran
 - [x] Phase 2 - Read-only operations module
 - [x] Phase 3 - Exact discard
 - [x] Phase 4 - Asynchronous all-job redrive
-- [ ] Phase 5 - Metrics and alerting
-- [ ] Phase 6 - Enable dead-letter routing
+- [x] Phase 5 - Metrics and alerting
+- [ ] Phase 6 - Enable source routing and verify rollout
 - [ ] Phase 7 - Verification
 - [ ] Phase 8 - Documentation and rollout
 
-Implement the control plane and its verification before Phase 6 activates failure routing.
+The control plane and monitoring are implemented. Source routing remains disabled and unit tests cover this default. Enable routing in Phase 6, then complete Phase 7 and production-role validation before rollout.
 
 ## Agreed scope
 
@@ -172,7 +172,7 @@ Operation status exists only for pg-boss's configured retention window. Audit is
 
 ### Work
 
-1. Add one lifecycle-managed sampler that runs immediately and then about once per minute.
+1. Add one lifecycle-managed sampler gated by `JOB_QUEUE_DLQ_MONITOR_ENABLED`. Enabled instances sample immediately, then wait `JOB_QUEUE_DLQ_SAMPLE_INTERVAL` after each completed attempt (60 seconds in supplied env files). Disabled instances do not sample or register gauge callbacks.
 2. Read queue counts through `getQueueStats(application-dead-letter, { force: true })` and obtain the oldest DLQ creation time through the same isolated read adapter used for listing.
 3. Cache the sample in memory. OpenTelemetry observable callbacks must only read this snapshot; they must not query PostgreSQL during collection.
 4. Export at least:
@@ -181,8 +181,30 @@ Operation status exists only for pg-boss's configured retention window. Audit is
     - `job_queue_dlq_monitor_up`;
     - `job_queue_redrive_failed_count` for exhausted orchestration jobs.
 5. Do not attach job IDs, source queues, aggregate IDs, instance IDs, or payload fields as metric dimensions.
-6. Configure Grafana alerts for a sustained non-empty DLQ, excessive oldest age, monitoring failure, and failed redrive operations. Aggregate replica gauges with `max`, not `sum`.
+6. Configure Grafana alerts for a non-empty DLQ, excessive oldest age, monitoring failure, and failed redrive operations. Aggregate shared counts/age with `max`, never `sum`, and monitor health with `min`.
 7. Report sampler failures through existing observability boundaries, retain the last successful business values, and set `monitor_up` to zero.
+
+Configure Grafana-managed alerts against the metrics datasource. Evaluate once per minute, group by `job` and `deployment_environment_name`, and route all four rules to the operations contact point:
+
+| Incident                                                 | PromQL value query                                                             | Grafana threshold | Pending     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------- | ----------- |
+| Non-empty DLQ                                            | `max by (job, deployment_environment_name) (job_queue_dlq_ready_count)`        | Above 0           | None (`0s`) |
+| Oldest DLQ job too old                                   | `max by (job, deployment_environment_name) (job_queue_dlq_oldest_age_seconds)` | Above 3600        | None (`0s`) |
+| Monitor sampling failure reported by an enabled instance | `min by (job, deployment_environment_name) (job_queue_dlq_monitor_up)`         | Below 1           | None (`0s`) |
+| Failed redrive operation                                 | `max by (job, deployment_environment_name) (job_queue_redrive_failed_count)`   | Above 0           | None (`0s`) |
+
+Keep comparisons in Grafana thresholds, not in PromQL: filtering healthy zero-valued series would cause false No Data incidents. Set No Data and query errors to Alerting for the monitor rule. `min` catches a replica emitting zero, not one that stops emitting while peers remain; No Data catches an absence of all matching series. Verify the metric names in Grafana after OTLP ingestion before saving the rules; keep external health alerts for complete service/telemetry outages.
+
+Grafana Cloud: `GrafanaCloud` folder, `dlq-operations` rule group and contact point, `grafanacloud-prom` datasource. The four saved queries returned healthy values after provisioning. Local-dev No Data Firing and Resolved emails were delivered; other incident notifications remain for Phase 7 verification.
+
+### Monitoring deployment and capacity
+
+- Set `JOB_QUEUE_DLQ_MONITOR_ENABLED=true` on the designated monitoring instance and `false` on other instances. Supplied env files enable it for single-instance runs; this flag does not elect a leader.
+- With identical env across scaled tasks, use a separately configured one-instance service/deployment for the monitoring role. The orchestrator replaces a failed instance; monitoring pauses until replacement. Rolling deployment may briefly run two monitors; retain the existing `max`/`min` aggregation.
+- Disabled monitors emit no DLQ series, including `monitor_up`. Keep the existing monitor rule's No Data and query-error behavior set to Alerting. The documented Grafana queries remain compatible; no remote alert changes are made by this implementation.
+- Enable the OTel SDK and Collector on the monitoring instance. Turning monitoring off does not disable job workers or other telemetry.
+- Per-process starting pool limits are `DATABASE_POOL_SIZE=15`, `DATABASE_REPLICA_POOL_SIZE=10`, and `JOB_QUEUE_POOL_SIZE=20`. Without a replica URL, replica reads share the primary pool. Transactional consumers share their queue transaction connection with application writes.
+- Budget 35 primary connections per process plus 10 connections to a separately configured reader. Include any additional monitoring process and deployment overlap. Confirm database/proxy capacity before setting the production scaling maximum; these are client limits, not a measured throughput guarantee.
 
 ### Acceptance criteria
 
@@ -207,6 +229,10 @@ Operation status exists only for pg-boss's configured retention window. Audit is
 - Rollback disables source `deadLetter` options explicitly before or with the older application rollout; it does not delete queues or retained jobs.
 
 ## Phase 7 - Verification
+
+### Verification status
+
+Current routing implementation and test expectations disagree; previous passing runs do not verify this working tree. After resolving Phase 6, rerun typecheck, the environment/monitor/worker unit tests, and `test/core/job-queue/transactional-consumer.e2e-spec.ts`. Complete the remaining checks below before rollout.
 
 ### Integration tests with real PostgreSQL and pg-boss
 
@@ -234,7 +260,7 @@ Operation status exists only for pg-boss's configured retention window. Audit is
 ### Regression checks
 
 - Existing transactional-consumer guarantees still hold.
-- Existing application queues retain their retry/backoff and worker concurrency settings.
+- Existing application queues retain retry/backoff and single-job batches. Verify per-consumer concurrency/polling: transactional 3/1s, Redis 5/1s, email 2/2s, redrive 1/2s.
 - Type check, lint, unit tests, targeted integration/E2E tests, OpenAPI generation, Spectral, and build pass when implementation is complete.
 
 ## Phase 8 - Documentation and rollout

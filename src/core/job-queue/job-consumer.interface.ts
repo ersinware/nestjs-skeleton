@@ -35,9 +35,25 @@ export interface IJobConsumer {
     readonly transactional: boolean;
 
     /**
-     * Queue topology overrides; standard delivery without dead-letter routing is the default.
+     * Queue topology overrides; standard delivery into the shared DLQ is the default.
      */
     readonly queueOptions?: Partial<JobQueueOptions>;
+
+    /**
+     * Per-process worker overrides; defaults are one-second polling and concurrency 3 for
+     * transactional consumers or 5 for other consumers. Each batch contains one job.
+     */
+    readonly workerOptions?: {
+        /**
+         * Number of independent workers for this queue in each process.
+         */
+        readonly localConcurrency: number;
+
+        /**
+         * Polling interval in seconds.
+         */
+        readonly pollingIntervalSeconds: number;
+    };
 
     /**
      * Processes one claimed job.

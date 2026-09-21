@@ -14,8 +14,6 @@ export type { Job } from 'src/core/job-queue/job.type';
 export { JobQueueModule } from 'src/core/job-queue/module';
 export {
     TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT,
-    type DeadLetterQueueStats,
-    type DeadLetterRedriveQueueStats,
     type IJobQueueDeadLetterMetricsPort,
 } from 'src/core/job-queue/port/job-queue-dead-letter-metrics.port';
 export {

@@ -33,6 +33,11 @@ export class DeadLetterRedriveQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
+     * One local worker suffices for the globally exclusive redrive queue.
+     */
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 2 } as const;
+
+    /**
      * Initializes the consumer with the command pipeline.
      *
      * @param commandPipeline Pipeline used to dispatch the drain command

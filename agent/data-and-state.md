@@ -10,7 +10,7 @@
 - Application-owned listings use `id DESC`; audit uses `occurredAt DESC, id DESC`. Index application-owned filters/order. Pg-boss DLQ listings use `created_on DESC, id DESC` because queue-generated IDs need not be time ordered; verify their query plan against the pg-boss-owned indexes.
 - Keep sessions in Redis, never local memory.
 - Adapters select `TOKEN_DATABASE_CLIENT` for writes, write-decision reads, and cacheable queries; `TOKEN_DATABASE_REPLICA_CLIENT` for lag-tolerant presentation reads. A configured replica bypasses ALS; missing/empty `DATABASE_REPLICA_URL` aliases the primary proxy.
-- Budget PostgreSQL connections across the primary, configured replica, and each independent pg-boss pool per process, multiplied by the maximum instance count.
+- Budget connection limits per database endpoint across primary, configured replica, and independent pg-boss pools, multiplied by peak process count including deployment overlap and monitoring processes. Reserve capacity for migrations, administration, and other clients; a proxy does not remove the database connection budget.
 
 ### Adapters
 
