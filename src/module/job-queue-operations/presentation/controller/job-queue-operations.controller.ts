@@ -126,7 +126,7 @@ export class JobQueueOperationsController {
     /**
      * Requests an asynchronous redrive of all eligible shared dead-letter jobs.
      *
-     * @returns Identifier and initial status of the accepted operation
+     * @returns Identifier of the accepted operation
      */
     @Post('redrive')
     @Permissions(Permission.JOB_DEAD_LETTER_REDRIVE)
@@ -140,7 +140,7 @@ export class JobQueueOperationsController {
     async redrive(): Promise<ResponseDeadLetterRedriveAcceptedDto> {
         const operationId = await this.commandPipeline.execute(new StartDeadLetterRedriveCommand());
 
-        return plainToInstance(ResponseDeadLetterRedriveAcceptedDto, { operationId, status: 'ACCEPTED' });
+        return plainToInstance(ResponseDeadLetterRedriveAcceptedDto, { operationId });
     }
 
     /**

@@ -52,13 +52,13 @@ The only direct pg-boss-table dependency is the read-only paginated listing/olde
 
 All routes are under `/v1/job-operations/dead-letter`.
 
-| Method and path             | Permission                      | Result                                                                                                 |
-| --------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `GET /jobs`                 | `job-queue:dead-letter:read`    | Offset-paginated, newest-first sanitized summaries.                                                    |
-| `GET /jobs/:id`             | `job-queue:dead-letter:read`    | One sanitized DLQ record or 404.                                                                       |
-| `POST /redrive`             | `job-queue:dead-letter:redrive` | `202` with `{ operationId, status: "ACCEPTED" }`; `409` when an operation is already queued or active. |
-| `GET /redrive/:operationId` | `job-queue:dead-letter:read`    | Current operation state or 404.                                                                        |
-| `POST /discard`             | `job-queue:dead-letter:discard` | Body `{ jobIds: string[] }`; bodyless `204`.                                                           |
+| Method and path             | Permission                      | Result                                                                             |
+| --------------------------- | ------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /jobs`                 | `job-queue:dead-letter:read`    | Offset-paginated, newest-first sanitized summaries.                                |
+| `GET /jobs/:id`             | `job-queue:dead-letter:read`    | One sanitized DLQ record or 404.                                                   |
+| `POST /redrive`             | `job-queue:dead-letter:redrive` | `202` with `{ operationId }`; `409` when an operation is already queued or active. |
+| `GET /redrive/:operationId` | `job-queue:dead-letter:read`    | Current operation state or 404.                                                    |
+| `POST /discard`             | `job-queue:dead-letter:discard` | Body `{ jobIds: string[] }`; bodyless `204`.                                       |
 
 Use distinct `/jobs/:id` and `/redrive/:operationId` routes so static operation paths cannot collide with a generic ID route.
 
