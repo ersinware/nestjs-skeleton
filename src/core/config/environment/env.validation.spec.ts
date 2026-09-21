@@ -26,7 +26,9 @@ describe('env.validation.config', () => {
         DATABASE_IDLE_TIMEOUT: 10,
         DATABASE_MAX_LIFETIME: 30,
 
-        JOB_QUEUE_POOL_SIZE: 10,
+        JOB_QUEUE_POOL_SIZE: 20,
+        JOB_QUEUE_DLQ_MONITOR_ENABLED: true,
+        JOB_QUEUE_DLQ_SAMPLE_INTERVAL: 60,
 
         REDIS_CACHE_HOST: 'localhost',
         REDIS_CACHE_PORT: 6379,
@@ -113,6 +115,19 @@ describe('env.validation.config', () => {
         delete invalidConfig['PORT'];
 
         expect(() => validateConfig(invalidConfig)).toThrow(Error);
+    });
+
+    it.each([
+        ['true', true],
+        ['false', false],
+    ])('converts DLQ monitoring enablement %s', (value, expected) => {
+        expect(
+            validateConfig({ ...validConfig, JOB_QUEUE_DLQ_MONITOR_ENABLED: value }).JOB_QUEUE_DLQ_MONITOR_ENABLED,
+        ).toBe(expected);
+    });
+
+    it.each([undefined, null, '', 'yes', '0', '1', 0, 1])('rejects invalid DLQ monitoring enablement %s', (value) => {
+        expect(() => validateConfig({ ...validConfig, JOB_QUEUE_DLQ_MONITOR_ENABLED: value })).toThrow();
     });
 
     describe.each(['DATABASE_STATEMENT_TIMEOUT', 'DATABASE_QUERY_TIMEOUT'] as const)('%s', (key) => {

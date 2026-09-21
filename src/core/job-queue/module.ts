@@ -7,6 +7,7 @@ import { DynamicModule, Module, type ModuleMetadata, Type } from '@nestjs/common
 import { DatabaseModule } from 'src/core/database';
 import { JobQueueOperationsAdapter } from 'src/core/job-queue/adapter/job-queue-operations.adapter';
 import { JobQueueWriterAdapter } from 'src/core/job-queue/adapter/job-queue-writer.adapter';
+import { DeadLetterMonitor } from 'src/core/job-queue/dead-letter-monitor';
 import { type IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
 import { JobQueueCoreModule } from 'src/core/job-queue/job-queue-core.module';
 import { JobQueueFeatureModule, TOKEN_FEATURE_CONSUMERS } from 'src/core/job-queue/job-queue-feature.module';
@@ -15,13 +16,15 @@ import { TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT } from 'src/core/job-queue/po
 import { TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT } from 'src/core/job-queue/port/job-queue-dead-letter-reader.port';
 import { TOKEN_JOB_QUEUE_WRITER_PORT } from 'src/core/job-queue/port/job-queue-writer.port';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
+import { LoggerModule } from 'src/core/observability/logger';
 
 /**
  * Provides durable job publishing, restricted dead-letter operations, and feature worker modules.
  */
 @Module({
-    imports: [DatabaseModule, JobQueueCoreModule],
+    imports: [DatabaseModule, JobQueueCoreModule, ErrorReporterModule, LoggerModule],
     providers: [
+        DeadLetterMonitor,
         { provide: TOKEN_JOB_QUEUE_WRITER_PORT, useClass: JobQueueWriterAdapter },
         JobQueueOperationsAdapter,
         {

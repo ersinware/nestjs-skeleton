@@ -25,6 +25,11 @@ export class AdminRefreshReuseNoticeQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
+     * Bounds email concurrency per process; provider quotas also depend on replica count.
+     */
+    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2 } as const;
+
+    /**
      * Initializes the consumer with the required pipeline.
      *
      * @param commandPipeline Pipeline used to dispatch notice commands

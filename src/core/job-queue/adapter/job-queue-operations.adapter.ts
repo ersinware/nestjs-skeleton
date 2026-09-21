@@ -11,11 +11,7 @@ import { fromDrizzle, type JobWithMetadata, type PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { JOB_QUEUE_DEAD_LETTER, JOB_QUEUE_DEAD_LETTER_REDRIVE } from 'src/core/job-queue/dead-letter-queue.constant';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
-import {
-    type DeadLetterQueueStats,
-    type DeadLetterRedriveQueueStats,
-    type IJobQueueDeadLetterMetricsPort,
-} from 'src/core/job-queue/port/job-queue-dead-letter-metrics.port';
+import { type IJobQueueDeadLetterMetricsPort } from 'src/core/job-queue/port/job-queue-dead-letter-metrics.port';
 import { type IJobQueueDeadLetterOperatorPort } from 'src/core/job-queue/port/job-queue-dead-letter-operator.port';
 import {
     type DeadLetterJob,
@@ -45,42 +41,74 @@ export class JobQueueOperationsAdapter
     ) {}
 
     /**
-     * Reads a fresh shared dead-letter queue count snapshot.
+     * Reads the current shared dead-letter ready count.
      *
-     * @returns Ready count and capture time
+     * @returns Number of dead-letter jobs ready for operator action
      */
-    async getDeadLetterQueueStats(): Promise<DeadLetterQueueStats> {
+    async getDeadLetterReadyCount(): Promise<number> {
         try {
             const [stats] = await this.boss.getQueueStats(JOB_QUEUE_DEAD_LETTER, { force: true });
 
             if (!stats) {
                 throw new SystemException('The job queue returned no dead-letter statistics.', {
-                    context: { class: this.constructor.name, method: this.getDeadLetterQueueStats.name },
+                    context: { class: this.constructor.name, method: this.getDeadLetterReadyCount.name },
                 });
             }
 
-            return { readyCount: stats.readyCount, capturedOn: stats.capturedOn };
+            return stats.readyCount;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
     }
 
     /**
-     * Reads a fresh redrive-operation queue count snapshot.
+     * Reads the current failed redrive-operation count.
      *
-     * @returns Failed count and capture time
+     * @returns Number of terminally failed redrive operations still retained
      */
-    async getDeadLetterRedriveQueueStats(): Promise<DeadLetterRedriveQueueStats> {
+    async getDeadLetterRedriveFailedCount(): Promise<number> {
         try {
             const [stats] = await this.boss.getQueueStats(JOB_QUEUE_DEAD_LETTER_REDRIVE, { force: true });
 
             if (!stats) {
                 throw new SystemException('The job queue returned no redrive-operation statistics.', {
-                    context: { class: this.constructor.name, method: this.getDeadLetterRedriveQueueStats.name },
+                    context: { class: this.constructor.name, method: this.getDeadLetterRedriveFailedCount.name },
                 });
             }
 
-            return { failedCount: stats.failedCount, capturedOn: stats.capturedOn };
+            return stats.failedCount;
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads the oldest shared dead-letter creation time without loading job payloads.
+     *
+     * @returns Oldest creation time, or null when the queue is empty
+     */
+    async getOldestDeadLetterCreatedOn(): Promise<Date | null> {
+        try {
+            const result = await this.database.execute<{ oldest_created_on: unknown }>(sql`
+                SELECT min(created_on) AS oldest_created_on
+                FROM pgboss.job
+                WHERE name = ${JOB_QUEUE_DEAD_LETTER}
+            `),
+                value = result.rows[0]?.oldest_created_on;
+
+            // MIN returns null for an empty queue; a missing row yields undefined and must fail validation.
+            if (value === null) {
+                return null;
+            }
+
+            const oldest = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
+            if (oldest === null || Number.isNaN(oldest.getTime())) {
+                throw new SystemException('The job queue returned an invalid oldest dead-letter timestamp.', {
+                    context: { class: this.constructor.name, method: this.getOldestDeadLetterCreatedOn.name },
+                });
+            }
+
+            return oldest;
         } catch (error) {
             throw translateConnectionFailure(error);
         }

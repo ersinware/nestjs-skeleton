@@ -9,54 +9,33 @@
 export const TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT = Symbol('TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT');
 
 /**
- * Queue counts used by dead-letter monitoring.
- */
-export type DeadLetterQueueStats = {
-    /**
-     * Number of dead-letter jobs ready for operator action.
-     */
-    readonly readyCount: number;
-
-    /**
-     * Time at which pg-boss captured the queue counts.
-     */
-    readonly capturedOn: Date;
-};
-
-/**
- * Queue counts used by redrive-operation monitoring.
- */
-export type DeadLetterRedriveQueueStats = {
-    /**
-     * Number of terminally failed redrive operations still retained.
-     */
-    readonly failedCount: number;
-
-    /**
-     * Time at which pg-boss captured the queue counts.
-     */
-    readonly capturedOn: Date;
-};
-
-/**
  * Samples queue counts required by dead-letter monitoring.
  */
 export interface IJobQueueDeadLetterMetricsPort {
     /**
      * Samples current shared dead-letter queue counts.
      *
-     * @returns Current ready count and capture time
+     * @returns Number of dead-letter jobs ready for operator action
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
      * @throws {SystemException} When pg-boss returns no queue snapshot
      */
-    getDeadLetterQueueStats(): Promise<DeadLetterQueueStats>;
+    getDeadLetterReadyCount(): Promise<number>;
 
     /**
      * Samples current redrive-operation queue counts.
      *
-     * @returns Current failed count and capture time
+     * @returns Number of terminally failed redrive operations still retained
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
      * @throws {SystemException} When pg-boss returns no queue snapshot
      */
-    getDeadLetterRedriveQueueStats(): Promise<DeadLetterRedriveQueueStats>;
+    getDeadLetterRedriveFailedCount(): Promise<number>;
+
+    /**
+     * Reads the creation time of the oldest retained shared dead-letter job.
+     *
+     * @returns Oldest creation time, or null when the queue is empty
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
+     * @throws {SystemException} When the result row is missing or the persisted timestamp is invalid
+     */
+    getOldestDeadLetterCreatedOn(): Promise<Date | null>;
 }

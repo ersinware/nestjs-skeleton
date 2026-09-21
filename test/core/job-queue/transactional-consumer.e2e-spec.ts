@@ -16,7 +16,13 @@ import {
     TOKEN_TRANSACTION_PORT,
     type ITransactionPort,
 } from 'src/core/database';
-import { JobQueueModule, type IJobConsumer, type Job } from 'src/core/job-queue';
+import {
+    JOB_QUEUE_DEAD_LETTER,
+    JOB_QUEUE_DEAD_LETTER_REDRIVE,
+    JobQueueModule,
+    type IJobConsumer,
+    type Job,
+} from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
@@ -196,5 +202,54 @@ describe('Transactional pg-boss consumer', () => {
 
         expect(rows.rows).toStrictEqual([{ id: deliveryId }]);
         expect(childJobs.some((job) => job.data.deliveryId === deliveryId)).toBe(true);
+    });
+
+    it('routes an exhausted source job into the shared DLQ with provenance and no committed effects', async () => {
+        const deliveryId = '00000000-0000-7000-8000-000000000003';
+        const jobId = await boss.send(
+            PROBE_QUEUE,
+            { deliveryId, aggregateId: FAILURE_AGGREGATE_ID },
+            { retryLimit: 0 },
+        );
+
+        expect(jobId).not.toBeNull();
+        try {
+            await expect
+                .poll(async () => (await boss.findJobs(PROBE_QUEUE, { id: jobId! }))[0]?.state, {
+                    timeout: 10_000,
+                    interval: 100,
+                })
+                .toBe('failed');
+
+            const copies = (await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).filter((job) => job.sourceId === jobId);
+            expect(copies).toHaveLength(1);
+            expect(copies[0]?.sourceCreatedOn).toBeInstanceOf(Date);
+            expect(copies[0]).toMatchObject({
+                state: 'created',
+                sourceName: PROBE_QUEUE,
+                sourceId: jobId,
+                sourceRetryCount: 0,
+                data: { deliveryId, aggregateId: FAILURE_AGGREGATE_ID },
+            });
+            const rows = await db.execute(sql`
+                SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
+            `);
+            expect(rows.rows).toHaveLength(0);
+            expect((await boss.findJobs<Job>(CHILD_QUEUE)).some((job) => job.data.deliveryId === deliveryId)).toBe(
+                false,
+            );
+
+            const redriveQueue = await boss.getQueue(JOB_QUEUE_DEAD_LETTER_REDRIVE);
+            expect(redriveQueue?.policy).toBe('exclusive');
+            expect(redriveQueue?.deadLetter ?? null).toBeNull();
+        } finally {
+            const copies = (await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).filter((job) => job.sourceId === jobId);
+            if (copies.length > 0) {
+                await boss.deleteJob(
+                    JOB_QUEUE_DEAD_LETTER,
+                    copies.map((job) => job.id),
+                );
+            }
+        }
     });
 });

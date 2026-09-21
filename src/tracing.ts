@@ -44,6 +44,9 @@ if (
                 '@opentelemetry/instrumentation-fs': { enabled: false },
                 '@opentelemetry/instrumentation-net': { enabled: false },
                 '@opentelemetry/instrumentation-dns': { enabled: false },
+                // Idle pg-boss polling has no parent span; keep PostgreSQL spans inside request and
+                // use-case traces without creating standalone traces for every pool checkout.
+                '@opentelemetry/instrumentation-pg': { requireParentSpan: true },
                 '@opentelemetry/instrumentation-pino': {
                     logKeys: {
                         traceId: 'traceId',

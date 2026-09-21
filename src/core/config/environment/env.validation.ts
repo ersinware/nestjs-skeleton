@@ -323,6 +323,20 @@ export class EnvironmentVariables {
     readonly JOB_QUEUE_POOL_SIZE!: number;
 
     /**
+     * Enables DLQ sampling and gauges only on instances assigned to monitoring.
+     */
+    @IsEnvBoolean()
+    readonly JOB_QUEUE_DLQ_MONITOR_ENABLED!: boolean;
+
+    /**
+     * Interval in seconds between completed dead-letter monitoring samples.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly JOB_QUEUE_DLQ_SAMPLE_INTERVAL!: number;
+
+    /**
      * Hostname or IP address of the Redis Cache server.
      */
     @IsString()
