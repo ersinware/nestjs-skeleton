@@ -99,4 +99,9 @@ export enum AuditAction {
      * An operator discarded exact jobs from the shared dead-letter queue.
      */
     JOB_DEAD_LETTER_DISCARDED = 'JOB_DEAD_LETTER_DISCARDED',
+
+    /**
+     * An operator durably requested a shared dead-letter redrive operation.
+     */
+    JOB_DEAD_LETTER_REDRIVE_REQUESTED = 'JOB_DEAD_LETTER_REDRIVE_REQUESTED',
 }

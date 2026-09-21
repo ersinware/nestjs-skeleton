@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and read-only operations exist, but source queues do not yet route failed jobs to it.
+Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and protected operations exist, but source queues do not yet route failed jobs to it.
 
 The implementation must preserve the existing at-least-once delivery model, transactional job production, bounded retries, module boundaries, authorization, audit durability, and horizontally scaled runtime.
 
@@ -11,7 +11,7 @@ The implementation must preserve the existing at-least-once delivery model, tran
 - [x] Phase 1 - Queue topology and core contracts
 - [x] Phase 2 - Read-only operations module
 - [x] Phase 3 - Exact discard
-- [ ] Phase 4 - Asynchronous all-job redrive
+- [x] Phase 4 - Asynchronous all-job redrive
 - [ ] Phase 5 - Metrics and alerting
 - [ ] Phase 6 - Enable dead-letter routing
 - [ ] Phase 7 - Verification

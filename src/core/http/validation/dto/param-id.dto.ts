@@ -5,7 +5,7 @@
 
 import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEntityId } from 'src/core/http/validation/decorator/entity-id.decorator';
+import { IsUuidId } from 'src/core/http/validation/decorator/uuid-id.decorator';
 
 /**
  * The route-parameter name this DTO binds — the one place the `:id` literal lives, so a consumer
@@ -32,6 +32,6 @@ export class ParamIdDto {
      * The unique UUID v7 identifier of the resource.
      */
     @Expose()
-    @IsEntityId()
+    @IsUuidId()
     readonly id!: string;
 }

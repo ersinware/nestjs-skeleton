@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEmailAddress, IsEntityId, IsPermissionList, IsPersonName } from 'src/core/http';
+import { IsEmailAddress, IsPermissionList, IsPersonName, IsUuidId } from 'src/core/http';
 import type { Permission } from 'src/shared/domain/principal';
 
 /**
@@ -19,7 +19,7 @@ export class ResponseUserDto {
      * The unique identifier of the user, used to address follow-up operations.
      */
     @Expose()
-    @IsEntityId('The user ID')
+    @IsUuidId('The user ID')
     readonly id!: string;
 
     /**
