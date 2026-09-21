@@ -109,9 +109,9 @@ describe('Dead-letter redrive', () => {
             .post(REDRIVE_PATH)
             .auth('redrive', { type: 'bearer' })
             .expect(202);
-        const body = response.body as { data: { operationId: string; status: string } };
+        const body = response.body as { data: { operationId: string } };
         const operationId = body.data.operationId;
-        expect(body.data).toStrictEqual({ operationId, status: 'ACCEPTED' });
+        expect(body.data).toStrictEqual({ operationId });
         operationIds.add(operationId);
         return operationId;
     }
