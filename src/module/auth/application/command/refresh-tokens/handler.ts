@@ -148,19 +148,17 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
         // Commit the reuse evidence and revocation request before rejecting the credential.
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.jobQueueWriterPort.enqueue([
-                    {
-                        deliveryId: randomUUID(),
-                        aggregateId: sub,
-                        queueName: REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE[principalType],
-                    },
-                ]),
-                this.auditPort.record({
-                    action: AuditAction.REFRESH_REUSE_DETECTED,
-                    targetId: sub,
-                }),
+            await this.jobQueueWriterPort.enqueue([
+                {
+                    deliveryId: randomUUID(),
+                    aggregateId: sub,
+                    queueName: REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE[principalType],
+                },
             ]);
+            await this.auditPort.record({
+                action: AuditAction.REFRESH_REUSE_DETECTED,
+                targetId: sub,
+            });
         });
 
         // No context: the reuse is audited above, and the response must stay indistinguishable from

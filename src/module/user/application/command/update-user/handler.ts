@@ -60,10 +60,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
         }
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.userWriterPort.save(user),
-                this.auditPort.record({ action: AuditAction.USER_UPDATED }),
-            ]);
+            await this.userWriterPort.save(user);
+            await this.auditPort.record({ action: AuditAction.USER_UPDATED });
         });
     }
 }

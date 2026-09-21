@@ -85,10 +85,8 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
 
         admin.activate(await this.hashingPort.hash(command.password));
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.adminWriterPort.save(admin),
-                this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id }),
-            ]);
+            await this.adminWriterPort.save(admin);
+            await this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });
         });
     }
 

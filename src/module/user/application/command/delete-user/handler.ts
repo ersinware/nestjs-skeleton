@@ -53,10 +53,8 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
 
         user.markAsDeleted();
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.userWriterPort.save(user),
-                this.auditPort.record({ action: AuditAction.USER_DELETED }),
-            ]);
+            await this.userWriterPort.save(user);
+            await this.auditPort.record({ action: AuditAction.USER_DELETED });
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next

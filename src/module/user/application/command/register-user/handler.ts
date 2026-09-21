@@ -52,10 +52,8 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             });
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.userWriterPort.save(user),
-                this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id }),
-            ]);
+            await this.userWriterPort.save(user);
+            await this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id });
         });
     }
 }

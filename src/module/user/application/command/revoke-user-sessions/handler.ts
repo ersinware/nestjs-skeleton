@@ -46,10 +46,8 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
         user.revokeSessions(command.reason);
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.userWriterPort.save(user),
-                this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: user.id }),
-            ]);
+            await this.userWriterPort.save(user);
+            await this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: user.id });
         });
     }
 }
