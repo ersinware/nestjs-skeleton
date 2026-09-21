@@ -32,7 +32,7 @@ export const DOC_SERVERS = [{ url: 'http://localhost:3000', description: 'Develo
 /**
  * Type representing allowed OpenAPI tag names.
  */
-type APITag = 'health' | 'auth' | 'user' | 'admin' | 'audit-trail';
+type APITag = 'health' | 'auth' | 'user' | 'admin' | 'audit-trail' | 'job-queue-operations';
 
 /**
  * OpenAPI configuration details for each active version. Keyed by APIVersion, so activating a new
@@ -57,6 +57,7 @@ export const VERSION_CONFIG: Readonly<
             user: 'User management and profile operations.',
             admin: 'Administrative operations.',
             'audit-trail': 'Read-only operator view of the audit trail.',
+            'job-queue-operations': 'Restricted dead-letter queue operations.',
         },
     },
 } as const;

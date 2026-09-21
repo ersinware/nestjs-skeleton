@@ -53,6 +53,21 @@ export enum Permission {
     HEALTH_DETAIL_READ = 'health:detail:read',
 
     /**
+     * Read dead-letter job metadata and redrive status.
+     */
+    JOB_DEAD_LETTER_READ = 'job-queue:dead-letter:read',
+
+    /**
+     * Start a shared dead-letter redrive operation.
+     */
+    JOB_DEAD_LETTER_REDRIVE = 'job-queue:dead-letter:redrive',
+
+    /**
+     * Discard exact dead-letter job identifiers.
+     */
+    JOB_DEAD_LETTER_DISCARD = 'job-queue:dead-letter:discard',
+
+    /**
      * Read user accounts: the listing and the single lookup.
      */
     USER_ACCOUNT_READ = 'user:account:read',

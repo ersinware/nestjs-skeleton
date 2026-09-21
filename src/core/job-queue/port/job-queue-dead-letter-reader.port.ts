@@ -3,10 +3,27 @@
  * @description Defines read access to dead-letter jobs and redrive operations.
  */
 
+import type { PaginationParams } from 'src/shared/pagination';
+
 /**
  * Dependency injection token representing the {@link IJobQueueDeadLetterReaderPort} contract.
  */
 export const TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT = Symbol('TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT');
+
+/**
+ * One bounded page of sanitized dead-letter jobs.
+ */
+export type DeadLetterJobPage = {
+    /**
+     * Jobs in the requested page, ordered newest first.
+     */
+    readonly data: readonly DeadLetterJob[];
+
+    /**
+     * Total number of matching jobs across all pages.
+     */
+    readonly total: number;
+};
 
 /**
  * Sanitized internal view of one job stored in the shared dead-letter queue.
@@ -82,6 +99,16 @@ export type DeadLetterRedriveOperation = {
  * Reads sanitized dead-letter jobs and redrive operation state.
  */
 export interface IJobQueueDeadLetterReaderPort {
+    /**
+     * Lists one newest-first page from the shared dead-letter queue.
+     *
+     * @param params Shared page and limit parameters
+     * @returns Sanitized page and matching job count
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
+     * @throws {SystemException} When persisted job provenance or identifiers are missing or invalid
+     */
+    listDeadLetterJobs(params: PaginationParams): Promise<DeadLetterJobPage>;
+
     /**
      * Loads one job from the shared dead-letter queue.
      *

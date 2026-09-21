@@ -89,4 +89,9 @@ export enum AuditAction {
 
     /** An operator read the audit trail; who inspects the evidence is evidence too. */
     AUDIT_TRAIL_ACCESSED = 'AUDIT_TRAIL_ACCESSED',
+
+    /**
+     * An operator inspected dead-letter job metadata.
+     */
+    JOB_DEAD_LETTER_ACCESSED = 'JOB_DEAD_LETTER_ACCESSED',
 }
