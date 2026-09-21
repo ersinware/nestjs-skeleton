@@ -94,4 +94,9 @@ export enum AuditAction {
      * An operator inspected dead-letter job metadata.
      */
     JOB_DEAD_LETTER_ACCESSED = 'JOB_DEAD_LETTER_ACCESSED',
+
+    /**
+     * An operator discarded exact jobs from the shared dead-letter queue.
+     */
+    JOB_DEAD_LETTER_DISCARDED = 'JOB_DEAD_LETTER_DISCARDED',
 }

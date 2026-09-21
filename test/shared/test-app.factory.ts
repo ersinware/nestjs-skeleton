@@ -7,6 +7,8 @@ import { VersioningType } from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { AppModule } from 'src/app.module';
+import { httpCacheHook } from 'src/core/http';
+import { auditContextHook } from 'src/core/observability/audit';
 import type { OptionsTestApp } from 'test/shared/interface/e2e-spec.interface';
 
 /**
@@ -28,6 +30,9 @@ export async function createTestApp(options?: OptionsTestApp): Promise<NestFasti
     const app = (await builder.compile()).createNestApplication<NestFastifyApplication>(
         new FastifyAdapter({ trustProxy: true }),
     );
+
+    app.getHttpAdapter().getInstance().addHook('onRequest', auditContextHook);
+    app.getHttpAdapter().getInstance().addHook('onSend', httpCacheHook);
 
     app.setGlobalPrefix('api');
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

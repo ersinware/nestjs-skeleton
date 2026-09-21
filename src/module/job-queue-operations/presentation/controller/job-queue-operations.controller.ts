@@ -1,13 +1,13 @@
 /**
  * @file job-queue-operations.controller.ts
- * @description Restricted, audited read-only HTTP access to dead-letter jobs.
+ * @description Restricted, audited HTTP access to dead-letter jobs.
  */
 
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
-import { QueryPipeline } from 'src/core/cqrs';
+import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultAccessDeniedResponse,
     ApiDefaultDependencyUnavailableResponse,
@@ -26,18 +26,18 @@ import {
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { Permissions } from 'src/core/security/auth';
+import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
 import { GetDeadLetterJobQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
 import { ListDeadLetterJobsQuery } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/query';
 import { ParamDeadLetterJobIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-job-id.dto';
+import { PostDeadLetterDiscardDto } from 'src/module/job-queue-operations/presentation/dto/post-dead-letter-discard.dto';
 import { ResponseDeadLetterJobDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-job.dto';
 import { Permission } from 'src/shared/domain/principal';
 
 /**
- * Gives authorized operators sanitized dead-letter views and records each disclosure.
+ * Gives authorized operators sanitized dead-letter views and exact discard control.
  */
 @Controller({ path: 'job-operations/dead-letter', version: VERSION_1 })
-@Permissions(Permission.JOB_DEAD_LETTER_READ)
-@Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
 @ApiTags('job-queue-operations')
 @ApiBearerAuth()
 @ApiDefaultUnauthenticatedResponse()
@@ -46,11 +46,15 @@ import { Permission } from 'src/shared/domain/principal';
 @ApiDefaultDependencyUnavailableResponse()
 export class JobQueueOperationsController {
     /**
-     * Initializes the controller with the query pipeline.
+     * Initializes the controller with the command and query pipelines.
      *
+     * @param commandPipeline CQRS command pipeline
      * @param queryPipeline CQRS query pipeline
      */
-    constructor(private readonly queryPipeline: QueryPipeline) {}
+    constructor(
+        private readonly commandPipeline: CommandPipeline,
+        private readonly queryPipeline: QueryPipeline,
+    ) {}
 
     /**
      * Lists newest dead-letter jobs in bounded pages.
@@ -59,6 +63,8 @@ export class JobQueueOperationsController {
      * @returns Sanitized jobs and pagination metadata
      */
     @Get('jobs')
+    @Permissions(Permission.JOB_DEAD_LETTER_READ)
+    @Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'List dead-letter jobs',
@@ -87,6 +93,8 @@ export class JobQueueOperationsController {
      * @returns Sanitized dead-letter job
      */
     @Get('jobs/:id')
+    @Permissions(Permission.JOB_DEAD_LETTER_READ)
+    @Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'Get dead-letter job',
@@ -100,5 +108,24 @@ export class JobQueueOperationsController {
             ResponseDeadLetterJobDto,
             await this.queryPipeline.execute(new GetDeadLetterJobQuery(params.id)),
         );
+    }
+
+    /**
+     * Discards an exact set of dead-letter jobs as one audited operation.
+     *
+     * @param body Validated dead-letter job identifiers
+     */
+    @Post('discard')
+    @Permissions(Permission.JOB_DEAD_LETTER_DISCARD)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({
+        summary: 'Discard dead-letter jobs',
+        description: `Atomically discards the specified dead-letter jobs. Requires '${Permission.JOB_DEAD_LETTER_DISCARD}' permission.`,
+    })
+    @ApiNoContentResponse({ description: 'Every requested dead-letter job was discarded.' })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultResourceNotFoundResponse()
+    async discard(@Body() body: PostDeadLetterDiscardDto) {
+        await this.commandPipeline.execute(new DiscardDeadLetterJobsCommand(body.jobIds));
     }
 }
