@@ -10,7 +10,7 @@ The implementation must preserve the existing at-least-once delivery model, tran
 
 - [x] Phase 1 - Queue topology and core contracts
 - [x] Phase 2 - Read-only operations module
-- [ ] Phase 3 - Exact discard
+- [x] Phase 3 - Exact discard
 - [ ] Phase 4 - Asynchronous all-job redrive
 - [ ] Phase 5 - Metrics and alerting
 - [ ] Phase 6 - Enable dead-letter routing
