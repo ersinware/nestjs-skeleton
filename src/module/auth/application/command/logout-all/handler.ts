@@ -50,17 +50,15 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      */
     async execute(command: LogoutAllCommand) {
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.jobQueueWriterPort.enqueue([
-                    {
-                        deliveryId: randomUUID(),
-                        aggregateId: command.id,
-                        queueName: LOGOUT_ALL_QUEUE_BY_PRINCIPAL_TYPE[command.principalType],
-                    },
-                ]),
-                // The verified principal already identifies the actor in the audit context.
-                this.auditPort.record({ action: AuditAction.LOGOUT_ALL }),
+            await this.jobQueueWriterPort.enqueue([
+                {
+                    deliveryId: randomUUID(),
+                    aggregateId: command.id,
+                    queueName: LOGOUT_ALL_QUEUE_BY_PRINCIPAL_TYPE[command.principalType],
+                },
             ]);
+            // The verified principal already identifies the actor in the audit context.
+            await this.auditPort.record({ action: AuditAction.LOGOUT_ALL });
         });
     }
 }

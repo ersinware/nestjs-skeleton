@@ -55,10 +55,8 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
         admin.markAsDeleted(command.actor);
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.adminWriterPort.save(admin),
-                this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: admin.id }),
-            ]);
+            await this.adminWriterPort.save(admin);
+            await this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: admin.id });
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next

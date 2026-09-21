@@ -91,10 +91,8 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
 
         user.changePassword(await this.hashingPort.hash(newPassword));
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.userWriterPort.save(user),
-                this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED }),
-            ]);
+            await this.userWriterPort.save(user);
+            await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
         });
 
         const tokenPairWithSession = await this.tokenPort.generateTokens(

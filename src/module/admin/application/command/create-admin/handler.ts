@@ -48,10 +48,8 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
         });
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.adminWriterPort.save(admin),
-                this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id }),
-            ]);
+            await this.adminWriterPort.save(admin);
+            await this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id });
         });
     }
 }

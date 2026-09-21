@@ -60,10 +60,8 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, 
         }
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.adminWriterPort.save(admin),
-                this.auditPort.record({ action: AuditAction.ADMIN_BANNED, targetId: admin.id }),
-            ]);
+            await this.adminWriterPort.save(admin);
+            await this.auditPort.record({ action: AuditAction.ADMIN_BANNED, targetId: admin.id });
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next

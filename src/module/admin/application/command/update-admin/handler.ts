@@ -60,10 +60,8 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
         }
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.adminWriterPort.save(admin),
-                this.auditPort.record({ action: AuditAction.ADMIN_UPDATED }),
-            ]);
+            await this.adminWriterPort.save(admin);
+            await this.auditPort.record({ action: AuditAction.ADMIN_UPDATED });
         });
     }
 }

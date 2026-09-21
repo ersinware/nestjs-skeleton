@@ -62,14 +62,12 @@ export class ChangeAdminPermissionsCommandHandler implements ICommandHandler<Cha
         }
 
         await this.transactionPort.run(async () => {
-            await Promise.all([
-                this.adminWriterPort.save(admin),
-                this.auditPort.record({
-                    action: AuditAction.ADMIN_PERMISSIONS_CHANGED,
-                    targetId: admin.id,
-                    detail: { granted: change.granted, revoked: change.revoked },
-                }),
-            ]);
+            await this.adminWriterPort.save(admin);
+            await this.auditPort.record({
+                action: AuditAction.ADMIN_PERMISSIONS_CHANGED,
+                targetId: admin.id,
+                detail: { granted: change.granted, revoked: change.revoked },
+            });
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
