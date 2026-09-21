@@ -25,6 +25,7 @@ export {
 export {
     TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT,
     type DeadLetterJob,
+    type DeadLetterJobPage,
     type DeadLetterRedriveOperation,
     type IJobQueueDeadLetterReaderPort,
 } from 'src/core/job-queue/port/job-queue-dead-letter-reader.port';

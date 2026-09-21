@@ -22,6 +22,7 @@ import { AdminModule } from 'src/module/admin';
 import { AuditTrailModule } from 'src/module/audit-trail';
 import { AuthModule } from 'src/module/auth';
 import { HealthModule } from 'src/module/health';
+import { JobQueueOperationsModule } from 'src/module/job-queue-operations';
 import { UserModule } from 'src/module/user';
 
 /**
@@ -48,6 +49,7 @@ import { UserModule } from 'src/module/user';
         UserModule,
         AdminModule,
         AuditTrailModule,
+        JobQueueOperationsModule,
     ],
     providers: [
         {

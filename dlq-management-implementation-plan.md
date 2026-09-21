@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. This document describes the target implementation; the repository currently has no application-managed DLQ.
+Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and read-only operations exist, but source queues do not yet route failed jobs to it.
 
 The implementation must preserve the existing at-least-once delivery model, transactional job production, bounded retries, module boundaries, authorization, audit durability, and horizontally scaled runtime.
 
 ## Progress
 
 - [x] Phase 1 - Queue topology and core contracts
-- [ ] Phase 2 - Read-only operations module
+- [x] Phase 2 - Read-only operations module
 - [ ] Phase 3 - Exact discard
 - [ ] Phase 4 - Asynchronous all-job redrive
 - [ ] Phase 5 - Metrics and alerting
@@ -41,8 +41,8 @@ Implement the control plane and its verification before Phase 6 activates failur
 | Redrive progress   | Expose operation state, not an exact cumulative moved count.                                                                         | No checkpoint table needed to survive worker crashes.                                   |
 | Redrive recovery   | Drain in fixed internal batches until pg-boss reports zero moved. A retried orchestration job continues with the remaining DLQ rows. | No custom retry or cursor mechanism.                                                    |
 | Discard            | Call pg-boss `deleteJob` with exact IDs inside the application transaction and verify every requested row was affected.              | No custom delete protocol.                                                              |
-| Detail lookup      | Use pg-boss `getJobById`.                                                                                                            | No direct SQL for a supported lookup.                                                   |
-| Paginated listing  | Isolate one read-only SQL adapter over the pg-boss-owned job table because `findJobs` has no ordering, count, limit, or offset.      | Avoid loading the entire DLQ into memory and avoid owning a mirror table.               |
+| Detail lookup      | Use pg-boss `findJobs` with an ID filter.                                                                                            | No direct SQL for a supported lookup.                                                   |
+| Paginated listing  | Isolate one read-only SQL method in the core dead-letter adapter over the pg-boss-owned job table; `findJobs` lacks pagination.      | Avoid loading the entire DLQ into memory and avoid owning a mirror table.               |
 | Monitoring         | Poll pg-boss and cache a small in-memory snapshot for OpenTelemetry observable gauges.                                               | The Collector remains a telemetry forwarder and does not query PostgreSQL.              |
 | Audit              | Audit the durable operator request, exact discard, and protected reads. Use pg-boss state for redrive lifecycle.                     | No unreliable duplicate lifecycle audit around worker completion.                       |
 
@@ -113,8 +113,8 @@ Operation status exists only for pg-boss's configured retention window. Audit is
     - `JOB_DEAD_LETTER_REDRIVE = job-queue:dead-letter:redrive`;
     - `JOB_DEAD_LETTER_DISCARD = job-queue:dead-letter:discard`.
 3. Implement list and detail queries through purpose-specific application ports.
-4. Implement offset pagination using the shared pagination contract. The infrastructure adapter performs a bounded page query plus count against the pg-boss-owned job table, ordered by `created_on DESC, id DESC` and restricted to `application-dead-letter`.
-5. Use `getJobById(application-dead-letter, id)` for detail and return 404 for any missing/non-DLQ ID.
+4. Implement offset pagination using the shared pagination contract. The core dead-letter adapter performs a bounded page query plus count against the pg-boss-owned job table, ordered by `created_on DESC, id DESC` and restricted to `application-dead-letter`; the module infrastructure adapter forwards purpose-specific query ports to it.
+5. Use `findJobs(application-dead-letter, { id })` for detail and return 404 for any missing/non-DLQ ID.
 6. Add response DTOs, validation, cache policies, Swagger tag/version description, authentication, permission checks, and `JOB_DEAD_LETTER_ACCESSED` disclosure audit.
 7. Add `JobQueueOperationsModule` to the application composition root.
 
@@ -156,7 +156,7 @@ Operation status exists only for pg-boss's configured retention window. Audit is
     - stop only when the call returns zero.
 5. Do not supply `destination` or `sourceName`; pg-boss routes each copy to its recorded `sourceName`.
 6. Let consumer failures propagate so pg-boss retries the orchestration job. Already moved batches are absent from the DLQ, so the next attempt continues with remaining rows.
-7. Add the status query using `getJobById(redrive-operation-queue, operationId)` and the public state mapping above.
+7. Add the status query using `findJobs(redrive-operation-queue, { id: operationId })` and the public state mapping above.
 
 ### Acceptance criteria
 
@@ -213,6 +213,7 @@ Operation status exists only for pg-boss's configured retention window. Audit is
 - Retry exhaustion creates one DLQ copy with `sourceName`, `sourceId`, original creation time, and retry count.
 - The DLQ has no worker and retains queued copies.
 - List pagination, ordering, total, detail lookup, and sanitization are correct.
+- Review the pg-boss DLQ listing query plan at representative queue depth; the pg-boss indexes do not necessarily support its full sort order.
 - Malformed/legacy data does not leak or crash response mapping.
 - Exact single and bulk discard work; mixed valid/missing IDs roll back fully with audit.
 - Mixed-source redrive drains more than one internal batch and routes every job to its source queue.
@@ -238,7 +239,7 @@ Operation status exists only for pg-boss's configured retention window. Audit is
 
 ## Phase 8 - Documentation and rollout
 
-1. Update `agent/jobs-and-messaging.md` only after implementation to replace the current no-DLQ statement with the actual routing, redrive, discard, orphan, retry, and retention rules.
+1. Update `agent/jobs-and-messaging.md` after implementation to replace the interim read-only/routing-disabled statement with the actual routing, redrive, discard, orphan, retry, and retention rules.
 2. Update `agent/observability.md` with the sampler, metric cardinality, replica aggregation, and alert rules.
 3. Update `agent/security-and-sessions.md` only if the new permissions require an enduring administration rule not already owned by the authorization guide.
 4. Reassess `AGENTS.md`; add no duplicate implementation detail unless future work needs a new top-level routing rule.

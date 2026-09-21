@@ -4,6 +4,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { fromDrizzle, type JobWithMetadata, type PgBoss } from 'pg-boss';
@@ -18,10 +19,12 @@ import {
 import { type IJobQueueDeadLetterOperatorPort } from 'src/core/job-queue/port/job-queue-dead-letter-operator.port';
 import {
     type DeadLetterJob,
+    type DeadLetterJobPage,
     type DeadLetterRedriveOperation,
     type IJobQueueDeadLetterReaderPort,
 } from 'src/core/job-queue/port/job-queue-dead-letter-reader.port';
 import { SystemException } from 'src/shared/exception';
+import type { PaginationParams } from 'src/shared/pagination';
 
 /**
  * Provides dead-letter operations without exposing the raw pg-boss client.
@@ -155,6 +158,63 @@ export class JobQueueOperationsAdapter
     }
 
     /**
+     * Lists only the approved metadata from a bounded, newest-first pg-boss page.
+     *
+     * @param params Shared pagination parameters
+     * @returns Sanitized page and count
+     */
+    async listDeadLetterJobs(params: PaginationParams): Promise<DeadLetterJobPage> {
+        try {
+            const [data, count] = await Promise.all([
+                this.database.execute<{
+                    id: string;
+                    created_on: string;
+                    source_name: string | null;
+                    source_id: string | null;
+                    source_created_on: string | null;
+                    source_retry_count: number | null;
+                    delivery_id: unknown;
+                    aggregate_id: unknown;
+                }>(sql`
+                    SELECT id, created_on, source_name, source_id, source_created_on, source_retry_count,
+                           data ->> 'deliveryId' AS delivery_id, data ->> 'aggregateId' AS aggregate_id
+                    FROM pgboss.job
+                    WHERE name = ${JOB_QUEUE_DEAD_LETTER}
+                    ORDER BY created_on DESC, id DESC
+                    LIMIT ${params.limit} OFFSET ${(params.page - 1) * params.limit}
+                `),
+                this.database.execute<{ total: string }>(sql`
+                    SELECT count(*)::text AS total FROM pgboss.job WHERE name = ${JOB_QUEUE_DEAD_LETTER}
+                `),
+            ]);
+
+            const total = Number(count.rows[0]?.total);
+            if (!Number.isSafeInteger(total) || total < 0) {
+                throw new SystemException('The job queue returned an invalid dead-letter count.', {
+                    context: { class: this.constructor.name, method: this.listDeadLetterJobs.name },
+                });
+            }
+
+            return {
+                data: data.rows.map((row) =>
+                    this.toDeadLetterJob({
+                        id: row.id,
+                        createdOn: row.created_on,
+                        sourceName: row.source_name,
+                        sourceId: row.source_id,
+                        sourceCreatedOn: row.source_created_on,
+                        sourceRetryCount: row.source_retry_count,
+                        data: { deliveryId: row.delivery_id, aggregateId: row.aggregate_id },
+                    }),
+                ),
+                total,
+            };
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
      * Loads and narrows one shared dead-letter job.
      *
      * @param id Dead-letter job identifier
@@ -213,17 +273,31 @@ export class JobQueueOperationsAdapter
     }
 
     /**
-     * Removes pg-boss-only fields from a dead-letter job.
+     * Normalizes timestamps and removes pg-boss-only fields from a dead-letter job.
      *
      * @param job Persisted pg-boss job
      * @returns Internal dead-letter view
      */
-    private toDeadLetterJob(job: JobWithMetadata<unknown>): DeadLetterJob {
-        const { sourceName, sourceId, sourceCreatedOn, sourceRetryCount, data } = job;
+    private toDeadLetterJob(
+        job: Pick<JobWithMetadata<unknown>, 'id' | 'sourceName' | 'sourceId' | 'sourceRetryCount' | 'data'> & {
+            readonly createdOn: Date | string;
+            readonly sourceCreatedOn: Date | string | null;
+        },
+    ): DeadLetterJob {
+        const { sourceName, sourceId, sourceRetryCount, data } = job,
+            createdOn = typeof job.createdOn === 'string' ? new Date(job.createdOn) : job.createdOn,
+            sourceCreatedOn =
+                typeof job.sourceCreatedOn === 'string' ? new Date(job.sourceCreatedOn) : job.sourceCreatedOn;
 
         if (
             typeof sourceName !== 'string' ||
+            sourceName.length === 0 ||
             typeof sourceId !== 'string' ||
+            !isUUID(sourceId) ||
+            typeof job.id !== 'string' ||
+            !isUUID(job.id) ||
+            !(createdOn instanceof Date) ||
+            Number.isNaN(createdOn.getTime()) ||
             !(sourceCreatedOn instanceof Date) ||
             Number.isNaN(sourceCreatedOn.getTime()) ||
             typeof sourceRetryCount !== 'number' ||
@@ -233,8 +307,10 @@ export class JobQueueOperationsAdapter
             data === null ||
             !('deliveryId' in data) ||
             typeof data.deliveryId !== 'string' ||
+            !isUUID(data.deliveryId) ||
             !('aggregateId' in data) ||
-            typeof data.aggregateId !== 'string'
+            typeof data.aggregateId !== 'string' ||
+            !isUUID(data.aggregateId)
         ) {
             throw new SystemException('The dead-letter job has invalid provenance or identifiers.', {
                 context: { class: this.constructor.name, method: this.toDeadLetterJob.name },
@@ -243,7 +319,7 @@ export class JobQueueOperationsAdapter
 
         return {
             id: job.id,
-            createdOn: job.createdOn,
+            createdOn,
             sourceName,
             sourceId,
             sourceCreatedOn,
