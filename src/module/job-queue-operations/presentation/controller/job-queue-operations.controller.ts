@@ -1,10 +1,17 @@
 /**
  * @file job-queue-operations.controller.ts
- * @description Restricted, audited HTTP access to dead-letter jobs.
+ * @description Restricted, audited HTTP access to dead-letter jobs and redrive operations.
  */
 
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+    ApiAcceptedResponse,
+    ApiBearerAuth,
+    ApiNoContentResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiTags,
+} from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
@@ -14,6 +21,7 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultOkResponsePaginated,
+    ApiDefaultResourceConflictResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
@@ -27,15 +35,20 @@ import {
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { Permissions } from 'src/core/security/auth';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
+import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
 import { GetDeadLetterJobQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
+import { GetDeadLetterRedriveQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/query';
 import { ListDeadLetterJobsQuery } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/query';
 import { ParamDeadLetterJobIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-job-id.dto';
+import { ParamDeadLetterRedriveOperationIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-redrive-operation-id.dto';
 import { PostDeadLetterDiscardDto } from 'src/module/job-queue-operations/presentation/dto/post-dead-letter-discard.dto';
 import { ResponseDeadLetterJobDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-job.dto';
+import { ResponseDeadLetterRedriveAcceptedDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive-accepted.dto';
+import { ResponseDeadLetterRedriveStatusDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive-status.dto';
 import { Permission } from 'src/shared/domain/principal';
 
 /**
- * Gives authorized operators sanitized dead-letter views and exact discard control.
+ * Gives authorized operators sanitized dead-letter views, exact discard, and redrive control.
  */
 @Controller({ path: 'job-operations/dead-letter', version: VERSION_1 })
 @ApiTags('job-queue-operations')
@@ -107,6 +120,52 @@ export class JobQueueOperationsController {
         return plainToInstance(
             ResponseDeadLetterJobDto,
             await this.queryPipeline.execute(new GetDeadLetterJobQuery(params.id)),
+        );
+    }
+
+    /**
+     * Requests an asynchronous redrive of all eligible shared dead-letter jobs.
+     *
+     * @returns Identifier and initial status of the accepted operation
+     */
+    @Post('redrive')
+    @Permissions(Permission.JOB_DEAD_LETTER_REDRIVE)
+    @HttpCode(HttpStatus.ACCEPTED)
+    @ApiOperation({
+        summary: 'Redrive dead-letter jobs',
+        description: `Starts an exclusive operation that returns eligible jobs to their original queues. Requires '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission.`,
+    })
+    @ApiAcceptedResponse({ description: 'Redrive operation accepted.', type: ResponseDeadLetterRedriveAcceptedDto })
+    @ApiDefaultResourceConflictResponse('A dead-letter redrive is already in progress.')
+    async redrive(): Promise<ResponseDeadLetterRedriveAcceptedDto> {
+        const operationId = await this.commandPipeline.execute(new StartDeadLetterRedriveCommand());
+
+        return plainToInstance(ResponseDeadLetterRedriveAcceptedDto, { operationId, status: 'ACCEPTED' });
+    }
+
+    /**
+     * Reads the retained status of one redrive operation.
+     *
+     * @param params Validated redrive operation identifier
+     * @returns Current operation state and timestamps
+     */
+    @Get('redrive/:operationId')
+    @Permissions(Permission.JOB_DEAD_LETTER_READ)
+    @Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
+    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
+    @ApiOperation({
+        summary: 'Get dead-letter redrive status',
+        description: `Reads the status of one retained redrive operation. Requires '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
+    })
+    @ApiOkResponse({ description: 'Redrive operation status retrieved.', type: ResponseDeadLetterRedriveStatusDto })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
+    @ApiDefaultResourceNotFoundResponse()
+    async getRedrive(
+        @Param() params: ParamDeadLetterRedriveOperationIdDto,
+    ): Promise<ResponseDeadLetterRedriveStatusDto> {
+        return plainToInstance(
+            ResponseDeadLetterRedriveStatusDto,
+            await this.queryPipeline.execute(new GetDeadLetterRedriveQuery(params.operationId)),
         );
     }
 

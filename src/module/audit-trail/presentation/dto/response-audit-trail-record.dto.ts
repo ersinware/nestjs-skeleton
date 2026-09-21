@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEntityId } from 'src/core/http';
+import { IsUuidId } from 'src/core/http';
 import { AuditAction, type AuditDetail } from 'src/core/observability/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 
@@ -21,7 +21,7 @@ export class ResponseAuditTrailRecordDto {
      * The unique identifier of the record; UUID v7, so id order is time order.
      */
     @Expose()
-    @IsEntityId('The record ID')
+    @IsUuidId('The record ID')
     readonly id!: string;
 
     /**
@@ -66,26 +66,14 @@ export class ResponseAuditTrailRecordDto {
      * The subject the action was applied to.
      */
     @Expose()
-    @ApiProperty({
-        type: 'string',
-        format: 'uuid',
-        description: 'The subject the action was applied to.',
-        example: '018f43c3-6bb3-7d72-911e-848821a837c3',
-        nullable: true,
-    })
+    @IsUuidId('The subject the action was applied to', { nullable: true })
     readonly targetId!: string | null;
 
     /**
      * The verified principal who acted; null on a public route or outside a request.
      */
     @Expose()
-    @ApiProperty({
-        type: 'string',
-        format: 'uuid',
-        description: 'The verified principal who acted; null on a public route or outside a request.',
-        example: '018f43c3-6bb3-7d72-911e-848821a837c3',
-        nullable: true,
-    })
+    @IsUuidId('The verified principal who acted', { nullable: true })
     readonly actorId!: string | null;
 
     /**

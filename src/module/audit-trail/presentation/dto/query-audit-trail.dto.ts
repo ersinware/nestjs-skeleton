@@ -14,7 +14,7 @@ import {
     type ValidationArguments,
     type ValidatorConstraintInterface,
 } from 'class-validator';
-import { IsEntityId, QueryPaginationDto } from 'src/core/http';
+import { IsUuidId, QueryPaginationDto } from 'src/core/http';
 import { AuditAction } from 'src/core/observability/audit';
 
 /**
@@ -78,14 +78,14 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
      * The actor whose records to list.
      */
     @Expose()
-    @IsEntityId('The actor ID', { optional: true })
+    @IsUuidId('The actor ID', { optional: true })
     readonly actorId?: string;
 
     /**
      * The subject whose records to list.
      */
     @Expose()
-    @IsEntityId('The target ID', { optional: true })
+    @IsUuidId('The target ID', { optional: true })
     readonly targetId?: string;
 
     /**
