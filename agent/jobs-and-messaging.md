@@ -2,8 +2,6 @@
 
 - Durable asynchronous delivery uses `core/job-queue`, backed by pg-boss.
 - Development/test startup may migrate the pg-boss schema. Production startup sets `migrate: false` and rejects a missing or mismatched schema.
-- Before application rollout, a one-off migration job with dev dependencies runs `npm run deploy:migrate`: Drizzle migrations, pg-boss migrations, then pg-boss drift checks. Supply migration-scoped `DATABASE_URL` and `PGBOSS_DATABASE_URL` as secrets; `.secrets` mirrors only the latter for local `act`. Never use `db:push` against deployment databases or mutate them from pull-request CI.
-- Keep pg-boss migration and runtime roles separate. The schema owner grants the runtime role schema usage, table DML, sequence usage, routine execution, and matching default privileges.
 - Commands own the outer `ITransactionPort.run`. Aggregate writers persist state and accumulated jobs; commands enqueue command-owned jobs directly. All enqueueing uses the primary Drizzle proxy, so jobs commit with surrounding writes and audit. pg-boss owns its `pgboss` schema; exclude it from Drizzle discovery and schema filters.
 - Delivery attempts may repeat; retries and backoff are bounded.
 - Normal queues route terminal failures to the shared DLQ. Technical queues, including redrive orchestration, opt out with `disableDeadLetter: true`; the DLQ has no worker.
@@ -18,3 +16,10 @@
 - Durable job consumers use `application/queue/`; network ingress uses `presentation/listener/`. Thin listeners and consumers await commands through pipelines; cache eviction may call its port directly.
 - Prefer idempotent reconciliation for repeated/concurrent delivery. Email may be sent more than once.
 - Pipeline and durable-job cache eviction share `<module>-cache-key.util.ts`; neither prevents concurrent stale cache fills. Failure semantics: [Adapters](data-and-state.md#adapters).
+
+### Deployment
+
+- Before rollout, run `npm run deploy:migrate` once in a migration job with dev dependencies. It runs Drizzle migration, pg-boss migration, then drift check. Do not use `db:push` against deployment databases or mutate them from pull-request CI.
+- Drizzle reads `DATABASE_URL`; the pg-boss CLI reads `PGBOSS_DATABASE_URL`. Both must target the runtime's logical primary database. The CLI variable may alias the migration job's `DATABASE_URL`; a second stored secret is optional. Local `act` receives the CLI variable through `.secrets`.
+- Use separate migration and runtime database roles. Keep migration credentials out of the application. Grant runtime schema usage, required table DML, sequence usage, and routine execution; configure future-object default privileges. Verify existing grants as the runtime role before rollout.
+- At first rollout, assign the three DLQ permissions to intended operator admins. Verify source queues route to `application-dead-letter` and the redrive queue opts out. For rollback to code without DLQ routing, clear persisted source `dead_letter` settings before or with the old code; retain the DLQ and its jobs.
