@@ -61,12 +61,12 @@ class TransactionalProbeConsumer implements IJobConsumer {
     /**
      * Initializes the probe with the transaction-aware dependencies under test.
      *
-     * @param db Primary database proxy that must select the pg-boss transaction
+     * @param database Primary database proxy that must select the pg-boss transaction
      * @param transactionPort Nested application transaction boundary that must join the ambient transaction
      * @param jobQueueWriterPort Child-job writer that must enqueue through the same transaction
      */
     constructor(
-        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase,
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
     ) {}
@@ -78,7 +78,7 @@ class TransactionalProbeConsumer implements IJobConsumer {
      */
     async consume(job: Job) {
         await this.transactionPort.run(async () => {
-            await this.db.execute(sql`
+            await this.database.execute(sql`
                 INSERT INTO public.job_queue_transaction_probe (id)
                 VALUES (${job.deliveryId})
             `);
@@ -100,7 +100,7 @@ class TransactionalProbeConsumer implements IJobConsumer {
 describe('Transactional pg-boss consumer', () => {
     let module: TestingModule;
     let boss: PgBoss;
-    let db: NodePgDatabase;
+    let database: NodePgDatabase;
 
     /**
      * Captures intentional consumer failures.
@@ -131,30 +131,30 @@ describe('Transactional pg-boss consumer', () => {
         builder.overrideProvider(TOKEN_ERROR_REPORTER_PORT).useValue(errorReporterPort);
         module = await builder.compile();
         boss = module.get<PgBoss>(TOKEN_JOB_QUEUE_CLIENT);
-        db = module.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
+        database = module.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
 
         await boss.deleteQueue(PROBE_QUEUE);
         await boss.deleteQueue(CHILD_QUEUE);
         await boss.createQueue(CHILD_QUEUE, { policy: 'standard' });
-        await db.execute(sql`
+        await database.execute(sql`
             CREATE TABLE IF NOT EXISTS public.job_queue_transaction_probe (
                 id text PRIMARY KEY
             )
         `);
-        await db.execute(sql`TRUNCATE TABLE public.job_queue_transaction_probe`);
+        await database.execute(sql`TRUNCATE TABLE public.job_queue_transaction_probe`);
 
         await module.init();
     });
 
     afterAll(async () => {
-        if (!boss || !db || !module) {
+        if (!boss || !database || !module) {
             return;
         }
 
         await boss.offWork(PROBE_QUEUE);
         await boss.deleteQueue(PROBE_QUEUE);
         await boss.deleteQueue(CHILD_QUEUE);
-        await db.execute(sql`DROP TABLE public.job_queue_transaction_probe`);
+        await database.execute(sql`DROP TABLE public.job_queue_transaction_probe`);
         await module.close();
     });
 
@@ -170,7 +170,7 @@ describe('Transactional pg-boss consumer', () => {
             })
             .toBe('retry');
 
-        const rows = await db.execute<{ id: string }>(sql`
+        const rows = await database.execute<{ id: string }>(sql`
             SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
         `);
         const childJobs = await boss.findJobs<Job>(CHILD_QUEUE);
@@ -195,7 +195,7 @@ describe('Transactional pg-boss consumer', () => {
             })
             .toBe('completed');
 
-        const rows = await db.execute<{ id: string }>(sql`
+        const rows = await database.execute<{ id: string }>(sql`
             SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
         `);
         const childJobs = await boss.findJobs<Job>(CHILD_QUEUE);
@@ -231,7 +231,7 @@ describe('Transactional pg-boss consumer', () => {
                 sourceRetryCount: 0,
                 data: { deliveryId, aggregateId: FAILURE_AGGREGATE_ID },
             });
-            const rows = await db.execute(sql`
+            const rows = await database.execute(sql`
                 SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
             `);
             expect(rows.rows).toHaveLength(0);

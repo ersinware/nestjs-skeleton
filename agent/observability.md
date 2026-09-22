@@ -10,6 +10,7 @@
 - Preserve SDK `parentbased_always_on`; never configure sampler overrides that drop traces before the Collector. Collector tail sampling retains traces with any ERROR span or latency above the configured threshold and samples the remainder by configured percentage; logs/metrics are unsampled. Upstream drops, including unsampled parents, cannot be recovered; downstream sampling must honor the retention policy.
 - Route each trace to one tail-sampling Collector; size decision windows/capacity for traffic and late spans. Pending traces/decisions are memory-only: restarts, overload, and late arrivals can lose error evidence or traces.
 - Match service/environment attributes across signals and Compose log labels. Generate a fresh `service.instance.id` per SDK startup, preserving env/host/process attributes and overriding static IDs. Exclude trace/user/request IDs from metric dimensions and Loki index labels; exclude instance/task IDs from Loki index labels.
+- Each delivery attempt starts a new root consumer span, not an HTTP child. It links back to its producer when valid `traceparent` exists; missing or malformed context does not block delivery. Link visibility depends on sampling and retention.
 - Collect local Docker logs only with `telemetry.logs: 'true'`; exclude Collector diagnostics.
 - Preserve `file_storage` exporter queues and log offsets on the local named volume. Offsets alone do not guarantee delivery; buffers, retry limits, and storage loss can lose telemetry.
 

@@ -81,11 +81,11 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
             // included) and appends `+0000` itself. The pools are module-private, so no query can
             // reach the driver's own parsers.
             useFactory: (pool: Pool): NodePgDatabase => {
-                const db = drizzle({ client: pool });
+                const database = drizzle({ client: pool });
 
-                return new Proxy(db, {
+                return new Proxy(database, {
                     get: (_target, property): unknown => {
-                        const client = transactionStorage.getStore() ?? db,
+                        const client = transactionStorage.getStore() ?? database,
                             member: unknown = Reflect.get(client, property, client);
 
                         return typeof member === 'function' ? member.bind(client) : member;
@@ -107,8 +107,8 @@ const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECT
         },
         {
             provide: TOKEN_DATABASE_HEALTH_PORT,
-            useFactory: (db: NodePgDatabase, loggerPort: ILoggerPort): IDatabaseHealthPort =>
-                new DatabaseHealthAdapter(db, loggerPort, DatabaseRole.PRIMARY),
+            useFactory: (database: NodePgDatabase, loggerPort: ILoggerPort): IDatabaseHealthPort =>
+                new DatabaseHealthAdapter(database, loggerPort, DatabaseRole.PRIMARY),
             inject: [TOKEN_DATABASE_CLIENT, TOKEN_LOGGER_PORT],
         },
         {

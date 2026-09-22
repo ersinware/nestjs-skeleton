@@ -11,6 +11,7 @@ import { fromDrizzle, type JobWithMetadata, type PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { JOB_QUEUE_DEAD_LETTER, JOB_QUEUE_DEAD_LETTER_REDRIVE } from 'src/core/job-queue/dead-letter-queue.constant';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
+import { captureJobTraceparent, runInJobProducerSpan } from 'src/core/job-queue/job-trace-context';
 import { type IJobQueueDeadLetterMetricsPort } from 'src/core/job-queue/port/job-queue-dead-letter-metrics.port';
 import { type IJobQueueDeadLetterOperatorPort } from 'src/core/job-queue/port/job-queue-dead-letter-operator.port';
 import {
@@ -146,26 +147,29 @@ export class JobQueueOperationsAdapter
      */
     async enqueueDeadLetterRedrive(operationId: string): Promise<boolean> {
         try {
-            const acceptedId = await this.boss.send(
-                JOB_QUEUE_DEAD_LETTER_REDRIVE,
-                {},
-                {
-                    id: operationId,
-                    db: fromDrizzle(this.database, sql),
-                },
-            );
+            return await runInJobProducerSpan(JOB_QUEUE_DEAD_LETTER_REDRIVE, async () => {
+                const traceparent = captureJobTraceparent(),
+                    acceptedId = await this.boss.send(
+                        JOB_QUEUE_DEAD_LETTER_REDRIVE,
+                        traceparent === undefined ? {} : { traceparent },
+                        {
+                            id: operationId,
+                            db: fromDrizzle(this.database, sql),
+                        },
+                    );
 
-            if (acceptedId === null) {
-                return false;
-            }
+                if (acceptedId === null) {
+                    return false;
+                }
 
-            if (acceptedId !== operationId) {
-                throw new SystemException('The job queue returned an unexpected redrive operation identifier.', {
-                    context: { class: this.constructor.name, method: this.enqueueDeadLetterRedrive.name },
-                });
-            }
+                if (acceptedId !== operationId) {
+                    throw new SystemException('The job queue returned an unexpected redrive operation identifier.', {
+                        context: { class: this.constructor.name, method: this.enqueueDeadLetterRedrive.name },
+                    });
+                }
 
-            return true;
+                return true;
+            });
         } catch (error) {
             throw translateConnectionFailure(error);
         }

@@ -21,9 +21,9 @@ import type { SearchParams } from 'src/shared/search';
 @Injectable()
 export class AdminReplicaReaderAdapter implements IListAdminsPort {
     /**
-     * @param db The Drizzle client on the replica connection
+     * @param database The Drizzle client on the replica connection
      */
-    constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Reads one page of non-deleted admin read-models.
@@ -43,7 +43,7 @@ export class AdminReplicaReaderAdapter implements IListAdminsPort {
 
         try {
             const [data, countResult] = await Promise.all([
-                this.db
+                this.database
                     .select({
                         id: admin.id,
                         email: admin.email,
@@ -56,7 +56,7 @@ export class AdminReplicaReaderAdapter implements IListAdminsPort {
                     .orderBy(desc(admin.id))
                     .limit(params.limit)
                     .offset((params.page - 1) * params.limit),
-                this.db.select({ total: count() }).from(admin).where(conditions),
+                this.database.select({ total: count() }).from(admin).where(conditions),
             ]);
 
             return { data, total: countResult[0]?.total ?? 0 };

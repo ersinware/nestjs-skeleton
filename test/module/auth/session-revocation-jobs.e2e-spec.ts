@@ -171,7 +171,7 @@ const CASES: readonly RevocationCase[] = [
 describe('Auth session-revocation jobs', () => {
     let module: TestingModule;
     let boss: PgBoss;
-    let db: NodePgDatabase;
+    let database: NodePgDatabase;
     let logoutAllHandler: LogoutAllCommandHandler;
     let refreshTokensHandler: RefreshTokensCommandHandler;
     const aggregateIds: string[] = [];
@@ -201,7 +201,7 @@ describe('Auth session-revocation jobs', () => {
         builder.overrideProvider(TOKEN_ERROR_REPORTER_PORT).useValue({ report });
         module = await builder.compile();
         boss = module.get<PgBoss>(TOKEN_JOB_QUEUE_CLIENT);
-        db = module.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
+        database = module.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
         logoutAllHandler = module.get(LogoutAllCommandHandler);
         refreshTokensHandler = module.get(RefreshTokensCommandHandler);
 
@@ -213,7 +213,7 @@ describe('Auth session-revocation jobs', () => {
     });
 
     afterAll(async () => {
-        if (!module || !boss || !db) {
+        if (!module || !boss || !database) {
             return;
         }
 
@@ -235,9 +235,9 @@ describe('Auth session-revocation jobs', () => {
         }
 
         for (const aggregateId of aggregateIds) {
-            await db.delete(audit).where(or(eq(audit.actorId, aggregateId), eq(audit.targetId, aggregateId)));
-            await db.delete(admin).where(eq(admin.id, aggregateId));
-            await db.delete(user).where(eq(user.id, aggregateId));
+            await database.delete(audit).where(or(eq(audit.actorId, aggregateId), eq(audit.targetId, aggregateId)));
+            await database.delete(admin).where(eq(admin.id, aggregateId));
+            await database.delete(user).where(eq(user.id, aggregateId));
         }
 
         await module.close();
@@ -306,7 +306,7 @@ describe('Auth session-revocation jobs', () => {
 
             const sourceJobs = await findJobs(sourceQueue, aggregateId),
                 ownerState = await readPrincipalState(aggregateId, principalType),
-                auditRows = await db
+                auditRows = await database
                     .select({ action: audit.action })
                     .from(audit)
                     .where(or(eq(audit.actorId, aggregateId), eq(audit.targetId, aggregateId))),
@@ -356,9 +356,9 @@ describe('Auth session-revocation jobs', () => {
         };
 
         if (principalType === PrincipalType.ADMIN) {
-            await db.insert(admin).values(values);
+            await database.insert(admin).values(values);
         } else {
-            await db.insert(user).values(values);
+            await database.insert(user).values(values);
         }
     }
 
@@ -378,7 +378,7 @@ describe('Auth session-revocation jobs', () => {
 
         if (principalType === PrincipalType.ADMIN) {
             return (
-                await db
+                await database
                     .select({
                         version: admin.version,
                         sessionVersion: admin.sessionVersion,
@@ -389,7 +389,7 @@ describe('Auth session-revocation jobs', () => {
             )[0];
         }
 
-        return (await db.select(selection).from(user).where(eq(user.id, aggregateId)))[0];
+        return (await database.select(selection).from(user).where(eq(user.id, aggregateId)))[0];
     }
 
     /**

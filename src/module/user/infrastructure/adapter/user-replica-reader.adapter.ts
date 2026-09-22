@@ -21,9 +21,9 @@ import type { SearchParams } from 'src/shared/search';
 @Injectable()
 export class UserReplicaReaderAdapter implements IListUsersPort {
     /**
-     * @param db The Drizzle client on the replica connection
+     * @param database The Drizzle client on the replica connection
      */
-    constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Retrieves a paginated list of non-deleted user read-models, optionally filtered by a
@@ -44,7 +44,7 @@ export class UserReplicaReaderAdapter implements IListUsersPort {
 
         try {
             const [data, countResult] = await Promise.all([
-                this.db
+                this.database
                     .select({
                         id: user.id,
                         email: user.email,
@@ -57,7 +57,7 @@ export class UserReplicaReaderAdapter implements IListUsersPort {
                     .orderBy(desc(user.id))
                     .limit(params.limit)
                     .offset((params.page - 1) * params.limit),
-                this.db.select({ total: count() }).from(user).where(conditions),
+                this.database.select({ total: count() }).from(user).where(conditions),
             ]);
 
             return { data, total: countResult[0]?.total ?? 0 };

@@ -20,9 +20,9 @@ export class AuditAdapter implements IAuditPort {
     /**
      * Creates an instance of AuditAdapter.
      *
-     * @param db The Drizzle client on the primary connection
+     * @param database The Drizzle client on the primary connection
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Completes the input with the ambient audit context and inserts the row; outside a request
@@ -34,7 +34,7 @@ export class AuditAdapter implements IAuditPort {
      */
     async record(input: AuditRecordInput) {
         try {
-            await this.db.insert(audit).values({
+            await this.database.insert(audit).values({
                 ...getAuditContext(),
                 ...input,
                 traceId: trace.getActiveSpan()?.spanContext().traceId ?? null,

@@ -36,9 +36,9 @@ export class UserReaderAdapter
         IGetUserSessionVersionPort
 {
     /**
-     * @param db The Drizzle client on the primary connection
+     * @param database The Drizzle client on the primary connection
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Retrieves a non-deleted user's read-model by ID.
@@ -50,7 +50,7 @@ export class UserReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             id: user.id,
                             email: user.email,
@@ -78,7 +78,7 @@ export class UserReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             id: user.id,
                             password: user.password,
@@ -106,7 +106,7 @@ export class UserReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({ email: user.email, name: user.name })
                         .from(user)
                         .where(and(eq(user.id, id), isNull(user.deletedAt)))
@@ -130,7 +130,7 @@ export class UserReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({ sessionVersion: user.sessionVersion })
                         .from(user)
                         .where(eq(user.id, id))
@@ -152,7 +152,7 @@ export class UserReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             isBanned: user.isBanned,
                             sessionVersion: user.sessionVersion,

@@ -9,6 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
+import { captureJobTraceparent, runInJobProducerSpan } from 'src/core/job-queue/job-trace-context';
 import { Job } from 'src/core/job-queue/job.type';
 import { IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';
 import type { JobDefinition } from 'src/shared/domain/job';
@@ -23,11 +24,11 @@ export class JobQueueWriterAdapter implements IJobQueueWriterPort {
     /**
      * Initializes the adapter with the required queue dependencies.
      *
-     * @param db Primary database executor
+     * @param database Primary database executor
      * @param boss pg-boss client used to insert jobs
      */
     constructor(
-        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase,
         @Inject(TOKEN_JOB_QUEUE_CLIENT) private readonly boss: PgBoss,
     ) {}
 
@@ -52,17 +53,23 @@ export class JobQueueWriterAdapter implements IJobQueueWriterPort {
 
         try {
             for (const [queueName, jobs] of queues.entries()) {
-                const jobIds = await this.boss.insert(
-                    queueName,
-                    jobs.map((job) => ({ id: uuidv7(), data: job })),
-                    { db: fromDrizzle(this.db, sql), returnId: true },
-                );
+                await runInJobProducerSpan(queueName, async () => {
+                    const traceparent = captureJobTraceparent(),
+                        jobIds = await this.boss.insert(
+                            queueName,
+                            jobs.map((job) => ({
+                                id: uuidv7(),
+                                data: { ...job, ...(traceparent && { traceparent }) },
+                            })),
+                            { db: fromDrizzle(this.database, sql), returnId: true },
+                        );
 
-                if (jobIds === null || jobIds.length !== jobs.length) {
-                    throw new SystemException('The jobs were not all accepted by the queue.', {
-                        context: { class: this.constructor.name, method: this.enqueue.name },
-                    });
-                }
+                    if (jobIds === null || jobIds.length !== jobs.length) {
+                        throw new SystemException('The jobs were not all accepted by the queue.', {
+                            context: { class: this.constructor.name, method: this.enqueue.name },
+                        });
+                    }
+                });
             }
         } catch (error) {
             throw translateConnectionFailure(error);
