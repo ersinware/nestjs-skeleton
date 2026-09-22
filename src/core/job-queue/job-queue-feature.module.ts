@@ -54,7 +54,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
 
                 await provisionJobQueue(this.boss, consumer.name, {
                     policy: consumer.queueOptions?.policy ?? 'standard',
-                    deadLetter: consumer.queueOptions?.deadLetter ?? null,
+                    disableDeadLetter: consumer.queueOptions?.disableDeadLetter ?? false,
                 });
             } catch (error) {
                 if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {

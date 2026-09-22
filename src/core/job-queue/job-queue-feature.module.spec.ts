@@ -57,7 +57,7 @@ async function setup(consumers: IJobConsumer[]): Promise<{
 }
 
 describe('JobQueueFeatureModule', () => {
-    it('keeps source DLQ routing disabled and retains single-job transactional and Redis defaults', async () => {
+    it('routes source failures to the shared DLQ and retains single-job transactional and Redis defaults', async () => {
         const { module, feature, boss } = await setup([
             { name: 'transactional-source', transactional: true, consume: vi.fn() },
             { name: 'redis-source', transactional: false, consume: vi.fn() },
@@ -71,9 +71,15 @@ describe('JobQueueFeatureModule', () => {
                     retryBackoff: true,
                     policy: 'standard',
                     partition: false,
+                    deadLetter: JOB_QUEUE_DEAD_LETTER,
+                });
+                expect(boss.updateQueue).toHaveBeenCalledWith(name, {
+                    retryLimit: 10,
+                    retryDelay: 15,
+                    retryBackoff: true,
+                    deadLetter: JOB_QUEUE_DEAD_LETTER,
                 });
             }
-            expect(boss.updateQueue).not.toHaveBeenCalled();
             expect(boss.work).toHaveBeenCalledWith(
                 'transactional-source',
                 {
@@ -114,6 +120,17 @@ describe('JobQueueFeatureModule', () => {
                 workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 2 },
             },
         ]);
+        boss.getQueue.mockImplementation((name: string) =>
+            Promise.resolve({
+                name,
+                policy: name === JOB_QUEUE_DEAD_LETTER_REDRIVE ? 'exclusive' : 'standard',
+                partition: false,
+                retryLimit: 10,
+                retryDelay: 15,
+                retryBackoff: true,
+                deadLetter: name === JOB_QUEUE_DEAD_LETTER_REDRIVE ? JOB_QUEUE_DEAD_LETTER : null,
+            }),
+        );
         try {
             await feature.onApplicationBootstrap();
             expect(boss.work).toHaveBeenCalledWith(
@@ -141,7 +158,20 @@ describe('JobQueueFeatureModule', () => {
                 policy: 'exclusive',
                 partition: false,
             });
-            expect(boss.updateQueue).not.toHaveBeenCalledWith(JOB_QUEUE_DEAD_LETTER_REDRIVE, expect.anything());
+            expect(boss.updateQueue).toHaveBeenCalledWith(JOB_QUEUE_DEAD_LETTER_REDRIVE, {
+                retryLimit: 10,
+                retryDelay: 15,
+                retryBackoff: true,
+                deadLetter: null,
+            });
+            expect(boss.createQueue).toHaveBeenCalledWith('email-source', {
+                retryLimit: 10,
+                retryDelay: 15,
+                retryBackoff: true,
+                policy: 'standard',
+                partition: false,
+                deadLetter: JOB_QUEUE_DEAD_LETTER,
+            });
         } finally {
             await module.close();
         }

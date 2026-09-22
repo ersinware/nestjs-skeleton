@@ -4,6 +4,7 @@
  */
 
 import { type PgBoss, type Queue, type UpdateQueueOptions } from 'pg-boss';
+import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue/dead-letter-queue.constant';
 import type { JobQueueOptions } from 'src/core/job-queue/job-consumer.interface';
 import { SystemException } from 'src/shared/exception';
 
@@ -25,11 +26,13 @@ const JOB_QUEUE_MUTABLE_DEFAULTS = {
  * @throws {SystemException} When immutable queue options conflict with the application topology
  */
 export async function provisionJobQueue(boss: PgBoss, name: string, options: JobQueueOptions) {
+    const deadLetter = options.disableDeadLetter ? null : JOB_QUEUE_DEAD_LETTER;
+
     await boss.createQueue(name, {
         ...JOB_QUEUE_MUTABLE_DEFAULTS,
         policy: options.policy,
         partition: false,
-        ...(options.deadLetter === null ? {} : { deadLetter: options.deadLetter }),
+        ...(deadLetter === null ? {} : { deadLetter }),
     });
 
     const queue = await boss.getQueue(name);
@@ -44,7 +47,7 @@ export async function provisionJobQueue(boss: PgBoss, name: string, options: Job
 
     const mutableOptions = {
         ...JOB_QUEUE_MUTABLE_DEFAULTS,
-        deadLetter: options.deadLetter,
+        deadLetter,
     } as const satisfies UpdateQueueOptions;
 
     if (hasMutableOptionMismatch(queue, mutableOptions)) {
