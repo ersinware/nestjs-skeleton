@@ -37,6 +37,8 @@ import { TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/admin/appl
 import { TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
 import { TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
 import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/application/query/get-admin-session-version/port';
+import { GetFreshAdminByIdQueryHandler } from 'src/module/admin/application/query/get-fresh-admin-by-id/handler';
+import { TOKEN_GET_FRESH_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
 import { ListAdminPermissionCatalogQueryHandler } from 'src/module/admin/application/query/list-admin-permission-catalog/handler';
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
@@ -94,16 +96,18 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         ListAdminsQueryHandler,
         ListAdminPermissionCatalogQueryHandler,
         GetAdminByIdQueryHandler,
+        GetFreshAdminByIdQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
         { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_FRESH_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReplicaReaderAdapter },
+        { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useExisting: TOKEN_LIST_ADMINS_PORT },
     ],
     exports: [AdminFacade],
 })

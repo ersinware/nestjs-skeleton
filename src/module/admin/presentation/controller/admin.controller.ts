@@ -48,6 +48,7 @@ import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-in
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { GetAdminByIdQuery } from 'src/module/admin/application/query/get-admin-by-id/query';
+import { GetFreshAdminByIdQuery } from 'src/module/admin/application/query/get-fresh-admin-by-id/query';
 import { ListAdminPermissionCatalogQuery } from 'src/module/admin/application/query/list-admin-permission-catalog/query';
 import { ListAdminsQuery } from 'src/module/admin/application/query/list-admins/query';
 import { PatchAdminPasswordDto } from 'src/module/admin/presentation/dto/patch-admin-password.dto';
@@ -247,7 +248,10 @@ export class AdminController {
             new UpdateAdminCommand(principal.id, patchAdminDto.email, patchAdminDto.name),
         );
 
-        return plainToInstance(ResponseAdminDto, await this.queryPipeline.execute(new GetAdminByIdQuery(principal.id)));
+        return plainToInstance(
+            ResponseAdminDto,
+            await this.queryPipeline.execute(new GetFreshAdminByIdQuery(principal.id)),
+        );
     }
 
     /**

@@ -7,6 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
+import { type IGetFreshUserByIdPort } from 'src/module/user/application/query/get-fresh-user-by-id/port';
 import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
 import { type GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
 import { type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
@@ -23,12 +24,13 @@ import { user } from 'src/module/user/infrastructure/user.schema';
  * Implements the user query ports on the primary connection with direct projection queries: selects
  * only each read-model's columns and maps rows straight to flat results, never through the
  * aggregate. Every port here feeds a write decision (login, refresh, session reconciliation) or
- * populates the read cache, so a replica's lag is not acceptable; lag-tolerant reads live in the
+ * populates the read cache or returns a post-mutation projection. Lag-tolerant reads live in the
  * replica reader.
  */
 @Injectable()
 export class UserReaderAdapter
     implements
+        IGetFreshUserByIdPort,
         IGetUserAuthStatePort,
         IGetUserByIdPort,
         IGetUserCredentialsByEmailPort,

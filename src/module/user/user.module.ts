@@ -25,6 +25,8 @@ import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/co
 import { SendUserRefreshReuseNoticeCommandHandler } from 'src/module/user/application/command/send-user-refresh-reuse-notice/handler';
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
+import { GetFreshUserByIdQueryHandler } from 'src/module/user/application/query/get-fresh-user-by-id/handler';
+import { TOKEN_GET_FRESH_USER_BY_ID_PORT } from 'src/module/user/application/query/get-fresh-user-by-id/port';
 import { GetUserAuthStateQueryHandler } from 'src/module/user/application/query/get-user-auth-state/handler';
 import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
@@ -90,10 +92,12 @@ import { UserFacade } from 'src/module/user/user.facade';
         ListUsersQueryHandler,
         ListUserPermissionCatalogQueryHandler,
         GetUserByIdQueryHandler,
+        GetFreshUserByIdQueryHandler,
         GetUserCredentialsByEmailQueryHandler,
         GetUserAuthStateQueryHandler,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
         { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },
+        { provide: TOKEN_GET_FRESH_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_GET_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },

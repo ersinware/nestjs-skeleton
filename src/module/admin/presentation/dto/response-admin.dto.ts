@@ -54,4 +54,15 @@ export class ResponseAdminDto {
         example: false,
     })
     readonly isBanned!: boolean;
+
+    /**
+     * Whether the admin has set their first password, independently of the ban state.
+     */
+    @Expose()
+    @ApiProperty({
+        type: Boolean,
+        description: 'Whether the admin account has been activated by setting its first password',
+        example: true,
+    })
+    readonly isActivated!: boolean;
 }

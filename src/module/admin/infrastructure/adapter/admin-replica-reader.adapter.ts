@@ -4,9 +4,11 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, ilike, isNull, or, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_REPLICA_CLIENT, translateConnectionFailure } from 'src/core/database';
+import { type IGetAdminByIdPort } from 'src/module/admin/application/query/get-admin-by-id/port';
+import { type GetAdminByIdResult } from 'src/module/admin/application/query/get-admin-by-id/query';
 import { type IListAdminsPort } from 'src/module/admin/application/query/list-admins/port';
 import { type ListAdminsResult } from 'src/module/admin/application/query/list-admins/query';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
@@ -19,11 +21,40 @@ import type { SearchParams } from 'src/shared/search';
  * belongs to the primary reader.
  */
 @Injectable()
-export class AdminReplicaReaderAdapter implements IListAdminsPort {
+export class AdminReplicaReaderAdapter implements IGetAdminByIdPort, IListAdminsPort {
     /**
      * @param database The Drizzle client on the replica connection
      */
     constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}
+
+    /**
+     * Reads an admin projection by identifier.
+     *
+     * @param id The unique identifier of the target admin
+     * @returns The admin projection, or null when no non-deleted admin exists
+     */
+    async getById(id: string): Promise<GetAdminByIdResult | null> {
+        try {
+            return (
+                (
+                    await this.database
+                        .select({
+                            id: admin.id,
+                            email: admin.email,
+                            name: admin.name,
+                            permissions: admin.permissions,
+                            isBanned: admin.isBanned,
+                            isActivated: sql<boolean>`${admin.password} is not null`,
+                        })
+                        .from(admin)
+                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
+                        .limit(1)
+                )[0] ?? null
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
 
     /**
      * Reads one page of non-deleted admin read-models.
@@ -50,6 +81,7 @@ export class AdminReplicaReaderAdapter implements IListAdminsPort {
                         name: admin.name,
                         permissions: admin.permissions,
                         isBanned: admin.isBanned,
+                        isActivated: sql<boolean>`${admin.password} is not null`,
                     })
                     .from(admin)
                     .where(conditions)

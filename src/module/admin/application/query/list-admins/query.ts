@@ -32,6 +32,7 @@ export type ListAdminsResult = {
         readonly name: string;
         readonly permissions: readonly Permission[];
         readonly isBanned: boolean;
+        readonly isActivated: boolean;
     }[];
     readonly total: number;
 };
