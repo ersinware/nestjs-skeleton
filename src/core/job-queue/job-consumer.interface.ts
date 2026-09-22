@@ -15,9 +15,9 @@ export type JobQueueOptions = {
     readonly policy: 'standard' | 'exclusive';
 
     /**
-     * Destination for terminal failures, or null when dead-letter routing is disabled.
+     * Whether terminal failures bypass the shared dead-letter queue.
      */
-    readonly deadLetter: string | null;
+    readonly disableDeadLetter: boolean;
 };
 
 /**
@@ -36,6 +36,7 @@ export interface IJobConsumer {
 
     /**
      * Queue topology overrides; standard delivery into the shared DLQ is the default.
+     * Set disableDeadLetter to true for a technical queue that must not route failures.
      */
     readonly queueOptions?: Partial<JobQueueOptions>;
 

@@ -15,7 +15,7 @@ export const JOB_QUEUE_DEAD_LETTER = 'application-dead-letter';
  */
 export const JOB_QUEUE_DEAD_LETTER_OPTIONS = {
     policy: 'standard',
-    deadLetter: null,
+    disableDeadLetter: true,
 } as const satisfies JobQueueOptions;
 
 /**
@@ -28,5 +28,5 @@ export const JOB_QUEUE_DEAD_LETTER_REDRIVE = 'application-dead-letter-redrive';
  */
 export const JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS = {
     policy: 'exclusive',
-    deadLetter: null,
+    disableDeadLetter: true,
 } as const satisfies JobQueueOptions;

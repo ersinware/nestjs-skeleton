@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and protected operations exist. Current startup reconciliation defaults source routing to `deadLetter: null`; enabling it remains Phase 6 work.
+Add observable and operator-controlled dead-letter handling to the existing pg-boss job system without creating a second source of truth. The shared DLQ and protected operations exist. Startup reconciliation now routes normal source queues to it; first deployment is deferred.
 
 The implementation must preserve the existing at-least-once delivery model, transactional job production, bounded retries, module boundaries, authorization, audit durability, and horizontally scaled runtime.
 
@@ -13,11 +13,11 @@ The implementation must preserve the existing at-least-once delivery model, tran
 - [x] Phase 3 - Exact discard
 - [x] Phase 4 - Asynchronous all-job redrive
 - [x] Phase 5 - Metrics and alerting
-- [ ] Phase 6 - Enable source routing and verify rollout
+- [x] Phase 6 - Enable source routing
 - [ ] Phase 7 - Verification
 - [ ] Phase 8 - Documentation and rollout
 
-The control plane and monitoring are implemented. Source routing remains disabled and unit tests cover this default. Enable routing in Phase 6, then complete Phase 7 and production-role validation before rollout.
+The control plane, monitoring, and source routing are implemented. Phase 6 local unit, type, and targeted PostgreSQL E2E checks pass. Broader Phase 7 verification and first-deployment gates remain open.
 
 ## Agreed scope
 
@@ -90,7 +90,7 @@ Operation status exists only for pg-boss's configured retention window. Audit is
 2. Provision and verify the shared DLQ before any source queue may reference it. Do not start a worker for the DLQ.
 3. Extend consumer queue metadata only as much as required:
     - normal application queues remain `standard`; Phase 6 will opt them into the shared DLQ;
-    - the redrive orchestration queue overrides policy to `exclusive` and disables dead-letter routing;
+    - the redrive orchestration queue overrides policy to `exclusive` and sets `disableDeadLetter: true`;
     - immutable policy/partition mismatches still fail startup;
     - mutable retry and `deadLetter` options are reconciled explicitly.
 4. Add narrow core ports for dead-letter reads, operator mutations, and metrics instead of exporting the raw pg-boss client/token. One adapter implements all three and is shared through `useExisting`; pg-boss types do not leak into the module application layer.
@@ -218,9 +218,8 @@ Grafana Cloud: `GrafanaCloud` folder, `dlq-operations` rule group and contact po
 
 1. Set every normal application queue's mutable `deadLetter` option to `application-dead-letter` during startup reconciliation.
 2. Keep source queues `standard`; this preserves safe redrive behavior for the current pg-boss implementation.
-3. Verify rollout ordering: pg-boss schema migration/drift check, application startup and DLQ provisioning, then source queue reconciliation and workers.
-4. Confirm the runtime database role already has the pg-boss privileges required by queue creation, reads, redrive, and deletion.
-5. Do not touch old source-queue `failed` rows. Only new terminal failures create DLQ copies.
+3. Verify startup ordering: pg-boss schema migration/drift check precedes application startup; DLQ provisioning precedes source queue reconciliation and workers.
+4. Do not touch old source-queue `failed` rows. Only new terminal failures create DLQ copies.
 
 ### Acceptance criteria
 
@@ -228,11 +227,13 @@ Grafana Cloud: `GrafanaCloud` folder, `dlq-operations` rule group and contact po
 - The DLQ copy is the only record managed by list, discard, and redrive endpoints.
 - Rollback disables source `deadLetter` options explicitly before or with the older application rollout; it does not delete queues or retained jobs.
 
+Local verification confirms source/DLQ records and the redrive queue opt-out. First-deployment checks are tracked in Phase 8; no production environment exists yet.
+
 ## Phase 7 - Verification
 
 ### Verification status
 
-Current routing implementation and test expectations disagree; previous passing runs do not verify this working tree. After resolving Phase 6, rerun typecheck, the environment/monitor/worker unit tests, and `test/core/job-queue/transactional-consumer.e2e-spec.ts`. Complete the remaining checks below before rollout.
+Source routing and the worker unit test now agree. Typecheck, worker unit tests, and `test/core/job-queue/transactional-consumer.e2e-spec.ts` passed locally after Phase 6 routing changes. Complete the remaining checks below before rollout.
 
 ### Integration tests with real PostgreSQL and pg-boss
 
@@ -271,7 +272,35 @@ Current routing implementation and test expectations disagree; previous passing 
 4. Reassess `AGENTS.md`; add no duplicate implementation detail unless future work needs a new top-level routing rule.
 5. Grant the new permissions to the intended operator admins through the normal permission-assignment process.
 6. Create Grafana alerts before or with DLQ routing activation.
-7. Deploy using the existing order: `npm run deploy:migrate`, then application rollout. This feature adds no application schema migration; the migration step still verifies pg-boss compatibility and drift.
+7. Run `npm run deploy:migrate` with the migration role before application rollout. This feature adds no application schema migration; the step still verifies pg-boss compatibility and drift.
+8. Verify pg-boss schema/table/sequence/routine privileges as the runtime database role; local superuser tests cannot prove these grants. Then deploy the application and check source queue `dead_letter` values. For rollback, disable source `deadLetter` explicitly before or with the older application; retain the DLQ and its jobs.
+
+As the runtime role, this read-only query must return no rows:
+
+```sql
+SELECT 'schema' AS object_type, 'pgboss' AS object_name WHERE to_regnamespace('pgboss') IS NULL
+UNION ALL
+SELECT 'schema', n.nspname
+FROM pg_namespace n
+WHERE n.nspname = 'pgboss' AND NOT has_schema_privilege(n.oid, 'USAGE')
+UNION ALL
+SELECT 'table', c.relname
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'pgboss'
+  AND CASE WHEN c.relkind IN ('r', 'p') THEN
+    NOT (has_table_privilege(c.oid, 'SELECT') AND has_table_privilege(c.oid, 'INSERT')
+      AND has_table_privilege(c.oid, 'UPDATE') AND has_table_privilege(c.oid, 'DELETE'))
+  ELSE false END
+UNION ALL
+SELECT 'sequence', c.relname
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'pgboss'
+  AND CASE WHEN c.relkind = 'S' THEN NOT has_sequence_privilege(c.oid, 'USAGE') ELSE false END
+UNION ALL
+SELECT 'routine', p.proname
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'pgboss' AND NOT has_function_privilege(p.oid, 'EXECUTE');
+```
 
 ## Deliberately deferred
 
