@@ -14,10 +14,10 @@ The implementation must preserve the existing at-least-once delivery model, tran
 - [x] Phase 4 - Asynchronous all-job redrive
 - [x] Phase 5 - Metrics and alerting
 - [x] Phase 6 - Enable source routing
-- [ ] Phase 7 - Verification
+- [x] Phase 7 - Verification
 - [ ] Phase 8 - Documentation and rollout
 
-The control plane, monitoring, and source routing are implemented. Phase 6 local unit, type, and targeted PostgreSQL E2E checks pass. Broader Phase 7 verification and first-deployment gates remain open.
+The control plane, monitoring, and source routing are implemented. Phase 7 local checks and Grafana email delivery are verified. First-deployment gates remain in Phase 8.
 
 ## Agreed scope
 
@@ -195,7 +195,7 @@ Configure Grafana-managed alerts against the metrics datasource. Evaluate once p
 
 Keep comparisons in Grafana thresholds, not in PromQL: filtering healthy zero-valued series would cause false No Data incidents. Set No Data and query errors to Alerting for the monitor rule. `min` catches a replica emitting zero, not one that stops emitting while peers remain; No Data catches an absence of all matching series. Verify the metric names in Grafana after OTLP ingestion before saving the rules; keep external health alerts for complete service/telemetry outages.
 
-Grafana Cloud: `GrafanaCloud` folder, `dlq-operations` rule group and contact point, `grafanacloud-prom` datasource. The four saved queries returned healthy values after provisioning. Local-dev No Data Firing and Resolved emails were delivered; other incident notifications remain for Phase 7 verification.
+Grafana Cloud: `GrafanaCloud` folder, `dlq-operations` rule group and email contact point, `grafanacloud-prom` datasource. All four rules are enabled and use the planned queries, thresholds, and zero pending period. Local-dev No Data Firing and Resolved emails were delivered. The other three rules fired and resolved during Phase 7; the operator confirmed receipt of both emails for each rule.
 
 ### Monitoring deployment and capacity
 
@@ -233,7 +233,16 @@ Local verification confirms source/DLQ records and the redrive queue opt-out. Fi
 
 ### Verification status
 
-Source routing and the worker unit test now agree. Typecheck, worker unit tests, and `test/core/job-queue/transactional-consumer.e2e-spec.ts` passed locally after Phase 6 routing changes. Complete the remaining checks below before rollout.
+Local Phase 7 results:
+
+- Typecheck and lint pass; all 375 unit tests pass.
+- All 30 targeted PostgreSQL/pg-boss E2E tests pass across DLQ read, discard, redrive, and transactional-consumer suites. Supply the local Compose Redis passwords to the test process for the readiness check; `.env.test` leaves them blank.
+- Build, OpenAPI/client generation, and Spectral pass. Generated DLQ routes include the applicable documented 400/401/403/404/409/500/503 responses.
+- With 200 temporary DLQ jobs, `EXPLAIN (ANALYZE, BUFFERS)` used the pg-boss `(name, id)` index plus a top-N sort and executed the page query in about 1 ms locally. It has no index matching `created_on DESC, id DESC`; reassess at production-scale depth. Temporary jobs were removed.
+- pg-boss `getQueueStats(..., { force: true })` may reuse a recent queue-table snapshot for up to one minute. Metric integration tests account for this cache; monitoring remains periodic, not an immediate state read.
+- Live Grafana smoke test: temporary test-owned jobs produced depth `1`, oldest age above `7200` seconds, and failed redrive count `1`. All three incident rules entered `firing`; after exact-ID cleanup, metrics returned to zero and no incident rule remained `firing`. All route to the configured `dlq-operations` email contact point. The operator confirmed receipt of Firing and Resolved emails for all three rules.
+
+The optional full E2E run is not green for unrelated existing tests: `response.interceptor.e2e-spec.ts` returns 500 even when run alone; `health.e2e-spec.ts` expects unauthenticated `/api/health` and gets 401; `global-exception.filter.e2e-spec.ts` contains no active suite. These files were not changed for DLQ verification.
 
 ### Integration tests with real PostgreSQL and pg-boss
 

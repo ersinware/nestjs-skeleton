@@ -34,6 +34,7 @@
 ### Dead-letter Monitoring
 
 - Enable `JOB_QUEUE_DLQ_MONITOR_ENABLED` only on the designated monitoring instance; deployment owns replacement, with no leader election. Disabled monitors allocate no instruments/callbacks, perform no reads, and emit no DLQ series; job workers remain enabled. The monitoring instance needs the OTel SDK and Collector.
-- Sample immediately, then wait `JOB_QUEUE_DLQ_SAMPLE_INTERVAL` after each attempt completes. OTel callbacks read only the last complete snapshot; sampling and metric export have independent intervals. Emit no business metrics before the first successful sample; on failure retain previous values and emit `job_queue_dlq_monitor_up=0`. DLQ state does not affect readiness.
+- Sample immediately, then wait `JOB_QUEUE_DLQ_SAMPLE_INTERVAL` after each attempt. pg-boss may reuse forced queue statistics for up to one minute.
+- OTel callbacks read only the last complete sample; export has its own interval. Before the first success, emit no business metrics. On failure, retain previous values and emit `job_queue_dlq_monitor_up=0`. DLQ state does not affect readiness.
 - Report sampling failure once until recovery: dependency unavailability → `warn`, other failures → `IErrorReporterPort`, recovery → `info`. Reporting failures must not interrupt sampling.
 - Alert on non-empty/aging DLQ, failed redrive, and monitor failure. Aggregate shared counts/age with `max`, never `sum`, and monitor health with `min`. Apply thresholds in Grafana; do not filter healthy series out of PromQL results. Set monitor No Data/query errors to Alerting; a silent instance is hidden while another still reports. Keep job/source/payload identifiers out of metric dimensions.
