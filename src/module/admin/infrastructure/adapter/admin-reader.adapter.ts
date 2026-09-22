@@ -37,9 +37,9 @@ export class AdminReaderAdapter
     /**
      * Initializes the adapter with the primary database client.
      *
-     * @param db The Drizzle client on the primary connection
+     * @param database The Drizzle client on the primary connection
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Reads an admin projection by identifier.
@@ -51,7 +51,7 @@ export class AdminReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             id: admin.id,
                             email: admin.email,
@@ -79,7 +79,7 @@ export class AdminReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             id: admin.id,
                             password: admin.password,
@@ -107,7 +107,7 @@ export class AdminReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             email: admin.email,
                             name: admin.name,
@@ -140,7 +140,7 @@ export class AdminReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({ email: admin.email, name: admin.name })
                         .from(admin)
                         .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
@@ -163,7 +163,7 @@ export class AdminReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({ sessionVersion: admin.sessionVersion })
                         .from(admin)
                         .where(eq(admin.id, id))
@@ -185,7 +185,7 @@ export class AdminReaderAdapter
         try {
             return (
                 (
-                    await this.db
+                    await this.database
                         .select({
                             isBanned: admin.isBanned,
                             sessionVersion: admin.sessionVersion,

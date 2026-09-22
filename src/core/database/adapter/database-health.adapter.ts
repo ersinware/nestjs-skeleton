@@ -26,12 +26,12 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
     /**
      * Initializes the probe with the connection it verifies and the logger.
      *
-     * @param db The Drizzle client on the probed connection
+     * @param database The Drizzle client on the probed connection
      * @param loggerPort The port the outage transitions are logged on
      * @param role The probed connection's role, named in the transition logs
      */
     constructor(
-        private readonly db: NodePgDatabase,
+        private readonly database: NodePgDatabase,
         private readonly loggerPort: ILoggerPort,
         private readonly role: DatabaseRole,
     ) {}
@@ -45,7 +45,7 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
      */
     async ping() {
         try {
-            await this.db.execute(sql`SELECT 1`);
+            await this.database.execute(sql`SELECT 1`);
         } catch (error) {
             if (!this.isDown) {
                 this.isDown = true;

@@ -11,6 +11,7 @@
 - Worker batches contain one job. Set per-queue, per-process concurrency and polling through `IJobConsumer.workerOptions`; defaults live in `JobQueueFeatureModule`, overrides in consumers. Keep total transactional concurrency below the queue pool limit, reserving capacity for polling, completion, and maintenance. Concurrency scales with process count and is not a global rate limit; account for provider quotas.
 - Stop DLQ sampling before pg-boss workers, and workers before database pools.
 - `JobDefinition` carries `{ deliveryId, aggregateId, queueName }`; `deliveryId` identifies one logical delivery across retries. Consumers re-read current authoritative state; carry no business snapshots.
+- Persist only optional W3C `traceparent` with job data, not baggage or vendor trace state. Retries, DLQ copies, and redrive retain it; domain jobs and older payloads need no trace field.
 - Cross-context producers depend on owner-defined shared job contracts, never another module's domain enum. Keep queue names and payloads compatible with queued work and concurrently running versions.
 - Runtime provisioning creates missing queues, verifies immutable policy/partitioning, and reconciles mutable retry defaults. Change immutable options through an explicit operational migration.
 - Durable job consumers use `application/queue/`; network ingress uses `presentation/listener/`. Thin listeners and consumers await commands through pipelines; cache eviction may call its port directly.

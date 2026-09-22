@@ -22,11 +22,11 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     /**
      * Initializes the adapter with the required persistence dependencies.
      *
-     * @param db The Drizzle database client
+     * @param database The Drizzle database client
      * @param jobQueueWriterPort Persists jobs atomically with the aggregate
      */
     constructor(
-        @Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase,
+        @Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase,
         @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
     ) {}
 
@@ -39,7 +39,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
     async load(id: string): Promise<Admin | null> {
         try {
             const row = (
-                await this.db
+                await this.database
                     .select()
                     .from(adminSchema)
                     .where(and(eq(adminSchema.id, id), isNull(adminSchema.deletedAt)))
@@ -67,7 +67,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             // existing one updates only while the row still carries the loaded version, storing it
             // incremented. A stale aggregate matches neither branch and affects no row.
             affected = (
-                await this.db
+                await this.database
                     .insert(adminSchema)
                     .values(payload)
                     .onConflictDoUpdate({

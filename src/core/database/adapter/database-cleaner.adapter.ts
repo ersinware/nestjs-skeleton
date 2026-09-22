@@ -17,9 +17,9 @@ export class DatabaseCleanerAdapter implements IDatabaseCleanerPort {
     /**
      * Initializes the cleaner with the database connection.
      *
-     * @param db The Drizzle database instance
+     * @param database The Drizzle database instance
      */
-    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Truncates every table outside the PostgreSQL system schemas and Drizzle's migration
@@ -31,7 +31,7 @@ export class DatabaseCleanerAdapter implements IDatabaseCleanerPort {
      * @throws {Error} If the truncation query fails.
      */
     async cleanup() {
-        await this.db.execute(sql`
+        await this.database.execute(sql`
             DO $$ DECLARE
                 r RECORD;
             BEGIN

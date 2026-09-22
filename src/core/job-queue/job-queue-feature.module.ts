@@ -11,6 +11,7 @@ import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue/dead-letter-queue.cons
 import { type IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { provisionJobQueue } from 'src/core/job-queue/job-queue-provisioner';
+import { runInJobConsumerSpan } from 'src/core/job-queue/job-trace-context';
 import { Job } from 'src/core/job-queue/job.type';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { DependencyUnavailableException, SystemException } from 'src/shared/exception';
@@ -101,19 +102,27 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
      */
     private async consume(consumer: IJobConsumer, jobs: PgBossJob<Job>[]) {
         for (const job of jobs) {
-            try {
-                await consumer.consume(job.data);
-            } catch (error) {
-                if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {
-                    this.errorReporterPort.report(error, {
-                        class: JobQueueFeatureModule.name,
-                        method: 'boss.work',
-                        data: job.data,
-                    });
-                }
+            const { id, data } = job;
 
-                throw error;
-            }
+            await runInJobConsumerSpan(consumer.name, id, data.deliveryId, data.traceparent, async () => {
+                try {
+                    await consumer.consume(data);
+                } catch (error) {
+                    if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {
+                        this.errorReporterPort.report(error, {
+                            class: JobQueueFeatureModule.name,
+                            method: this.consume.name,
+                            data: {
+                                queueName: consumer.name,
+                                jobId: id,
+                                data,
+                            },
+                        });
+                    }
+
+                    throw error;
+                }
+            });
         }
     }
 }

@@ -24,9 +24,9 @@ import { PaginationParams } from 'src/shared/pagination';
 @Injectable()
 export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPort, IGetAuditTrailRecordByIdPort {
     /**
-     * @param db The Drizzle client on the replica connection
+     * @param database The Drizzle client on the replica connection
      */
-    constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly db: NodePgDatabase) {}
+    constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
      * Reads one newest-first page of record summaries. Every filter targets an indexed column and
@@ -46,7 +46,7 @@ export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPor
 
         try {
             const [data, countResult] = await Promise.all([
-                this.db
+                this.database
                     .select({
                         id: audit.id,
                         action: audit.action,
@@ -60,7 +60,7 @@ export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPor
                     .orderBy(desc(audit.occurredAt), desc(audit.id))
                     .limit(params.limit)
                     .offset((params.page - 1) * params.limit),
-                this.db.select({ total: count() }).from(audit).where(conditions),
+                this.database.select({ total: count() }).from(audit).where(conditions),
             ]);
 
             return { data, total: countResult[0]?.total ?? 0 };
@@ -77,7 +77,7 @@ export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPor
      */
     async getById(id: string): Promise<GetAuditTrailRecordByIdResult | null> {
         try {
-            return (await this.db.select().from(audit).where(eq(audit.id, id)).limit(1))[0] ?? null;
+            return (await this.database.select().from(audit).where(eq(audit.id, id)).limit(1))[0] ?? null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
