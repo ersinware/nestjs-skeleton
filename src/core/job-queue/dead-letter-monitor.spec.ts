@@ -151,4 +151,29 @@ describe('DeadLetterMonitor', () => {
         });
         expect(logger.info).toHaveBeenCalledTimes(1);
     });
+
+    it('publishes only monitor health before the first successful sample and reports an unexpected outage once', async () => {
+        const failure = new Error('Intentional sample failure.');
+        port.getDeadLetterReadyCount.mockRejectedValue(failure);
+        monitor = createMonitor(true);
+        await monitor.onApplicationBootstrap();
+
+        expect(await observe()).toEqual({ job_queue_dlq_monitor_up: 0 });
+        expect(reporter.report).toHaveBeenCalledWith(failure, {
+            class: 'DeadLetterMonitor',
+            method: 'refresh',
+        });
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reporter.report).toHaveBeenCalledTimes(1);
+
+        port.getDeadLetterReadyCount.mockResolvedValue(2);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(await observe()).toEqual({
+            job_queue_dlq_monitor_up: 1,
+            job_queue_dlq_ready_count: 2,
+            job_queue_dlq_oldest_age_seconds: 180,
+            job_queue_redrive_failed_count: 1,
+        });
+        expect(logger.info).toHaveBeenCalledTimes(1);
+    });
 });
