@@ -7,7 +7,7 @@ import { Query } from '@nestjs/cqrs';
 import type { Permission } from 'src/shared/domain/principal';
 
 /**
- * Fetches the public admin projection by unique identifier.
+ * Fetches the public admin projection by unique identifier, tolerating replication lag.
  */
 export class GetAdminByIdQuery extends Query<GetAdminByIdResult> {
     /**
@@ -29,4 +29,5 @@ export type GetAdminByIdResult = {
     readonly name: string;
     readonly permissions: readonly Permission[];
     readonly isBanned: boolean;
+    readonly isActivated: boolean;
 };

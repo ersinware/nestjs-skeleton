@@ -4,13 +4,11 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
-import { type IGetAdminByIdPort } from 'src/module/admin/application/query/get-admin-by-id/port';
-import { type GetAdminByIdResult } from 'src/module/admin/application/query/get-admin-by-id/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 import { type IGetAdminInviteRecipientPort } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
@@ -19,6 +17,8 @@ import { type IGetAdminNoticeRecipientPort } from 'src/module/admin/application/
 import { type GetAdminNoticeRecipientResult } from 'src/module/admin/application/query/get-admin-notice-recipient/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
 import { type GetAdminSessionVersionResult } from 'src/module/admin/application/query/get-admin-session-version/query';
+import { type IGetFreshAdminByIdPort } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
+import { type GetFreshAdminByIdResult } from 'src/module/admin/application/query/get-fresh-admin-by-id/query';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 
 /**
@@ -29,7 +29,7 @@ export class AdminReaderAdapter
     implements
         IGetAdminAuthStatePort,
         IGetAdminCredentialsByEmailPort,
-        IGetAdminByIdPort,
+        IGetFreshAdminByIdPort,
         IGetAdminInviteRecipientPort,
         IGetAdminNoticeRecipientPort,
         IGetAdminSessionVersionPort
@@ -47,7 +47,7 @@ export class AdminReaderAdapter
      * @param id The unique identifier of the target admin
      * @returns The admin projection, or null when no non-deleted admin exists
      */
-    async getById(id: string): Promise<GetAdminByIdResult | null> {
+    async getById(id: string): Promise<GetFreshAdminByIdResult | null> {
         try {
             return (
                 (
@@ -58,6 +58,7 @@ export class AdminReaderAdapter
                             name: admin.name,
                             permissions: admin.permissions,
                             isBanned: admin.isBanned,
+                            isActivated: sql<boolean>`${admin.password} is not null`,
                         })
                         .from(admin)
                         .where(and(eq(admin.id, id), isNull(admin.deletedAt)))

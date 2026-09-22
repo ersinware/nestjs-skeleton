@@ -45,6 +45,7 @@ import { DeleteUserCommand } from 'src/module/user/application/command/delete-us
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
+import { GetFreshUserByIdQuery } from 'src/module/user/application/query/get-fresh-user-by-id/query';
 import { GetUserByIdQuery } from 'src/module/user/application/query/get-user-by-id/query';
 import { ListUserPermissionCatalogQuery } from 'src/module/user/application/query/list-user-permission-catalog/query';
 import { ListUsersQuery } from 'src/module/user/application/query/list-users/query';
@@ -236,7 +237,10 @@ export class UserController {
     ): Promise<ResponseUserDto> {
         await this.commandPipeline.execute(new UpdateUserCommand(principal.id, patchUserDto.email, patchUserDto.name));
 
-        return plainToInstance(ResponseUserDto, await this.queryPipeline.execute(new GetUserByIdQuery(principal.id)));
+        return plainToInstance(
+            ResponseUserDto,
+            await this.queryPipeline.execute(new GetFreshUserByIdQuery(principal.id)),
+        );
     }
 
     /**
