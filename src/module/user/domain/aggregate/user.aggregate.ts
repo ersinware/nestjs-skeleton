@@ -169,34 +169,24 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Updates the basic profile information of the user.
-     * Only applies changes if the provided values differ from the current state.
+     * Updates the display name when it differs from the current state.
      *
-     * @returns Whether any field actually changed — the caller records the audit entry only on a real
-     * transition, so a request that matched the current state leaves no fabricated trail.
+     * @param name The new display name
+     * @returns Whether the name changed
      * @throws {SystemException} When the account has been soft-deleted
      */
-    updateProfile(payload: { readonly name?: string; readonly email?: string }): boolean {
-        this.assertNotDeleted(this.updateProfile.name);
+    updateName(name: string): boolean {
+        this.assertNotDeleted(this.updateName.name);
 
-        let isUpdated = false;
-
-        if (payload.name && payload.name !== this.props.name) {
-            this.props.name = payload.name;
-            isUpdated = true;
+        if (name === this.props.name) {
+            return false;
         }
 
-        if (payload.email && payload.email !== this.props.email) {
-            this.props.email = payload.email;
-            isUpdated = true;
-        }
+        this.props.name = name;
+        this.props.updatedAt = new Date();
+        this.addCacheInvalidationJob();
 
-        if (isUpdated) {
-            this.props.updatedAt = new Date();
-            this.addCacheInvalidationJob();
-        }
-
-        return isUpdated;
+        return true;
     }
 
     /**

@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles UpdateUserCommand. Applies profile changes to the User aggregate root and persists it.
+ * @description Handles UpdateUserCommand. Applies display-name changes to the User aggregate root and persists it.
  */
 
 import { Inject } from '@nestjs/common';
@@ -15,7 +15,7 @@ import { UpdateUserCommand } from 'src/module/user/application/command/update-us
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Updates profile fields on an existing user.
+ * Updates the display name on an existing user.
  */
 @CommandHandler(UpdateUserCommand)
 export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserCommand, void> {
@@ -34,17 +34,12 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
 
     /**
      * Executes the update user command.
-     * When neither email nor name is provided the command is a no-op and returns immediately.
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      */
     async execute(command: UpdateUserCommand) {
-        const { id, email, name } = command;
-
-        if (!email && !name) {
-            return;
-        }
+        const { id, name } = command;
 
         const user = await this.userWriterPort.load(id);
 
@@ -52,10 +47,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             throw new ResourceNotFoundException();
         }
 
-        // `updateProfile` reports whether anything actually changed. On a payload matching the
-        // current state there is nothing to persist or audit — an entry for a change that changed
-        // nothing would fabricate a fact.
-        if (!user.updateProfile({ ...(name && { name }), ...(email && { email }) })) {
+        // An unchanged name requires no persistence or mutation audit.
+        if (!user.updateName(name)) {
             return;
         }
 

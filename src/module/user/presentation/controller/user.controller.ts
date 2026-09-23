@@ -210,10 +210,10 @@ export class UserController {
     }
 
     /**
-     * Updates the currently authenticated user's profile.
+     * Updates the currently authenticated user's display name.
      *
      * @param principal The verified principal of the current request
-     * @param patchUserDto The sparse payload carrying the fields to update
+     * @param patchUserDto The optional display name to update
      * @returns The updated, serialized profile of the current user
      */
     @Patch('me')
@@ -221,21 +221,19 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Update current user profile',
-        description: "Updates details of the currently authenticated user's profile.",
+        description: "Updates only the currently authenticated user's display name.",
     })
     @ApiOkResponse({ description: 'User successfully updated.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    // Generic 409 on purpose: a taken email address and a concurrent modification share the status,
-    // so naming one cause would document the endpoint as if the other did not exist.
-    @ApiDefaultResourceConflictResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async updateMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchUserDto: PatchUserDto,
     ): Promise<ResponseUserDto> {
-        await this.commandPipeline.execute(new UpdateUserCommand(principal.id, patchUserDto.email, patchUserDto.name));
+        await this.commandPipeline.execute(new UpdateUserCommand(principal.id, patchUserDto.name));
 
         return plainToInstance(
             ResponseUserDto,
