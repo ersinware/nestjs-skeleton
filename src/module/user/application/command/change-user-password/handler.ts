@@ -57,9 +57,8 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
 
     /**
      * Executes the change user password command.
-     * Checks the loaded account's ban state before password verification because the guard's
-     * Redis version may lag behind a committed ban. Issuing tokens at the newly advanced version
-     * would otherwise give that banned account access that later reconciliation would not revoke.
+     * Rejects a loaded ban before password verification; the aggregate also enforces the ban
+     * when changing state.
      *
      * @param command The command payload
      * @returns The committed password change and its session outcome

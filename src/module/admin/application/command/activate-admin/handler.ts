@@ -9,16 +9,32 @@ import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import {
-    ActivateAdminCommand,
-    ActivateAdminMessage,
-    ActivateAdminRejectionReason,
-} from 'src/module/admin/application/command/activate-admin/command';
+import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { ExceptionKind, InvalidInputException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    InvalidInputException,
+    isExceptionOfKind,
+    isExceptionWithAuditReason,
+} from 'src/shared/exception';
+
+/**
+ * Audit reasons for activation refusals decided by the handler.
+ */
+const ActivateAdminRejectionReason = {
+    /**
+     * The invitation token failed verification.
+     */
+    INVALID_TOKEN: 'INVALID_TOKEN',
+
+    /**
+     * The verified token refers to an account that no longer exists.
+     */
+    ACCOUNT_NOT_FOUND: 'ACCOUNT_NOT_FOUND',
+} as const;
 
 /**
  * Activates a pending admin account. Verification is two-layered: the token's signature and expiry,
@@ -34,7 +50,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param tokenPort The port used to verify the invite token
      * @param hashingPort The port used to hash the initial password
-     * @param auditPort The port used to record the activation, or its rejection, for the audit trail
+     * @param auditPort The port used to record activation and refusals
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -58,7 +74,6 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             payload = await this.tokenPort.verifyInviteToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                // The port error names the cause; the response deliberately does not.
                 throw await this.deny(ActivateAdminRejectionReason.INVALID_TOKEN);
             }
 
@@ -68,42 +83,16 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         const admin = await this.adminWriterPort.load(payload.sub);
 
         if (!admin) {
-            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_NOT_FOUND, payload.sub);
-        }
-
-        if (admin.isBanned) {
-            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_BANNED, admin.id);
-        }
-
-        if (admin.password !== null) {
-            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_ALREADY_ACTIVE, admin.id);
-        }
-
-        if (payload.inviteRevocationVersion !== admin.revocationVersion) {
-            throw await this.deny(ActivateAdminRejectionReason.INVITE_REVOKED, admin.id);
-        }
-
-        const { inviteIssuedAt, inviteExpiresAt } = admin;
-
-        if (
-            payload.jti !== admin.inviteId ||
-            payload.inviteRevocationVersion !== admin.inviteRevocationVersion ||
-            inviteIssuedAt === null ||
-            inviteExpiresAt === null ||
-            payload.iat * 1000 !== inviteIssuedAt.getTime() ||
-            payload.exp * 1000 !== inviteExpiresAt.getTime()
-        ) {
-            throw await this.deny(ActivateAdminRejectionReason.INVITE_MISMATCH, admin.id);
+            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_NOT_FOUND);
         }
 
         const password = await this.hashingPort.hash(command.password);
 
         try {
-            // The aggregate rechecks expiry after hashing, then consumes the invitation.
-            admin.activate(password, payload.jti);
+            admin.activate(password, payload);
         } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.INVALID_INPUT)) {
-                throw await this.deny(ActivateAdminRejectionReason.INVITE_EXPIRED, admin.id);
+            if (isExceptionWithAuditReason(error)) {
+                throw await this.deny(error.auditReason, admin.id);
             }
 
             throw error;
@@ -116,21 +105,19 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
     }
 
     /**
-     * Records the rejection and builds the uniform exception. A rejected invite is the same
-     * guessing signal as a failed login: only this handler knows the cause, and it names it to the
-     * auditor alone.
+     * Records the refusal and builds the uniform client response.
      *
-     * @param reason Why the attempt was rejected
-     * @param targetId The account the token named, absent when the token could not be read
+     * @param reason Why the activation was refused
+     * @param targetId Existing account rejected by the aggregate
      * @returns The exception the caller throws
      */
-    private async deny(reason: ActivateAdminRejectionReason, targetId?: string): Promise<InvalidInputException> {
+    private async deny(reason: string, targetId?: string): Promise<InvalidInputException> {
         await this.auditPort.record({
             action: AuditAction.ADMIN_ACTIVATION_FAILED,
             reason,
             ...(targetId && { targetId }),
         });
 
-        return new InvalidInputException(ActivateAdminMessage.INVALID_INVITE);
+        return new InvalidInputException('The invitation is invalid or has expired.');
     }
 }

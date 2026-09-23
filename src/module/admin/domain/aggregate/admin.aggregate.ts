@@ -9,15 +9,13 @@ import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
+    AccessDeniedMessage,
     InvalidInputException,
+    InvalidInputMessage,
     ResourceConflictException,
+    ResourceConflictMessage,
     SystemException,
 } from 'src/shared/exception';
-
-/**
- * Pending admin invitations remain valid for three days from issuance.
- */
-const INVITATION_LIFETIME_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * The module-owned state of an Admin aggregate.
@@ -108,6 +106,41 @@ type AdminSnapshot = {
      */
     readonly revocationVersion: number;
 } & Readonly<AdminProps>;
+
+/**
+ * Account-owned activation refusal reasons; only their string values leave the aggregate.
+ */
+enum ActivateAdminRejectionReason {
+    /**
+     * The account is banned from activation.
+     */
+    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
+
+    /**
+     * The account already has a password.
+     */
+    ACCOUNT_ALREADY_ACTIVE = 'ACCOUNT_ALREADY_ACTIVE',
+
+    /**
+     * The invitation predates the account's current revocation version.
+     */
+    INVITE_REVOKED = 'INVITE_REVOKED',
+
+    /**
+     * The verified invitation does not match the account's stored invitation.
+     */
+    INVITE_MISMATCH = 'INVITE_MISMATCH',
+
+    /**
+     * The stored invitation has expired.
+     */
+    INVITE_EXPIRED = 'INVITE_EXPIRED',
+}
+
+/**
+ * Pending admin invitations remain valid for three days from issuance.
+ */
+const INVITATION_LIFETIME_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * Owns admin lifecycle, authorization hierarchy, permissions, and session revocation.
@@ -254,31 +287,82 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Activates a pending admin by setting its first password.
+     * Activates a pending admin after checking account and invitation eligibility.
      *
      * @param password The Argon2-hashed initial password
-     * @param inviteId Identity from the invitation already matched to this aggregate by the caller
-     * @throws {SystemException} When the account is deleted or the caller bypassed activation prechecks
-     * @throws {InvalidInputException} When the invitation expired after the caller's prechecks
+     * @param payload Identity and timing claims from the verified invitation
+     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account is already active
+     * @throws {InvalidInputException} When the invitation is revoked, mismatched, or expired
      */
-    activate(password: string, inviteId: string) {
+    activate(
+        password: string,
+        payload: {
+            /**
+             * Account identifier from the verified invitation.
+             */
+            readonly sub: string;
+
+            /**
+             * Invitation identifier from the verified invitation.
+             */
+            readonly jti: string;
+
+            /**
+             * Revocation version captured when the invitation was issued.
+             */
+            readonly inviteRevocationVersion: number;
+
+            /**
+             * Token issuance time in Unix seconds.
+             */
+            readonly iat: number;
+
+            /**
+             * Token expiry time in Unix seconds.
+             */
+            readonly exp: number;
+        },
+    ) {
         this.assertNotDeleted(this.activate.name);
 
-        if (
-            this.props.password !== null ||
-            this.props.isBanned ||
-            this.props.inviteId !== inviteId ||
-            this.props.inviteExpiresAt === null ||
-            this.props.inviteRevocationVersion !== this.revocationVersion
-        ) {
-            throw new SystemException('Activation requires a pending, eligible account and a matching invitation.', {
-                context: { class: Admin.name, method: this.activate.name, id: this.id },
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                auditReason: ActivateAdminRejectionReason.ACCOUNT_BANNED,
             });
         }
 
-        // Time can advance during password hashing even though this aggregate's state is unchanged.
+        if (this.props.password !== null) {
+            throw new ResourceConflictException(ResourceConflictMessage.DEFAULT, {
+                auditReason: ActivateAdminRejectionReason.ACCOUNT_ALREADY_ACTIVE,
+            });
+        }
+
+        if (payload.inviteRevocationVersion !== this.revocationVersion) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ActivateAdminRejectionReason.INVITE_REVOKED,
+            });
+        }
+
+        if (
+            payload.sub !== this.id ||
+            payload.jti !== this.props.inviteId ||
+            payload.inviteRevocationVersion !== this.props.inviteRevocationVersion ||
+            this.props.inviteIssuedAt === null ||
+            this.props.inviteExpiresAt === null ||
+            payload.iat * 1000 !== this.props.inviteIssuedAt.getTime() ||
+            payload.exp * 1000 !== this.props.inviteExpiresAt.getTime()
+        ) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ActivateAdminRejectionReason.INVITE_MISMATCH,
+            });
+        }
+
         if (this.props.inviteExpiresAt.getTime() <= Date.now()) {
-            throw new InvalidInputException();
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ActivateAdminRejectionReason.INVITE_EXPIRED,
+            });
         }
 
         this.props.password = password;
@@ -294,9 +378,14 @@ export class Admin extends PrincipalAggregateRoot {
      *
      * @param password Argon2 password hash
      * @throws {SystemException} When the account has been soft-deleted
+     * @throws {AccessDeniedException} When the account is banned
      */
     changePassword(password: string) {
         this.assertNotDeleted(this.changePassword.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException();
+        }
 
         this.props.password = password;
         this.revokeAllSessions();
