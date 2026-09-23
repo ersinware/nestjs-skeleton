@@ -53,6 +53,7 @@
 ### Email Change State
 
 - Aggregates own pending request identity, target, expiry, and revocation snapshot; persist no JWT or issuance time. New requests replace prior requests, even for the same target; pending addresses are not reserved.
+- Email confirmation proofs must match both account ID and principal kind; JWT verification alone does not authorize the change. Retries must preserve the JWT and deadline; signing-key rotation requires a new request.
 - Keep the current email and sessions until confirmation. Confirmation consumes the matching, unexpired request at the current revocation version and revokes sessions; the email unique constraint resolves address conflicts.
 - Old-address notifications use immutable `email_change_notification` records, never the account's current email. Preserve recipients across later changes/deletion; delivery must match both record and account identity.
 - Persist the notification record with the email mutation, jobs, and audit ([Audit](observability.md#audit)).

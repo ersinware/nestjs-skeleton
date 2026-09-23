@@ -1,10 +1,11 @@
 /**
  * @file token.port.ts
- * @description Port contract for generating and verifying JWT access, refresh, and invite tokens.
+ * @description Port contract for generating and verifying JWT session, invitation, and email confirmation tokens.
  */
 
 import type { SessionIdentity, SessionRegistration } from 'src/core/security/session';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { Principal } from 'src/shared/domain/principal';
@@ -29,7 +30,7 @@ export type TokenPairWithSession = {
 };
 
 /**
- * Contract for generating and verifying JWT access, refresh, and invite tokens.
+ * Contract for generating and verifying JWT session, invitation, and email confirmation tokens.
  */
 export interface ITokenPort {
     /**
@@ -85,10 +86,10 @@ export interface ITokenPort {
     /**
      * Signs persisted invitation claims without generating identity or timestamps.
      *
-     * @param invitation Fixed claims loaded from the persisted invitation.
+     * @param payload Fixed claims loaded from the persisted invitation.
      * @returns The signed invite token.
      */
-    generateInviteToken(invitation: Omit<InviteTokenPayload, 'type'>): Promise<string>;
+    generateInviteToken(payload: Omit<InviteTokenPayload, 'type'>): Promise<string>;
 
     /**
      * Verifies an invite token's signature, type, identifiers, fixed times, and revocation version.
@@ -98,4 +99,21 @@ export interface ITokenPort {
      * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid invitation claims.
      */
     verifyInviteToken(token: string): Promise<InviteTokenPayload>;
+
+    /**
+     * Signs persisted email request claims without generating identity or timestamps.
+     *
+     * @param payload Fixed claims loaded from the pending request.
+     * @returns The signed email confirmation token.
+     */
+    generateEmailConfirmationToken(payload: Omit<EmailConfirmationTokenPayload, 'type'>): Promise<string>;
+
+    /**
+     * Verifies email confirmation claims; callers must still check ownership and current request state.
+     *
+     * @param token The JWT email confirmation token string.
+     * @returns Verified email confirmation claims.
+     * @throws {UnauthenticatedException} When the token has an invalid signature, lifetime, type, or request claims.
+     */
+    verifyEmailConfirmationToken(token: string): Promise<EmailConfirmationTokenPayload>;
 }

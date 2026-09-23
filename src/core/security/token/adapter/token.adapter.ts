@@ -12,6 +12,7 @@ import { ENV, parseTtlToSeconds } from 'src/core/config';
 import type { SessionIdentity } from 'src/core/security/session';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
+import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { ITokenPort, TokenPairWithSession } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
@@ -52,6 +53,11 @@ export class TokenAdapter implements ITokenPort {
     private readonly inviteSecret: string;
 
     /**
+     * Separate signing secret for email change proofs.
+     */
+    private readonly emailConfirmationSecret: string;
+
+    /**
      * Reads every per-type secret and lifetime once at boot, so a missing variable fails startup
      * instead of the first token operation.
      *
@@ -71,6 +77,7 @@ export class TokenAdapter implements ITokenPort {
         this.accessSecret = configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
         this.refreshSecret = configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET);
         this.inviteSecret = configService.getOrThrow<string>(ENV.JWT_INVITE_SECRET);
+        this.emailConfirmationSecret = configService.getOrThrow<string>(ENV.JWT_EMAIL_CONFIRM_SECRET);
     }
 
     /**
@@ -142,19 +149,39 @@ export class TokenAdapter implements ITokenPort {
     /**
      * Signs the same persisted invitation claims in a fixed order on every delivery.
      *
-     * @param invitation Fixed claims loaded from one persisted invitation
+     * @param payload Fixed claims loaded from one persisted invitation
      * @returns The signed invite token
      */
-    async generateInviteToken(invitation: Omit<InviteTokenPayload, 'type'>): Promise<string> {
+    async generateInviteToken(payload: Omit<InviteTokenPayload, 'type'>): Promise<string> {
         return this.jwtService.signAsync(
             {
-                sub: invitation.sub,
-                jti: invitation.jti,
-                inviteRevocationVersion: invitation.inviteRevocationVersion,
-                exp: invitation.exp,
+                sub: payload.sub,
+                jti: payload.jti,
+                inviteRevocationVersion: payload.inviteRevocationVersion,
+                exp: payload.exp,
                 type: AuthTokenType.INVITE,
             },
             { secret: this.inviteSecret, algorithm: 'HS256', noTimestamp: true },
+        );
+    }
+
+    /**
+     * Signs persisted email request claims in a fixed order without extending their lifetime.
+     *
+     * @param payload Fixed claims loaded from the pending request
+     * @returns The signed email confirmation token
+     */
+    async generateEmailConfirmationToken(payload: Omit<EmailConfirmationTokenPayload, 'type'>): Promise<string> {
+        return this.jwtService.signAsync(
+            {
+                sub: payload.sub,
+                principalType: payload.principalType,
+                jti: payload.jti,
+                emailRevocationVersion: payload.emailRevocationVersion,
+                exp: payload.exp,
+                type: AuthTokenType.EMAIL_CONFIRM,
+            },
+            { secret: this.emailConfirmationSecret, algorithm: 'HS256', noTimestamp: true },
         );
     }
 
@@ -230,6 +257,36 @@ export class TokenAdapter implements ITokenPort {
             payload.exp <= 0 ||
             !Number.isSafeInteger(payload.inviteRevocationVersion) ||
             payload.inviteRevocationVersion < 0
+        ) {
+            throw new UnauthenticatedException();
+        }
+
+        return payload;
+    }
+
+    /**
+     * Verifies the signature, expiry, discriminator, and persisted-request claim shape.
+     *
+     * @param token The JWT email confirmation token string
+     * @returns Verified email confirmation claims
+     */
+    async verifyEmailConfirmationToken(token: string): Promise<EmailConfirmationTokenPayload> {
+        const payload = await this.verifyToken<EmailConfirmationTokenPayload>(
+            token,
+            this.emailConfirmationSecret,
+            AuthTokenType.EMAIL_CONFIRM,
+        );
+
+        if (
+            typeof payload.sub !== 'string' ||
+            payload.sub.length === 0 ||
+            !PRINCIPAL_TYPES.has(payload.principalType) ||
+            typeof payload.jti !== 'string' ||
+            !UUID_V4_PATTERN.test(payload.jti) ||
+            !Number.isSafeInteger(payload.exp) ||
+            payload.exp <= 0 ||
+            !Number.isSafeInteger(payload.emailRevocationVersion) ||
+            payload.emailRevocationVersion < 0
         ) {
             throw new UnauthenticatedException();
         }

@@ -53,13 +53,17 @@ describe('env.validation.config', () => {
         JWT_INVITE_SECRET: 'invite-secret-at-least-32-bytes!',
         ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
 
+        JWT_EMAIL_CONFIRM_SECRET: 'email-confirm-secret-at-least-32-bytes',
+        ADMIN_EMAIL_CONFIRM_URL: 'http://localhost:3001/admin/email/confirm',
+        USER_EMAIL_CONFIRM_URL: 'http://localhost:3001/user/email/confirm',
+
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
 
+        GMAIL_USER_EMAIL: 'user@gmail.com',
         GMAIL_CLIENT_ID: 'gmail-client-id',
         GMAIL_CLIENT_SECRET: 'gmail-client-secret',
         GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
-        GMAIL_USER_EMAIL: 'user@gmail.com',
 
         SENTRY_DSN: 'https://publickey@sentry.example/1',
         SENTRY_ENVIRONMENT: ExceptionTrackerEnvironment.TEST,
@@ -77,6 +81,31 @@ describe('env.validation.config', () => {
         'should reject detector configuration that cannot guarantee the instance identity: %s',
         (detectors) => {
             expect(() => validateConfig({ ...validConfig, OTEL_NODE_RESOURCE_DETECTORS: detectors })).toThrow();
+        },
+    );
+
+    it.each(['JWT_EMAIL_CONFIRM_SECRET', 'ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(
+        'requires %s at startup',
+        (key) => {
+            const config: Record<string, unknown> = { ...validConfig };
+            delete config[key];
+            expect(() => validateConfig(config)).toThrow();
+        },
+    );
+
+    it.each(['', ' '.repeat(32), 'short', 123])('rejects an invalid email confirmation secret: %s', (secret) => {
+        expect(() => validateConfig({ ...validConfig, JWT_EMAIL_CONFIRM_SECRET: secret })).toThrow();
+    });
+
+    it.each(['ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(
+        'accepts only absolute HTTP(S) confirmation URLs for %s',
+        (key) => {
+            for (const value of ['', '/confirm', 'ftp://localhost/confirm', 'https://']) {
+                expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow();
+            }
+            for (const value of ['http://localhost:3001/confirm', 'https://frontend.example/confirm']) {
+                expect(() => validateConfig({ ...validConfig, [key]: value })).not.toThrow();
+            }
         },
     );
 
@@ -204,13 +233,13 @@ describe('env.validation.config', () => {
     it('should preserve supported zero values and host forms', () => {
         const result = validateConfig({
             ...validConfig,
+            TRUST_PROXY: '10.0.0.0/8,::1/128,loopback',
             DATABASE_IDLE_TIMEOUT: 0,
             DATABASE_MAX_LIFETIME: 0,
-            REDIS_CACHE_MAX_RETRIES_PER_REQUEST: 0,
-            REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 0,
             REDIS_CACHE_HOST: 'redis-cache',
+            REDIS_CACHE_MAX_RETRIES_PER_REQUEST: 0,
             REDIS_SESSION_HOST: '::1',
-            TRUST_PROXY: '10.0.0.0/8,::1/128,loopback',
+            REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 0,
         });
         expect(result.DATABASE_IDLE_TIMEOUT).toBe(0);
         expect(result.DATABASE_MAX_LIFETIME).toBe(0);
