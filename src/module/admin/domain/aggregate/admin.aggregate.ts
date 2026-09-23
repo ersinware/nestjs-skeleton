@@ -227,32 +227,23 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Applies changed profile fields.
+     * Updates the display name when it differs from the current state.
      *
-     * @param payload Profile fields to update
-     * @returns Whether any field changed
+     * @param name The new display name
+     * @returns Whether the name changed
      * @throws {SystemException} When the account has been soft-deleted
      */
-    updateProfile(payload: { readonly name?: string; readonly email?: string }): boolean {
-        this.assertNotDeleted(this.updateProfile.name);
+    updateName(name: string): boolean {
+        this.assertNotDeleted(this.updateName.name);
 
-        let isUpdated = false;
-
-        if (payload.name && payload.name !== this.props.name) {
-            this.props.name = payload.name;
-            isUpdated = true;
+        if (name === this.props.name) {
+            return false;
         }
 
-        if (payload.email && payload.email !== this.props.email) {
-            this.props.email = payload.email;
-            isUpdated = true;
-        }
+        this.props.name = name;
+        this.props.updatedAt = new Date();
 
-        if (isUpdated) {
-            this.props.updatedAt = new Date();
-        }
-
-        return isUpdated;
+        return true;
     }
 
     /**

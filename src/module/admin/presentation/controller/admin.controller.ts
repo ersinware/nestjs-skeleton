@@ -218,11 +218,11 @@ export class AdminController {
     }
 
     /**
-     * Updates the currently authenticated admin's profile; the target id comes from the verified
+     * Updates the currently authenticated admin's display name; the target id comes from the verified
      * token, never from the client.
      *
      * @param principal The verified principal of the current request
-     * @param patchAdminDto The sparse payload carrying the fields to update
+     * @param patchAdminDto The optional display name to update
      * @returns The updated, serialized profile of the current admin
      */
     @Patch('me')
@@ -230,23 +230,19 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Update current admin profile',
-        description: "Updates details of the currently authenticated admin's profile.",
+        description: "Updates only the currently authenticated admin's display name.",
     })
     @ApiOkResponse({ description: 'Admin successfully updated.', type: ResponseAdminDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    // Generic 409 on purpose: a taken email address and a concurrent modification share the status,
-    // so naming one cause would document the endpoint as if the other did not exist.
-    @ApiDefaultResourceConflictResponse()
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
     async updateMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchAdminDto: PatchAdminDto,
     ): Promise<ResponseAdminDto> {
-        await this.commandPipeline.execute(
-            new UpdateAdminCommand(principal.id, patchAdminDto.email, patchAdminDto.name),
-        );
+        await this.commandPipeline.execute(new UpdateAdminCommand(principal.id, patchAdminDto.name));
 
         return plainToInstance(
             ResponseAdminDto,

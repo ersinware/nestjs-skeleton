@@ -1,6 +1,6 @@
 /**
  * @file command.ts
- * @description Defines the UpdateUserCommand for updating a user's profile details.
+ * @description Defines the UpdateUserCommand for updating a user's display name.
  */
 
 import { Command } from '@nestjs/cqrs';
@@ -8,7 +8,7 @@ import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
- * Command to update a user's basic profile details. Invalidating: a successful update evicts the
+ * Command to update a user's display name. Invalidating: a successful update evicts the
  * user's cached projection.
  */
 export class UpdateUserCommand extends Command<void> implements ICacheInvalidatingCommand {
@@ -16,13 +16,11 @@ export class UpdateUserCommand extends Command<void> implements ICacheInvalidati
      * Initializes the command payload.
      *
      * @param id The unique identifier of the user
-     * @param email The new email address (optional)
-     * @param name The new name (optional)
+     * @param name The new display name
      */
     constructor(
         readonly id: string,
-        readonly email?: string,
-        readonly name?: string,
+        readonly name: string,
     ) {
         super();
     }

@@ -1,15 +1,15 @@
 /**
  * @file patch-admin.dto.ts
- * @description Request schema for partial updates to an admin's profile.
+ * @description Request schema for updating an admin's display name.
  */
 
-import { ApiSchema, PartialType } from '@nestjs/swagger';
+import { ApiSchema, PickType } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
 import { PostAdminDto } from 'src/module/admin/presentation/dto/post-admin.dto';
 
 /**
- * Sparse payload for partial profile updates; the password has its own endpoint.
+ * Required display name for profile updates.
  */
 @Exclude()
-@ApiSchema({ name: 'PatchAdmin', description: 'Schema for updating an existing admin' })
-export class PatchAdminDto extends PartialType(PostAdminDto) {}
+@ApiSchema({ name: 'PatchAdmin', description: 'Schema for updating the admin display name' })
+export class PatchAdminDto extends PickType(PostAdminDto, ['name'] as const) {}

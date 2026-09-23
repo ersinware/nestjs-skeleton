@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles UpdateAdminCommand. Applies profile changes to the Admin aggregate root and persists it.
+ * @description Handles UpdateAdminCommand. Applies display-name changes to the Admin aggregate root and persists it.
  */
 
 import { Inject } from '@nestjs/common';
@@ -15,7 +15,7 @@ import { UpdateAdminCommand } from 'src/module/admin/application/command/update-
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
- * Updates profile fields on an existing admin.
+ * Updates the display name on an existing admin.
  */
 @CommandHandler(UpdateAdminCommand)
 export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCommand, void> {
@@ -34,17 +34,12 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
 
     /**
      * Executes the update admin command.
-     * When neither email nor name is provided the command is a no-op and returns immediately.
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID
      */
     async execute(command: UpdateAdminCommand) {
-        const { id, email, name } = command;
-
-        if (!email && !name) {
-            return;
-        }
+        const { id, name } = command;
 
         const admin = await this.adminWriterPort.load(id);
 
@@ -52,10 +47,8 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
             throw new ResourceNotFoundException();
         }
 
-        // `updateProfile` reports whether anything actually changed. On a payload matching the
-        // current state there is nothing to persist or audit — an entry for a change that changed
-        // nothing would fabricate a fact.
-        if (!admin.updateProfile({ ...(name && { name }), ...(email && { email }) })) {
+        // An unchanged name requires no persistence or mutation audit.
+        if (!admin.updateName(name)) {
             return;
         }
 
