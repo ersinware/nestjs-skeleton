@@ -20,11 +20,6 @@ export type InviteTokenPayload = {
     readonly jti: string;
 
     /**
-     * Fixed issuance time in epoch seconds.
-     */
-    readonly iat: number;
-
-    /**
      * Fixed expiry in epoch seconds; redelivery never extends it.
      */
     readonly exp: number;

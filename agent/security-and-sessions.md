@@ -2,7 +2,7 @@
 
 ### Authentication & Authorization
 
-- JWT signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
+- JWT signing disables automatic `iat`; signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
 - Global guards run authentication before authorization; authentication verifies access JWTs, stable session liveness, and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal.
 - Authorize by permissions, never roles. `src/shared/domain/principal/` owns static `Permission` values and exhaustive `PERMISSION_HOLDER`; holder mismatches throw `InvalidInputException`. Use `<context>:<resource>:<action>` ([Administration](security-and-sessions.md#administration) exceptions); changing persisted values requires migration.
 - Access tokens carry dynamic permission assignments; authorization uses verified claims without additional store reads.
@@ -42,9 +42,9 @@
 
 ### Admin Invitations
 
-- Persist invitation metadata, never the JWT: UUID v4 `inviteId` (= job `deliveryId`), whole-second `inviteIssuedAt`/`inviteExpiresAt`, and `inviteRevocationVersion`. The aggregate owns the fixed three-day lifetime; no TTL configuration or handler-supplied timestamps. Metadata is all null or all populated for a passwordless account.
+- Persist invitation metadata, never the JWT: UUID v4 `inviteId` (= job `deliveryId`), whole-second `inviteExpiresAt`, and `inviteRevocationVersion`. The aggregate owns the fixed three-day lifetime; no TTL configuration or handler-supplied timestamps. Metadata is all null or all populated for a passwordless account.
 - `inviteRevocationVersion` captures the account's `revocationVersion` at issuance; never substitute the current version on delivery. Re-invite calls `revokeAllSessions` before replacing the invitation; pending accounts need no Redis sync. Persist state, job, and audit atomically ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
-- Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `iat`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
+- Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
 - Activation handlers verify the JWT, load from primary, and hash the password. The aggregate checks account eligibility, exact invitation binding, and expiry before setting the password and clearing metadata; persistence uses the optimistic lock without a counter bump.
 - Every expected activation refusal is audited and translated to one `InvalidInputException` message. Token and missing-account reasons belong to the handler; aggregate reasons stay private and reach it through `auditReason` ([Exceptions](exceptions.md#exceptions)). Unmarked aggregate errors propagate unchanged.
 

@@ -113,16 +113,15 @@ export class TokenAdapter implements ITokenPort {
                 sid: identity.sid,
                 sessionExpiresAt: identity.sessionExpiresAt,
                 sessionVersion,
-                iat: now,
             },
             [accessToken, refreshToken] = await Promise.all([
                 this.jwtService.signAsync(
                     { ...claims, permissions: principal.permissions, exp: accessExpiresAt, type: AuthTokenType.ACCESS },
-                    { secret: this.accessSecret, algorithm: 'HS256' },
+                    { secret: this.accessSecret, algorithm: 'HS256', noTimestamp: true },
                 ),
                 this.jwtService.signAsync(
                     { ...claims, jti: refreshTokenJti, exp: refreshExpiresAt, type: AuthTokenType.REFRESH },
-                    { secret: this.refreshSecret, algorithm: 'HS256' },
+                    { secret: this.refreshSecret, algorithm: 'HS256', noTimestamp: true },
                 ),
             ]);
 
@@ -152,11 +151,10 @@ export class TokenAdapter implements ITokenPort {
                 sub: invitation.sub,
                 jti: invitation.jti,
                 inviteRevocationVersion: invitation.inviteRevocationVersion,
-                iat: invitation.iat,
                 exp: invitation.exp,
                 type: AuthTokenType.INVITE,
             },
-            { secret: this.inviteSecret, algorithm: 'HS256' },
+            { secret: this.inviteSecret, algorithm: 'HS256', noTimestamp: true },
         );
     }
 
@@ -228,10 +226,8 @@ export class TokenAdapter implements ITokenPort {
             payload.sub.length === 0 ||
             typeof payload.jti !== 'string' ||
             !UUID_V4_PATTERN.test(payload.jti) ||
-            !Number.isSafeInteger(payload.iat) ||
-            payload.iat <= 0 ||
             !Number.isSafeInteger(payload.exp) ||
-            payload.exp <= payload.iat ||
+            payload.exp <= 0 ||
             !Number.isSafeInteger(payload.inviteRevocationVersion) ||
             payload.inviteRevocationVersion < 0
         ) {

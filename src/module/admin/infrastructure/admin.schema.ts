@@ -47,11 +47,6 @@ export const admin = adminSchema.table(
         inviteId: uuid('invite_id'),
 
         /**
-         * Fixed JWT issuance time; retries never change it.
-         */
-        inviteIssuedAt: timestamp('invite_issued_at'),
-
-        /**
          * Fixed invitation deadline.
          */
         inviteExpiresAt: timestamp('invite_expires_at'),
@@ -106,10 +101,10 @@ export const admin = adminSchema.table(
         check(
             'admin_invitation_check',
             sql`(
-                (${table.inviteId} IS NULL AND ${table.inviteIssuedAt} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL)
+                (${table.inviteId} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL)
                 OR
-                (${table.inviteId} IS NOT NULL AND ${table.inviteIssuedAt} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL
-                 AND ${table.password} IS NULL AND ${table.inviteExpiresAt} > ${table.inviteIssuedAt} AND ${table.inviteRevocationVersion} >= 0)
+                (${table.inviteId} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL
+                 AND ${table.password} IS NULL AND ${table.inviteRevocationVersion} >= 0)
             )`,
         ),
         // Partial index over live rows: serves every `id = ? AND deleted_at IS NULL` lookup and the
