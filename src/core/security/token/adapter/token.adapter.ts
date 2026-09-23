@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService, JwtSignOptions } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { JsonWebTokenError } from 'jsonwebtoken';
 import { ENV, parseTtlToSeconds } from 'src/core/config';
@@ -48,9 +48,6 @@ export class TokenAdapter implements ITokenPort {
     /** Refresh token signing secret, read once at boot — config is immutable after validation. */
     private readonly refreshSecret: string;
 
-    /** Invite token lifetime, read once at boot — config is immutable after validation. */
-    private readonly inviteTtl: NonNullable<JwtSignOptions['expiresIn']>;
-
     /** Invite token signing secret, read once at boot — config is immutable after validation. */
     private readonly inviteSecret: string;
 
@@ -73,7 +70,6 @@ export class TokenAdapter implements ITokenPort {
         } satisfies Record<PrincipalType, number>;
         this.accessSecret = configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
         this.refreshSecret = configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET);
-        this.inviteTtl = configService.getOrThrow<NonNullable<JwtSignOptions['expiresIn']>>(ENV.JWT_INVITE_TTL);
         this.inviteSecret = configService.getOrThrow<string>(ENV.JWT_INVITE_SECRET);
     }
 
@@ -145,20 +141,22 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Signs an invite token bound to the pending account's revocation version.
+     * Signs the same persisted invitation claims in a fixed order on every delivery.
      *
-     * @param id The identifier of the account the invitation activates, embedded as the subject
-     * @param revocationVersion The persisted revocation version invalidating earlier invitations
+     * @param invitation Fixed claims loaded from one persisted invitation
      * @returns The signed invite token
      */
-    async generateInviteToken(id: string, revocationVersion: number): Promise<string> {
+    async generateInviteToken(invitation: Omit<InviteTokenPayload, 'type'>): Promise<string> {
         return this.jwtService.signAsync(
-            { sub: id, revocationVersion, type: AuthTokenType.INVITE },
             {
-                secret: this.inviteSecret,
-                algorithm: 'HS256',
-                expiresIn: this.inviteTtl,
+                sub: invitation.sub,
+                jti: invitation.jti,
+                inviteRevocationVersion: invitation.inviteRevocationVersion,
+                iat: invitation.iat,
+                exp: invitation.exp,
+                type: AuthTokenType.INVITE,
             },
+            { secret: this.inviteSecret, algorithm: 'HS256' },
         );
     }
 
@@ -225,7 +223,18 @@ export class TokenAdapter implements ITokenPort {
     async verifyInviteToken(token: string): Promise<InviteTokenPayload> {
         const payload = await this.verifyToken<InviteTokenPayload>(token, this.inviteSecret, AuthTokenType.INVITE);
 
-        if (!Number.isSafeInteger(payload.revocationVersion) || payload.revocationVersion < 0) {
+        if (
+            typeof payload.sub !== 'string' ||
+            payload.sub.length === 0 ||
+            typeof payload.jti !== 'string' ||
+            !UUID_V4_PATTERN.test(payload.jti) ||
+            !Number.isSafeInteger(payload.iat) ||
+            payload.iat <= 0 ||
+            !Number.isSafeInteger(payload.exp) ||
+            payload.exp <= payload.iat ||
+            !Number.isSafeInteger(payload.inviteRevocationVersion) ||
+            payload.inviteRevocationVersion < 0
+        ) {
             throw new UnauthenticatedException();
         }
 

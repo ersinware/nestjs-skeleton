@@ -22,8 +22,8 @@ import { ExceptionKind, InvalidInputException, isExceptionOfKind } from 'src/sha
 
 /**
  * Activates a pending admin account. Verification is two-layered: the token's signature and expiry,
- * then the account's live state and revocation version. Activation consumes all invitations by
- * setting the first password.
+ * then the persisted invitation and live account state. Activation consumes the invitation metadata
+ * while setting the first password.
  */
 @CommandHandler(ActivateAdminCommand)
 export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdminCommand, void> {
@@ -79,11 +79,36 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_ALREADY_ACTIVE, admin.id);
         }
 
-        if (payload.revocationVersion !== admin.revocationVersion) {
+        if (payload.inviteRevocationVersion !== admin.revocationVersion) {
             throw await this.deny(ActivateAdminRejectionReason.INVITE_REVOKED, admin.id);
         }
 
-        admin.activate(await this.hashingPort.hash(command.password));
+        const { inviteIssuedAt, inviteExpiresAt } = admin;
+
+        if (
+            payload.jti !== admin.inviteId ||
+            payload.inviteRevocationVersion !== admin.inviteRevocationVersion ||
+            inviteIssuedAt === null ||
+            inviteExpiresAt === null ||
+            payload.iat * 1000 !== inviteIssuedAt.getTime() ||
+            payload.exp * 1000 !== inviteExpiresAt.getTime()
+        ) {
+            throw await this.deny(ActivateAdminRejectionReason.INVITE_MISMATCH, admin.id);
+        }
+
+        const password = await this.hashingPort.hash(command.password);
+
+        try {
+            // The aggregate rechecks expiry after hashing, then consumes the invitation.
+            admin.activate(password, payload.jti);
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.INVALID_INPUT)) {
+                throw await this.deny(ActivateAdminRejectionReason.INVITE_EXPIRED, admin.id);
+            }
+
+            throw error;
+        }
+
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });

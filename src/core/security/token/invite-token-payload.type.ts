@@ -9,12 +9,33 @@ import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
  * Decoded JWT invite token payload bound to the account's persisted revocation version.
  */
 export type InviteTokenPayload = {
-    /** Identifier of the account the invitation activates. */
+    /**
+     * Identifier of the account the invitation activates.
+     */
     readonly sub: string;
 
-    /** Must equal the account's current revocation version at activation. */
-    readonly revocationVersion: number;
+    /**
+     * Identity of the persisted invitation and its delivery job.
+     */
+    readonly jti: string;
 
-    /** Discriminator rejecting any other token type presented as an invitation. */
+    /**
+     * Fixed issuance time in epoch seconds.
+     */
+    readonly iat: number;
+
+    /**
+     * Fixed expiry in epoch seconds; redelivery never extends it.
+     */
+    readonly exp: number;
+
+    /**
+     * Must equal the account's current revocation version at activation.
+     */
+    readonly inviteRevocationVersion: number;
+
+    /**
+     * Discriminator rejecting any other token type presented as an invitation.
+     */
     readonly type: AuthTokenType.INVITE;
 };

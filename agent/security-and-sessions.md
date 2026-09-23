@@ -23,7 +23,6 @@
 ### Session Versions & Failure Semantics
 
 - Owning aggregates alone advance DB counters: `sessionVersion` is the access floor/new-token version; `revocationVersion` is the refresh floor. Permission changes call `retireAccessTokens` (session only), preserving refresh with current permissions. Ban/delete/password/reuse/logout-all call `revokeAllSessions` (increment session, copy to revocation), invalidating earlier tokens subject to propagation below.
-- Admin invites require a non-negative integer `revocationVersion` matching primary DB state. Re-invite persists `revokeAllSessions` before sending; senders re-read without bumping counters. Pending accounts need no Redis sync. Activation invalidates all invites by setting the password, without a counter bump.
 - Target flow: Auth requests owner revocation through shared Admin/User queue contracts, never invents versions; owner consumers dispatch revocation commands. Logout-all and refresh reuse each commit their job and producer-owned audit together; callers await commit, not revocation. `SessionRevocationReason` selects notices only ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Repeated revocation requests advance counters again and may invalidate sessions opened after an earlier attempt.
 - Full revocation leaves session/grace cleanup to TTL; account-wide sweeps can delete new logins.
@@ -40,6 +39,13 @@
 - Rotation accepts one winner; replay leaves the version key untouched. Within 1–60-second grace, await `REFRESH_CONCURRENT_REPLAY` audit and return 409 without revocation; timing does not prove legitimacy. Outside grace, atomically delete the Redis session, commit reuse audit and the revocation request together in PostgreSQL, then return 401; persistence failures propagate. Redis deletion and PostgreSQL persistence are not atomic. Never return the winning pair to a replaying credential; clients without it must reauthenticate.
 - Revocation mirror pushes are best-effort; token issuance requires awaited synchronization. Session reconciliation consumers re-read current primary versions, including soft-deleted principals, and await Redis writes. DB/Redis updates are not atomic; stale mirrors can admit old access tokens until synchronization or expiry. Delivery limits: [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
 - Use separate Redis stores: session with AOF, cache without. Recovery must address lost keys and restored stale sessions/versions.
+
+### Admin Invitations
+
+- Persist invitation metadata, never the JWT: UUID v4 `inviteId` (= job `deliveryId`), whole-second `inviteIssuedAt`/`inviteExpiresAt`, and `inviteRevocationVersion`. The aggregate owns the fixed three-day lifetime; no TTL configuration or handler-supplied timestamps. Metadata is all null or all populated for a passwordless account.
+- `inviteRevocationVersion` captures the account's `revocationVersion` at issuance; never substitute the current version on delivery. Re-invite calls `revokeAllSessions` before replacing the invitation; pending accounts need no Redis sync. Persist state, job, and audit atomically ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
+- Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `iat`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
+- Activation verifies the JWT and exact persisted invitation binding on the primary, rechecks expiry after hashing, then clears metadata and sets the password under the optimistic lock; no counter bump. Expected rejections share one client message; audit reasons distinguish their causes. Aggregate expiry is an expected refusal; bypassed state prechecks are `SystemException` ([Exceptions](exceptions.md#exceptions)).
 
 ### Email HTML
 

@@ -15,6 +15,13 @@
             "when": 1788887554502,
             "tag": "0001_optimistic_lock",
             "breakpoints": true
+        },
+        {
+            "idx": 2,
+            "version": "7",
+            "when": 1790164836156,
+            "tag": "0002_admin_invitation",
+            "breakpoints": true
         }
     ]
 }

@@ -83,20 +83,19 @@ export interface ITokenPort {
     verifyLogoutToken(token: string): Promise<RefreshTokenPayload>;
 
     /**
-     * Generates a signed invite token for a pending account.
+     * Signs persisted invitation claims without generating identity or timestamps.
      *
-     * @param id The identifier of the account the invitation activates.
-     * @param revocationVersion The persisted revocation version binding the invitation to current state.
+     * @param invitation Fixed claims loaded from the persisted invitation.
      * @returns The signed invite token.
      */
-    generateInviteToken(id: string, revocationVersion: number): Promise<string>;
+    generateInviteToken(invitation: Omit<InviteTokenPayload, 'type'>): Promise<string>;
 
     /**
-     * Verifies an invite token's signature, expiry, type, and non-negative integer revocation version.
+     * Verifies an invite token's signature, type, identifiers, fixed times, and revocation version.
      *
      * @param token The JWT invite token string.
      * @returns The decoded invite token payload.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks a valid revocation version.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid invitation claims.
      */
     verifyInviteToken(token: string): Promise<InviteTokenPayload>;
 }

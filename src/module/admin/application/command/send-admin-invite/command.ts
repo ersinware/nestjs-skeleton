@@ -6,15 +6,19 @@
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Emails a fresh activation invitation to a pending admin.
+ * Delivers one persisted invitation to a pending admin.
  */
 export class SendAdminInviteCommand extends Command<void> {
     /**
      * Initializes the command with its payload.
      *
      * @param id The unique identifier of the pending admin
+     * @param deliveryId The invitation delivery identity retained across retries
      */
-    constructor(readonly id: string) {
+    constructor(
+        readonly id: string,
+        readonly deliveryId: string,
+    ) {
         super();
     }
 }

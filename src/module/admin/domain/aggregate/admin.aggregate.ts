@@ -7,18 +7,70 @@ import { randomUUID } from 'node:crypto';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
-import { AccessDeniedException, ResourceConflictException, SystemException } from 'src/shared/exception';
+import {
+    AccessDeniedException,
+    InvalidInputException,
+    ResourceConflictException,
+    SystemException,
+} from 'src/shared/exception';
+
+/**
+ * Pending admin invitations remain valid for three days from issuance.
+ */
+const INVITATION_LIFETIME_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * The module-owned state of an Admin aggregate.
  */
 type AdminProps = {
+    /**
+     * Email address used to sign in and receive account messages.
+     */
     email: string;
+
+    /**
+     * Display name used in the profile and account messages.
+     */
     name: string;
-    //  Null until the invited admin activates the account.
+
+    /**
+     * Argon2 password hash, or null until the invited admin activates the account.
+     */
     password: string | null;
+
+    /**
+     * Identity shared with the invitation delivery job.
+     */
+    inviteId: string | null;
+
+    /**
+     * Fixed JWT issuance time, at whole-second precision.
+     */
+    inviteIssuedAt: Date | null;
+
+    /**
+     * Fixed JWT expiry, cleared when the invitation is consumed.
+     */
+    inviteExpiresAt: Date | null;
+
+    /**
+     * Account revocation version captured when the invitation is issued.
+     */
+    inviteRevocationVersion: number | null;
+
+    /**
+     * Whether the account is barred from authentication.
+     */
     isBanned: boolean;
+
+    /**
+     * Time the account was created.
+     */
     createdAt: Date;
+
+    /**
+     * Time of the latest account state change.
+     */
     updatedAt: Date;
 };
 
@@ -26,11 +78,34 @@ type AdminProps = {
  * Persistable state of an Admin aggregate.
  */
 type AdminSnapshot = {
+    /**
+     * Stable account identifier generated as a UUID v7.
+     */
     readonly id: string;
+
+    /**
+     * Loaded persistence version used to detect concurrent writes.
+     */
     readonly version: number;
+
+    /**
+     * Soft-deletion time, or null while the account has not been deleted.
+     */
     readonly deletedAt: Date | null;
+
+    /**
+     * Permission assignments belonging to this account.
+     */
     readonly permissions: readonly Permission[];
+
+    /**
+     * Access-token version floor and version assigned to newly issued sessions.
+     */
     readonly sessionVersion: number;
+
+    /**
+     * Version of the last full revocation, used to reject earlier refresh credentials and invitations.
+     */
     readonly revocationVersion: number;
 } & Readonly<AdminProps>;
 
@@ -72,12 +147,14 @@ export class Admin extends PrincipalAggregateRoot {
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(
-        props: { readonly id: string } & Readonly<Omit<AdminProps, 'isBanned' | 'createdAt' | 'updatedAt'>>,
-    ): Admin {
+    static create(props: { readonly id: string } & Readonly<Pick<AdminProps, 'email' | 'name' | 'password'>>): Admin {
         const now = new Date(),
             admin = new Admin({
                 ...props,
+                inviteId: null,
+                inviteIssuedAt: null,
+                inviteExpiresAt: null,
+                inviteRevocationVersion: null,
                 isBanned: false,
                 version: 0,
                 deletedAt: null,
@@ -88,8 +165,8 @@ export class Admin extends PrincipalAggregateRoot {
                 updatedAt: now,
             });
 
-        if (!props.password) {
-            admin.addInvitationJob();
+        if (props.password === null) {
+            admin.issueInvitation();
         }
 
         return admin;
@@ -173,25 +250,42 @@ export class Admin extends PrincipalAggregateRoot {
 
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
-        this.addInvitationJob();
+        this.issueInvitation();
     }
 
     /**
      * Activates a pending admin by setting its first password.
      *
      * @param password The Argon2-hashed initial password
-     * @throws {SystemException} When the account is soft-deleted or already active
+     * @param inviteId Identity from the invitation already matched to this aggregate by the caller
+     * @throws {SystemException} When the account is deleted or the caller bypassed activation prechecks
+     * @throws {InvalidInputException} When the invitation expired after the caller's prechecks
      */
-    activate(password: string) {
+    activate(password: string, inviteId: string) {
         this.assertNotDeleted(this.activate.name);
 
-        if (this.props.password !== null) {
-            throw new SystemException('An already-active account cannot be activated again.', {
+        if (
+            this.props.password !== null ||
+            this.props.isBanned ||
+            this.props.inviteId !== inviteId ||
+            this.props.inviteExpiresAt === null ||
+            this.props.inviteRevocationVersion !== this.revocationVersion
+        ) {
+            throw new SystemException('Activation requires a pending, eligible account and a matching invitation.', {
                 context: { class: Admin.name, method: this.activate.name, id: this.id },
             });
         }
 
+        // Time can advance during password hashing even though this aggregate's state is unchanged.
+        if (this.props.inviteExpiresAt.getTime() <= Date.now()) {
+            throw new InvalidInputException();
+        }
+
         this.props.password = password;
+        this.props.inviteId = null;
+        this.props.inviteIssuedAt = null;
+        this.props.inviteExpiresAt = null;
+        this.props.inviteRevocationVersion = null;
         this.props.updatedAt = new Date();
     }
 
@@ -351,12 +445,19 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Raises durable invitation delivery for the current admin.
+     * Fixes invitation identity and its three-day lifetime before queuing delivery.
      */
-    private addInvitationJob() {
+    private issueInvitation() {
+        const issuedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+
+        this.props.inviteId = randomUUID();
+        this.props.inviteIssuedAt = issuedAt;
+        this.props.inviteExpiresAt = new Date(issuedAt.getTime() + INVITATION_LIFETIME_MS);
+        this.props.inviteRevocationVersion = this.revocationVersion;
+
         this.addJob([
             {
-                deliveryId: randomUUID(),
+                deliveryId: this.props.inviteId,
                 aggregateId: this.id,
                 queueName: AdminJobQueue.INVITE,
             },
@@ -427,6 +528,42 @@ export class Admin extends PrincipalAggregateRoot {
      */
     get password(): string | null {
         return this.props.password;
+    }
+
+    /**
+     * Returns the identity shared with the invitation delivery job.
+     *
+     * @returns Invitation identifier, or null when no invitation remains
+     */
+    get inviteId(): string | null {
+        return this.props.inviteId;
+    }
+
+    /**
+     * Returns the fixed invitation issuance time.
+     *
+     * @returns Issuance time at whole-second precision, or null when no invitation remains
+     */
+    get inviteIssuedAt(): Date | null {
+        return this.props.inviteIssuedAt;
+    }
+
+    /**
+     * Returns the fixed invitation expiry.
+     *
+     * @returns Expiry time, or null when no invitation remains
+     */
+    get inviteExpiresAt(): Date | null {
+        return this.props.inviteExpiresAt;
+    }
+
+    /**
+     * Returns the account revocation version captured at invitation issuance.
+     *
+     * @returns Captured revocation version, or null when no invitation remains
+     */
+    get inviteRevocationVersion(): number | null {
+        return this.props.inviteRevocationVersion;
     }
 
     /**
