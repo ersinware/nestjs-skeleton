@@ -8,7 +8,7 @@ import type { GetAdminByIdResult } from 'src/module/admin/application/query/get-
 /**
  * Dependency injection token representing the {@link IGetAdminByIdPort} contract.
  */
-export const TOKEN_GET_ADMIN_BY_ID_PORT = Symbol('TOKEN_GET_ADMIN_BY_ID_PORT');
+export const TOKEN_GET_ADMIN_BY_ID_PORT = Symbol();
 
 /**
  * Thin read contract for fetching a single admin's read-model by identifier.

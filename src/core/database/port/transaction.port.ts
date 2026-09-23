@@ -3,8 +3,10 @@
  * @description Application contract for atomic database writes.
  */
 
-/** Dependency injection token for {@link ITransactionPort}. */
-export const TOKEN_TRANSACTION_PORT = Symbol('TOKEN_TRANSACTION_PORT');
+/**
+ * Dependency injection token for {@link ITransactionPort}.
+ */
+export const TOKEN_TRANSACTION_PORT = Symbol();
 
 /**
  * Runs database work without exposing the driver to application handlers.

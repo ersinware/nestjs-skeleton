@@ -6,9 +6,9 @@
 import type { GetDeadLetterJobResult } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
 
 /**
- * Dependency injection token for one dead-letter job lookup.
+ * Dependency injection token for the {@link IGetDeadLetterJobPort} contract.
  */
-export const TOKEN_GET_DEAD_LETTER_JOB_PORT = Symbol('TOKEN_GET_DEAD_LETTER_JOB_PORT');
+export const TOKEN_GET_DEAD_LETTER_JOB_PORT = Symbol();
 
 /**
  * Reads one sanitized job from the shared dead-letter queue.

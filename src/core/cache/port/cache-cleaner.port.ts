@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link ICacheCleanerPort} contract.
  */
-export const TOKEN_CACHE_CLEANER_PORT = Symbol('TOKEN_CACHE_CLEANER_PORT');
+export const TOKEN_CACHE_CLEANER_PORT = Symbol();
 
 /**
  * Contract for wiping the cache wholesale, so test cycles start from a clean slate.

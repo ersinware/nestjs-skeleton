@@ -8,7 +8,7 @@ import { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 /**
  * Dependency injection token representing the {@link IAuditPort} contract.
  */
-export const TOKEN_AUDIT_PORT = Symbol('TOKEN_AUDIT_PORT');
+export const TOKEN_AUDIT_PORT = Symbol();
 
 /**
  * What an action changed, beyond what its ids say. Callers must restrict values to identifiers

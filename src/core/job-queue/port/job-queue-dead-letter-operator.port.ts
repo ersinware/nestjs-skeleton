@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IJobQueueDeadLetterOperatorPort} contract.
  */
-export const TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT = Symbol('TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT');
+export const TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT = Symbol();
 
 /**
  * Performs controlled dead-letter discard and redrive operations.

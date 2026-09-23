@@ -8,7 +8,7 @@ import type { GetHealthStatusResult } from 'src/module/health/application/query/
 /**
  * Dependency injection token representing the {@link IGetHealthStatusPort} contract.
  */
-export const TOKEN_GET_HEALTH_STATUS_PORT = Symbol('TOKEN_GET_HEALTH_STATUS_PORT');
+export const TOKEN_GET_HEALTH_STATUS_PORT = Symbol();
 
 /**
  * Thin read contract for the per-indicator health report of every dependency.

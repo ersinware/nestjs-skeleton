@@ -12,7 +12,7 @@ import { PaginationParams } from 'src/shared/pagination';
 /**
  * Dependency injection token representing the {@link IListAuditTrailRecordsPort} contract.
  */
-export const TOKEN_LIST_AUDIT_TRAIL_RECORDS_PORT = Symbol('TOKEN_LIST_AUDIT_TRAIL_RECORDS_PORT');
+export const TOKEN_LIST_AUDIT_TRAIL_RECORDS_PORT = Symbol();
 
 /**
  * Thin read contract for listing audit trail records with filters and pagination.

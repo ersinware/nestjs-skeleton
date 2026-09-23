@@ -8,7 +8,7 @@ import type { GetAdminSessionVersionResult } from 'src/module/admin/application/
 /**
  * Dependency injection token representing the {@link IGetAdminSessionVersionPort} contract.
  */
-export const TOKEN_GET_ADMIN_SESSION_VERSION_PORT = Symbol('TOKEN_GET_ADMIN_SESSION_VERSION_PORT');
+export const TOKEN_GET_ADMIN_SESSION_VERSION_PORT = Symbol();
 
 /**
  * Thin read contract for fetching the session version of an admin.

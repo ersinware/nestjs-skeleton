@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IDatabaseCleanerPort} contract.
  */
-export const TOKEN_DATABASE_CLEANER_PORT = Symbol('TOKEN_DATABASE_CLEANER_PORT');
+export const TOKEN_DATABASE_CLEANER_PORT = Symbol();
 
 /**
  * Outbound port for resetting all application-owned database tables. Test-only: resolved from the

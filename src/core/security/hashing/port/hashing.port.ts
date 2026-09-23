@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IHashingPort} contract.
  */
-export const TOKEN_HASHING_PORT = Symbol('TOKEN_HASHING_PORT');
+export const TOKEN_HASHING_PORT = Symbol();
 
 /**
  * Contract for hashing plain text and verifying it against stored hashes.

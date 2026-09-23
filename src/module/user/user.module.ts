@@ -18,6 +18,7 @@ import { BanUserCommandHandler } from 'src/module/user/application/command/ban-u
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
 import { ChangeUserPermissionsCommandHandler } from 'src/module/user/application/command/change-user-permissions/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
+import { TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/user/application/command/port/user-email-change-notification-writer.port';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
@@ -43,6 +44,7 @@ import { UserRefreshReuseNoticeQueue } from 'src/module/user/application/queue/u
 import { UserSessionRevocationLogoutAllQueue } from 'src/module/user/application/queue/user-session-revocation-logout-all.queue';
 import { UserSessionRevocationRefreshReuseQueue } from 'src/module/user/application/queue/user-session-revocation-refresh-reuse.queue';
 import { UserSessionQueue } from 'src/module/user/application/queue/user-session.queue';
+import { UserEmailChangeNotificationWriterAdapter } from 'src/module/user/infrastructure/adapter/user-email-change-notification-writer.adapter';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
 import { UserReplicaReaderAdapter } from 'src/module/user/infrastructure/adapter/user-replica-reader.adapter';
 import { UserWriterAdapter } from 'src/module/user/infrastructure/adapter/user-writer.adapter';
@@ -96,6 +98,10 @@ import { UserFacade } from 'src/module/user/user.facade';
         GetUserCredentialsByEmailQueryHandler,
         GetUserAuthStateQueryHandler,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
+        {
+            provide: TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
+            useClass: UserEmailChangeNotificationWriterAdapter,
+        },
         { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_FRESH_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
         { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },

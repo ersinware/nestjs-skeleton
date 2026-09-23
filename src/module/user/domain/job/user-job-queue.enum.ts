@@ -8,6 +8,11 @@
  */
 export enum UserJobQueue {
     /**
+     * Sends confirmation to the pending email address for the stored request.
+     */
+    EMAIL_CONFIRMATION = 'user.email-confirmation.queue.v1',
+
+    /**
      * Invalidates the cached user projection.
      */
     CACHE_INVALIDATE = 'user.cache-invalidate.queue.v1',

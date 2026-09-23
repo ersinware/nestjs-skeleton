@@ -2,6 +2,7 @@
 
 - Share aggregate invariants through opt-in bases, never universal `AggregateRoot`. Valid idempotent requests for the existing state are no-ops without jobs; invalid transitions fail.
 - Admin and User use the canonical job-producing aggregate-root bases.
+- Admin/User aggregate order: state; construction/snapshot; mutations grouped by workflow; protected/private helpers; getters in state-field order.
 - `SoftDeletableAggregateRoot`: concrete mutators call `assertNotDeleted`, except repeat-safe `markAsDeleted`. Writers load only non-deleted aggregates; attempted mutation of a deleted aggregate is `SystemException`.
 - Modules own their tables/Drizzle definitions in same-named PostgreSQL schemas; no central table registry. Exception: core owns/writes `audit.audit`; `audit-trail` reads its barrel-exported table via replica. Keep `drizzle.config.ts` discovery and `schemaFilter` aligned with application-owned schemas.
 - No cross-module JOINs or synchronous transactions. Cross-context references are soft UUID links without foreign keys; compose reads in memory via facades ([Module Isolation](architecture.md#module-isolation)), reconcile mutations via durable jobs ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).

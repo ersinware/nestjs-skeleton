@@ -8,7 +8,7 @@ import type { GetUserSessionVersionResult } from 'src/module/user/application/qu
 /**
  * Dependency injection token representing the {@link IGetUserSessionVersionPort} contract.
  */
-export const TOKEN_GET_USER_SESSION_VERSION_PORT = Symbol('TOKEN_GET_USER_SESSION_VERSION_PORT');
+export const TOKEN_GET_USER_SESSION_VERSION_PORT = Symbol();
 
 /**
  * Thin read contract for fetching the session version of a user.

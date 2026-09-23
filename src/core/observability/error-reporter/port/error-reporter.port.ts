@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IErrorReporterPort} contract.
  */
-export const TOKEN_ERROR_REPORTER_PORT = Symbol('TOKEN_ERROR_REPORTER_PORT');
+export const TOKEN_ERROR_REPORTER_PORT = Symbol();
 
 /**
  * Reporting location with optional message and structured log data.

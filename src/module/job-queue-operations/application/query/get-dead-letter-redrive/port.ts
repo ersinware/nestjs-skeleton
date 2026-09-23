@@ -6,9 +6,9 @@
 import type { GetDeadLetterRedriveResult } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/query';
 
 /**
- * Dependency injection token for the redrive operation lookup.
+ * Dependency injection token for the {@link IGetDeadLetterRedrivePort} contract.
  */
-export const TOKEN_GET_DEAD_LETTER_REDRIVE_PORT = Symbol('TOKEN_GET_DEAD_LETTER_REDRIVE_PORT');
+export const TOKEN_GET_DEAD_LETTER_REDRIVE_PORT = Symbol();
 
 /**
  * Reads persisted redrive status without exposing the pg-boss client.

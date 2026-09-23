@@ -10,7 +10,7 @@ import type { SearchParams } from 'src/shared/search';
 /**
  * Dependency injection token representing the {@link IListUsersPort} contract.
  */
-export const TOKEN_LIST_USERS_PORT = Symbol('TOKEN_LIST_USERS_PORT');
+export const TOKEN_LIST_USERS_PORT = Symbol();
 
 /**
  * Thin read contract for listing user read-models with pagination and search.

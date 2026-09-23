@@ -1,6 +1,6 @@
 /**
  * @file admin.schema.ts
- * @description Drizzle schema of the admin bounded context: the `admin` PostgreSQL logical schema and its table.
+ * @description Drizzle schema of the admin bounded context: the `admin` PostgreSQL logical schema and its tables.
  */
 
 import { sql } from 'drizzle-orm';
@@ -57,6 +57,26 @@ export const admin = adminSchema.table(
         inviteRevocationVersion: integer('invite_revocation_version'),
 
         /**
+         * Request identity shared with the confirmation delivery job.
+         */
+        pendingEmailRequestId: uuid('pending_email_request_id'),
+
+        /**
+         * Target address awaiting confirmation; not reserved by a unique constraint.
+         */
+        pendingEmail: text('pending_email'),
+
+        /**
+         * Fixed confirmation deadline at whole-second precision.
+         */
+        pendingEmailExpiresAt: timestamp('pending_email_expires_at'),
+
+        /**
+         * Full revocation version captured at request creation.
+         */
+        pendingEmailRevocationVersion: integer('pending_email_revocation_version'),
+
+        /**
          * The permissions the admin holds, as catalog values. A plain text array rather than a
          * PostgreSQL enum: the catalog lives in code, and removing a member from a PostgreSQL enum
          * is not supported, so the array keeps a catalog change a code-only change.
@@ -99,13 +119,12 @@ export const admin = adminSchema.table(
     },
     (table) => [
         check(
+            'admin_pending_email_check',
+            sql`((${table.pendingEmailRequestId} IS NULL AND ${table.pendingEmail} IS NULL AND ${table.pendingEmailExpiresAt} IS NULL AND ${table.pendingEmailRevocationVersion} IS NULL) OR (${table.pendingEmailRequestId} IS NOT NULL AND ${table.pendingEmail} IS NOT NULL AND ${table.pendingEmailExpiresAt} IS NOT NULL AND ${table.pendingEmailRevocationVersion} IS NOT NULL AND ${table.pendingEmailRevocationVersion} >= 0 AND ${table.password} IS NOT NULL))`,
+        ),
+        check(
             'admin_invitation_check',
-            sql`(
-                (${table.inviteId} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL)
-                OR
-                (${table.inviteId} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL
-                 AND ${table.password} IS NULL AND ${table.inviteRevocationVersion} >= 0)
-            )`,
+            sql`((${table.inviteId} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL) OR (${table.inviteId} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL AND ${table.password} IS NULL AND ${table.inviteRevocationVersion} >= 0)`,
         ),
         // Partial index over live rows: serves every `id = ? AND deleted_at IS NULL` lookup and the
         // listing's `ORDER BY id DESC` (UUID v7, so creation order) with no sort step. The email lookup
@@ -120,3 +139,28 @@ export const admin = adminSchema.table(
             .where(sql`${sql.raw(`'${Permission.ADMIN_ROOT}'`)} = ANY(permissions)`),
     ],
 );
+
+/**
+ * Immutable recipient evidence for a completed email change; retained independently of account lifecycle.
+ */
+export const emailChangeNotification = adminSchema.table('email_change_notification', {
+    /**
+     * Handler-generated UUID v7, also used as the notification job delivery identity.
+     */
+    id: uuid('id').primaryKey().notNull(),
+
+    /**
+     * Owning account identifier, also matched by the delivery worker.
+     */
+    accountId: uuid('account_id').notNull(),
+
+    /**
+     * Address captured before the change; never resolved from the current account on retry.
+     */
+    previousEmail: text('previous_email').notNull(),
+
+    /**
+     * Time the email change completed.
+     */
+    createdAt: timestamp('created_at').notNull(),
+});

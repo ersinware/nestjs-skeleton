@@ -6,7 +6,7 @@
 /**
  * Dependency injection token for the {@link ISessionHealthPort} contract.
  */
-export const TOKEN_SESSION_HEALTH_PORT = Symbol('TOKEN_SESSION_HEALTH_PORT');
+export const TOKEN_SESSION_HEALTH_PORT = Symbol();
 
 /**
  * Contract for probing the session store connection, consumed by the health indicators.

@@ -8,7 +8,7 @@ import type { GetUserByIdResult } from 'src/module/user/application/query/get-us
 /**
  * Dependency injection token representing the {@link IGetUserByIdPort} contract.
  */
-export const TOKEN_GET_USER_BY_ID_PORT = Symbol('TOKEN_GET_USER_BY_ID_PORT');
+export const TOKEN_GET_USER_BY_ID_PORT = Symbol();
 
 /**
  * Thin read contract for fetching a single user's read-model by identifier.

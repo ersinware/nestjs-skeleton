@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IJobQueueDeadLetterMetricsPort} contract.
  */
-export const TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT = Symbol('TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT');
+export const TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT = Symbol();
 
 /**
  * Samples queue counts required by dead-letter monitoring.

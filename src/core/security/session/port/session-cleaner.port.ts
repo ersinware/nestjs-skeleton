@@ -6,7 +6,7 @@
 /**
  * Dependency injection token for the {@link ISessionCleanerPort} contract.
  */
-export const TOKEN_SESSION_CLEANER_PORT = Symbol('TOKEN_SESSION_CLEANER_PORT');
+export const TOKEN_SESSION_CLEANER_PORT = Symbol();
 
 /**
  * Contract for wiping the session store wholesale, so E2E test cycles start from a clean slate.

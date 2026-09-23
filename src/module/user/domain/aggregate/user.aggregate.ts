@@ -7,7 +7,13 @@ import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
-import { AccessDeniedException, SystemException } from 'src/shared/exception';
+import {
+    AccessDeniedException,
+    AccessDeniedMessage,
+    InvalidInputException,
+    InvalidInputMessage,
+    SystemException,
+} from 'src/shared/exception';
 
 /**
  * The module-owned state of a User aggregate.
@@ -27,6 +33,26 @@ type UserProps = {
      * Argon2 password hash used to verify credentials.
      */
     password: string;
+
+    /**
+     * Request identity shared with the confirmation delivery job.
+     */
+    pendingEmailRequestId: string | null;
+
+    /**
+     * New address awaiting confirmation; never used for sign-in before consumption.
+     */
+    pendingEmail: string | null;
+
+    /**
+     * Fixed confirmation deadline at whole-second precision.
+     */
+    pendingEmailExpiresAt: Date | null;
+
+    /**
+     * Account revocation version captured when the request was created.
+     */
+    pendingEmailRevocationVersion: number | null;
 
     /**
      * Whether the account is barred from authentication.
@@ -82,6 +108,36 @@ type UserSnapshot = {
 } & Readonly<UserProps>;
 
 /**
+ * Account-owned email confirmation refusals; handling boundaries consume their audit reasons.
+ */
+enum ConfirmEmailChangeRejectionReason {
+    /**
+     * The account is banned from email changes.
+     */
+    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
+
+    /**
+     * The proof predates the account's current full revocation.
+     */
+    REQUEST_REVOKED = 'REQUEST_REVOKED',
+
+    /**
+     * The proof does not match the stored pending request.
+     */
+    REQUEST_MISMATCH = 'REQUEST_MISMATCH',
+
+    /**
+     * The stored request expired before consumption.
+     */
+    REQUEST_EXPIRED = 'REQUEST_EXPIRED',
+}
+
+/**
+ * Pending email confirmations remain valid for thirty minutes from request creation.
+ */
+const EMAIL_CHANGE_LIFETIME_MS = 30 * 60 * 1000;
+
+/**
  * The User aggregate root. Owns every user invariant: profile updates, ban/unban transitions,
  * session revocation through the monotonic session-version counter, permission changes, and
  * soft-delete immutability. Administrative mutations take the acting principal only for the base
@@ -125,13 +181,15 @@ export class User extends PrincipalAggregateRoot {
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(
-        props: { readonly id: string } & Readonly<Omit<UserProps, 'isBanned' | 'createdAt' | 'updatedAt'>>,
-    ): User {
+    static create(props: { readonly id: string } & Readonly<Pick<UserProps, 'email' | 'name' | 'password'>>): User {
         const now = new Date();
 
         return new User({
             ...props,
+            pendingEmailRequestId: null,
+            pendingEmail: null,
+            pendingEmailExpiresAt: null,
+            pendingEmailRevocationVersion: null,
             isBanned: false,
             version: 0,
             deletedAt: null,
@@ -208,6 +266,121 @@ export class User extends PrincipalAggregateRoot {
         this.props.updatedAt = new Date();
 
         this.addSessionReconciliationJob();
+    }
+
+    /**
+     * Replaces the pending email request and queues delivery without revoking sessions.
+     *
+     * @param newEmail Validated and normalized target email address
+     * @throws {SystemException} When the account is deleted
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the target address already belongs to this account
+     */
+    requestEmailChange(newEmail: string) {
+        this.assertNotDeleted(this.requestEmailChange.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException();
+        }
+
+        if (newEmail === this.props.email) {
+            throw new InvalidInputException('The new email address must differ from the current address.');
+        }
+
+        const now = new Date();
+
+        this.props.pendingEmailRequestId = randomUUID();
+        this.props.pendingEmail = newEmail;
+        this.props.pendingEmailExpiresAt = new Date(Math.floor(now.getTime() / 1000) * 1000 + EMAIL_CHANGE_LIFETIME_MS);
+        this.props.pendingEmailRevocationVersion = this.revocationVersion;
+        this.props.updatedAt = now;
+
+        this.addJob([
+            {
+                deliveryId: this.props.pendingEmailRequestId,
+                aggregateId: this.id,
+                queueName: UserJobQueue.EMAIL_CONFIRMATION,
+            },
+        ]);
+    }
+
+    /**
+     * Consumes a matching verified proof, changes the address, and revokes existing sessions.
+     *
+     * @param payload Identity and expiry claims after signature, type, and principal verification
+     * @throws {SystemException} When the account is deleted or differs from the token subject
+     * @throws {AccessDeniedException} When the account is ineligible for confirmation
+     * @throws {InvalidInputException} When the request is revoked, mismatched, consumed, or expired
+     */
+    confirmEmailChange(payload: {
+        /**
+         * Account identifier from the verified confirmation.
+         */
+        readonly sub: string;
+
+        /**
+         * Pending request identifier from the verified confirmation.
+         */
+        readonly jti: string;
+
+        /**
+         * Revocation version captured when the request was created.
+         */
+        readonly emailRevocationVersion: number;
+
+        /**
+         * Fixed token expiry in Unix seconds.
+         */
+        readonly exp: number;
+    }) {
+        this.assertNotDeleted(this.confirmEmailChange.name);
+
+        if (payload.sub !== this.id) {
+            throw new SystemException('Verified token subject does not match the target account.', {
+                context: { class: User.name, method: this.confirmEmailChange.name, id: this.id, sub: payload.sub },
+            });
+        }
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+            });
+        }
+
+        if (payload.emailRevocationVersion !== this.revocationVersion) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_REVOKED,
+            });
+        }
+
+        if (
+            payload.jti !== this.props.pendingEmailRequestId ||
+            payload.emailRevocationVersion !== this.props.pendingEmailRevocationVersion ||
+            this.props.pendingEmail === null ||
+            this.props.pendingEmailExpiresAt === null ||
+            payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime()
+        ) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_MISMATCH,
+            });
+        }
+
+        if (this.props.pendingEmailExpiresAt.getTime() <= Date.now()) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_EXPIRED,
+            });
+        }
+
+        this.props.email = this.props.pendingEmail;
+        this.props.pendingEmailRequestId = null;
+        this.props.pendingEmail = null;
+        this.props.pendingEmailExpiresAt = null;
+        this.props.pendingEmailRevocationVersion = null;
+        this.revokeAllSessions();
+        this.props.updatedAt = new Date();
+
+        this.addSessionReconciliationJob();
+        this.addCacheInvalidationJob();
     }
 
     /**
@@ -388,6 +561,42 @@ export class User extends PrincipalAggregateRoot {
      */
     get password(): string {
         return this.props.password;
+    }
+
+    /**
+     * Request identity shared with the confirmation delivery job.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmailRequestId(): string | null {
+        return this.props.pendingEmailRequestId;
+    }
+
+    /**
+     * New address awaiting confirmation; never used for sign-in before consumption.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmail(): string | null {
+        return this.props.pendingEmail;
+    }
+
+    /**
+     * Fixed confirmation deadline at whole-second precision.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmailExpiresAt(): Date | null {
+        return this.props.pendingEmailExpiresAt;
+    }
+
+    /**
+     * Account revocation version captured when the request was created.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmailRevocationVersion(): number | null {
+        return this.props.pendingEmailRevocationVersion;
     }
 
     /**

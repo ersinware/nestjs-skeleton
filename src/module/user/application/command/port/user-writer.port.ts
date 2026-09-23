@@ -8,7 +8,7 @@ import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 /**
  * Dependency injection token representing the {@link IUserWriterPort} contract.
  */
-export const TOKEN_USER_WRITER_PORT = Symbol('TOKEN_USER_WRITER_PORT');
+export const TOKEN_USER_WRITER_PORT = Symbol();
 
 /**
  * Contract for loading and persisting the User aggregate on the write side.

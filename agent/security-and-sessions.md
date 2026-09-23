@@ -10,6 +10,8 @@
 - `@Authenticated()` admits any authenticated principal; `@PrincipalOnly(...)` restricts caller kind, not ownership. Self endpoints derive target IDs from the verified principal. `@Permissions(...)` requires ALL class/method permissions; principal restrictions and permission holders must agree.
 - Reject `Public` with any protection. `Authenticated` cannot accompany same-level restrictions or relax class restrictions; class-level `Authenticated` allows method restrictions.
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
+- Invitation activation and email confirmation receive verified claims for the target aggregate; a `sub` mismatch throws `SystemException`. Email confirmation handlers must reject session/token ownership mismatches before calling the aggregate.
+- Admin self-service mutations require activation; reaching them with a null password is a `SystemException`.
 - Both principal kinds share `login.util.ts` and uniform `CREDENTIALS` refusals. Each credential-login refusal performs one Argon2 verification; unknown/pending/banned accounts use `simulateVerify` with a boot-generated, current-cost hash.
 
 ### Administration
@@ -22,7 +24,7 @@
 
 ### Session Versions & Failure Semantics
 
-- Owning aggregates alone advance DB counters: `sessionVersion` is the access floor/new-token version; `revocationVersion` is the refresh floor. Permission changes call `retireAccessTokens` (session only), preserving refresh with current permissions. Ban/delete/password/reuse/logout-all call `revokeAllSessions` (increment session, copy to revocation), invalidating earlier tokens subject to propagation below.
+- Owning aggregates alone advance DB counters: `sessionVersion` is the access floor/new-token version; `revocationVersion` is the refresh floor. Permission changes call `retireAccessTokens` (session only), preserving refresh with current permissions. Ban/delete/password/email confirmation/reuse/logout-all call `revokeAllSessions` (increment session, copy to revocation), invalidating earlier tokens subject to propagation below.
 - Target flow: Auth requests owner revocation through shared Admin/User queue contracts, never invents versions; owner consumers dispatch revocation commands. Logout-all and refresh reuse each commit their job and producer-owned audit together; callers await commit, not revocation. `SessionRevocationReason` selects notices only ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Repeated revocation requests advance counters again and may invalidate sessions opened after an earlier attempt.
 - Full revocation leaves session/grace cleanup to TTL; account-wide sweeps can delete new logins.
@@ -47,6 +49,13 @@
 - Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
 - Activation handlers verify the JWT, load from primary, and hash the password. The aggregate checks account eligibility, exact invitation binding, and expiry before setting the password and clearing metadata; persistence uses the optimistic lock without a counter bump.
 - Every expected activation refusal is audited and translated to one `InvalidInputException` message. Token and missing-account reasons belong to the handler; aggregate reasons stay private and reach it through `auditReason` ([Exceptions](exceptions.md#exceptions)). Unmarked aggregate errors propagate unchanged.
+
+### Email Change State
+
+- Aggregates own pending request identity, target, expiry, and revocation snapshot; persist no JWT or issuance time. New requests replace prior requests, even for the same target; pending addresses are not reserved.
+- Keep the current email and sessions until confirmation. Confirmation consumes the matching, unexpired request at the current revocation version and revokes sessions; the email unique constraint resolves address conflicts.
+- Old-address notifications use immutable `email_change_notification` records, never the account's current email. Preserve recipients across later changes/deletion; delivery must match both record and account identity.
+- Persist the notification record with the email mutation, jobs, and audit ([Audit](observability.md#audit)).
 
 ### Email HTML
 

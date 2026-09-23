@@ -6,9 +6,9 @@
 import type { GetUserNoticeRecipientResult } from 'src/module/user/application/query/get-user-notice-recipient/query';
 
 /**
- * Identifies the user notice recipient query contract.
+ * Identifies the {@link IGetUserNoticeRecipientPort} query contract.
  */
-export const TOKEN_GET_USER_NOTICE_RECIPIENT_PORT = Symbol('TOKEN_GET_USER_NOTICE_RECIPIENT_PORT');
+export const TOKEN_GET_USER_NOTICE_RECIPIENT_PORT = Symbol();
 
 /**
  * Reads the current recipient details for a user notice.

@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IEmailerPort} contract.
  */
-export const TOKEN_EMAILER_PORT = Symbol('TOKEN_EMAILER_PORT');
+export const TOKEN_EMAILER_PORT = Symbol();
 
 /**
  * Data required to send one email.

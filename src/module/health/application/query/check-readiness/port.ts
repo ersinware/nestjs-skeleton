@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link ICheckReadinessPort} contract.
  */
-export const TOKEN_CHECK_READINESS_PORT = Symbol('TOKEN_CHECK_READINESS_PORT');
+export const TOKEN_CHECK_READINESS_PORT = Symbol();
 
 /**
  * Thin readiness contract for the probe path.
