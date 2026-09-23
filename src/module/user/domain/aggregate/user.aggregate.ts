@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
-import { SystemException } from 'src/shared/exception';
+import { AccessDeniedException, SystemException } from 'src/shared/exception';
 
 /**
  * The module-owned state of a User aggregate.
@@ -204,9 +204,14 @@ export class User extends PrincipalAggregateRoot {
      * this change is instantly rejected by the auth guard.
      *
      * @throws {SystemException} When the account has been soft-deleted
+     * @throws {AccessDeniedException} When the account is banned
      */
     changePassword(password: string) {
         this.assertNotDeleted(this.changePassword.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException();
+        }
 
         this.props.password = password;
         this.revokeAllSessions();

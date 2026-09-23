@@ -26,7 +26,7 @@ export class AccessDeniedException extends AppException {
      * Creates the exception.
      *
      * @param message The client-safe description of the failure
-     * @param options The underlying `cause` and any forensic `context`
+     * @param options The underlying cause and optional diagnostic or audit metadata
      */
     constructor(message: string = AccessDeniedMessage.DEFAULT, options?: AppExceptionOptions) {
         super(message, options);
