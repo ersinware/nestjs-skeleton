@@ -19,7 +19,6 @@ describe('TokenAdapter session lifetime', () => {
         JWT_INVITE_SECRET: 'i'.repeat(32),
         JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_TTL: '1d',
-        JWT_INVITE_TTL: '1d',
         SESSION_ABSOLUTE_TTL_ADMIN: '8h',
         SESSION_ABSOLUTE_TTL_USER: '7d',
     };

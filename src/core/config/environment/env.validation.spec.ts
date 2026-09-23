@@ -51,7 +51,6 @@ describe('env.validation.config', () => {
         JWT_REFRESH_SECRET: 'refresh-secret-at-least-32-bytes',
         JWT_REFRESH_TTL: '7d',
         JWT_INVITE_SECRET: 'invite-secret-at-least-32-bytes!',
-        JWT_INVITE_TTL: '3d',
         ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
 
         HEALTH_HEAP_LIMIT_MB: 200,
@@ -166,7 +165,6 @@ describe('env.validation.config', () => {
         ['SESSION_ABSOLUTE_TTL_USER', '7days'],
         ['JWT_ACCESS_TTL', '0s'],
         ['JWT_REFRESH_TTL', '0d'],
-        ['JWT_INVITE_TTL', '00h'],
         ['REDIS_CACHE_HOST', 'http://localhost'],
         ['REDIS_SESSION_HOST', '999.999.999.999'],
         ['TRUST_PROXY', '999.1.1.1'],

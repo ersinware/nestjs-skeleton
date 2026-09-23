@@ -13,11 +13,34 @@ import { SystemException } from 'src/shared/exception';
  * The module-owned state of a User aggregate.
  */
 type UserProps = {
+    /**
+     * Email address used to sign in and receive account messages.
+     */
     email: string;
+
+    /**
+     * Display name used in the profile and account messages.
+     */
     name: string;
+
+    /**
+     * Argon2 password hash used to verify credentials.
+     */
     password: string;
+
+    /**
+     * Whether the account is barred from authentication.
+     */
     isBanned: boolean;
+
+    /**
+     * Time the account was created.
+     */
     createdAt: Date;
+
+    /**
+     * Time of the latest account state change.
+     */
     updatedAt: Date;
 };
 
@@ -27,11 +50,34 @@ type UserProps = {
  * reconstitution, produced by {@link User.toSnapshot}.
  */
 type UserSnapshot = {
+    /**
+     * Stable account identifier generated as a UUID v7.
+     */
     readonly id: string;
+
+    /**
+     * Loaded persistence version used to detect concurrent writes.
+     */
     readonly version: number;
+
+    /**
+     * Soft-deletion time, or null while the account has not been deleted.
+     */
     readonly deletedAt: Date | null;
+
+    /**
+     * Permission assignments belonging to this account.
+     */
     readonly permissions: readonly Permission[];
+
+    /**
+     * Access-token version floor and version assigned to newly issued sessions.
+     */
     readonly sessionVersion: number;
+
+    /**
+     * Version of the last full revocation, used to reject earlier refresh credentials.
+     */
     readonly revocationVersion: number;
 } & Readonly<UserProps>;
 
@@ -43,8 +89,14 @@ type UserSnapshot = {
  * share a permission, so the guard's permission alone decides.
  */
 export class User extends PrincipalAggregateRoot {
+    /**
+     * Principal kind used to validate permission ownership.
+     */
     protected readonly principalType = PrincipalType.USER;
 
+    /**
+     * User-specific state owned by this aggregate.
+     */
     private props: UserProps;
 
     /**

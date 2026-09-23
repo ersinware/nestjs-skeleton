@@ -4,7 +4,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgSchema, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, pgSchema, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { aggregateTimestamps } from 'src/core/database';
 import { Permission } from 'src/shared/domain/principal';
 
@@ -40,6 +40,26 @@ export const admin = adminSchema.table(
          * keeps a pending account unable to authenticate.
          */
         password: text('password'),
+
+        /**
+         * Identity shared by one invitation and its durable delivery attempts.
+         */
+        inviteId: uuid('invite_id'),
+
+        /**
+         * Fixed JWT issuance time; retries never change it.
+         */
+        inviteIssuedAt: timestamp('invite_issued_at'),
+
+        /**
+         * Fixed invitation deadline.
+         */
+        inviteExpiresAt: timestamp('invite_expires_at'),
+
+        /**
+         * Revocation snapshot prevents retries from reviving revoked invitations.
+         */
+        inviteRevocationVersion: integer('invite_revocation_version'),
 
         /**
          * The permissions the admin holds, as catalog values. A plain text array rather than a
@@ -83,6 +103,15 @@ export const admin = adminSchema.table(
         ...aggregateTimestamps,
     },
     (table) => [
+        check(
+            'admin_invitation_check',
+            sql`(
+                (${table.inviteId} IS NULL AND ${table.inviteIssuedAt} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL)
+                OR
+                (${table.inviteId} IS NOT NULL AND ${table.inviteIssuedAt} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL
+                 AND ${table.password} IS NULL AND ${table.inviteExpiresAt} > ${table.inviteIssuedAt} AND ${table.inviteRevocationVersion} >= 0)
+            )`,
+        ),
         // Partial index over live rows: serves every `id = ? AND deleted_at IS NULL` lookup and the
         // listing's `ORDER BY id DESC` (UUID v7, so creation order) with no sort step. The email lookup
         // uses the `unique` index instead.

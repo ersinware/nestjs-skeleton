@@ -494,12 +494,6 @@ export class EnvironmentVariables {
     readonly JWT_INVITE_SECRET!: string;
 
     /**
-     * Time-to-live for JWT invite tokens (e.g., '3d').
-     */
-    @IsJwtTtl()
-    readonly JWT_INVITE_TTL!: string;
-
-    /**
      * Base URL of the admin activation page; the invite email appends the token as a query parameter.
      */
     @IsString()
