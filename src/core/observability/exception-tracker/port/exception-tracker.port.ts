@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link IExceptionTrackerPort} contract.
  */
-export const TOKEN_EXCEPTION_TRACKER_PORT = Symbol('TOKEN_EXCEPTION_TRACKER_PORT');
+export const TOKEN_EXCEPTION_TRACKER_PORT = Symbol();
 
 /**
  * Reports exceptions that require human intervention and will not self-heal.

@@ -6,7 +6,7 @@
 import type { JobDefinition } from 'src/shared/domain/job';
 
 /**
- * Identifies the durable job writer contract.
+ * Identifies the {@link IJobQueueWriterPort} contract.
  */
 export const TOKEN_JOB_QUEUE_WRITER_PORT = Symbol();
 

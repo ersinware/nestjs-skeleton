@@ -8,7 +8,7 @@ import type { GetAdminAuthStateResult } from 'src/module/admin/application/query
 /**
  * Dependency injection token representing the {@link IGetAdminAuthStatePort} contract.
  */
-export const TOKEN_GET_ADMIN_AUTH_STATE_PORT = Symbol('TOKEN_GET_ADMIN_AUTH_STATE_PORT');
+export const TOKEN_GET_ADMIN_AUTH_STATE_PORT = Symbol();
 
 /**
  * Thin read contract for fetching an admin's authentication-state read-model.

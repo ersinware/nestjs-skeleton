@@ -10,7 +10,7 @@ import { CommandBus } from '@nestjs/cqrs';
 /**
  * Dependency injection token representing the ordered {@link ICommandBehavior} chain.
  */
-export const TOKEN_COMMAND_BEHAVIORS = Symbol('TOKEN_COMMAND_BEHAVIORS');
+export const TOKEN_COMMAND_BEHAVIORS = Symbol();
 
 /**
  * A single link in the command pipeline. Each behavior wraps the rest of the chain (`next`) and may

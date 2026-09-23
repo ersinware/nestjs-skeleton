@@ -8,7 +8,7 @@ import type { PaginationParams } from 'src/shared/pagination';
 /**
  * Dependency injection token representing the {@link IJobQueueDeadLetterReaderPort} contract.
  */
-export const TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT = Symbol('TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT');
+export const TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT = Symbol();
 
 /**
  * One bounded page of sanitized dead-letter jobs.

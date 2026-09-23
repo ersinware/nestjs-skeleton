@@ -8,6 +8,11 @@
  */
 export enum AdminJobQueue {
     /**
+     * Sends confirmation to the pending email address for the stored request.
+     */
+    EMAIL_CONFIRMATION = 'admin.email-confirmation.queue.v1',
+
+    /**
      * Sends or replaces an invitation for a pending admin.
      */
     INVITE = 'admin.invite.queue.v1',

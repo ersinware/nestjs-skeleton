@@ -8,7 +8,7 @@ import type { Permission, PrincipalType } from 'src/shared/domain/principal';
 /**
  * Dependency injection token representing the {@link IIdentityReaderPort} contract.
  */
-export const TOKEN_IDENTITY_READER_PORT = Symbol('TOKEN_IDENTITY_READER_PORT');
+export const TOKEN_IDENTITY_READER_PORT = Symbol();
 
 /**
  * The identity contract required by the AuthModule.

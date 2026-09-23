@@ -8,7 +8,7 @@ import type { GetFreshUserByIdResult } from 'src/module/user/application/query/g
 /**
  * Dependency injection token representing the {@link IGetFreshUserByIdPort} contract.
  */
-export const TOKEN_GET_FRESH_USER_BY_ID_PORT = Symbol('TOKEN_GET_FRESH_USER_BY_ID_PORT');
+export const TOKEN_GET_FRESH_USER_BY_ID_PORT = Symbol();
 
 /**
  * Primary read contract for the user projection returned after a mutation.

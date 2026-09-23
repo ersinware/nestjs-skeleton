@@ -9,7 +9,7 @@ import type { PrincipalType } from 'src/shared/domain/principal';
 /**
  * Dependency injection token representing the {@link ISessionPort} contract.
  */
-export const TOKEN_SESSION_PORT = Symbol('TOKEN_SESSION_PORT');
+export const TOKEN_SESSION_PORT = Symbol();
 
 /** Signed token metadata used to register exactly the lifetime issued by the token port. */
 export type SessionRegistration = SessionIdentity & {

@@ -12,7 +12,7 @@ import { QueryBus } from '@nestjs/cqrs';
 /**
  * Dependency injection token representing the ordered {@link IQueryBehavior} chain.
  */
-export const TOKEN_QUERY_BEHAVIORS = Symbol('TOKEN_QUERY_BEHAVIORS');
+export const TOKEN_QUERY_BEHAVIORS = Symbol();
 
 /**
  * A single link in the query pipeline. Each behavior wraps the rest of the chain (`next`) and may

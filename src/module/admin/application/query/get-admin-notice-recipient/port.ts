@@ -6,9 +6,9 @@
 import type { GetAdminNoticeRecipientResult } from 'src/module/admin/application/query/get-admin-notice-recipient/query';
 
 /**
- * Identifies the admin notice recipient query contract.
+ * Identifies the {@link IGetAdminNoticeRecipientPort} query contract.
  */
-export const TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT = Symbol('TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT');
+export const TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT = Symbol();
 
 /**
  * Reads the current recipient details for an admin notice.

@@ -20,6 +20,7 @@ import { ChangeAdminPasswordCommandHandler } from 'src/module/admin/application/
 import { ChangeAdminPermissionsCommandHandler } from 'src/module/admin/application/command/change-admin-permissions/handler';
 import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
+import { TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/admin/application/command/port/admin-email-change-notification-writer.port';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReInviteAdminCommandHandler } from 'src/module/admin/application/command/re-invite-admin/handler';
 import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
@@ -47,6 +48,7 @@ import { AdminRefreshReuseNoticeQueue } from 'src/module/admin/application/queue
 import { AdminSessionRevocationLogoutAllQueue } from 'src/module/admin/application/queue/admin-session-revocation-logout-all.queue';
 import { AdminSessionRevocationRefreshReuseQueue } from 'src/module/admin/application/queue/admin-session-revocation-refresh-reuse.queue';
 import { AdminSessionQueue } from 'src/module/admin/application/queue/admin-session.queue';
+import { AdminEmailChangeNotificationWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-email-change-notification-writer.adapter';
 import { AdminReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-reader.adapter';
 import { AdminReplicaReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-replica-reader.adapter';
 import { AdminWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-writer.adapter';
@@ -100,6 +102,10 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         GetAdminCredentialsByEmailQueryHandler,
         GetAdminAuthStateQueryHandler,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
+        {
+            provide: TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
+            useClass: AdminEmailChangeNotificationWriterAdapter,
+        },
         { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
         { provide: TOKEN_GET_FRESH_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },

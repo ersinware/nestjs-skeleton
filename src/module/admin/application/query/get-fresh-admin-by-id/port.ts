@@ -8,7 +8,7 @@ import type { GetFreshAdminByIdResult } from 'src/module/admin/application/query
 /**
  * Dependency injection token representing the {@link IGetFreshAdminByIdPort} contract.
  */
-export const TOKEN_GET_FRESH_ADMIN_BY_ID_PORT = Symbol('TOKEN_GET_FRESH_ADMIN_BY_ID_PORT');
+export const TOKEN_GET_FRESH_ADMIN_BY_ID_PORT = Symbol();
 
 /**
  * Primary read contract for the admin projection returned after a mutation.

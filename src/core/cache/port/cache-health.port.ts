@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link ICacheHealthPort} contract.
  */
-export const TOKEN_CACHE_HEALTH_PORT = Symbol('TOKEN_CACHE_HEALTH_PORT');
+export const TOKEN_CACHE_HEALTH_PORT = Symbol();
 
 /**
  * Contract for probing the cache connection, consumed by the health indicators.

@@ -12,7 +12,7 @@ import type { Principal } from 'src/shared/domain/principal';
 /**
  * Dependency injection token for the {@link ITokenPort} contract.
  */
-export const TOKEN_TOKEN_PORT = Symbol('TOKEN_TOKEN_PORT');
+export const TOKEN_TOKEN_PORT = Symbol();
 
 /**
  * A freshly signed token pair with session registration metadata, including the refresh credential JTI.

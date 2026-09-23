@@ -6,9 +6,9 @@
 import type { GetAdminInviteRecipientResult } from 'src/module/admin/application/query/get-admin-invite-recipient/query';
 
 /**
- * Identifies the admin invitation recipient query contract.
+ * Identifies the {@link IGetAdminInviteRecipientPort} query contract.
  */
-export const TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT = Symbol('TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT');
+export const TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT = Symbol();
 
 /**
  * Reads the current details required to send an admin activation invitation.

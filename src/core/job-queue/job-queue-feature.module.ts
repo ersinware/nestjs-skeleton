@@ -17,9 +17,9 @@ import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/obs
 import { DependencyUnavailableException, SystemException } from 'src/shared/exception';
 
 /**
- * Identifies the consumers registered by a feature module.
+ * Identifies the {@link IJobConsumer} instances registered by a feature module.
  */
-export const TOKEN_FEATURE_CONSUMERS = Symbol('TOKEN_FEATURE_CONSUMERS');
+export const TOKEN_FEATURE_CONSUMERS = Symbol();
 
 /**
  * Creates queues and workers for a feature's consumers.

@@ -52,6 +52,26 @@ type AdminProps = {
     inviteRevocationVersion: number | null;
 
     /**
+     * Request identity shared with the confirmation delivery job.
+     */
+    pendingEmailRequestId: string | null;
+
+    /**
+     * New address awaiting confirmation; never used for sign-in before consumption.
+     */
+    pendingEmail: string | null;
+
+    /**
+     * Fixed confirmation deadline at whole-second precision.
+     */
+    pendingEmailExpiresAt: Date | null;
+
+    /**
+     * Account revocation version captured when the request was created.
+     */
+    pendingEmailRevocationVersion: number | null;
+
+    /**
      * Whether the account is barred from authentication.
      */
     isBanned: boolean;
@@ -138,6 +158,36 @@ enum ActivateAdminRejectionReason {
 const INVITATION_LIFETIME_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
+ * Account-owned email confirmation refusals; handling boundaries consume their audit reasons.
+ */
+enum ConfirmEmailChangeRejectionReason {
+    /**
+     * The account is banned from email changes.
+     */
+    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
+
+    /**
+     * The proof predates the account's current full revocation.
+     */
+    REQUEST_REVOKED = 'REQUEST_REVOKED',
+
+    /**
+     * The proof does not match the stored pending request.
+     */
+    REQUEST_MISMATCH = 'REQUEST_MISMATCH',
+
+    /**
+     * The stored request expired before consumption.
+     */
+    REQUEST_EXPIRED = 'REQUEST_EXPIRED',
+}
+
+/**
+ * Pending email confirmations remain valid for thirty minutes from request creation.
+ */
+const EMAIL_CHANGE_LIFETIME_MS = 30 * 60 * 1000;
+
+/**
  * Owns admin lifecycle, authorization hierarchy, permissions, and session revocation.
  */
 export class Admin extends PrincipalAggregateRoot {
@@ -182,6 +232,10 @@ export class Admin extends PrincipalAggregateRoot {
                 inviteId: null,
                 inviteExpiresAt: null,
                 inviteRevocationVersion: null,
+                pendingEmailRequestId: null,
+                pendingEmail: null,
+                pendingEmailExpiresAt: null,
+                pendingEmailRevocationVersion: null,
                 isBanned: false,
                 version: 0,
                 deletedAt: null,
@@ -227,26 +281,6 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Updates the display name when it differs from the current state.
-     *
-     * @param name The new display name
-     * @returns Whether the name changed
-     * @throws {SystemException} When the account has been soft-deleted
-     */
-    updateName(name: string): boolean {
-        this.assertNotDeleted(this.updateName.name);
-
-        if (name === this.props.name) {
-            return false;
-        }
-
-        this.props.name = name;
-        this.props.updatedAt = new Date();
-
-        return true;
-    }
-
-    /**
      * Revokes existing invitations and queues a replacement for a pending admin.
      *
      * @param actor The verified principal requesting the invitation
@@ -276,7 +310,7 @@ export class Admin extends PrincipalAggregateRoot {
      *
      * @param password The Argon2-hashed initial password
      * @param payload Identity and timing claims from the verified invitation
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account is deleted or differs from the token subject
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceConflictException} When the account is already active
      * @throws {InvalidInputException} When the invitation is revoked, mismatched, or expired
@@ -307,6 +341,12 @@ export class Admin extends PrincipalAggregateRoot {
     ) {
         this.assertNotDeleted(this.activate.name);
 
+        if (payload.sub !== this.id) {
+            throw new SystemException('Verified token subject does not match the target account.', {
+                context: { class: Admin.name, method: this.activate.name, id: this.id, sub: payload.sub },
+            });
+        }
+
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 auditReason: ActivateAdminRejectionReason.ACCOUNT_BANNED,
@@ -326,7 +366,6 @@ export class Admin extends PrincipalAggregateRoot {
         }
 
         if (
-            payload.sub !== this.id ||
             payload.jti !== this.props.inviteId ||
             payload.inviteRevocationVersion !== this.props.inviteRevocationVersion ||
             this.props.inviteExpiresAt === null ||
@@ -351,20 +390,178 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
+     * Updates an activated admin's display name when it differs from the current state.
+     *
+     * @param name The new display name
+     * @returns Whether the name changed
+     * @throws {SystemException} When the account is deleted or has not been activated
+     */
+    updateName(name: string): boolean {
+        this.assertNotDeleted(this.updateName.name);
+
+        if (this.props.password === null) {
+            throw new SystemException('An inactive admin reached the profile update flow.', {
+                context: { class: Admin.name, method: this.updateName.name, id: this.id },
+            });
+        }
+
+        if (name === this.props.name) {
+            return false;
+        }
+
+        this.props.name = name;
+        this.props.updatedAt = new Date();
+
+        return true;
+    }
+
+    /**
      * Changes the password and revokes existing sessions.
      *
      * @param password Argon2 password hash
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account is deleted or has not been activated
      * @throws {AccessDeniedException} When the account is banned
      */
     changePassword(password: string) {
         this.assertNotDeleted(this.changePassword.name);
+
+        if (this.props.password === null) {
+            throw new SystemException('An inactive admin reached the password change flow.', {
+                context: { class: Admin.name, method: this.changePassword.name, id: this.id },
+            });
+        }
 
         if (this.props.isBanned) {
             throw new AccessDeniedException();
         }
 
         this.props.password = password;
+        this.revokeAllSessions();
+        this.props.updatedAt = new Date();
+
+        this.addSessionReconciliationJob();
+    }
+
+    /**
+     * Replaces the pending email request and queues delivery without revoking sessions.
+     *
+     * @param newEmail Validated and normalized target email address
+     * @throws {SystemException} When the account is deleted or has not been activated
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the target address already belongs to this account
+     */
+    requestEmailChange(newEmail: string) {
+        this.assertNotDeleted(this.requestEmailChange.name);
+
+        if (this.props.password === null) {
+            throw new SystemException('An inactive admin reached the email change request flow.', {
+                context: { class: Admin.name, method: this.requestEmailChange.name, id: this.id },
+            });
+        }
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException();
+        }
+
+        if (newEmail === this.props.email) {
+            throw new InvalidInputException('The new email address must differ from the current address.');
+        }
+
+        const now = new Date();
+
+        this.props.pendingEmailRequestId = randomUUID();
+        this.props.pendingEmail = newEmail;
+        this.props.pendingEmailExpiresAt = new Date(Math.floor(now.getTime() / 1000) * 1000 + EMAIL_CHANGE_LIFETIME_MS);
+        this.props.pendingEmailRevocationVersion = this.revocationVersion;
+        this.props.updatedAt = now;
+
+        this.addJob([
+            {
+                deliveryId: this.props.pendingEmailRequestId,
+                aggregateId: this.id,
+                queueName: AdminJobQueue.EMAIL_CONFIRMATION,
+            },
+        ]);
+    }
+
+    /**
+     * Consumes a matching verified proof, changes the address, and revokes existing sessions.
+     *
+     * @param payload Identity and expiry claims after signature, type, and principal verification
+     * @throws {SystemException} When the account is deleted, inactive, or differs from the token subject
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the request is revoked, mismatched, consumed, or expired
+     */
+    confirmEmailChange(payload: {
+        /**
+         * Account identifier from the verified confirmation.
+         */
+        readonly sub: string;
+
+        /**
+         * Pending request identifier from the verified confirmation.
+         */
+        readonly jti: string;
+
+        /**
+         * Revocation version captured when the request was created.
+         */
+        readonly emailRevocationVersion: number;
+
+        /**
+         * Fixed token expiry in Unix seconds.
+         */
+        readonly exp: number;
+    }) {
+        this.assertNotDeleted(this.confirmEmailChange.name);
+
+        if (payload.sub !== this.id) {
+            throw new SystemException('Verified token subject does not match the target account.', {
+                context: { class: Admin.name, method: this.confirmEmailChange.name, id: this.id, sub: payload.sub },
+            });
+        }
+
+        if (this.props.password === null) {
+            throw new SystemException('An inactive admin reached the email confirmation flow.', {
+                context: { class: Admin.name, method: this.confirmEmailChange.name, id: this.id },
+            });
+        }
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+            });
+        }
+
+        if (payload.emailRevocationVersion !== this.revocationVersion) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_REVOKED,
+            });
+        }
+
+        if (
+            payload.jti !== this.props.pendingEmailRequestId ||
+            payload.emailRevocationVersion !== this.props.pendingEmailRevocationVersion ||
+            this.props.pendingEmail === null ||
+            this.props.pendingEmailExpiresAt === null ||
+            payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime()
+        ) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_MISMATCH,
+            });
+        }
+
+        if (this.props.pendingEmailExpiresAt.getTime() <= Date.now()) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_EXPIRED,
+            });
+        }
+
+        this.props.email = this.props.pendingEmail;
+        this.props.pendingEmailRequestId = null;
+        this.props.pendingEmail = null;
+        this.props.pendingEmailExpiresAt = null;
+        this.props.pendingEmailRevocationVersion = null;
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
 
@@ -511,6 +708,32 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
+     * Enforces self, root, and permission-manager administration restrictions.
+     *
+     * @param actor The verified principal performing the administration
+     * @throws {SystemException} When a non-admin actor reaches the mutation
+     * @throws {AccessDeniedException} When the actor cannot administer the target
+     */
+    protected override assertAdministrableBy(actor: Principal) {
+        super.assertAdministrableBy(actor);
+
+        if (actor.id === this.id) {
+            throw new AccessDeniedException('An admin cannot administer their own account.');
+        }
+
+        if (this.permissions.includes(Permission.ADMIN_ROOT)) {
+            throw new AccessDeniedException('The root account cannot be administered.');
+        }
+
+        if (
+            this.permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
+            !actor.permissions.includes(Permission.ADMIN_ROOT)
+        ) {
+            throw new AccessDeniedException('A permission manager is administered by root alone.');
+        }
+    }
+
+    /**
      * Fixes invitation identity and its three-day lifetime before queuing delivery.
      */
     private issueInvitation() {
@@ -538,32 +761,6 @@ export class Admin extends PrincipalAggregateRoot {
                 queueName: AdminJobQueue.SESSION_RECONCILE,
             },
         ]);
-    }
-
-    /**
-     * Enforces self, root, and permission-manager administration restrictions.
-     *
-     * @param actor The verified principal performing the administration
-     * @throws {SystemException} When a non-admin actor reaches the mutation
-     * @throws {AccessDeniedException} When the actor cannot administer the target
-     */
-    protected override assertAdministrableBy(actor: Principal) {
-        super.assertAdministrableBy(actor);
-
-        if (actor.id === this.id) {
-            throw new AccessDeniedException('An admin cannot administer their own account.');
-        }
-
-        if (this.permissions.includes(Permission.ADMIN_ROOT)) {
-            throw new AccessDeniedException('The root account cannot be administered.');
-        }
-
-        if (
-            this.permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
-            !actor.permissions.includes(Permission.ADMIN_ROOT)
-        ) {
-            throw new AccessDeniedException('A permission manager is administered by root alone.');
-        }
     }
 
     /**
@@ -618,6 +815,42 @@ export class Admin extends PrincipalAggregateRoot {
      */
     get inviteRevocationVersion(): number | null {
         return this.props.inviteRevocationVersion;
+    }
+
+    /**
+     * Request identity shared with the confirmation delivery job.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmailRequestId(): string | null {
+        return this.props.pendingEmailRequestId;
+    }
+
+    /**
+     * New address awaiting confirmation; never used for sign-in before consumption.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmail(): string | null {
+        return this.props.pendingEmail;
+    }
+
+    /**
+     * Fixed confirmation deadline at whole-second precision.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmailExpiresAt(): Date | null {
+        return this.props.pendingEmailExpiresAt;
+    }
+
+    /**
+     * Account revocation version captured when the request was created.
+     *
+     * @returns The stored value, or null when no request is pending
+     */
+    get pendingEmailRevocationVersion(): number | null {
+        return this.props.pendingEmailRevocationVersion;
     }
 
     /**

@@ -10,7 +10,7 @@ import type { SearchParams } from 'src/shared/search';
 /**
  * Dependency injection token representing the {@link IListAdminsPort} contract.
  */
-export const TOKEN_LIST_ADMINS_PORT = Symbol('TOKEN_LIST_ADMINS_PORT');
+export const TOKEN_LIST_ADMINS_PORT = Symbol();
 
 /**
  * Thin read contract for listing admin read-models with pagination and search.

@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link ICachePort} contract.
  */
-export const TOKEN_CACHE_PORT = Symbol('TOKEN_CACHE_PORT');
+export const TOKEN_CACHE_PORT = Symbol();
 
 /**
  * Contract for cache reads, writes, and evictions. Recognized Redis availability failures

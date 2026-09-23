@@ -6,7 +6,7 @@
 /**
  * Dependency injection token representing the {@link ILoggerPort} contract.
  */
-export const TOKEN_LOGGER_PORT = Symbol('TOKEN_LOGGER_PORT');
+export const TOKEN_LOGGER_PORT = Symbol();
 
 /**
  * Closed envelope every log call carries. No index signature, so a caller can never write a key

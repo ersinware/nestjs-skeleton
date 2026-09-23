@@ -7,9 +7,9 @@ import type { ListDeadLetterJobsResult } from 'src/module/job-queue-operations/a
 import type { PaginationParams } from 'src/shared/pagination';
 
 /**
- * Dependency injection token for the dead-letter listing contract.
+ * Dependency injection token for the {@link IListDeadLetterJobsPort} contract.
  */
-export const TOKEN_LIST_DEAD_LETTER_JOBS_PORT = Symbol('TOKEN_LIST_DEAD_LETTER_JOBS_PORT');
+export const TOKEN_LIST_DEAD_LETTER_JOBS_PORT = Symbol();
 
 /**
  * Reads a bounded page of sanitized dead-letter jobs.

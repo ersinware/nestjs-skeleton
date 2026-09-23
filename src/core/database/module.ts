@@ -26,17 +26,17 @@ import { TOKEN_TRANSACTION_PORT } from 'src/core/database/port/transaction.port'
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 
 /**
- * Dependency injection token for the raw primary pool. Module-private: consumers see only the
+ * Dependency injection token for the raw primary {@link Pool}. Module-private: consumers see only the
  * Drizzle clients; the raw pools exist to be wrapped and closed on shutdown.
  */
-const TOKEN_DATABASE_CONNECTION = Symbol('TOKEN_DATABASE_CONNECTION');
+const TOKEN_DATABASE_CONNECTION = Symbol();
 
 /**
- * Dependency injection token for the raw replica pool. Module-private. Resolves to the primary pool
+ * Dependency injection token for the raw replica {@link Pool}. Module-private. Resolves to the primary pool
  * object itself when `DATABASE_REPLICA_URL` is unset; that identity is the single source of "is a
  * replica configured" for every provider below.
  */
-const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol('TOKEN_DATABASE_REPLICA_CONNECTION');
+const TOKEN_DATABASE_REPLICA_CONNECTION = Symbol();
 
 /**
  * Provides the primary and replica Drizzle clients and their health ports. Without a replica URL,

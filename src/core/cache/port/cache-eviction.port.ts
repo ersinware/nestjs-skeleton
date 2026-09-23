@@ -6,7 +6,7 @@
 /**
  * Dependency injection token for {@link ICacheEvictionPort}.
  */
-export const TOKEN_CACHE_EVICTION_PORT = Symbol('TOKEN_CACHE_EVICTION_PORT');
+export const TOKEN_CACHE_EVICTION_PORT = Symbol();
 
 /**
  * Deletes cached entries without suppressing deletion failures.
