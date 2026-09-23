@@ -114,7 +114,6 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             name: row.name,
             password: row.password,
             inviteId: row.inviteId,
-            inviteIssuedAt: row.inviteIssuedAt,
             inviteExpiresAt: row.inviteExpiresAt,
             inviteRevocationVersion: row.inviteRevocationVersion,
             permissions: row.permissions,

@@ -51,7 +51,6 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
         if (
             !recipient ||
             recipient.inviteId === null ||
-            recipient.inviteIssuedAt === null ||
             recipient.inviteExpiresAt === null ||
             recipient.inviteRevocationVersion === null ||
             recipient.inviteId !== command.deliveryId ||
@@ -68,7 +67,6 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
                 await this.tokenPort.generateInviteToken({
                     sub: command.id,
                     jti: recipient.inviteId,
-                    iat: Math.floor(recipient.inviteIssuedAt.getTime() / 1000),
                     exp: Math.floor(recipient.inviteExpiresAt.getTime() / 1000),
                     inviteRevocationVersion: recipient.inviteRevocationVersion,
                 }),

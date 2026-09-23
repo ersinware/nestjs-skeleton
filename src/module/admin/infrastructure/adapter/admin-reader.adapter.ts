@@ -114,7 +114,6 @@ export class AdminReaderAdapter
                             name: admin.name,
                             revocationVersion: admin.revocationVersion,
                             inviteId: admin.inviteId,
-                            inviteIssuedAt: admin.inviteIssuedAt,
                             inviteExpiresAt: admin.inviteExpiresAt,
                             inviteRevocationVersion: admin.inviteRevocationVersion,
                         })

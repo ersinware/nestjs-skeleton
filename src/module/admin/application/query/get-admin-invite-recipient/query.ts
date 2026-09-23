@@ -28,11 +28,6 @@ export type GetAdminInviteRecipientResult = {
     readonly inviteId: string | null;
 
     /**
-     * Fixed JWT issuance time at whole-second precision, or null when no invitation remains.
-     */
-    readonly inviteIssuedAt: Date | null;
-
-    /**
      * Fixed invitation expiry preserved across delivery retries, or null when no invitation remains.
      */
     readonly inviteExpiresAt: Date | null;

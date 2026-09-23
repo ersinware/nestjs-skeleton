@@ -42,11 +42,6 @@ type AdminProps = {
     inviteId: string | null;
 
     /**
-     * Fixed JWT issuance time, at whole-second precision.
-     */
-    inviteIssuedAt: Date | null;
-
-    /**
      * Fixed JWT expiry, cleared when the invitation is consumed.
      */
     inviteExpiresAt: Date | null;
@@ -185,7 +180,6 @@ export class Admin extends PrincipalAggregateRoot {
             admin = new Admin({
                 ...props,
                 inviteId: null,
-                inviteIssuedAt: null,
                 inviteExpiresAt: null,
                 inviteRevocationVersion: null,
                 isBanned: false,
@@ -315,11 +309,6 @@ export class Admin extends PrincipalAggregateRoot {
             readonly inviteRevocationVersion: number;
 
             /**
-             * Token issuance time in Unix seconds.
-             */
-            readonly iat: number;
-
-            /**
              * Token expiry time in Unix seconds.
              */
             readonly exp: number;
@@ -349,9 +338,7 @@ export class Admin extends PrincipalAggregateRoot {
             payload.sub !== this.id ||
             payload.jti !== this.props.inviteId ||
             payload.inviteRevocationVersion !== this.props.inviteRevocationVersion ||
-            this.props.inviteIssuedAt === null ||
             this.props.inviteExpiresAt === null ||
-            payload.iat * 1000 !== this.props.inviteIssuedAt.getTime() ||
             payload.exp * 1000 !== this.props.inviteExpiresAt.getTime()
         ) {
             throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
@@ -367,7 +354,6 @@ export class Admin extends PrincipalAggregateRoot {
 
         this.props.password = password;
         this.props.inviteId = null;
-        this.props.inviteIssuedAt = null;
         this.props.inviteExpiresAt = null;
         this.props.inviteRevocationVersion = null;
         this.props.updatedAt = new Date();
@@ -537,11 +523,8 @@ export class Admin extends PrincipalAggregateRoot {
      * Fixes invitation identity and its three-day lifetime before queuing delivery.
      */
     private issueInvitation() {
-        const issuedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
-
         this.props.inviteId = randomUUID();
-        this.props.inviteIssuedAt = issuedAt;
-        this.props.inviteExpiresAt = new Date(issuedAt.getTime() + INVITATION_LIFETIME_MS);
+        this.props.inviteExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + INVITATION_LIFETIME_MS);
         this.props.inviteRevocationVersion = this.revocationVersion;
 
         this.addJob([
@@ -626,15 +609,6 @@ export class Admin extends PrincipalAggregateRoot {
      */
     get inviteId(): string | null {
         return this.props.inviteId;
-    }
-
-    /**
-     * Returns the fixed invitation issuance time.
-     *
-     * @returns Issuance time at whole-second precision, or null when no invitation remains
-     */
-    get inviteIssuedAt(): Date | null {
-        return this.props.inviteIssuedAt;
     }
 
     /**
