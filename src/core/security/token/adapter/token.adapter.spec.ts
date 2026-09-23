@@ -14,13 +14,14 @@ describe('TokenAdapter session lifetime', () => {
     const jwt = new JwtService();
     const principal = { id: 'principal-1', type: PrincipalType.USER, permissions: [] };
     const config = {
-        JWT_ACCESS_SECRET: 'a'.repeat(32),
-        JWT_REFRESH_SECRET: 'r'.repeat(32),
-        JWT_INVITE_SECRET: 'i'.repeat(32),
-        JWT_ACCESS_TTL: '15m',
-        JWT_REFRESH_TTL: '1d',
         SESSION_ABSOLUTE_TTL_ADMIN: '8h',
         SESSION_ABSOLUTE_TTL_USER: '7d',
+        JWT_ACCESS_SECRET: 'a'.repeat(32),
+        JWT_ACCESS_TTL: '15m',
+        JWT_REFRESH_SECRET: 'r'.repeat(32),
+        JWT_REFRESH_TTL: '1d',
+        JWT_INVITE_SECRET: 'i'.repeat(32),
+        JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
     };
     let adapter: TokenAdapter;
 

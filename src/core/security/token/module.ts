@@ -1,6 +1,6 @@
 /**
  * @file module.ts
- * @description NestJS module configuring JWT access and refresh token utilities.
+ * @description NestJS module providing session, invitation, and email confirmation tokens.
  */
 
 import { Module } from '@nestjs/common';

@@ -501,6 +501,28 @@ export class EnvironmentVariables {
     readonly ADMIN_INVITE_URL!: string;
 
     /**
+     * Separate secret for signing email confirmation tokens.
+     */
+    @IsString()
+    @Matches(/\S/)
+    @IsByteLength(32)
+    readonly JWT_EMAIL_CONFIRM_SECRET!: string;
+
+    /**
+     * Frontend page receiving admin email confirmation links.
+     */
+    @IsString()
+    @IsHttpUrl()
+    readonly ADMIN_EMAIL_CONFIRM_URL!: string;
+
+    /**
+     * Frontend page receiving user email confirmation links.
+     */
+    @IsString()
+    @IsHttpUrl()
+    readonly USER_EMAIL_CONFIRM_URL!: string;
+
+    /**
      * Heap memory limit (in MB) for system health checks.
      */
     @IsEnvNumber()

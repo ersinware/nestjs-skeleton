@@ -15,4 +15,7 @@ export enum AuthTokenType {
 
     /** Single-use-by-state token that only activates a pending account; it authorizes nothing else. */
     INVITE = 'invite',
+
+    /** Confirms a persisted email change request; it grants no session access. */
+    EMAIL_CONFIRM = 'email_confirm',
 }

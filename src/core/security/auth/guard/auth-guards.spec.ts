@@ -78,6 +78,8 @@ function fixture(
         refreshTokens: vi.fn(),
         generateInviteToken: vi.fn(),
         verifyInviteToken: vi.fn(),
+        generateEmailConfirmationToken: vi.fn(),
+        verifyEmailConfirmationToken: vi.fn(),
     } satisfies ITokenPort;
     const sessions = {
         getVersion: vi.fn<ISessionPort['getVersion']>().mockResolvedValue(3),
