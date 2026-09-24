@@ -124,7 +124,7 @@ export const admin = adminSchema.table(
         ),
         check(
             'admin_invitation_check',
-            sql`((${table.inviteId} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL) OR (${table.inviteId} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL AND ${table.password} IS NULL AND ${table.inviteRevocationVersion} >= 0)`,
+            sql`((${table.inviteId} IS NULL AND ${table.inviteExpiresAt} IS NULL AND ${table.inviteRevocationVersion} IS NULL) OR (${table.inviteId} IS NOT NULL AND ${table.inviteExpiresAt} IS NOT NULL AND ${table.inviteRevocationVersion} IS NOT NULL AND ${table.password} IS NULL AND ${table.inviteRevocationVersion} >= 0))`,
         ),
         // Partial index over live rows: serves every `id = ? AND deleted_at IS NULL` lookup and the
         // listing's `ORDER BY id DESC` (UUID v7, so creation order) with no sort step. The email lookup

@@ -24,7 +24,9 @@ import { TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/ad
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReInviteAdminCommandHandler } from 'src/module/admin/application/command/re-invite-admin/handler';
 import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
+import { RequestAdminEmailChangeCommandHandler } from 'src/module/admin/application/command/request-admin-email-change/handler';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
+import { SendAdminEmailConfirmationCommandHandler } from 'src/module/admin/application/command/send-admin-email-confirmation/handler';
 import { SendAdminInviteCommandHandler } from 'src/module/admin/application/command/send-admin-invite/handler';
 import { SendAdminRefreshReuseNoticeCommandHandler } from 'src/module/admin/application/command/send-admin-refresh-reuse-notice/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
@@ -35,14 +37,17 @@ import { GetAdminByIdQueryHandler } from 'src/module/admin/application/query/get
 import { TOKEN_GET_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-admin-by-id/port';
 import { GetAdminCredentialsByEmailQueryHandler } from 'src/module/admin/application/query/get-admin-credentials-by-email/handler';
 import { TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
+import { TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/port';
 import { TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
 import { TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
 import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/application/query/get-admin-session-version/port';
 import { GetFreshAdminByIdQueryHandler } from 'src/module/admin/application/query/get-fresh-admin-by-id/handler';
 import { TOKEN_GET_FRESH_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
+import { TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT } from 'src/module/admin/application/query/is-admin-email-in-use/port';
 import { ListAdminPermissionCatalogQueryHandler } from 'src/module/admin/application/query/list-admin-permission-catalog/handler';
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
+import { AdminEmailConfirmationQueue } from 'src/module/admin/application/queue/admin-email-confirmation.queue';
 import { AdminInviteQueue } from 'src/module/admin/application/queue/admin-invite.queue';
 import { AdminRefreshReuseNoticeQueue } from 'src/module/admin/application/queue/admin-refresh-reuse-notice.queue';
 import { AdminSessionRevocationLogoutAllQueue } from 'src/module/admin/application/queue/admin-session-revocation-logout-all.queue';
@@ -70,6 +75,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         CqrsPipelineModule,
         JobQueueModule.forFeature(
             [
+                AdminEmailConfirmationQueue,
                 AdminInviteQueue,
                 AdminRefreshReuseNoticeQueue,
                 AdminSessionQueue,
@@ -89,6 +95,8 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         ReInviteAdminCommandHandler,
         UpdateAdminCommandHandler,
         ChangeAdminPasswordCommandHandler,
+        RequestAdminEmailChangeCommandHandler,
+        SendAdminEmailConfirmationCommandHandler,
         DeleteAdminCommandHandler,
         BanAdminCommandHandler,
         UnbanAdminCommandHandler,
@@ -107,6 +115,8 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
             useClass: AdminEmailChangeNotificationWriterAdapter,
         },
         { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
+        { provide: TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_FRESH_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },

@@ -4,7 +4,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetFreshUserByIdPort } from 'src/module/user/application/query/get-fresh-user-by-id/port';
@@ -14,10 +14,13 @@ import { type IGetUserByIdPort } from 'src/module/user/application/query/get-use
 import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { type GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import type { IGetUserEmailConfirmationRecipientPort } from 'src/module/user/application/query/get-user-email-confirmation-recipient/port';
+import type { GetUserEmailConfirmationRecipientResult } from 'src/module/user/application/query/get-user-email-confirmation-recipient/query';
 import { type IGetUserNoticeRecipientPort } from 'src/module/user/application/query/get-user-notice-recipient/port';
 import { type GetUserNoticeRecipientResult } from 'src/module/user/application/query/get-user-notice-recipient/query';
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
+import type { IIsUserEmailInUsePort } from 'src/module/user/application/query/is-user-email-in-use/port';
 import { user } from 'src/module/user/infrastructure/user.schema';
 
 /**
@@ -30,6 +33,8 @@ import { user } from 'src/module/user/infrastructure/user.schema';
 @Injectable()
 export class UserReaderAdapter
     implements
+        IIsUserEmailInUsePort,
+        IGetUserEmailConfirmationRecipientPort,
         IGetFreshUserByIdPort,
         IGetUserAuthStatePort,
         IGetUserByIdPort,
@@ -166,6 +171,66 @@ export class UserReaderAdapter
                         .limit(1)
                 )[0] ?? null
             );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Checks the same address scope as the unique constraint, including deleted accounts.
+     *
+     * @param email Target address to check
+     * @returns Whether the address is already held
+     */
+    async isEmailInUse(email: string): Promise<boolean> {
+        try {
+            return (
+                (await this.database.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)).length >
+                0
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads pending metadata only for an eligible account.
+     *
+     * @param id Target account identifier
+     * @param deliveryId Request identity assigned to the delivery job
+     * @returns Recipient metadata, or null when delivery is no longer allowed
+     */
+    async getEmailConfirmationRecipient(
+        id: string,
+        deliveryId: string,
+    ): Promise<GetUserEmailConfirmationRecipientResult | null> {
+        try {
+            return ((
+                await this.database
+                    .select({
+                        name: user.name,
+                        pendingEmailRequestId: user.pendingEmailRequestId,
+                        pendingEmail: user.pendingEmail,
+                        pendingEmailExpiresAt: user.pendingEmailExpiresAt,
+                        pendingEmailRevocationVersion: user.pendingEmailRevocationVersion,
+                    })
+                    .from(user)
+                    .where(
+                        and(
+                            eq(user.id, id),
+                            isNull(user.deletedAt),
+                            eq(user.isBanned, false),
+                            isNotNull(user.pendingEmailRequestId),
+                            isNotNull(user.pendingEmail),
+                            isNotNull(user.pendingEmailExpiresAt),
+                            isNotNull(user.pendingEmailRevocationVersion),
+                            eq(user.pendingEmailRequestId, deliveryId),
+                            gt(user.pendingEmailExpiresAt, new Date()),
+                            eq(user.pendingEmailRevocationVersion, user.revocationVersion),
+                        ),
+                    )
+                    .limit(1)
+            )[0] ?? null) as GetUserEmailConfirmationRecipientResult | null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
