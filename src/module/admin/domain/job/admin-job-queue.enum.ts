@@ -8,6 +8,11 @@
  */
 export enum AdminJobQueue {
     /**
+     * Notifies the previous address after a confirmed email change.
+     */
+    EMAIL_CHANGE_NOTIFICATION = 'admin.email-change-notification.queue.v1',
+
+    /**
      * Sends confirmation to the pending email address for the stored request.
      */
     EMAIL_CONFIRMATION = 'admin.email-confirmation.queue.v1',

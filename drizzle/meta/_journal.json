@@ -36,6 +36,20 @@
             "when": 1790186031282,
             "tag": "0004_email_change_state",
             "breakpoints": true
+        },
+        {
+            "idx": 5,
+            "version": "7",
+            "when": 1790248774798,
+            "tag": "0005_email_change_notification_created_at_default",
+            "breakpoints": true
+        },
+        {
+            "idx": 6,
+            "version": "7",
+            "when": 1790250125429,
+            "tag": "0006_email_change_notification_aggregate_id",
+            "breakpoints": true
         }
     ]
 }

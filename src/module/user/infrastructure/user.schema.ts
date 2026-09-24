@@ -124,9 +124,9 @@ export const emailChangeNotification = userSchema.table('email_change_notificati
     id: uuid('id').primaryKey().notNull(),
 
     /**
-     * Owning account identifier, also matched by the delivery worker.
+     * Owning account identifier retained with the notification record.
      */
-    accountId: uuid('account_id').notNull(),
+    aggregateId: uuid('aggregate_id').notNull(),
 
     /**
      * Address captured before the change; never resolved from the current account on retry.
@@ -136,5 +136,5 @@ export const emailChangeNotification = userSchema.table('email_change_notificati
     /**
      * Time the email change completed.
      */
-    createdAt: timestamp('created_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 });
