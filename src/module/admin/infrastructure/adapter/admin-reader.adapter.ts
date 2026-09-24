@@ -11,6 +11,8 @@ import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/
 import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import type { IGetAdminEmailChangeNotificationRecipientPort } from 'src/module/admin/application/query/get-admin-email-change-notification-recipient/port';
+import type { GetAdminEmailChangeNotificationRecipientResult } from 'src/module/admin/application/query/get-admin-email-change-notification-recipient/query';
 import type { IGetAdminEmailConfirmationRecipientPort } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/port';
 import type { GetAdminEmailConfirmationRecipientResult } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/query';
 import { type IGetAdminInviteRecipientPort } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
@@ -22,7 +24,7 @@ import { type GetAdminSessionVersionResult } from 'src/module/admin/application/
 import { type IGetFreshAdminByIdPort } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
 import { type GetFreshAdminByIdResult } from 'src/module/admin/application/query/get-fresh-admin-by-id/query';
 import type { IIsAdminEmailInUsePort } from 'src/module/admin/application/query/is-admin-email-in-use/port';
-import { admin } from 'src/module/admin/infrastructure/admin.schema';
+import { admin, emailChangeNotification } from 'src/module/admin/infrastructure/admin.schema';
 
 /**
  * Implements admin queries that require current primary-database state.
@@ -31,6 +33,7 @@ import { admin } from 'src/module/admin/infrastructure/admin.schema';
 export class AdminReaderAdapter
     implements
         IIsAdminEmailInUsePort,
+        IGetAdminEmailChangeNotificationRecipientPort,
         IGetAdminEmailConfirmationRecipientPort,
         IGetAdminAuthStatePort,
         IGetAdminCredentialsByEmailPort,
@@ -267,6 +270,33 @@ export class AdminReaderAdapter
                     )
                     .limit(1)
             )[0] ?? null) as GetAdminEmailConfirmationRecipientResult | null;
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads a committed old-address recipient by notification identity.
+     *
+     * @param id Notification delivery identity
+     * @returns Stored old address and change time, or null
+     */
+    async getEmailChangeNotificationRecipient(
+        id: string,
+    ): Promise<GetAdminEmailChangeNotificationRecipientResult | null> {
+        try {
+            return (
+                (
+                    await this.database
+                        .select({
+                            previousEmail: emailChangeNotification.previousEmail,
+                            createdAt: emailChangeNotification.createdAt,
+                        })
+                        .from(emailChangeNotification)
+                        .where(eq(emailChangeNotification.id, id))
+                        .limit(1)
+                )[0] ?? null
+            );
         } catch (error) {
             throw translateConnectionFailure(error);
         }

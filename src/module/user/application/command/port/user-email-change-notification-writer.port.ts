@@ -20,17 +20,12 @@ export type UserEmailChangeNotification = {
     /**
      * Account whose address changed.
      */
-    readonly accountId: string;
+    readonly aggregateId: string;
 
     /**
      * Original recipient address captured before mutation.
      */
     readonly previousEmail: string;
-
-    /**
-     * Time of the completed address change.
-     */
-    readonly createdAt: Date;
 };
 
 /**

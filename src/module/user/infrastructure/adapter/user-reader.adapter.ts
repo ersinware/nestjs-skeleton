@@ -14,6 +14,8 @@ import { type IGetUserByIdPort } from 'src/module/user/application/query/get-use
 import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { type GetUserCredentialsByEmailResult } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import type { IGetUserEmailChangeNotificationRecipientPort } from 'src/module/user/application/query/get-user-email-change-notification-recipient/port';
+import type { GetUserEmailChangeNotificationRecipientResult } from 'src/module/user/application/query/get-user-email-change-notification-recipient/query';
 import type { IGetUserEmailConfirmationRecipientPort } from 'src/module/user/application/query/get-user-email-confirmation-recipient/port';
 import type { GetUserEmailConfirmationRecipientResult } from 'src/module/user/application/query/get-user-email-confirmation-recipient/query';
 import { type IGetUserNoticeRecipientPort } from 'src/module/user/application/query/get-user-notice-recipient/port';
@@ -21,7 +23,7 @@ import { type GetUserNoticeRecipientResult } from 'src/module/user/application/q
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
 import type { IIsUserEmailInUsePort } from 'src/module/user/application/query/is-user-email-in-use/port';
-import { user } from 'src/module/user/infrastructure/user.schema';
+import { emailChangeNotification, user } from 'src/module/user/infrastructure/user.schema';
 
 /**
  * Implements the user query ports on the primary connection with direct projection queries: selects
@@ -34,6 +36,7 @@ import { user } from 'src/module/user/infrastructure/user.schema';
 export class UserReaderAdapter
     implements
         IIsUserEmailInUsePort,
+        IGetUserEmailChangeNotificationRecipientPort,
         IGetUserEmailConfirmationRecipientPort,
         IGetFreshUserByIdPort,
         IGetUserAuthStatePort,
@@ -231,6 +234,33 @@ export class UserReaderAdapter
                     )
                     .limit(1)
             )[0] ?? null) as GetUserEmailConfirmationRecipientResult | null;
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads a committed old-address recipient by notification identity.
+     *
+     * @param id Notification delivery identity
+     * @returns Stored old address and change time, or null
+     */
+    async getEmailChangeNotificationRecipient(
+        id: string,
+    ): Promise<GetUserEmailChangeNotificationRecipientResult | null> {
+        try {
+            return (
+                (
+                    await this.database
+                        .select({
+                            previousEmail: emailChangeNotification.previousEmail,
+                            createdAt: emailChangeNotification.createdAt,
+                        })
+                        .from(emailChangeNotification)
+                        .where(eq(emailChangeNotification.id, id))
+                        .limit(1)
+                )[0] ?? null
+            );
         } catch (error) {
             throw translateConnectionFailure(error);
         }

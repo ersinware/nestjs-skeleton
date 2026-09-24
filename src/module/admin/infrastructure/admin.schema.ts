@@ -150,9 +150,9 @@ export const emailChangeNotification = adminSchema.table('email_change_notificat
     id: uuid('id').primaryKey().notNull(),
 
     /**
-     * Owning account identifier, also matched by the delivery worker.
+     * Owning account identifier retained with the notification record.
      */
-    accountId: uuid('account_id').notNull(),
+    aggregateId: uuid('aggregate_id').notNull(),
 
     /**
      * Address captured before the change; never resolved from the current account on retry.
@@ -162,5 +162,5 @@ export const emailChangeNotification = adminSchema.table('email_change_notificat
     /**
      * Time the email change completed.
      */
-    createdAt: timestamp('created_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 });

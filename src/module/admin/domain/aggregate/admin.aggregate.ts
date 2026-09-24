@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
+import { isUuidV7 } from 'src/shared/domain/uuid';
 import {
     AccessDeniedException,
     AccessDeniedMessage,
@@ -318,24 +319,9 @@ export class Admin extends PrincipalAggregateRoot {
     activate(
         password: string,
         payload: {
-            /**
-             * Account identifier from the verified invitation.
-             */
             readonly sub: string;
-
-            /**
-             * Invitation identifier from the verified invitation.
-             */
             readonly jti: string;
-
-            /**
-             * Revocation version captured when the invitation was issued.
-             */
             readonly inviteRevocationVersion: number;
-
-            /**
-             * Token expiry time in Unix seconds.
-             */
             readonly exp: number;
         },
     ) {
@@ -488,32 +474,27 @@ export class Admin extends PrincipalAggregateRoot {
      * Consumes a matching verified proof, changes the address, and revokes existing sessions.
      *
      * @param payload Identity and expiry claims after signature, type, and principal verification
-     * @throws {SystemException} When the account is deleted, inactive, or differs from the token subject
+     * @param notificationId Identity shared with the immutable old-address notification record
+     * @throws {SystemException} When the account is deleted, inactive, differs from the token subject, or the notification ID is invalid
      * @throws {AccessDeniedException} When the account is banned
      * @throws {InvalidInputException} When the request is revoked, mismatched, consumed, or expired
      */
-    confirmEmailChange(payload: {
-        /**
-         * Account identifier from the verified confirmation.
-         */
-        readonly sub: string;
-
-        /**
-         * Pending request identifier from the verified confirmation.
-         */
-        readonly jti: string;
-
-        /**
-         * Revocation version captured when the request was created.
-         */
-        readonly emailRevocationVersion: number;
-
-        /**
-         * Fixed token expiry in Unix seconds.
-         */
-        readonly exp: number;
-    }) {
+    confirmEmailChange(
+        payload: {
+            readonly sub: string;
+            readonly jti: string;
+            readonly emailRevocationVersion: number;
+            readonly exp: number;
+        },
+        notificationId: string,
+    ) {
         this.assertNotDeleted(this.confirmEmailChange.name);
+
+        if (!isUuidV7(notificationId)) {
+            throw new SystemException('Invalid email change notification ID.', {
+                context: { class: Admin.name, method: this.confirmEmailChange.name, id: this.id },
+            });
+        }
 
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
@@ -566,6 +547,13 @@ export class Admin extends PrincipalAggregateRoot {
         this.props.updatedAt = new Date();
 
         this.addSessionReconciliationJob();
+        this.addJob([
+            {
+                deliveryId: notificationId,
+                aggregateId: this.id,
+                queueName: AdminJobQueue.EMAIL_CHANGE_NOTIFICATION,
+            },
+        ]);
     }
 
     /**
