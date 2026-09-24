@@ -14,7 +14,9 @@ import type { Permission } from 'src/shared/domain/principal';
  * and served from cache by the query pipeline until the owning user's mutation evicts it.
  */
 export class GetUserByIdQuery extends Query<GetUserByIdResult> implements ICacheableQuery {
-    /** Time-to-live of the cached projection. */
+    /**
+     * Time-to-live of the cached projection.
+     */
     readonly cacheTtlSeconds = 300;
 
     /**
@@ -40,9 +42,28 @@ export class GetUserByIdQuery extends Query<GetUserByIdResult> implements ICache
  * The public user projection — the client-safe fields only, never the password hash.
  */
 export type GetUserByIdResult = {
+    /**
+     * Identifier of the account represented by this row.
+     */
     readonly id: string;
+
+    /**
+     * Current email address of the account.
+     */
     readonly email: string;
+
+    /**
+     * Display name of the account.
+     */
     readonly name: string;
+
+    /**
+     * Permissions currently assigned to the account.
+     */
     readonly permissions: readonly Permission[];
+
+    /**
+     * Whether the account is barred from authentication.
+     */
     readonly isBanned: boolean;
 };

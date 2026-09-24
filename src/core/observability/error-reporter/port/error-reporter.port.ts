@@ -33,7 +33,9 @@ export type ErrorReportContext = {
     readonly data?: Readonly<Record<string, unknown>>;
 };
 
-/** Reports failures selected by the handling boundary without classifying or rethrowing them. */
+/**
+ * Reports failures selected by the handling boundary without classifying or rethrowing them.
+ */
 export interface IErrorReporterPort {
     /**
      * Logs the failure as an Error and sends the original caught value to exception tracking.

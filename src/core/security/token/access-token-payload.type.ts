@@ -13,21 +13,33 @@ import type { Permission, PrincipalType } from 'src/shared/domain/principal';
  * session version, which retires every token minted before it.
  */
 export type AccessTokenPayload = SessionIdentity & {
-    /** Signed credential expiry in Unix seconds. */
+    /**
+     * Signed credential expiry in Unix seconds.
+     */
     readonly exp: number;
 
-    /** Principal identifier. */
+    /**
+     * Principal identifier.
+     */
     readonly sub: string;
 
-    /** Which bounded context owns the principal's account. */
+    /**
+     * Which bounded context owns the principal's account.
+     */
     readonly principalType: PrincipalType;
 
-    /** The permissions the principal held when the token was minted. */
+    /**
+     * The permissions the principal held when the token was minted.
+     */
     readonly permissions: readonly Permission[];
 
-    /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
+    /**
+     * Session version this token was minted at; rejected once the principal's current version exceeds it.
+     */
     readonly sessionVersion: number;
 
-    /** Discriminator rejecting a refresh token presented as an access token. */
+    /**
+     * Discriminator rejecting a refresh token presented as an access token.
+     */
     readonly type: AuthTokenType.ACCESS;
 };

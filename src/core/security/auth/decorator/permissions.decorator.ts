@@ -6,7 +6,9 @@
 import { SetMetadata } from '@nestjs/common';
 import type { Permission } from 'src/shared/domain/principal';
 
-/** Metadata key holding a route's required permissions. */
+/**
+ * Metadata key holding a route's required permissions.
+ */
 export const KEY_DECORATOR_PERMISSIONS = 'KEY_DECORATOR_PERMISSIONS';
 
 /**

@@ -15,19 +15,29 @@ export const TOKEN_IDENTITY_READER_PORT = Symbol();
  * Decouples authentication logic from specific domain entities.
  */
 export type AuthIdentity = {
-    /** The unique identifier of the identity */
+    /**
+     * The unique identifier of the identity
+     */
     readonly id: string;
 
-    /** The hashed password of the identity, or null while the account is pending activation */
+    /**
+     * The hashed password of the identity, or null while the account is pending activation
+     */
     readonly password: string | null;
 
-    /** The permissions the identity currently holds, embedded into freshly minted access tokens */
+    /**
+     * The permissions the identity currently holds, embedded into freshly minted access tokens
+     */
     readonly permissions: readonly Permission[];
 
-    /** The ban status of the identity */
+    /**
+     * The ban status of the identity
+     */
     readonly isBanned: boolean;
 
-    /** The current session version, embedded into freshly minted tokens */
+    /**
+     * The current session version, embedded into freshly minted tokens
+     */
     readonly sessionVersion: number;
 };
 
@@ -39,7 +49,9 @@ export type AuthIdentity = {
  * alone, since login always mints at the current version.
  */
 export type AuthState = Pick<AuthIdentity, 'permissions' | 'isBanned' | 'sessionVersion'> & {
-    /** The session version of the last full revocation; a refresh token below it is dead */
+    /**
+     * The session version of the last full revocation; a refresh token below it is dead
+     */
     readonly revocationVersion: number;
 };
 

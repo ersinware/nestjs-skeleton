@@ -10,8 +10,12 @@
  * own and that exist only in some execution contexts. Readers interpret them and fail safe.
  */
 export const RUNTIME_FLAG = {
-    /** Set by Vitest for every process it spawns. */
+    /**
+     * Set by Vitest for every process it spawns.
+     */
     VITEST: 'VITEST',
-    /** Set to `'true'` by CI providers. */
+    /**
+     * Set to `'true'` by CI providers.
+     */
     CI: 'CI',
 } as const;

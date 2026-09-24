@@ -7,6 +7,13 @@
  * Contact details used to address a user notice.
  */
 export type GetUserNoticeRecipientResult = {
+    /**
+     * Address to which the notice is sent.
+     */
     readonly email: string;
+
+    /**
+     * Display name used to address the notice.
+     */
     readonly name: string;
 };

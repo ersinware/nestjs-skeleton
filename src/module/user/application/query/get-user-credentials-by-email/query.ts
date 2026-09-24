@@ -25,9 +25,28 @@ export class GetUserCredentialsByEmailQuery extends Query<GetUserCredentialsByEm
  * Minimal projection used exclusively for authentication credential checks.
  */
 export type GetUserCredentialsByEmailResult = {
+    /**
+     * Identifier of the account represented by this row.
+     */
     readonly id: string;
+
+    /**
+     * Stored password hash used for credential verification.
+     */
     readonly password: string;
+
+    /**
+     * Permissions currently assigned to the account.
+     */
     readonly permissions: readonly Permission[];
+
+    /**
+     * Whether the account is barred from authentication.
+     */
     readonly isBanned: boolean;
+
+    /**
+     * Current session version used for newly issued access tokens.
+     */
     readonly sessionVersion: number;
 };

@@ -5,7 +5,9 @@
 
 import { SetMetadata } from '@nestjs/common';
 
-/** Metadata key flagging a route as public. */
+/**
+ * Metadata key flagging a route as public.
+ */
 export const KEY_DECORATOR_PUBLIC = 'KEY_DECORATOR_PUBLIC';
 
 /**

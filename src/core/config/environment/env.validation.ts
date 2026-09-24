@@ -47,7 +47,9 @@ import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tr
 export const TRUST_PROXY_PATTERN =
     /^(?:false|(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal)(?:\s*,\s*(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal))*)$/;
 
-/** Maximum seconds representable by PostgreSQL and Node timers in signed 32-bit milliseconds. */
+/**
+ * Maximum seconds representable by PostgreSQL and Node timers in signed 32-bit milliseconds.
+ */
 const MAX_TIMER_SECONDS = 2_147_483_647 / 1000;
 
 /**
@@ -422,11 +424,15 @@ export class EnvironmentVariables {
     @Max(MAX_TIMER_SECONDS)
     readonly REDIS_SESSION_COMMAND_TIMEOUT!: number;
 
-    /** Maximum administrator login lifetime, independent of refresh activity. */
+    /**
+     * Maximum administrator login lifetime, independent of refresh activity.
+     */
     @IsJwtTtl()
     readonly SESSION_ABSOLUTE_TTL_ADMIN!: string;
 
-    /** Maximum end-user login lifetime, independent of refresh activity. */
+    /**
+     * Maximum end-user login lifetime, independent of refresh activity.
+     */
     @IsJwtTtl()
     readonly SESSION_ABSOLUTE_TTL_USER!: string;
 

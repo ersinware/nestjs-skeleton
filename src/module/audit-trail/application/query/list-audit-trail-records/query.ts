@@ -12,19 +12,29 @@ import { PaginationParams } from 'src/shared/pagination';
  * non-indexed column would turn the read into a table scan.
  */
 export type AuditTrailFilterParams = {
-    /** Restricts the page to one action. */
+    /**
+     * Restricts the page to one action.
+     */
     readonly action?: AuditAction;
 
-    /** Restricts the page to the records written by one actor. */
+    /**
+     * Restricts the page to the records written by one actor.
+     */
     readonly actorId?: string;
 
-    /** Restricts the page to the records about one subject. */
+    /**
+     * Restricts the page to the records about one subject.
+     */
     readonly targetId?: string;
 
-    /** The inclusive lower bound of `occurredAt`. */
+    /**
+     * The inclusive lower bound of `occurredAt`.
+     */
     readonly from?: Date;
 
-    /** The inclusive upper bound of `occurredAt`. */
+    /**
+     * The inclusive upper bound of `occurredAt`.
+     */
     readonly to?: Date;
 };
 
@@ -47,13 +57,43 @@ export class ListAuditTrailRecordsQuery extends Query<ListAuditTrailRecordsResul
  * identifies the action (who did what to whom, and when); the rest belongs to the single-record read.
  */
 export type ListAuditTrailRecordsResult = {
+    /**
+     * Audit records in the requested page.
+     */
     readonly data: readonly {
+        /**
+         * Identifier of the audit record.
+         */
         readonly id: string;
+
+        /**
+         * Recorded action and outcome.
+         */
         readonly action: AuditAction;
+
+        /**
+         * Matched route template, when available.
+         */
         readonly route: string | null;
+
+        /**
+         * Identifier of the subject affected by the action, when known.
+         */
         readonly targetId: string | null;
+
+        /**
+         * Identifier of the principal who performed the action, when known.
+         */
         readonly actorId: string | null;
+
+        /**
+         * Time the action was recorded.
+         */
         readonly occurredAt: Date;
     }[];
+
+    /**
+     * Total records matching the filters across all pages.
+     */
     readonly total: number;
 };

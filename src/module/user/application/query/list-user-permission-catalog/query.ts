@@ -15,5 +15,8 @@ export class ListUserPermissionCatalogQuery extends Query<ListUserPermissionCata
  * Every permission a user may hold, in catalog order.
  */
 export type ListUserPermissionCatalogResult = {
+    /**
+     * Permissions this principal kind may be granted.
+     */
     readonly permissions: readonly Permission[];
 };

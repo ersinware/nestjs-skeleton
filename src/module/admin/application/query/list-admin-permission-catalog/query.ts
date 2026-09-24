@@ -15,5 +15,8 @@ export class ListAdminPermissionCatalogQuery extends Query<ListAdminPermissionCa
  * Every permission an admin may hold, in catalog order.
  */
 export type ListAdminPermissionCatalogResult = {
+    /**
+     * Permissions this principal kind may be granted.
+     */
     readonly permissions: readonly Permission[];
 };

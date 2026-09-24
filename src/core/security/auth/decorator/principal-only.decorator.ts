@@ -6,7 +6,9 @@
 import { SetMetadata } from '@nestjs/common';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
-/** Metadata key holding the kind of principal a route is restricted to. */
+/**
+ * Metadata key holding the kind of principal a route is restricted to.
+ */
 export const KEY_DECORATOR_PRINCIPAL_ONLY = 'KEY_DECORATOR_PRINCIPAL_ONLY';
 
 /**

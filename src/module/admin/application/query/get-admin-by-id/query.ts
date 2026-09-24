@@ -24,10 +24,33 @@ export class GetAdminByIdQuery extends Query<GetAdminByIdResult> {
  * The public admin projection — the client-safe fields only, never the password hash.
  */
 export type GetAdminByIdResult = {
+    /**
+     * Identifier of the account represented by this row.
+     */
     readonly id: string;
+
+    /**
+     * Current email address of the account.
+     */
     readonly email: string;
+
+    /**
+     * Display name of the account.
+     */
     readonly name: string;
+
+    /**
+     * Permissions currently assigned to the account.
+     */
     readonly permissions: readonly Permission[];
+
+    /**
+     * Whether the account is barred from authentication.
+     */
     readonly isBanned: boolean;
+
+    /**
+     * Whether the admin has completed activation.
+     */
     readonly isActivated: boolean;
 };

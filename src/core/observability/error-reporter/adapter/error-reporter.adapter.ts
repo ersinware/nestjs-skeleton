@@ -12,7 +12,9 @@ import { TOKEN_EXCEPTION_TRACKER_PORT, type IExceptionTrackerPort } from 'src/co
 import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { toError } from 'src/shared/exception';
 
-/** Keeps the two reporting destinations paired without owning failure policy. */
+/**
+ * Keeps the two reporting destinations paired without owning failure policy.
+ */
 @Injectable()
 export class ErrorReporterAdapter implements IErrorReporterPort {
     /**

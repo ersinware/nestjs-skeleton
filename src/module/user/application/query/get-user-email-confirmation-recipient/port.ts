@@ -6,7 +6,7 @@
 import type { GetUserEmailConfirmationRecipientResult } from 'src/module/user/application/query/get-user-email-confirmation-recipient/query';
 
 /**
- * Identifies the confirmation recipient query contract.
+ * Identifies the {@link IGetUserEmailConfirmationRecipientPort} query contract.
  */
 export const TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT = Symbol();
 

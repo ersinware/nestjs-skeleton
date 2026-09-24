@@ -25,7 +25,9 @@ type PolicyDecorator = ClassDecorator & MethodDecorator;
  */
 function resolve(classPolicies: readonly PolicyDecorator[], methodPolicies: readonly PolicyDecorator[]): AuthPolicy {
     class ControllerFixture {
-        /** Endpoint whose metadata is under test. */
+        /**
+         * Endpoint whose metadata is under test.
+         */
         endpoint(this: void) {}
     }
     for (const decorator of classPolicies) decorator(ControllerFixture);
@@ -156,7 +158,9 @@ describe('resolveAuthPolicy', () => {
     it('inherits class and handler metadata', () => {
         @Permissions(read)
         class Base {
-            /** Inherited endpoint with an additional permission. */
+            /**
+             * Inherited endpoint with an additional permission.
+             */
             @Permissions(ban)
             endpoint(this: void) {}
         }

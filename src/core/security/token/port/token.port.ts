@@ -19,13 +19,19 @@ export const TOKEN_TOKEN_PORT = Symbol();
  * A freshly signed token pair with session registration metadata, including the refresh credential JTI.
  */
 export type TokenPairWithSession = {
-    /** Signed access credential for authenticated requests. */
+    /**
+     * Signed access credential for authenticated requests.
+     */
     readonly accessToken: string;
 
-    /** Signed refresh credential for rotating the session token pair. */
+    /**
+     * Signed refresh credential for rotating the session token pair.
+     */
     readonly refreshToken: string;
 
-    /** Exact identity and deadlines to register before returning tokens. */
+    /**
+     * Exact identity and deadlines to register before returning tokens.
+     */
     readonly session: SessionRegistration;
 };
 

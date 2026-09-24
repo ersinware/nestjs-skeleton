@@ -19,13 +19,19 @@ import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
-/** Fixed claim catalogs avoid rebuilding lookup arrays on each authenticated request. */
+/**
+ * Fixed claim catalogs avoid rebuilding lookup arrays on each authenticated request.
+ */
 const PERMISSIONS: ReadonlySet<unknown> = new Set(Object.values(Permission));
 
-/** Allowed principal kinds for runtime validation of decoded JWT claims. */
+/**
+ * Allowed principal kinds for runtime validation of decoded JWT claims.
+ */
 const PRINCIPAL_TYPES: ReadonlySet<unknown> = new Set(Object.values(PrincipalType));
 
-/** Session and credential identifiers are server-generated UUID v4 values. */
+/**
+ * Session and credential identifiers are server-generated UUID v4 values.
+ */
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
@@ -34,22 +40,34 @@ const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}
  */
 @Injectable()
 export class TokenAdapter implements ITokenPort {
-    /** Access token lifetime, read once at boot — config is immutable after validation. */
+    /**
+     * Access token lifetime, read once at boot — config is immutable after validation.
+     */
     private readonly accessTtl: number;
 
-    /** Refresh token lifetime, read once at boot — config is immutable after validation. */
+    /**
+     * Refresh token lifetime, read once at boot — config is immutable after validation.
+     */
     private readonly refreshTtl: number;
 
-    /** Fixed maximum login lifetime in seconds for every principal kind. */
+    /**
+     * Fixed maximum login lifetime in seconds for every principal kind.
+     */
     private readonly sessionTtlByPrincipalType: Readonly<Record<PrincipalType, number>>;
 
-    /** Access token signing secret, read once at boot — config is immutable after validation. */
+    /**
+     * Access token signing secret, read once at boot — config is immutable after validation.
+     */
     private readonly accessSecret: string;
 
-    /** Refresh token signing secret, read once at boot — config is immutable after validation. */
+    /**
+     * Refresh token signing secret, read once at boot — config is immutable after validation.
+     */
     private readonly refreshSecret: string;
 
-    /** Invite token signing secret, read once at boot — config is immutable after validation. */
+    /**
+     * Invite token signing secret, read once at boot — config is immutable after validation.
+     */
     private readonly inviteSecret: string;
 
     /**

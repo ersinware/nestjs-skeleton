@@ -8,7 +8,9 @@ import { METHOD_METADATA } from '@nestjs/common/constants';
 import { DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
 import { resolveAuthPolicy } from 'src/core/security/auth/auth-policy';
 
-/** Validates registered HTTP handlers, including inherited methods and scoped controllers. */
+/**
+ * Validates registered HTTP handlers, including inherited methods and scoped controllers.
+ */
 @Injectable()
 export class AuthPolicyValidator implements OnApplicationBootstrap {
     /**

@@ -24,7 +24,9 @@ export interface ICacheableQuery {
      */
     cacheKey(): string;
 
-    /** Time-to-live for the cached result, in seconds. */
+    /**
+     * Time-to-live for the cached result, in seconds.
+     */
     readonly cacheTtlSeconds: number;
 }
 

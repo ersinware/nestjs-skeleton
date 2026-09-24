@@ -26,12 +26,38 @@ export class ListUsersQuery extends Query<ListUsersResult> {
  * The expected result of the ListUsersQuery, wrapping items in a paginated response.
  */
 export type ListUsersResult = {
+    /**
+     * Account read models in the requested page.
+     */
     readonly data: readonly {
+        /**
+         * Identifier of the account represented by this row.
+         */
         readonly id: string;
+
+        /**
+         * Current email address of the account.
+         */
         readonly email: string;
+
+        /**
+         * Display name of the account.
+         */
         readonly name: string;
+
+        /**
+         * Permissions currently assigned to the account.
+         */
         readonly permissions: readonly Permission[];
+
+        /**
+         * Whether the account is barred from authentication.
+         */
         readonly isBanned: boolean;
     }[];
+
+    /**
+     * Total matching accounts across all pages.
+     */
     readonly total: number;
 };

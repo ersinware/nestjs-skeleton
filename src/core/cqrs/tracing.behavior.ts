@@ -12,7 +12,9 @@ import type { ICommandBehavior } from 'src/core/cqrs/command.pipeline';
 import type { IQueryBehavior } from 'src/core/cqrs/query.pipeline';
 import { toError } from 'src/shared/exception';
 
-/** The dispatched message's role, carried as a span attribute so a query and a command never merge. */
+/**
+ * The dispatched message's role, carried as a span attribute so a query and a command never merge.
+ */
 enum MessageKind {
     COMMAND = 'command',
     QUERY = 'query',

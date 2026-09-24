@@ -12,21 +12,33 @@ import type { PrincipalType } from 'src/shared/domain/principal';
  * primary and mints the access token from that fresh state, so nothing stale can be carried over.
  */
 export type RefreshTokenPayload = SessionIdentity & {
-    /** Signed credential expiry in Unix seconds. */
+    /**
+     * Signed credential expiry in Unix seconds.
+     */
     readonly exp: number;
 
-    /** Principal identifier. */
+    /**
+     * Principal identifier.
+     */
     readonly sub: string;
 
-    /** Which bounded context owns the principal's account. */
+    /**
+     * Which bounded context owns the principal's account.
+     */
     readonly principalType: PrincipalType;
 
-    /** Unique token identifier; session storage tracks it for rotation and reuse detection. */
+    /**
+     * Unique token identifier; session storage tracks it for rotation and reuse detection.
+     */
     readonly jti: string;
 
-    /** Session version this token was minted at; rejected once the principal's current version exceeds it. */
+    /**
+     * Session version this token was minted at; rejected once the principal's current version exceeds it.
+     */
     readonly sessionVersion: number;
 
-    /** Discriminator rejecting an access token presented as a refresh token. */
+    /**
+     * Discriminator rejecting an access token presented as a refresh token.
+     */
     readonly type: AuthTokenType.REFRESH;
 };

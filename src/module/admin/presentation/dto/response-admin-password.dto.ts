@@ -13,17 +13,23 @@ import { IsJwtToken } from 'src/core/http';
 @Exclude()
 @ApiSchema({ name: 'ResponseAdminPasswordSession', description: 'Password changed and a new session opened.' })
 export class ResponseAdminPasswordSessionDto {
-    /** Identifies the result carrying a fresh token pair. */
+    /**
+     * Identifies the result carrying a fresh token pair.
+     */
     @Expose()
     @ApiProperty({ type: String, enum: ['created'], example: 'created', description: 'A new session was created.' })
     readonly session!: 'created';
 
-    /** The replacement access token. */
+    /**
+     * The replacement access token.
+     */
     @Expose()
     @IsJwtToken('Replacement access token.')
     readonly accessToken!: string;
 
-    /** The replacement refresh token. */
+    /**
+     * The replacement refresh token.
+     */
     @Expose()
     @IsJwtToken('Replacement refresh token.')
     readonly refreshToken!: string;
@@ -38,7 +44,9 @@ export class ResponseAdminPasswordSessionDto {
     description: 'Password changed; sign in with the new password.',
 })
 export class ResponseAdminPasswordLoginRequiredDto {
-    /** Instructs the client to discard its old tokens and sign in again. */
+    /**
+     * Instructs the client to discard its old tokens and sign in again.
+     */
     @Expose()
     @ApiProperty({
         type: String,

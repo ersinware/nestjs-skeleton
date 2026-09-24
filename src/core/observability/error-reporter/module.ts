@@ -9,7 +9,9 @@ import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter
 import { ExceptionTrackerModule } from 'src/core/observability/exception-tracker';
 import { LoggerModule } from 'src/core/observability/logger';
 
-/** Exposes one reporting port to handling boundaries. */
+/**
+ * Exposes one reporting port to handling boundaries.
+ */
 @Module({
     imports: [LoggerModule, ExceptionTrackerModule],
     providers: [{ provide: TOKEN_ERROR_REPORTER_PORT, useClass: ErrorReporterAdapter }],

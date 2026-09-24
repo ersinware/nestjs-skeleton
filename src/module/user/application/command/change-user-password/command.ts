@@ -10,10 +10,14 @@ import { Command } from '@nestjs/cqrs';
  * belongs to the use case, not the shared exception taxonomy.
  */
 export enum ChangeUserPasswordMessage {
-    /** The submitted current password does not match. */
+    /**
+     * The submitted current password does not match.
+     */
     CURRENT_PASSWORD_MISMATCH = 'The current password provided is incorrect.',
 
-    /** The new password equals the current one. */
+    /**
+     * The new password equals the current one.
+     */
     PASSWORD_REUSE = 'New password cannot be the same as the current password.',
 }
 
@@ -42,8 +46,24 @@ export class ChangeUserPasswordCommand extends Command<ChangeUserPasswordResult>
  */
 export type ChangeUserPasswordResult =
     | {
+          /**
+           * Confirms that a replacement session was opened after the password change.
+           */
           readonly session: 'created';
+
+          /**
+           * Access token issued for the replacement session.
+           */
           readonly accessToken: string;
+
+          /**
+           * Refresh token issued for the replacement session.
+           */
           readonly refreshToken: string;
       }
-    | { readonly session: 'login_required' };
+    | {
+          /**
+           * The password change committed, but the client must sign in again.
+           */
+          readonly session: 'login_required';
+      };

@@ -11,10 +11,14 @@ import { KEY_DECORATOR_PUBLIC } from 'src/core/security/auth/decorator/public.de
 import { PERMISSION_HOLDER, Permission, PrincipalType } from 'src/shared/domain/principal';
 import { SystemException } from 'src/shared/exception';
 
-/** Metadata target accepted by Nest's reflector, covering controller classes and handlers. */
+/**
+ * Metadata target accepted by Nest's reflector, covering controller classes and handlers.
+ */
 type AuthPolicyTarget = Parameters<Reflector['get']>[1];
 
-/** Effective endpoint policy produced during validation or read by authorization. */
+/**
+ * Effective endpoint policy produced during validation or read by authorization.
+ */
 export type AuthPolicy = {
     readonly public: boolean;
     readonly principalType: PrincipalType | undefined;
