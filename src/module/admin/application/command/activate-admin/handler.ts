@@ -24,17 +24,17 @@ import {
 /**
  * Audit reasons for activation refusals decided by the handler.
  */
-const ActivateAdminRejectionReason = {
+enum ActivateAdminRejectionReason {
     /**
      * The invitation token failed verification.
      */
-    INVALID_TOKEN: 'INVALID_TOKEN',
+    INVALID_TOKEN = 'INVALID_TOKEN',
 
     /**
      * The verified token refers to an account that no longer exists.
      */
-    ACCOUNT_NOT_FOUND: 'ACCOUNT_NOT_FOUND',
-} as const;
+    ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
+}
 
 /**
  * Activates a pending admin account. Verification is two-layered: the token's signature and expiry,

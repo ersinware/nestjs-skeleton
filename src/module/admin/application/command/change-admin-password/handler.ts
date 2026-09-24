@@ -12,7 +12,6 @@ import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     ChangeAdminPasswordCommand,
-    ChangeAdminPasswordMessage,
     type ChangeAdminPasswordResult,
 } from 'src/module/admin/application/command/change-admin-password/command';
 import {
@@ -20,14 +19,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { PrincipalType } from 'src/shared/domain/principal';
-import {
-    AccessDeniedException,
-    ExceptionKind,
-    InvalidInputException,
-    ResourceNotFoundException,
-    SystemException,
-    isExceptionOfKind,
-} from 'src/shared/exception';
+import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Changes the password for an existing admin account.
@@ -58,8 +50,6 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
 
     /**
      * Executes the change admin password command.
-     * Rejects a loaded ban before password verification; the aggregate also enforces the ban
-     * when changing state.
      *
      * @param command The command payload
      * @returns The committed password change and its session outcome
@@ -75,29 +65,14 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
             throw new ResourceNotFoundException();
         }
 
-        if (admin.isBanned) {
-            throw new AccessDeniedException();
-        }
-
         const hashedPassword = admin.password;
 
-        // A pending account cannot authenticate, so no request can reach this handler for it; a
-        // missing password is a broken code path, not a client fault.
-        if (!hashedPassword) {
-            throw new SystemException('A pending account cannot change its password.', {
-                context: { class: ChangeAdminPasswordCommandHandler.name, method: this.execute.name, id: admin.id },
-            });
-        }
+        admin.changePassword(
+            await this.hashingPort.hash(newPassword),
+            await this.hashingPort.verify(hashedPassword, command.currentPassword),
+            await this.hashingPort.verify(hashedPassword, newPassword),
+        );
 
-        if (!(await this.hashingPort.verify(hashedPassword, command.currentPassword))) {
-            throw new InvalidInputException(ChangeAdminPasswordMessage.CURRENT_PASSWORD_MISMATCH);
-        }
-
-        if (await this.hashingPort.verify(hashedPassword, newPassword)) {
-            throw new InvalidInputException(ChangeAdminPasswordMessage.PASSWORD_REUSE);
-        }
-
-        admin.changePassword(await this.hashingPort.hash(newPassword));
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });

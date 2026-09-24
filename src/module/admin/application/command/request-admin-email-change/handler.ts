@@ -17,13 +17,7 @@ import {
     TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT,
     type IIsAdminEmailInUsePort,
 } from 'src/module/admin/application/query/is-admin-email-in-use/port';
-import {
-    InvalidInputException,
-    ResourceConflictException,
-    ResourceConflictMessage,
-    ResourceNotFoundException,
-    SystemException,
-} from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAuditReason } from 'src/shared/exception';
 
 /**
  * Starts a confirmation request without changing the current email or sessions.
@@ -64,25 +58,21 @@ export class RequestAdminEmailChangeCommandHandler implements ICommandHandler<Re
             throw new ResourceNotFoundException();
         }
 
-        if (admin.password === null) {
-            throw new SystemException('An inactive admin reached the email change request flow.', {
-                context: { class: RequestAdminEmailChangeCommandHandler.name, method: this.execute.name, id: admin.id },
-            });
-        }
+        try {
+            admin.requestEmailChange(
+                command.newEmail,
+                await this.hashingPort.verify(admin.password, command.password),
+                await this.emailInUsePort.isEmailInUse(command.newEmail),
+            );
+        } catch (error) {
+            if (isExceptionWithAuditReason(error)) {
+                await this.auditPort.record({
+                    action: AuditAction.EMAIL_CHANGE_REQUEST_FAILED,
+                    reason: error.auditReason,
+                });
+            }
 
-        if (!(await this.hashingPort.verify(admin.password, command.password))) {
-            await this.auditPort.record({
-                action: AuditAction.EMAIL_CHANGE_REQUEST_FAILED,
-                reason: 'CURRENT_PASSWORD_MISMATCH',
-            });
-
-            throw new InvalidInputException();
-        }
-
-        admin.requestEmailChange(command.newEmail);
-
-        if (await this.emailInUsePort.isEmailInUse(command.newEmail)) {
-            throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
+            throw error;
         }
 
         await this.transactionPort.run(async () => {
