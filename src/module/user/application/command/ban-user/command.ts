@@ -27,6 +27,8 @@ export class BanUserCommand extends Command<void> implements ICacheInvalidatingC
     }
 
     /**
+     * Identifies the cached user projection invalidated after this command succeeds.
+     *
      * @returns The cache keys to evict on success — the user's cached projection
      */
     invalidatedKeys(): readonly string[] {

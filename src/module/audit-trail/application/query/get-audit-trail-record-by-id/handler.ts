@@ -34,6 +34,7 @@ export class GetAuditTrailRecordByIdQueryHandler implements IQueryHandler<
      * @param query The query carrying the record ID
      * @returns The audit trail record
      * @throws {ResourceNotFoundException} When no record exists with the given ID
+     * @throws {DependencyUnavailableException} When the audit database is unavailable
      */
     async execute(query: GetAuditTrailRecordByIdQuery): Promise<GetAuditTrailRecordByIdResult> {
         const record = await this.port.getById(query.id);

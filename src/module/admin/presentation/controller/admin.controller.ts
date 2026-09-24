@@ -102,6 +102,11 @@ export class AdminController {
      *
      * @param principal The verified principal performing the deletion
      * @param params The path parameters carrying the target admin ID
+     * @throws {ResourceNotFoundException} When the target admin does not exist.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Delete(ROUTE_PARAM_ID)
     @Permissions(Permission.ADMIN_ACCOUNT_DELETE)
@@ -128,6 +133,8 @@ export class AdminController {
      *
      * @param params The path parameters carrying the target admin id
      * @returns The serialized profile of the requested admin
+     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get(ROUTE_PARAM_ID)
     @Permissions(Permission.ADMIN_ACCOUNT_READ)
@@ -152,6 +159,7 @@ export class AdminController {
      *
      * @param query The pagination and search query parameters
      * @returns The paginated list of admin profiles
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get()
     @Permissions(Permission.ADMIN_ACCOUNT_READ)
@@ -184,6 +192,8 @@ export class AdminController {
      *
      * @param principal The verified principal of the current request
      * @returns The serialized profile of the current admin
+     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get('me')
     @PrincipalOnly(PrincipalType.ADMIN)
@@ -232,6 +242,10 @@ export class AdminController {
      * @param principal The verified principal of the current request
      * @param patchAdminDto The required display name to update
      * @returns The updated, serialized profile of the current admin
+     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account is deleted or inactive
      */
     @Patch('me')
     @PrincipalOnly(PrincipalType.ADMIN)
@@ -263,6 +277,12 @@ export class AdminController {
      *
      * @param principal The verified principal requesting the change
      * @param postAdminEmailChangeDto The new address and current password proof
+     * @throws {ResourceNotFoundException} When the account no longer exists
+     * @throws {SystemException} When a deleted or inactive account reaches this authenticated flow, or the queue does not accept every required job
+     * @throws {InvalidInputException} When the password is wrong or the address is unchanged
+     * @throws {ResourceConflictException} When the address is in use or the loaded account changed
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email')
     @PrincipalOnly(PrincipalType.ADMIN)
@@ -300,6 +320,12 @@ export class AdminController {
      * @param principal The verified principal confirming the change
      * @param postAdminEmailConfirmDto The token delivered to the pending address
      * @returns The committed email change with replacement tokens or a sign-in requirement
+     * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
+     * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
+     * @throws {ResourceNotFoundException} When the authenticated account no longer exists
+     * @throws {ResourceConflictException} When the email is taken or the account changed concurrently
+     * @throws {SystemException} When the loaded account violates the confirmation contract, or the queue does not accept every required job
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/confirm')
     @PrincipalOnly(PrincipalType.ADMIN)
@@ -332,6 +358,7 @@ export class AdminController {
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async confirmEmailChangeMe(
         @CurrentPrincipal() principal: Principal,
@@ -353,6 +380,12 @@ export class AdminController {
      * @param principal The verified principal of the current request
      * @param patchAdminPasswordDto The payload carrying the current and new passwords
      * @returns The password change result with tokens or a sign-in requirement
+     * @throws {ResourceNotFoundException} When the admin does not exist
+     * @throws {AccessDeniedException} When the loaded account is banned
+     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
     @PrincipalOnly(PrincipalType.ADMIN)
@@ -411,6 +444,9 @@ export class AdminController {
      * account starts with no permissions; they are granted separately once it exists.
      *
      * @param postAdminDto The creation payload carrying the email and name
+     * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the delivery queue does not accept every required job
      */
     @Post()
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
@@ -434,6 +470,12 @@ export class AdminController {
      * new admin has no credentials yet, the token is what proves the invitation.
      *
      * @param postAdminActivateDto The payload carrying the invite token and the chosen password
+     * @throws {InvalidInputException} When the invitation is invalid, expired, or no longer applies
+     * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account is already active or changed concurrently
+     * @throws {SystemException} When the loaded account is deleted or differs from the verified subject
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Public()
     @Post('activate')
@@ -443,10 +485,10 @@ export class AdminController {
         description: 'Activates a pending admin account by setting its first password via the invite token.',
     })
     @ApiNoContentResponse({ description: 'Account successfully activated.' })
-    // Generic 400 on purpose: payload validation and every invitation failure (bad signature,
-    // expired, wrong account state) share the status, and the response must not disclose which.
     @ApiDefaultInvalidRequestResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse()
     async activate(@Body() postAdminActivateDto: PostAdminActivateDto) {
         await this.commandPipeline.execute(
             new ActivateAdminCommand(postAdminActivateDto.token, postAdminActivateDto.password),
@@ -458,6 +500,11 @@ export class AdminController {
      *
      * @param principal The verified principal requesting the invitation
      * @param params The path parameters carrying the target admin ID
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
+     * @throws {ResourceConflictException} When the account is active, banned, or concurrently modified
+     * @throws {AccessDeniedException} When the actor cannot administer the target
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Post(`${ROUTE_PARAM_ID}/re-invite`)
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
@@ -484,6 +531,11 @@ export class AdminController {
      *
      * @param principal The verified principal imposing the ban
      * @param params The path parameters carrying the target admin ID
+     * @throws {ResourceNotFoundException} When the target admin does not exist.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Post(`${ROUTE_PARAM_ID}/ban`)
     @Permissions(Permission.ADMIN_ACCOUNT_BAN)
@@ -510,6 +562,11 @@ export class AdminController {
      *
      * @param principal The verified principal lifting the ban
      * @param params The path parameters carrying the target admin ID
+     * @throws {ResourceNotFoundException} When the target admin does not exist.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account or actor violates the mutation contract
      */
     @Post(`${ROUTE_PARAM_ID}/unban`)
     @Permissions(Permission.ADMIN_ACCOUNT_BAN)
@@ -539,6 +596,12 @@ export class AdminController {
      * @param principal The verified principal making the change
      * @param params The path parameters carrying the target admin ID
      * @param putAdminPermissionsDto The complete permission set the admin should hold afterwards
+     * @throws {ResourceNotFoundException} When the target admin does not exist.
+     * @throws {AccessDeniedException} When the actor targets themselves or root, moves a tier marker without being root, or revokes from a manager without being root.
+     * @throws {InvalidInputException} When the set holds a permission an admin may not hold.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Put(`${ROUTE_PARAM_ID}/permission`)
     @Permissions(Permission.ADMIN_PERMISSION_MANAGE)

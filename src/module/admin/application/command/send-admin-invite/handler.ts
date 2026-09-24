@@ -45,18 +45,9 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
      * @param command The command payload
      */
     async execute(command: SendAdminInviteCommand) {
-        const recipient = await this.inviteRecipientPort.getInviteRecipient(command.id);
+        const recipient = await this.inviteRecipientPort.getInviteRecipient(command.id, command.deliveryId);
 
-        // A retry belongs to its original invitation, never a later replacement.
-        if (
-            !recipient ||
-            recipient.inviteId === null ||
-            recipient.inviteExpiresAt === null ||
-            recipient.inviteRevocationVersion === null ||
-            recipient.inviteId !== command.deliveryId ||
-            recipient.inviteExpiresAt.getTime() <= Date.now() ||
-            recipient.inviteRevocationVersion !== recipient.revocationVersion
-        ) {
+        if (!recipient) {
             return;
         }
 

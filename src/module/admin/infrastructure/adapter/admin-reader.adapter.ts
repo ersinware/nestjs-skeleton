@@ -24,6 +24,7 @@ import { type GetAdminSessionVersionResult } from 'src/module/admin/application/
 import { type IGetFreshAdminByIdPort } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
 import { type GetFreshAdminByIdResult } from 'src/module/admin/application/query/get-fresh-admin-by-id/query';
 import type { IIsAdminEmailInUsePort } from 'src/module/admin/application/query/is-admin-email-in-use/port';
+import type { IsAdminEmailInUseResult } from 'src/module/admin/application/query/is-admin-email-in-use/query';
 import { admin, emailChangeNotification } from 'src/module/admin/infrastructure/admin.schema';
 
 /**
@@ -110,33 +111,37 @@ export class AdminReaderAdapter
      * Reads the current details required to invite an eligible pending admin.
      *
      * @param id The unique identifier of the target admin
-     * @returns The invitation details, or null when the admin is no longer eligible
+     * @param deliveryId The original invitation delivery identity
+     * @returns The invitation details, or null when delivery is no longer allowed
      */
-    async getInviteRecipient(id: string): Promise<GetAdminInviteRecipientResult | null> {
+    async getInviteRecipient(id: string, deliveryId: string): Promise<GetAdminInviteRecipientResult | null> {
         try {
-            return (
-                (
-                    await this.database
-                        .select({
-                            email: admin.email,
-                            name: admin.name,
-                            revocationVersion: admin.revocationVersion,
-                            inviteId: admin.inviteId,
-                            inviteExpiresAt: admin.inviteExpiresAt,
-                            inviteRevocationVersion: admin.inviteRevocationVersion,
-                        })
-                        .from(admin)
-                        .where(
-                            and(
-                                eq(admin.id, id),
-                                eq(admin.isBanned, false),
-                                isNull(admin.password),
-                                isNull(admin.deletedAt),
-                            ),
-                        )
-                        .limit(1)
-                )[0] ?? null
-            );
+            return ((
+                await this.database
+                    .select({
+                        email: admin.email,
+                        name: admin.name,
+                        inviteId: admin.inviteId,
+                        inviteExpiresAt: admin.inviteExpiresAt,
+                        inviteRevocationVersion: admin.inviteRevocationVersion,
+                    })
+                    .from(admin)
+                    .where(
+                        and(
+                            eq(admin.id, id),
+                            eq(admin.isBanned, false),
+                            isNull(admin.password),
+                            isNull(admin.deletedAt),
+                            isNotNull(admin.inviteId),
+                            isNotNull(admin.inviteExpiresAt),
+                            isNotNull(admin.inviteRevocationVersion),
+                            eq(admin.inviteId, deliveryId),
+                            gt(admin.inviteExpiresAt, new Date()),
+                            eq(admin.inviteRevocationVersion, admin.revocationVersion),
+                        ),
+                    )
+                    .limit(1)
+            )[0] ?? null) as GetAdminInviteRecipientResult | null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -218,14 +223,15 @@ export class AdminReaderAdapter
      * Checks the same address scope as the unique constraint, including deleted accounts.
      *
      * @param email Target address to check
-     * @returns Whether the address is already held
+     * @returns Result indicating whether the address is already held
      */
-    async isEmailInUse(email: string): Promise<boolean> {
+    async isEmailInUse(email: string): Promise<IsAdminEmailInUseResult> {
         try {
-            return (
-                (await this.database.select({ id: admin.id }).from(admin).where(eq(admin.email, email)).limit(1))
-                    .length > 0
-            );
+            return {
+                isInUse:
+                    (await this.database.select({ id: admin.id }).from(admin).where(eq(admin.email, email)).limit(1))
+                        .length > 0,
+            };
         } catch (error) {
             throw translateConnectionFailure(error);
         }

@@ -14,6 +14,7 @@ import {
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
+import { isExceptionWithAudit } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -41,15 +42,27 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      *
      * @param command The command payload
      * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: RegisterUserCommand) {
-        const { email, name, password } = command,
+        const id = uuidv7();
+
+        let user;
+
+        try {
             user = User.create({
-                id: uuidv7(),
-                email,
-                name,
-                password: await this.hashingPort.hash(password),
+                id,
+                email: command.email,
+                name: command.name,
+                password: await this.hashingPort.hash(command.password),
             });
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);

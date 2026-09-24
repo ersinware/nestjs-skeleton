@@ -4,6 +4,7 @@
  */
 
 import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root/soft-deletable-aggregate-root';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PERMISSION_HOLDER, PrincipalType, type Permission, type Principal } from 'src/shared/domain/principal';
 import { InvalidInputException, SystemException } from 'src/shared/exception';
 
@@ -30,11 +31,6 @@ enum PasswordRejectionReason {
      * The submitted current password does not match the stored hash.
      */
     CURRENT_PASSWORD_MISMATCH = 'CURRENT_PASSWORD_MISMATCH',
-
-    /**
-     * The proposed new password matches the current password.
-     */
-    NEW_PASSWORD_UNCHANGED = 'NEW_PASSWORD_UNCHANGED',
 }
 
 /**
@@ -154,14 +150,16 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
      * Requires a matching current-password proof before sensitive work proceeds.
      *
      * @param currentPasswordMatches Hash verification result for this aggregate's current password
-     * @param auditReason Whether to include the current-password mismatch audit reason
+     * @param auditAction Business action to record on password mismatch
      * @throws {InvalidInputException} When the submitted password does not match; includes the audit reason when enabled
      */
-    protected assertCurrentPassword(currentPasswordMatches: boolean, auditReason?: boolean) {
+    protected assertCurrentPassword(currentPasswordMatches: boolean, auditAction?: DomainFailureAuditAction) {
         if (!currentPasswordMatches) {
             throw new InvalidInputException(
                 'The current password provided is incorrect.',
-                auditReason ? { auditReason: PasswordRejectionReason.CURRENT_PASSWORD_MISMATCH } : undefined,
+                auditAction
+                    ? { audit: { action: auditAction, reason: PasswordRejectionReason.CURRENT_PASSWORD_MISMATCH } }
+                    : undefined,
             );
         }
     }
@@ -171,21 +169,18 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
      *
      * @param currentPasswordMatches Whether the submitted current password matches the stored hash
      * @param newPasswordMatchesCurrent Whether the proposed new password matches that same stored hash
-     * @param auditReason Whether to include audit reasons for password-change refusals
+     * @param auditAction Business action to record when the current password is wrong
      * @throws {InvalidInputException} When the current password is wrong or the new password is unchanged
      */
     protected assertPasswordChange(
         currentPasswordMatches: boolean,
         newPasswordMatchesCurrent: boolean,
-        auditReason?: boolean,
+        auditAction?: DomainFailureAuditAction,
     ) {
-        this.assertCurrentPassword(currentPasswordMatches, auditReason);
+        this.assertCurrentPassword(currentPasswordMatches, auditAction);
 
         if (newPasswordMatchesCurrent) {
-            throw new InvalidInputException(
-                'New password cannot be the same as the current password.',
-                auditReason ? { auditReason: PasswordRejectionReason.NEW_PASSWORD_UNCHANGED } : undefined,
-            );
+            throw new InvalidInputException('New password cannot be the same as the current password.');
         }
     }
 

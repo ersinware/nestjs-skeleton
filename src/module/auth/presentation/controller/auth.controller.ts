@@ -21,7 +21,10 @@ import { LoginAdminCommand } from 'src/module/auth/application/command/login-adm
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
-import { RefreshTokensCommand, RefreshTokensMessage } from 'src/module/auth/application/command/refresh-tokens/command';
+import {
+    RefreshTokensCommand,
+    RefreshTokensRejectionMessage,
+} from 'src/module/auth/application/command/refresh-tokens/command';
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
@@ -51,8 +54,8 @@ export class AuthController {
      *
      * @param dto The user's email and password
      * @returns The generated access and refresh token pair
-     * @throws {InvalidInputException} If the payload is invalid
-     * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
     @Public()
     @Post('user/login')
@@ -76,8 +79,8 @@ export class AuthController {
      *
      * @param dto The admin's email and password
      * @returns The generated access and refresh token pair
-     * @throws {InvalidInputException} If the payload is invalid
-     * @throws {UnauthenticatedException} If the credentials are invalid or the account is inactive
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
     @Public()
     @Post('admin/login')
@@ -101,9 +104,10 @@ export class AuthController {
      *
      * @param dto The refresh token being rotated away
      * @returns The newly generated access and refresh token pair
-     * @throws {InvalidInputException} If the payload is invalid
-     * @throws {UnauthenticatedException} If the refresh token is invalid or expired
-     * @throws {ResourceConflictException} If a concurrent refresh already rotated the session; retry with the latest token pair
+     * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
+     * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
+     * @throws {DependencyUnavailableException} When identity lookup, session rotation, job persistence, or audit persistence is unavailable.
+     * @throws {SystemException} When rotation returns an unsupported outcome or the remediation job is not accepted
      */
     @Public()
     @Post('refresh')
@@ -116,7 +120,7 @@ export class AuthController {
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultResourceConflictResponse(RefreshTokensMessage.CONCURRENT_REFRESH)
+    @ApiDefaultResourceConflictResponse(RefreshTokensRejectionMessage.CONCURRENT_REFRESH)
     async refresh(@Body() dto: PostRefreshDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
@@ -126,8 +130,9 @@ export class AuthController {
 
     /**
      * Closes the session identified by a signed refresh credential, even after rotation or credential expiry.
+     *
      * @param dto Refresh credential identifying the session; no access token is required.
-     * @throws {InvalidInputException} If the payload is invalid.
+     * @throws {DependencyUnavailableException} When session closure or audit persistence is unavailable
      */
     @Post('logout')
     @Public()
@@ -144,10 +149,11 @@ export class AuthController {
     }
 
     /**
-     * Revokes every active session of the authenticated principal, across all devices.
+     * Commits an account-wide revocation request; the owning context revokes sessions asynchronously.
      *
      * @param principal The verified principal of the current request
-     * @throws {UnauthenticatedException} If the user is not authenticated
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the revocation job is not accepted
      */
     @Post('logout-all')
     @Authenticated()
@@ -155,9 +161,10 @@ export class AuthController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Log out all sessions',
-        description: 'Revokes every active session of the authenticated principal, across all devices.',
+        description:
+            'Commits an account-wide revocation request and its audit record. The owning context processes it asynchronously; this response does not guarantee that all sessions are already revoked.',
     })
-    @ApiNoContentResponse({ description: 'All sessions revoked.' })
+    @ApiNoContentResponse({ description: 'Session revocation request and audit record committed.' })
     @ApiDefaultUnauthenticatedResponse()
     async logoutAll(@CurrentPrincipal() principal: Principal) {
         await this.commandPipeline.execute(new LogoutAllCommand(principal.id, principal.type));

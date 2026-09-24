@@ -12,7 +12,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Re-issues a pending admin's invitation under the aggregate optimistic lock, so a concurrent
@@ -40,6 +40,8 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
      * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
      * @throws {ResourceConflictException} When the account is active, banned, or concurrently modified
      * @throws {AccessDeniedException} When the actor cannot administer the target
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: ReInviteAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -48,7 +50,15 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
             throw new ResourceNotFoundException();
         }
 
-        admin.reInvite(command.actor);
+        try {
+            admin.reInvite(command.actor);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AuditAction.ADMIN_INVITED, targetId: admin.id });

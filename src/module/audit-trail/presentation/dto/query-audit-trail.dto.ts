@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 import { isUUID, QueryPaginationDto } from 'src/core/http';
 import { AuditAction } from 'src/core/observability/audit';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 
 /**
  * Rejects a `from`/`to` pair whose lower bound lies after the upper bound. No single-field rule can
@@ -62,15 +63,15 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
      * The action to restrict the listing to.
      */
     @IsOptional()
-    @IsEnum(AuditAction, { message: 'The action must be a known audit action.' })
+    @IsEnum({ ...AuditAction, ...DomainFailureAuditAction }, { message: 'The action must be a known audit action.' })
     @ApiProperty({
         type: String,
-        enum: AuditAction,
+        enum: { ...AuditAction, ...DomainFailureAuditAction },
         required: false,
         description: 'The audit action to restrict the listing to.',
         example: AuditAction.LOGIN_FAILED,
     })
-    readonly action?: AuditAction;
+    readonly action?: AuditAction | DomainFailureAuditAction;
 
     /**
      * The actor whose records to list.

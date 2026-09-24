@@ -48,6 +48,8 @@ function isCacheableQuery(query: IQuery): query is IQuery & ICacheableQuery {
 @Injectable()
 export class QueryCachingBehavior implements IQueryBehavior {
     /**
+     * Connects cache reads and detached-write error reporting.
+     *
      * @param cachePort The cache the behavior reads and populates
      * @param errorReporterPort Reports unexpected background cache-write failures
      */

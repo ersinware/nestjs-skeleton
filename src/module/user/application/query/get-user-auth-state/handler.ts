@@ -31,6 +31,7 @@ export class GetUserAuthStateQueryHandler implements IQueryHandler<GetUserAuthSt
      * @param query The query parameters
      * @returns The user's ban status, session counters and permissions
      * @throws {ResourceNotFoundException} When no user exists with the given ID
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetUserAuthStateQuery): Promise<GetUserAuthStateResult> {
         const result = await this.port.getAuthState(query.id);

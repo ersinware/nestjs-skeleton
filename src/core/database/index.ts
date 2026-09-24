@@ -5,7 +5,10 @@
 
 export { TOKEN_DATABASE_CLIENT, TOKEN_DATABASE_REPLICA_CLIENT } from 'src/core/database/database-client.token';
 export { createDatabasePool } from 'src/core/database/database-pool.factory';
-export { runInDatabaseTransactionContext } from 'src/core/database/database-transaction.storage';
+export {
+    runInDatabaseTransactionContext,
+    runOutsideDatabaseTransaction,
+} from 'src/core/database/database-transaction.storage';
 export { isUniqueViolation, translateConnectionFailure } from 'src/core/database/driver-error.util';
 export { DatabaseModule } from 'src/core/database/module';
 export { TOKEN_DATABASE_CLEANER_PORT, type IDatabaseCleanerPort } from 'src/core/database/port/database-cleaner.port';

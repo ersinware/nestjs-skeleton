@@ -19,6 +19,8 @@ import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exc
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
     /**
+     * Connects token verification, session admission, and route policy lookup.
+     *
      * @param tokenPort Verifies access tokens.
      * @param sessionPort Reads the current session version.
      * @param reflector Reads and validates the endpoint access policy.
@@ -35,7 +37,7 @@ export class AuthenticationGuard implements CanActivate {
      * @param context Execution context of the request.
      * @returns A promise resolving to true if authenticated.
      * @throws {UnauthenticatedException} if the token or the session-version check fails.
-     * @throws {DependencyUnavailableException} if the cache is unreachable — fails closed rather than skipping the session-version check.
+     * @throws {DependencyUnavailableException} if the session store is unavailable; admission fails closed.
      */
     async canActivate(context: ExecutionContext): Promise<boolean> {
         if (isPublicAuthPolicy(this.reflector, context.getClass(), context.getHandler())) {

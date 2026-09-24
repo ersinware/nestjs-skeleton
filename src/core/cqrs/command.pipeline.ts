@@ -34,6 +34,8 @@ export interface ICommandBehavior {
 @Injectable()
 export class CommandPipeline {
     /**
+     * Binds command dispatch to the configured behavior chain.
+     *
      * @param commandBus The framework bus the chain ultimately delegates to
      * @param behaviors The ordered behaviors wrapping each dispatch
      */
@@ -46,6 +48,7 @@ export class CommandPipeline {
      * Dispatches a command through the behavior chain. Accepts only a typed `Command<R>`, so the
      * result type is always inferred from the command and never falls back to `unknown` — a command
      * that does not carry its result type on the `Command<R>` base is a compile error, by design.
+     * Handler and awaited behavior failures reject the dispatch unchanged.
      *
      * @param command The command to dispatch
      * @returns The result returned by the command handler

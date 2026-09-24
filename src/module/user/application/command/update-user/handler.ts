@@ -12,7 +12,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Updates the display name on an existing user.
@@ -37,19 +37,28 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     async execute(command: UpdateUserCommand) {
-        const { id, name } = command;
-
-        const user = await this.userWriterPort.load(id);
+        const user = await this.userWriterPort.load(command.id);
 
         if (!user) {
             throw new ResourceNotFoundException();
         }
 
         // An unchanged name requires no persistence or mutation audit.
-        if (!user.updateName(name)) {
-            return;
+        try {
+            if (!user.updateName(command.name)) {
+                return;
+            }
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
         await this.transactionPort.run(async () => {

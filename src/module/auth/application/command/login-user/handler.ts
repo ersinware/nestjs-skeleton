@@ -45,7 +45,8 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
      *
      * @param command The login user command parameters
      * @returns The generated access and refresh tokens
-     * @throws {UnauthenticatedException} When credentials are invalid or the account is inactive.
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
     async execute(command: LoginUserCommand): Promise<LoginUserResult> {
         return login(

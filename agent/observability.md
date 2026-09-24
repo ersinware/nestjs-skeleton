@@ -16,13 +16,16 @@
 
 ### Audit
 
+- `DomainFailureAuditAction` owns domain refusal vocabulary without a core dependency; core `AuditAction` owns other actions. Never duplicate action values across them.
 - `IAuditPort` records evidence, not diagnostics: append-only primary `audit.audit` ([Data & State](data-and-state.md#data--state)), independent of log level/sampling and active in tests. Durability requires outer commit in a transaction, insert completion otherwise. Audit loss is unacceptable.
-- Fact owners persist mutation audit in the same DB transaction as the mutation and its delivery records; failure rolls them back together. Capture facts, time, trace, and verified context at mutation time. Never defer audit persistence to a consumer or reconstruct history from current state.
+- Refusal records using `markExceptionAsAudited` must survive mutation rollback: commit independently, then mark the exact exception in the current request. Never persist exception tracking or mark before commit; ordinary records retain transaction participation.
+- Fact owners persist mutation audit with the mutation and delivery records in one DB transaction; failure rolls them back together. Capture facts, time, trace, and verified context at mutation time. Never defer a producer fact to a consumer or reconstruct history from current state.
+- Queued session revocation needs distinct request and completion records linked by `deliveryId`: Auth audits enqueue; the owner audits the counter change with its follow-up jobs. Completion records identify the target and resulting version on each committed retry; they do not inherit the requesting actor.
 - Use `@Audited` / `AuditInterceptor` only for reads/disclosures: await durable audit acceptance before emitting results; audit failure fails the response, handler failure creates no disclosure record. Filter 403 ownership: [Exceptions](exceptions.md#exceptions); its audit failures follow error reporting without replacing the original response.
 - `auditContextHook` (`main.ts`, `onRequest`) seeds transport before guards; authentication adds verified, session-checked identity before authorization. Never publish unverified payloads; interceptors are too late.
 - Audit actors travel via AsyncLocalStorage, never command payloads; absent non-HTTP actors leave unattributed records. Business actors remain explicit ([Authentication & Authorization](security-and-sessions.md#authentication--authorization)).
-- Callers supply only non-ambient facts. `AuditAction` includes outcome; `actorType` identifies the actor's owning context. Use `targetId` for a distinct subject or actorless action; omit it when the subject is the actor.
-- Apply retention and data minimization: no tokens, passwords, or full PII payloads; restrict `AuditDetail` values to identifiers/enums. At the hook, prefer matched route templates, strip queries from unmatched paths, and cap user-agent length.
+- Callers supply only non-ambient facts. Audit actions include outcome; `actorType` identifies the actor's owning context. Use `targetId` for a distinct subject or actorless action; omit it when the subject is the actor.
+- Apply retention and data minimization: no tokens, passwords, or full PII payloads; restrict `AuditDetail` values to identifiers, enums, and relevant version counters. At the hook, prefer matched route templates, strip queries from unmatched paths, and cap user-agent length.
 
 ### Dependency Outages
 

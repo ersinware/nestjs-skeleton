@@ -19,6 +19,8 @@ export const KEY_DECORATOR_PERMISSIONS = 'KEY_DECORATOR_PERMISSIONS';
  *
  * @param permissions The permissions the caller must hold, every one of them. At least one
  * permission is required: use `@PrincipalOnly()` for a route that only restricts principal kind.
+ * @returns A decorator storing the required permission set on the controller or method
+ * @throws {Error} When invoked without any permissions
  */
 export function Permissions(...permissions: [Permission, ...Permission[]]): MethodDecorator & ClassDecorator {
     if (permissions.length === 0) {

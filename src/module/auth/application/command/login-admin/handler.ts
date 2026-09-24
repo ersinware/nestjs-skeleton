@@ -45,7 +45,8 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
      *
      * @param command The login admin command parameters
      * @returns The generated access and refresh tokens
-     * @throws {UnauthenticatedException} When credentials are invalid or the account is inactive.
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
     async execute(command: LoginAdminCommand): Promise<LoginAdminResult> {
         return login(

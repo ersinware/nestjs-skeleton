@@ -17,24 +17,10 @@ import {
 import {
     ExceptionKind,
     InvalidInputException,
+    ResourceNotFoundException,
     isExceptionOfKind,
-    isExceptionWithAuditReason,
+    isExceptionWithAudit,
 } from 'src/shared/exception';
-
-/**
- * Audit reasons for activation refusals decided by the handler.
- */
-enum ActivateAdminRejectionReason {
-    /**
-     * The invitation token failed verification.
-     */
-    INVALID_TOKEN = 'INVALID_TOKEN',
-
-    /**
-     * The verified token refers to an account that no longer exists.
-     */
-    ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
-}
 
 /**
  * Activates a pending admin account. Verification is two-layered: the token's signature and expiry,
@@ -50,7 +36,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param tokenPort The port used to verify the invite token
      * @param hashingPort The port used to hash the initial password
-     * @param auditPort The port used to record activation and refusals
+     * @param auditPort The port used to record activation and audited refusals
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -64,8 +50,12 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * Executes the activate admin command.
      *
      * @param command The command payload
-     * @throws {InvalidInputException} When the invitation is invalid, expired, or no longer applies —
-     * one message for every cause, so the endpoint discloses nothing about account state
+     * @throws {InvalidInputException} When the invitation is invalid, expired, or no longer applies
+     * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account is already active or changed concurrently
+     * @throws {SystemException} When the loaded account is deleted or differs from the verified subject
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: ActivateAdminCommand) {
         let payload;
@@ -74,7 +64,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             payload = await this.tokenPort.verifyInviteToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw await this.deny(ActivateAdminRejectionReason.INVALID_TOKEN);
+                throw new InvalidInputException('The invitation is invalid or has expired.');
             }
 
             throw error;
@@ -83,7 +73,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         const admin = await this.adminWriterPort.load(payload.sub);
 
         if (!admin) {
-            throw await this.deny(ActivateAdminRejectionReason.ACCOUNT_NOT_FOUND);
+            throw new ResourceNotFoundException();
         }
 
         const password = await this.hashingPort.hash(command.password);
@@ -91,8 +81,8 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         try {
             admin.activate(password, payload);
         } catch (error) {
-            if (isExceptionWithAuditReason(error)) {
-                throw await this.deny(error.auditReason, admin.id);
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
             }
 
             throw error;
@@ -102,22 +92,5 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });
         });
-    }
-
-    /**
-     * Records the refusal and builds the uniform client response.
-     *
-     * @param reason Why the activation was refused
-     * @param targetId Existing account rejected by the aggregate
-     * @returns The exception the caller throws
-     */
-    private async deny(reason: string, targetId?: string): Promise<InvalidInputException> {
-        await this.auditPort.record({
-            action: AuditAction.ADMIN_ACTIVATION_FAILED,
-            reason,
-            ...(targetId && { targetId }),
-        });
-
-        return new InvalidInputException('The invitation is invalid or has expired.');
     }
 }

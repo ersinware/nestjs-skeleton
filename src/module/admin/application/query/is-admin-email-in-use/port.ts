@@ -3,6 +3,8 @@
  * @description Primary-database availability check for an email change target.
  */
 
+import type { IsAdminEmailInUseResult } from 'src/module/admin/application/query/is-admin-email-in-use/query';
+
 /**
  * Identifies the {@link IIsAdminEmailInUsePort} email availability contract.
  */
@@ -16,8 +18,8 @@ export interface IIsAdminEmailInUsePort {
      * Includes deleted accounts because the email unique constraint also includes them.
      *
      * @param email Validated and normalized target address
-     * @returns Whether an account already holds the address
+     * @returns Result indicating whether an account already holds the address
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    isEmailInUse(email: string): Promise<boolean>;
+    isEmailInUse(email: string): Promise<IsAdminEmailInUseResult>;
 }

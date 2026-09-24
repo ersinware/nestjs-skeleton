@@ -29,6 +29,7 @@ export class GetUserByIdQueryHandler implements IQueryHandler<GetUserByIdQuery, 
      * @param query The query parameters containing the ID
      * @returns The user profile read model
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetUserByIdQuery): Promise<GetUserByIdResult> {
         const user = await this.port.getById(query.id);

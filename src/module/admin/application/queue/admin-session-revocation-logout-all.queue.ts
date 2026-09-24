@@ -39,7 +39,7 @@ export class AdminSessionRevocationLogoutAllQueue implements IJobConsumer {
      */
     async consume(job: Job) {
         await this.commandPipeline.execute(
-            new RevokeAdminSessionsCommand(job.aggregateId, SessionRevocationReason.LOGOUT_ALL),
+            new RevokeAdminSessionsCommand(job.aggregateId, SessionRevocationReason.LOGOUT_ALL, job.deliveryId),
         );
     }
 }

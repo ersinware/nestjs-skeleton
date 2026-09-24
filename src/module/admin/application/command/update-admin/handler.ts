@@ -12,7 +12,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Updates the display name on an existing admin.
@@ -37,19 +37,28 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account is deleted or inactive
      */
     async execute(command: UpdateAdminCommand) {
-        const { id, name } = command;
-
-        const admin = await this.adminWriterPort.load(id);
+        const admin = await this.adminWriterPort.load(command.id);
 
         if (!admin) {
             throw new ResourceNotFoundException();
         }
 
         // An unchanged name requires no persistence or mutation audit.
-        if (!admin.updateName(name)) {
-            return;
+        try {
+            if (!admin.updateName(command.name)) {
+                return;
+            }
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
         await this.transactionPort.run(async () => {

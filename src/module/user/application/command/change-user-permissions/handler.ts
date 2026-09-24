@@ -14,7 +14,12 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Replaces a user's permission set. The aggregate validates the set against the user catalog;
@@ -45,6 +50,9 @@ export class ChangeUserPermissionsCommandHandler implements ICommandHandler<Chan
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target user does not exist.
      * @throws {InvalidInputException} When the set holds a permission a user may not hold.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: ChangeUserPermissionsCommand) {
         const user = await this.userWriterPort.load(command.id);
@@ -54,7 +62,17 @@ export class ChangeUserPermissionsCommandHandler implements ICommandHandler<Chan
         }
 
         // A set that already holds changes nothing: nothing to persist, audit, or evict.
-        const change = user.changePermissions(command.permissions, command.actor);
+        let change;
+
+        try {
+            change = user.changePermissions(command.permissions, command.actor);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         if (!change) {
             return;

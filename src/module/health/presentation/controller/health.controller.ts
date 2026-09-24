@@ -6,11 +6,13 @@
 import { Controller, Get, HttpCode, HttpStatus, VERSION_NEUTRAL } from '@nestjs/common';
 import {
     ApiBearerAuth,
+    ApiExtraModels,
     ApiNoContentResponse,
     ApiOkResponse,
     ApiOperation,
     ApiServiceUnavailableResponse,
     ApiTags,
+    getSchemaPath,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { ROUTE_HEALTH, ROUTE_HEALTH_LIVE, ROUTE_HEALTH_READY } from 'src/core/config';
@@ -20,6 +22,7 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
+import { ErrorDefaultDto } from 'src/core/exception';
 import { HttpCache, HttpCachePolicy } from 'src/core/http';
 import { Permissions, Public } from 'src/core/security/auth';
 import { CheckReadinessQuery } from 'src/module/health/application/query/check-readiness/query';
@@ -69,7 +72,7 @@ export class HealthController {
      * Readiness probe. Runs dependency checks and discards the detail: the caller branches
      * on the status code, and the endpoint is unauthenticated.
      *
-     * @throws {ServiceUnavailableException} When any indicator fails; the global filter turns it into a bare 503.
+     * @throws {ServiceUnavailableException} When a checked health indicator fails
      */
     @Get(ROUTE_HEALTH_READY)
     @Public()
@@ -91,7 +94,8 @@ export class HealthController {
      * the payload is reconnaissance material for anyone else.
      *
      * @returns The status of every indicator.
-     * @throws {ServiceUnavailableException} When any indicator fails; the global filter passes the indicator report through.
+     * @throws {ServiceUnavailableException} When a checked health indicator fails
+     * @throws {SystemException} When a successful health report violates the indicator contract
      */
     @Get()
     @Permissions(Permission.HEALTH_DETAIL_READ)
@@ -105,9 +109,13 @@ export class HealthController {
         description: 'Service is fully healthy.',
         type: ResponseHealthyDto,
     })
+    @ApiExtraModels(ResponseUnhealthyDto, ErrorDefaultDto)
     @ApiServiceUnavailableResponse({
         description: DependencyUnavailableMessage.DEFAULT,
-        type: ResponseUnhealthyDto,
+        schema: {
+            type: 'object',
+            oneOf: [{ $ref: getSchemaPath(ResponseUnhealthyDto) }, { $ref: getSchemaPath(ErrorDefaultDto) }],
+        },
     })
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()

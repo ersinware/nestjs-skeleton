@@ -19,6 +19,7 @@ export interface IGetHealthStatusPort {
      *
      * @returns The health report; resolves only when all indicators pass.
      * @throws {ServiceUnavailableException} When any indicator fails — Terminus's raw exception, deliberately untranslated (see the adapter).
+     * @throws {SystemException} When a successful report has missing or unhealthy indicators
      */
     getStatus(): Promise<GetHealthStatusResult>;
 }

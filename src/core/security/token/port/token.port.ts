@@ -50,6 +50,7 @@ export interface ITokenPort {
 
     /**
      * Signs replacement credentials with the existing session identity and absolute deadline.
+     *
      * @param principal Verified owner and current permissions.
      * @param sessionVersion Current account version.
      * @param identity Existing session identity to preserve.
@@ -83,6 +84,7 @@ export interface ITokenPort {
     /**
      * Verifies a refresh credential for closing its session, allowing credential expiry only.
      * Absolute expiry and all signature, type, and session claim checks still apply.
+     *
      * @param token Refresh token identifying the session to close.
      * @returns Verified refresh claims.
      * @throws {UnauthenticatedException} When the credential or session identity is invalid.

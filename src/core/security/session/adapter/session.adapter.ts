@@ -23,16 +23,30 @@ import { DependencyUnavailableException, DependencyUnavailableMessage, SystemExc
 const SessionKeys = {
     /**
      * Identifies the account-wide minimum accepted access-token version.
+     *
+     * @param id Principal identifier
+     * @returns Redis key for the account access floor
      */
     version: (id: string): string => `auth:{${id}}:version`,
 
     /**
      * Identifies the stable session record, including its credential deadlines.
+     *
+     * @param id Principal identifier
+     * @param type Owning principal context
+     * @param sid Stable session identifier
+     * @returns Redis key for the session registration
      */
     session: (id: string, type: PrincipalType, sid: string): string => `auth:{${id}}:${type}:session:${sid}`,
 
     /**
      * Identifies the grace marker for a consumed refresh credential.
+     *
+     * @param id Principal identifier
+     * @param type Owning principal context
+     * @param sid Stable session identifier
+     * @param jti Consumed refresh credential identifier
+     * @returns Redis key for the credential rotation grace marker
      */
     tombstone: (id: string, type: PrincipalType, sid: string, jti: string): string =>
         `auth:{${id}}:${type}:rotated:${sid}:${jti}`,
@@ -138,6 +152,8 @@ export class SessionAdapter implements ISessionPort {
     private readonly rotationGraceTtlSeconds: number;
 
     /**
+     * Configures session retention and rotation grace on the session connection.
+     *
      * @param redis Session authority connection.
      * @param configService Boot-validated lifetimes.
      */
@@ -156,8 +172,10 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Translates availability failures only; programming and Redis command errors propagate.
+     *
      * @param operation Required session operation.
      * @returns Operation result.
+     * @throws {DependencyUnavailableException} When the session connection is unavailable
      */
     private async run<T>(operation: () => Promise<T>): Promise<T> {
         try {
@@ -172,6 +190,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Registers freshly authenticated credentials without exposing intermediate state.
+     *
      * @param id Principal identifier.
      * @param session Signed identity and deadlines.
      * @returns Whether registration succeeded.
@@ -193,6 +212,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Atomically admits one refresh winner or rejects and classifies the credential.
+     *
      * @param id Principal identifier.
      * @param oldJti Presented refresh identifier.
      * @param session Replacement with unchanged identity and absolute deadline.
@@ -234,6 +254,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Deletes the stable session; subsequent access and rotation reject the missing record.
+     *
      * @param id Principal identifier.
      * @param principalType Owning context.
      * @param sid Signature-verified session identifier.
@@ -244,6 +265,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Reads session validity and account floor in one round trip.
+     *
      * @param id Principal identifier.
      * @param principalType Owning context.
      * @param sid Signature-verified session identifier.
@@ -266,6 +288,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Mirrors the monotonic account access floor without sweeping sessions.
+     *
      * @param id Principal identifier.
      * @param version Candidate floor.
      */
@@ -275,6 +298,7 @@ export class SessionAdapter implements ISessionPort {
 
     /**
      * Reads the mirrored account floor.
+     *
      * @param id Principal identifier.
      * @returns Stored floor or null.
      */

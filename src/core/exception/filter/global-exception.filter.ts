@@ -8,7 +8,7 @@ import { Catch, ExceptionFilter, HttpException, HttpStatus, Inject, Injectable }
 import { HttpAdapterHost } from '@nestjs/core';
 import { PATH_HEALTH, PATH_HEALTH_READY } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { AuditAction, isExceptionAudited, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import {
     AppException,
@@ -41,6 +41,8 @@ const KIND_TO_STATUS = {
 @Injectable()
 export class GlobalExceptionFilter implements ExceptionFilter {
     /**
+     * Connects HTTP error responses to reporting and refusal audit persistence.
+     *
      * @param httpAdapterHost Exposes the Fastify adapter the filter replies through.
      * @param errorReporterPort Logs and tracks the failures this filter selects.
      * @param auditPort Writes the audit records for the refusals the transport itself establishes.
@@ -167,7 +169,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * router 404 messages disclose the missing route.
      *
      * @param statusCode The HTTP status the reply will carry.
-     * @returns The shared message, or undefined when the thrower's own client-safe message applies.
+     * @returns The shared message, or null when the thrower's own client-safe message applies.
      */
     private getDefaultMessage(statusCode: HttpStatus): readonly string[] | null {
         if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
@@ -264,7 +266,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * - `>= 500` takes the error log plus a Sentry capture — the only path reading the thrower's
      *   `context` — and is checked first so a `SystemException` cannot degrade into a mere audit
      *   record.
-     * - Below `500` only the `403` is audited, by status code alone: classifying via an opaque
+     * - Below `500` only an unaudited `403` is audited: classifying via an opaque
      *   `context` would encode a thrower's vocabulary into core. No `warn` branch — nothing below
      *   500 carries context to log.
      *
@@ -293,7 +295,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return;
         }
 
-        if (statusCode === HttpStatus.FORBIDDEN) {
+        if (statusCode === HttpStatus.FORBIDDEN && !isExceptionAudited(exception)) {
             try {
                 await this.auditPort.record({ action: AuditAction.ACCESS_DENIED, reason: message.join(', ') });
             } catch (error) {

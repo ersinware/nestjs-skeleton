@@ -7,6 +7,7 @@
 import { index, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 import type { AuditDetail } from 'src/core/observability/audit/port/audit.port';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import type { PrincipalType } from 'src/shared/domain/principal';
 import { uuidv7 } from 'uuidv7';
 
@@ -34,7 +35,7 @@ export const audit = auditSchema.table(
         /**
          * What happened; each action states its own outcome.
          */
-        action: text('action').$type<AuditAction>().notNull(),
+        action: text('action').$type<AuditAction | DomainFailureAuditAction>().notNull(),
 
         /**
          * Why a refusal happened; null on an action that cannot fail.

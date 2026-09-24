@@ -15,7 +15,6 @@ export interface ICheckReadinessPort {
     /**
      * Runs readiness checks.
      *
-     * @returns Resolves when readiness checks pass.
      * @throws {ServiceUnavailableException} When any readiness check fails — Terminus's raw exception, deliberately untranslated (see the adapter).
      */
     checkReadiness(): Promise<void>;

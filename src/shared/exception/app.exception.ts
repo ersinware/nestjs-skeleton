@@ -3,6 +3,7 @@
  * @description Abstract base of the exception taxonomy, optional diagnostic and audit metadata, and predicates classifying caught errors.
  */
 
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
 
 /**
@@ -28,6 +29,21 @@ export type ExceptionContext = {
 };
 
 /**
+ * Business refusal evidence; the handling boundary supplies the target and ambient identity.
+ */
+type ExceptionAudit = {
+    /**
+     * Business action whose refusal must be recorded.
+     */
+    readonly action: DomainFailureAuditAction;
+
+    /**
+     * Internal reason for the refusal; never rendered to clients.
+     */
+    readonly reason: string;
+};
+
+/**
  * Options accepted by every application exception. Keeps `cause` faithful to its native ES2022
  * meaning — strictly the underlying error — and keeps forensic and audit data separate.
  */
@@ -38,9 +54,9 @@ export type AppExceptionOptions = ErrorOptions & {
     readonly context?: ExceptionContext;
 
     /**
-     * Stable reason the handling boundary must record before returning a refusal.
+     * Business action and reason the handling boundary must record before returning a refusal.
      */
-    readonly auditReason?: string;
+    readonly audit?: ExceptionAudit;
 };
 
 /**
@@ -60,16 +76,16 @@ export abstract class AppException extends Error {
     readonly context?: ExceptionContext;
 
     /**
-     * Stable refusal reason for audit; absent when no refusal audit is required.
+     * Business refusal evidence; absent when no refusal audit is required.
      */
-    readonly auditReason?: string;
+    readonly audit?: ExceptionAudit;
 
     /**
      * Creates the exception and names it after the concrete class so logs and stack traces identify
      * the real type without an `instanceof` check.
      *
      * @param message The client-safe description of the failure
-     * @param options The underlying `cause`, forensic `context`, and optional audit reason
+     * @param options The underlying `cause`, forensic `context`, and optional audit evidence
      */
     constructor(message: string, options?: AppExceptionOptions) {
         super(message, options);
@@ -79,8 +95,8 @@ export abstract class AppException extends Error {
             this.context = options.context;
         }
 
-        if (options?.auditReason) {
-            this.auditReason = options.auditReason;
+        if (options?.audit) {
+            this.audit = options.audit;
         }
     }
 }
@@ -107,23 +123,29 @@ export function isExceptionOfKind(
 }
 
 /**
- * Identifies a taxonomy exception carrying a refusal reason for audit, regardless of its kind.
- * A structural match proves only the fields the caller needs, without relying on `instanceof`.
+ * Identifies a taxonomy exception carrying a complete business audit instruction.
  *
  * @param error The caught value
- * @returns True when the kind is recognized and the audit reason is a string
+ * @returns True when the kind, action, and refusal reason are recognized
  */
-export function isExceptionWithAuditReason(
+export function isExceptionWithAudit(
     error: unknown,
-): error is Pick<AppException, 'kind'> & { readonly auditReason: string } {
+): error is Pick<AppException, 'kind'> & { readonly audit: ExceptionAudit } {
     if (!error || typeof error !== 'object') {
         return false;
     }
 
-    const candidate = error as { readonly kind?: unknown; readonly auditReason?: unknown };
+    const candidate = error as { readonly kind?: unknown; readonly audit?: unknown };
+
+    if (!candidate.audit || typeof candidate.audit !== 'object') {
+        return false;
+    }
+
+    const audit = candidate.audit as { readonly action?: unknown; readonly reason?: unknown };
 
     return (
         Object.values(ExceptionKind).some((kind) => kind === candidate.kind) &&
-        typeof candidate.auditReason === 'string'
+        Object.values(DomainFailureAuditAction).some((action) => action === audit.action) &&
+        typeof audit.reason === 'string'
     );
 }

@@ -40,6 +40,7 @@ export class AuditInterceptor implements NestInterceptor {
      * @param context The current execution context, used to read the route's audit metadata.
      * @param next The remainder of the request pipeline.
      * @returns The handler's stream, with the audit write sequenced before each emitted value.
+     * @throws {DependencyUnavailableException} Through the returned stream when audit persistence is unavailable
      */
     intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
         const action = this.reflector.getAllAndOverride<AuditAction>(KEY_DECORATOR_AUDITED, [

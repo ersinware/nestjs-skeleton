@@ -5,6 +5,7 @@
 
 import { Query } from '@nestjs/cqrs';
 import { AuditAction } from 'src/core/observability/audit';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PaginationParams } from 'src/shared/pagination';
 
 /**
@@ -15,7 +16,7 @@ export type AuditTrailFilterParams = {
     /**
      * Restricts the page to one action.
      */
-    readonly action?: AuditAction;
+    readonly action?: AuditAction | DomainFailureAuditAction;
 
     /**
      * Restricts the page to the records written by one actor.
@@ -69,7 +70,7 @@ export type ListAuditTrailRecordsResult = {
         /**
          * Recorded action and outcome.
          */
-        readonly action: AuditAction;
+        readonly action: AuditAction | DomainFailureAuditAction;
 
         /**
          * Matched route template, when available.

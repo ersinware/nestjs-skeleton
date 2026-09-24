@@ -33,6 +33,8 @@ export class GetDeadLetterJobQueryHandler implements IQueryHandler<GetDeadLetter
      * @param query Dead-letter job identifier
      * @returns Sanitized job
      * @throws {ResourceNotFoundException} When the job is absent from the shared queue
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
+     * @throws {SystemException} When persisted job provenance, identifiers, or timestamps are invalid
      */
     async execute(query: GetDeadLetterJobQuery): Promise<GetDeadLetterJobResult> {
         const job = await this.port.getJob(query.id);

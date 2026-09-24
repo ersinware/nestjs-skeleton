@@ -5,7 +5,6 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
@@ -23,18 +22,17 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
      *
      * @param tokenPort The port used to verify the refresh token
      * @param sessionPort The port used to close the refresh session
-     * @param auditPort The port used to record the logout
      */
     constructor(
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
-        @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
      * Executes the logout command.
      *
      * @param command The logout command parameters
+     * @throws {DependencyUnavailableException} When session closure is unavailable
      */
     async execute(command: LogoutCommand) {
         let payload;
@@ -50,7 +48,5 @@ export class LogoutCommandHandler implements ICommandHandler<LogoutCommand, void
         }
 
         await this.sessionPort.closeSession(payload.sub, payload.principalType, payload.sid);
-
-        await this.auditPort.record({ action: AuditAction.LOGOUT, targetId: payload.sub });
     }
 }

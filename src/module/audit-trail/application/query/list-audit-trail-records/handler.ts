@@ -32,6 +32,7 @@ export class ListAuditTrailRecordsQueryHandler implements IQueryHandler<
      *
      * @param query The query carrying the filters and pagination parameters
      * @returns The page of records
+     * @throws {DependencyUnavailableException} When the audit database is unavailable
      */
     async execute(query: ListAuditTrailRecordsQuery): Promise<ListAuditTrailRecordsResult> {
         return this.port.listRecords(query.params);

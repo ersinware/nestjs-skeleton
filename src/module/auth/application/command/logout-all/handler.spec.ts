@@ -36,7 +36,10 @@ describe('LogoutAllCommandHandler', () => {
         const job = enqueue.mock.calls[0]?.[0][0];
         expect(job?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
         expect(job).toMatchObject({ aggregateId: 'principal-1', queueName });
-        expect(record).toHaveBeenCalledWith({ action: AuditAction.LOGOUT_ALL });
+        expect(record).toHaveBeenCalledWith({
+            action: AuditAction.LOGOUT_ALL,
+            detail: { deliveryId: job?.deliveryId },
+        });
     });
 
     it('propagates a required durable-write failure', async () => {

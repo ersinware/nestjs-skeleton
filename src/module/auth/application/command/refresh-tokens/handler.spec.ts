@@ -110,7 +110,10 @@ describe('RefreshTokensCommandHandler', () => {
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(
             ResourceConflictException,
         );
-        expect(record).toHaveBeenCalledWith({ action: AuditAction.REFRESH_CONCURRENT_REPLAY, targetId: 'user-1' });
+        expect(record).toHaveBeenCalledWith({
+            action: AuditAction.REFRESH_CONCURRENT_REPLAY,
+            targetId: 'user-1',
+        });
         expect(enqueue).not.toHaveBeenCalled();
     });
 
@@ -138,6 +141,7 @@ describe('RefreshTokensCommandHandler', () => {
         expect(record).toHaveBeenCalledWith({
             action: AuditAction.REFRESH_REUSE_DETECTED,
             targetId: 'principal-1',
+            detail: { deliveryId: job?.deliveryId },
         });
     });
 

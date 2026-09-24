@@ -12,7 +12,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Lifts the ban on an existing user. Unlike banning, no session eviction is needed: the version is
@@ -38,6 +38,9 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the user does not exist
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: UnbanUserCommand) {
         const user = await this.userWriterPort.load(command.id);
@@ -49,8 +52,16 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
         // `unban()` reports whether the account actually transitioned. On an account that is not
         // banned there is nothing to persist or audit — an entry for a ban that was never in place
         // would fabricate a fact.
-        if (!user.unban(command.actor)) {
-            return;
+        try {
+            if (!user.unban(command.actor)) {
+                return;
+            }
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
         await this.transactionPort.run(async () => {

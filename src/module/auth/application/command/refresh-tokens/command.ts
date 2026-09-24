@@ -9,7 +9,7 @@ import { Command } from '@nestjs/cqrs';
  * Enum defining the client-safe messages of refresh rejections. Lives with the command because the
  * vocabulary belongs to this use case, not to the shared exception taxonomy.
  */
-export enum RefreshTokensMessage {
+export enum RefreshTokensRejectionMessage {
     /**
      * The credential was consumed within grace. Timing does not prove legitimacy; clients without
      * the winning token pair must authenticate again instead of retrying the consumed credential.

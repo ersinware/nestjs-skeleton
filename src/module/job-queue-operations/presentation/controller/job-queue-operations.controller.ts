@@ -1,6 +1,6 @@
 /**
  * @file job-queue-operations.controller.ts
- * @description Restricted, audited HTTP access to dead-letter jobs and redrive operations.
+ * @description Restricted HTTP access to dead-letter jobs and redrive operations.
  */
 
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
@@ -32,7 +32,6 @@ import {
     RequestValidationMessage,
     ResponsePaginationDto,
 } from 'src/core/http';
-import { AuditAction, Audited } from 'src/core/observability/audit';
 import { Permissions } from 'src/core/security/auth';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
 import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
@@ -74,10 +73,11 @@ export class JobQueueOperationsController {
      *
      * @param query Pagination parameters
      * @returns Sanitized jobs and pagination metadata
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
+     * @throws {SystemException} When persisted job metadata or the returned page count is invalid
      */
     @Get('jobs')
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
-    @Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'List dead-letter jobs',
@@ -104,10 +104,12 @@ export class JobQueueOperationsController {
      *
      * @param params Validated job identifier
      * @returns Sanitized dead-letter job
+     * @throws {ResourceNotFoundException} When the job is absent from the shared queue
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
+     * @throws {SystemException} When persisted job provenance, identifiers, or timestamps are invalid
      */
     @Get('jobs/:id')
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
-    @Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'Get dead-letter job',
@@ -127,6 +129,9 @@ export class JobQueueOperationsController {
      * Requests an asynchronous redrive of all eligible shared dead-letter jobs.
      *
      * @returns Identifier of the accepted operation
+     * @throws {ResourceConflictException} When another redrive is queued or active
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('redrive')
     @Permissions(Permission.JOB_DEAD_LETTER_REDRIVE)
@@ -148,10 +153,11 @@ export class JobQueueOperationsController {
      *
      * @param params Validated redrive operation identifier
      * @returns Current operation state and timestamps
+     * @throws {ResourceNotFoundException} When the operation is absent or no longer retained
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
      */
     @Get('redrive/:operationId')
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
-    @Audited(AuditAction.JOB_DEAD_LETTER_ACCESSED)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'Get dead-letter redrive status',
@@ -173,6 +179,9 @@ export class JobQueueOperationsController {
      * Discards an exact set of dead-letter jobs as one audited operation.
      *
      * @param body Validated dead-letter job identifiers
+     * @throws {ResourceNotFoundException} When any requested job is missing from the shared dead-letter queue
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('discard')
     @Permissions(Permission.JOB_DEAD_LETTER_DISCARD)

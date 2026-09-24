@@ -24,6 +24,8 @@ import { PaginationParams } from 'src/shared/pagination';
 @Injectable()
 export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPort, IGetAuditTrailRecordByIdPort {
     /**
+     * Connects audit disclosure reads to the replica database.
+     *
      * @param database The Drizzle client on the replica connection
      */
     constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}

@@ -309,6 +309,7 @@ export class JobQueueOperationsAdapter
      *
      * @param job Persisted pg-boss job
      * @returns Internal dead-letter view
+     * @throws {SystemException} When persisted provenance, identifiers, or timestamps are invalid
      */
     private toDeadLetterJob(
         job: Pick<JobWithMetadata<unknown>, 'id' | 'sourceName' | 'sourceId' | 'sourceRetryCount' | 'data'> & {

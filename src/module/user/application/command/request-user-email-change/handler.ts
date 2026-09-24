@@ -17,7 +17,7 @@ import {
     TOKEN_IS_USER_EMAIL_IN_USE_PORT,
     type IIsUserEmailInUsePort,
 } from 'src/module/user/application/query/is-user-email-in-use/port';
-import { ResourceNotFoundException, isExceptionWithAuditReason } from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Starts a confirmation request without changing the current email or sessions.
@@ -46,10 +46,11 @@ export class RequestUserEmailChangeCommandHandler implements ICommandHandler<Req
      *
      * @param command The authenticated account and password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
-     * @throws {SystemException} When a deleted account reaches this authenticated flow
+     * @throws {SystemException} When a deleted account reaches this authenticated flow, or the queue does not accept every required job
      * @throws {InvalidInputException} When the password is wrong or the address is unchanged
      * @throws {ResourceConflictException} When the address is in use or the loaded account changed
      * @throws {AccessDeniedException} When the account is banned
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: RequestUserEmailChangeCommand) {
         const user = await this.userWriterPort.load(command.id);
@@ -62,14 +63,11 @@ export class RequestUserEmailChangeCommandHandler implements ICommandHandler<Req
             user.requestEmailChange(
                 command.newEmail,
                 await this.hashingPort.verify(user.password, command.password),
-                await this.emailInUsePort.isEmailInUse(command.newEmail),
+                (await this.emailInUsePort.isEmailInUse(command.newEmail)).isInUse,
             );
         } catch (error) {
-            if (isExceptionWithAuditReason(error)) {
-                await this.auditPort.record({
-                    action: AuditAction.EMAIL_CHANGE_REQUEST_FAILED,
-                    reason: error.auditReason,
-                });
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
             }
 
             throw error;

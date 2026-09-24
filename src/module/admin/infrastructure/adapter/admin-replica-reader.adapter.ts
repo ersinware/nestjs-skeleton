@@ -23,6 +23,8 @@ import type { SearchParams } from 'src/shared/search';
 @Injectable()
 export class AdminReplicaReaderAdapter implements IGetAdminByIdPort, IListAdminsPort {
     /**
+     * Connects presentation reads to the replica database.
+     *
      * @param database The Drizzle client on the replica connection
      */
     constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}

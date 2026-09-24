@@ -31,6 +31,7 @@ export class GetFreshUserByIdQueryHandler implements IQueryHandler<GetFreshUserB
      * @param query The query parameters containing the ID
      * @returns The user profile read model
      * @throws {ResourceNotFoundException} When no non-deleted user exists with the given ID
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetFreshUserByIdQuery): Promise<GetFreshUserByIdResult> {
         const user = await this.port.getById(query.id);

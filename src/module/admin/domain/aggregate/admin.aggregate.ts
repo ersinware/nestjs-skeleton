@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
 import { isUUIDV7 } from 'src/shared/domain/uuid';
 import {
@@ -131,26 +132,6 @@ enum ActivateAdminRejectionReason {
      * The account is banned from activation.
      */
     ACCOUNT_BANNED = 'ACCOUNT_BANNED',
-
-    /**
-     * The account already has a password.
-     */
-    ACCOUNT_ALREADY_ACTIVE = 'ACCOUNT_ALREADY_ACTIVE',
-
-    /**
-     * The invitation predates the account's current revocation version.
-     */
-    INVITE_REVOKED = 'INVITE_REVOKED',
-
-    /**
-     * The verified invitation does not match the account's stored invitation.
-     */
-    INVITE_MISMATCH = 'INVITE_MISMATCH',
-
-    /**
-     * The stored invitation has expired.
-     */
-    INVITE_EXPIRED = 'INVITE_EXPIRED',
 }
 
 /**
@@ -166,21 +147,6 @@ enum ConfirmEmailChangeRejectionReason {
      * The account is banned from email changes.
      */
     ACCOUNT_BANNED = 'ACCOUNT_BANNED',
-
-    /**
-     * The proof predates the account's current full revocation.
-     */
-    REQUEST_REVOKED = 'REQUEST_REVOKED',
-
-    /**
-     * The proof does not match the stored pending request.
-     */
-    REQUEST_MISMATCH = 'REQUEST_MISMATCH',
-
-    /**
-     * The stored request expired before consumption.
-     */
-    REQUEST_EXPIRED = 'REQUEST_EXPIRED',
 }
 
 /**
@@ -335,20 +301,19 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
-                auditReason: ActivateAdminRejectionReason.ACCOUNT_BANNED,
+                audit: {
+                    action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED,
+                    reason: ActivateAdminRejectionReason.ACCOUNT_BANNED,
+                },
             });
         }
 
         if (this.props.password !== null) {
-            throw new ResourceConflictException(ResourceConflictMessage.DEFAULT, {
-                auditReason: ActivateAdminRejectionReason.ACCOUNT_ALREADY_ACTIVE,
-            });
+            throw new ResourceConflictException(ResourceConflictMessage.DEFAULT);
         }
 
         if (payload.inviteRevocationVersion !== this.revocationVersion) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ActivateAdminRejectionReason.INVITE_REVOKED,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         if (
@@ -357,15 +322,11 @@ export class Admin extends PrincipalAggregateRoot {
             this.props.inviteExpiresAt === null ||
             payload.exp * 1000 !== this.props.inviteExpiresAt.getTime()
         ) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ActivateAdminRejectionReason.INVITE_MISMATCH,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         if (this.props.inviteExpiresAt.getTime() <= Date.now()) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ActivateAdminRejectionReason.INVITE_EXPIRED,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         this.props.password = password;
@@ -424,7 +385,11 @@ export class Admin extends PrincipalAggregateRoot {
             throw new AccessDeniedException();
         }
 
-        this.assertPasswordChange(currentPasswordMatches, newPasswordMatchesCurrent);
+        this.assertPasswordChange(
+            currentPasswordMatches,
+            newPasswordMatchesCurrent,
+            DomainFailureAuditAction.PASSWORD_CHANGE_FAILED,
+        );
 
         this.props.password = password;
         this.revokeAllSessions();
@@ -457,7 +422,7 @@ export class Admin extends PrincipalAggregateRoot {
             throw new AccessDeniedException();
         }
 
-        this.assertCurrentPassword(currentPasswordMatches, true);
+        this.assertCurrentPassword(currentPasswordMatches, DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED);
 
         if (newEmail === this.props.email) {
             throw new InvalidInputException(InvalidInputMessage.EMAIL_UNCHANGED);
@@ -524,14 +489,15 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+                audit: {
+                    action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
+                    reason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+                },
             });
         }
 
         if (payload.emailRevocationVersion !== this.revocationVersion) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_REVOKED,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         if (
@@ -541,15 +507,11 @@ export class Admin extends PrincipalAggregateRoot {
             this.props.pendingEmailExpiresAt === null ||
             payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime()
         ) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_MISMATCH,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         if (this.props.pendingEmailExpiresAt.getTime() <= Date.now()) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_EXPIRED,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         this.props.email = this.props.pendingEmail;
@@ -576,7 +538,7 @@ export class Admin extends PrincipalAggregateRoot {
      * @param permissions The complete set the admin should hold afterwards
      * @param actor The verified principal making the change
      * @returns Granted and revoked permissions, or null when unchanged
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or the actor is not an admin
      * @throws {AccessDeniedException} When the actor or requested hierarchy change is forbidden
      * @throws {InvalidInputException} When the set holds a permission an admin may not hold
      */
@@ -612,7 +574,7 @@ export class Admin extends PrincipalAggregateRoot {
      *
      * @param actor The verified principal imposing the ban
      * @returns Whether the account transitioned to banned
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or the actor is not an admin
      * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     ban(actor: Principal): boolean {
@@ -637,7 +599,7 @@ export class Admin extends PrincipalAggregateRoot {
      *
      * @param actor The verified principal lifting the ban
      * @returns Whether the account transitioned to unbanned
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or the actor is not an admin
      * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     unban(actor: Principal): boolean {
@@ -691,6 +653,7 @@ export class Admin extends PrincipalAggregateRoot {
      *
      * @param actor The verified principal deleting the account
      * @throws {AccessDeniedException} When the actor cannot administer the target
+     * @throws {SystemException} When the actor is not an admin
      */
     markAsDeleted(actor: Principal) {
         this.assertAdministrableBy(actor);

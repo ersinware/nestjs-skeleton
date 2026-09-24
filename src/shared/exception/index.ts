@@ -4,7 +4,7 @@
  */
 
 export { AccessDeniedException, AccessDeniedMessage } from 'src/shared/exception/access-denied.exception';
-export { AppException, isExceptionOfKind, isExceptionWithAuditReason } from 'src/shared/exception/app.exception';
+export { AppException, isExceptionOfKind, isExceptionWithAudit } from 'src/shared/exception/app.exception';
 export type { ExceptionContext } from 'src/shared/exception/app.exception';
 export {
     DependencyUnavailableException,

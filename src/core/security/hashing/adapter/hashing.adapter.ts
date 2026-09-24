@@ -37,6 +37,8 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
     private placeholderHash!: string;
 
     /**
+     * Selects the password hashing cost for the configured environment.
+     *
      * @param configService Source of the environment deciding the Argon2 cost parameters.
      */
     constructor(configService: ConfigService) {
