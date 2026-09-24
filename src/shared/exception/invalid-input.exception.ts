@@ -14,6 +14,11 @@ export enum InvalidInputMessage {
      * The transport-neutral fallback when no thrower-owned message applies.
      */
     DEFAULT = 'The provided input is invalid.',
+
+    /**
+     * The requested email address is unchanged.
+     */
+    EMAIL_UNCHANGED = 'The new email address must differ from the current address.',
 }
 
 /**

@@ -404,11 +404,14 @@ export class Admin extends PrincipalAggregateRoot {
     /**
      * Changes the password and revokes existing sessions.
      *
-     * @param password Argon2 password hash
+     * @param password Replacement password hash
+     * @param currentPasswordMatches Whether the submitted current password matches the loaded hash
+     * @param newPasswordMatchesCurrent Whether the proposed new password matches that same hash
      * @throws {SystemException} When the account is deleted or has not been activated
      * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the current password is wrong or the new password is unchanged
      */
-    changePassword(password: string) {
+    changePassword(password: string, currentPasswordMatches: boolean, newPasswordMatchesCurrent: boolean) {
         this.assertNotDeleted(this.changePassword.name);
 
         if (this.props.password === null) {
@@ -421,6 +424,8 @@ export class Admin extends PrincipalAggregateRoot {
             throw new AccessDeniedException();
         }
 
+        this.assertPasswordChange(currentPasswordMatches, newPasswordMatchesCurrent);
+
         this.props.password = password;
         this.revokeAllSessions();
         this.props.updatedAt = new Date();
@@ -432,11 +437,14 @@ export class Admin extends PrincipalAggregateRoot {
      * Replaces the pending email request and queues delivery without revoking sessions.
      *
      * @param newEmail Validated and normalized target email address
+     * @param currentPasswordMatches Whether the submitted current password matches the loaded hash
+     * @param emailInUse Whether an account already holds the requested address
      * @throws {SystemException} When the account is deleted or has not been activated
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {InvalidInputException} When the target address already belongs to this account
+     * @throws {InvalidInputException} When the current password is wrong or the address is unchanged
+     * @throws {ResourceConflictException} When the target address is already in use
      */
-    requestEmailChange(newEmail: string) {
+    requestEmailChange(newEmail: string, currentPasswordMatches: boolean, emailInUse: boolean) {
         this.assertNotDeleted(this.requestEmailChange.name);
 
         if (this.props.password === null) {
@@ -449,8 +457,14 @@ export class Admin extends PrincipalAggregateRoot {
             throw new AccessDeniedException();
         }
 
+        this.assertCurrentPassword(currentPasswordMatches, true);
+
         if (newEmail === this.props.email) {
-            throw new InvalidInputException('The new email address must differ from the current address.');
+            throw new InvalidInputException(InvalidInputMessage.EMAIL_UNCHANGED);
+        }
+
+        if (emailInUse) {
+            throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
         }
 
         const now = new Date();
@@ -770,11 +784,18 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Returns the password hash, or null while activation is pending.
+     * Supplies the password hash for self-service verification only after activation.
      *
-     * @returns Password hash or null
+     * @returns The activated account's password hash
+     * @throws {SystemException} When the account has not been activated
      */
-    get password(): string | null {
+    get password(): string {
+        if (this.props.password === null) {
+            throw new SystemException('An inactive admin reached a self-service flow.', {
+                context: { class: Admin.name, method: 'password', id: this.id },
+            });
+        }
+
         return this.props.password;
     }
 

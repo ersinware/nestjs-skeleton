@@ -1,6 +1,6 @@
 /**
  * @file principal-aggregate-root.ts
- * @description Defines shared permission and session state for job-producing principals.
+ * @description Defines shared credential rules, permission state, and session state for job-producing principals.
  */
 
 import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root/soft-deletable-aggregate-root';
@@ -11,12 +11,34 @@ import { InvalidInputException, SystemException } from 'src/shared/exception';
  * Permissions granted and revoked by a permission-set replacement.
  */
 export type PermissionChange = {
+    /**
+     * Permissions added to the principal's set.
+     */
     readonly granted: readonly Permission[];
+
+    /**
+     * Permissions removed from the principal's set.
+     */
     readonly revoked: readonly Permission[];
 };
 
 /**
- * Base for job-producing principals that own permissions and session counters.
+ * Password refusal reasons included when the calling flow records failed attempts.
+ */
+enum PasswordRejectionReason {
+    /**
+     * The submitted current password does not match the stored hash.
+     */
+    CURRENT_PASSWORD_MISMATCH = 'CURRENT_PASSWORD_MISMATCH',
+
+    /**
+     * The proposed new password matches the current password.
+     */
+    NEW_PASSWORD_UNCHANGED = 'NEW_PASSWORD_UNCHANGED',
+}
+
+/**
+ * Base for job-producing principals that own credential rules, permissions, and session counters.
  */
 export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot {
     /**
@@ -64,6 +86,36 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
+     * Replaces the permission set after validating that this principal kind may hold every entry.
+     *
+     * @param permissions The complete permission set the principal should hold afterwards
+     * @returns The permissions granted and revoked, or null when nothing changed
+     * @throws {InvalidInputException} When this principal kind may not hold a requested permission
+     */
+    protected applyPermissions(permissions: readonly Permission[]): PermissionChange | null {
+        const target = [...new Set(permissions)],
+            unholdable = target.find((permission) => PERMISSION_HOLDER[permission] !== this.principalType);
+
+        if (unholdable) {
+            throw new InvalidInputException(
+                `The permission '${unholdable}' cannot be held by a principal of type '${this.principalType}'.`,
+            );
+        }
+
+        const granted = target.filter((permission) => !this._permissions.includes(permission)),
+            revoked = this._permissions.filter((permission) => !target.includes(permission));
+
+        if (granted.length === 0 && revoked.length === 0) {
+            return null;
+        }
+
+        this._permissions = target;
+        this.retireAccessTokens();
+
+        return { granted, revoked };
+    }
+
+    /**
      * Retires all outstanding access tokens while leaving refresh tokens alive.
      */
     protected retireAccessTokens() {
@@ -99,33 +151,42 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Replaces the permission set after validating that this principal kind may hold every entry.
+     * Requires a matching current-password proof before sensitive work proceeds.
      *
-     * @param permissions The complete permission set the principal should hold afterwards
-     * @returns The permissions granted and revoked, or null when nothing changed
-     * @throws {InvalidInputException} When this principal kind may not hold a requested permission
+     * @param currentPasswordMatches Hash verification result for this aggregate's current password
+     * @param auditReason Whether to include the current-password mismatch audit reason
+     * @throws {InvalidInputException} When the submitted password does not match; includes the audit reason when enabled
      */
-    protected applyPermissions(permissions: readonly Permission[]): PermissionChange | null {
-        const target = [...new Set(permissions)],
-            unholdable = target.find((permission) => PERMISSION_HOLDER[permission] !== this.principalType);
-
-        if (unholdable) {
+    protected assertCurrentPassword(currentPasswordMatches: boolean, auditReason?: boolean) {
+        if (!currentPasswordMatches) {
             throw new InvalidInputException(
-                `The permission '${unholdable}' cannot be held by a principal of type '${this.principalType}'.`,
+                'The current password provided is incorrect.',
+                auditReason ? { auditReason: PasswordRejectionReason.CURRENT_PASSWORD_MISMATCH } : undefined,
             );
         }
+    }
 
-        const granted = target.filter((permission) => !this._permissions.includes(permission)),
-            revoked = this._permissions.filter((permission) => !target.includes(permission));
+    /**
+     * Rejects an invalid current password or reuse before password mutation.
+     *
+     * @param currentPasswordMatches Whether the submitted current password matches the stored hash
+     * @param newPasswordMatchesCurrent Whether the proposed new password matches that same stored hash
+     * @param auditReason Whether to include audit reasons for password-change refusals
+     * @throws {InvalidInputException} When the current password is wrong or the new password is unchanged
+     */
+    protected assertPasswordChange(
+        currentPasswordMatches: boolean,
+        newPasswordMatchesCurrent: boolean,
+        auditReason?: boolean,
+    ) {
+        this.assertCurrentPassword(currentPasswordMatches, auditReason);
 
-        if (granted.length === 0 && revoked.length === 0) {
-            return null;
+        if (newPasswordMatchesCurrent) {
+            throw new InvalidInputException(
+                'New password cannot be the same as the current password.',
+                auditReason ? { auditReason: PasswordRejectionReason.NEW_PASSWORD_UNCHANGED } : undefined,
+            );
         }
-
-        this._permissions = target;
-        this.retireAccessTokens();
-
-        return { granted, revoked };
     }
 
     /**

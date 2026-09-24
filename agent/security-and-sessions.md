@@ -11,7 +11,7 @@
 - Reject `Public` with any protection. `Authenticated` cannot accompany same-level restrictions or relax class restrictions; class-level `Authenticated` allows method restrictions.
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
 - Invitation activation and email confirmation receive verified claims for the target aggregate; a `sub` mismatch throws `SystemException`. Email confirmation handlers must reject session/token ownership mismatches before calling the aggregate.
-- Admin self-service mutations require activation; reaching them with a null password is a `SystemException`.
+- Admin self-service mutations and password access require activation; a null password is a `SystemException`.
 - Both principal kinds share `login.util.ts` and uniform `CREDENTIALS` refusals. Each credential-login refusal performs one Argon2 verification; unknown/pending/banned accounts use `simulateVerify` with a boot-generated, current-cost hash.
 
 ### Administration
@@ -36,7 +36,7 @@
 - Redis mirrors only `sessionVersion`; refresh checks primary `revocationVersion`. Version writes never lower an existing floor or shorten its TTL, retained for at least the longer configured credential lifetime. Revocation bumps, never deletes; lost keys lose this protection.
 - Access checks reject missing versions or tokens below the stored floor (401); recognized session availability failures become `DependencyUnavailableException` (503). Redis authentication/command/Lua and unknown errors propagate unchanged. Never substitute an accepting default or return login/refresh success after required session operations fail.
 - Rejected login registration yields an audited `CREDENTIALS` refusal without tokens.
-- Self-service password handlers reject loaded banned accounts before password verification (403); aggregates independently reject bans before mutation. A stale guard mirror must not permit fresh token issuance. Persist the password before issuing replacement tokens at the committed version; await atomic Redis version synchronization/session opening before returning them.
+- Banned accounts cannot change passwords (403). A stale guard mirror must not permit fresh token issuance. Persist the password before issuing replacement tokens at the committed version; await atomic Redis version synchronization/session opening before returning them.
 - Password-change and email-confirmation outcomes return 200: `session: created` includes fresh tokens; recognized session unavailability or a newer Redis version yields `session: login_required` without tokens, instructing clients to discard old tokens and sign in again. Session failure does not undo the committed change; unexpected errors propagate.
 - Rotation accepts one winner; replay leaves the version key untouched. Within 1–60-second grace, await `REFRESH_CONCURRENT_REPLAY` audit and return 409 without revocation; timing does not prove legitimacy. Outside grace, atomically delete the Redis session, commit reuse audit and the revocation request together in PostgreSQL, then return 401; persistence failures propagate. Redis deletion and PostgreSQL persistence are not atomic. Never return the winning pair to a replaying credential; clients without it must reauthenticate.
 - Revocation mirror pushes are best-effort; token issuance requires awaited synchronization. Session reconciliation consumers re-read current primary versions, including soft-deleted principals, and await Redis writes. DB/Redis updates are not atomic; stale mirrors can admit old access tokens until synchronization or expiry. Delivery limits: [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
@@ -52,7 +52,7 @@
 
 ### Email Change State
 
-- Profile updates must not change login email. Verify the current password before checking target-email availability or creating an email change request.
+- Profile updates must not change login email. Email-change requests require current-password proof; reject mismatches before returning target-address conflicts.
 - Confirmation pages must not mutate on GET or expose tokens to third-party scripts/analytics. Use `Referrer-Policy: no-referrer` and remove the token from the address bar after capture.
 - Aggregates own pending request identity, target, expiry, and revocation snapshot; persist no JWT or issuance time. New requests replace prior requests, even for the same target; pending addresses are not reserved.
 - Email confirmation requires an authenticated session whose account ID and principal kind match the proof; never make the endpoint public. Delivery retries must preserve the JWT and deadline; signing-key rotation requires a new request.

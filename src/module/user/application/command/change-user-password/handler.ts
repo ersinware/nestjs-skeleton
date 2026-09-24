@@ -12,7 +12,6 @@ import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     ChangeUserPasswordCommand,
-    ChangeUserPasswordMessage,
     type ChangeUserPasswordResult,
 } from 'src/module/user/application/command/change-user-password/command';
 import {
@@ -20,13 +19,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { PrincipalType } from 'src/shared/domain/principal';
-import {
-    AccessDeniedException,
-    ExceptionKind,
-    InvalidInputException,
-    ResourceNotFoundException,
-    isExceptionOfKind,
-} from 'src/shared/exception';
+import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Changes the password for an existing user account.
@@ -57,8 +50,6 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
 
     /**
      * Executes the change user password command.
-     * Rejects a loaded ban before password verification; the aggregate also enforces the ban
-     * when changing state.
      *
      * @param command The command payload
      * @returns The committed password change and its session outcome
@@ -74,21 +65,14 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
             throw new ResourceNotFoundException();
         }
 
-        if (user.isBanned) {
-            throw new AccessDeniedException();
-        }
-
         const hashedPassword = user.password;
 
-        if (!(await this.hashingPort.verify(hashedPassword, command.currentPassword))) {
-            throw new InvalidInputException(ChangeUserPasswordMessage.CURRENT_PASSWORD_MISMATCH);
-        }
+        user.changePassword(
+            await this.hashingPort.hash(newPassword),
+            await this.hashingPort.verify(hashedPassword, command.currentPassword),
+            await this.hashingPort.verify(hashedPassword, newPassword),
+        );
 
-        if (await this.hashingPort.verify(hashedPassword, newPassword)) {
-            throw new InvalidInputException(ChangeUserPasswordMessage.PASSWORD_REUSE);
-        }
-
-        user.changePassword(await this.hashingPort.hash(newPassword));
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });

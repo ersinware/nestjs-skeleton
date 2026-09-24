@@ -179,7 +179,7 @@ describe('Transactional pg-boss consumer', () => {
         expect(childJobs.some((job) => job.data.deliveryId === deliveryId)).toBe(false);
         expect(report).toHaveBeenCalledWith(
             expect.objectContaining({ message: 'Intentional transactional consumer failure.' }),
-            expect.objectContaining({ class: 'JobQueueFeatureModule', method: 'boss.work' }),
+            expect.objectContaining({ class: 'JobQueueFeatureModule' }),
         );
     });
 

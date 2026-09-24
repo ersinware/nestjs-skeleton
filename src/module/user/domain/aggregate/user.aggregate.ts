@@ -13,6 +13,8 @@ import {
     AccessDeniedMessage,
     InvalidInputException,
     InvalidInputMessage,
+    ResourceConflictException,
+    ResourceConflictMessage,
     SystemException,
 } from 'src/shared/exception';
 
@@ -249,18 +251,23 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Changes the user's password and bumps the session version so that every token minted before
-     * this change is instantly rejected by the auth guard.
+     * Changes the password after accepting the verification results and revokes existing sessions.
      *
+     * @param password Replacement password hash
+     * @param currentPasswordMatches Whether the submitted current password matches the loaded hash
+     * @param newPasswordMatchesCurrent Whether the proposed new password matches that same hash
      * @throws {SystemException} When the account has been soft-deleted
      * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the current password is wrong or the new password is unchanged
      */
-    changePassword(password: string) {
+    changePassword(password: string, currentPasswordMatches: boolean, newPasswordMatchesCurrent: boolean) {
         this.assertNotDeleted(this.changePassword.name);
 
         if (this.props.isBanned) {
             throw new AccessDeniedException();
         }
+
+        this.assertPasswordChange(currentPasswordMatches, newPasswordMatchesCurrent);
 
         this.props.password = password;
         this.revokeAllSessions();
@@ -273,19 +280,28 @@ export class User extends PrincipalAggregateRoot {
      * Replaces the pending email request and queues delivery without revoking sessions.
      *
      * @param newEmail Validated and normalized target email address
+     * @param currentPasswordMatches Whether the submitted current password matches the loaded hash
+     * @param emailInUse Whether an account already holds the requested address
      * @throws {SystemException} When the account is deleted
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {InvalidInputException} When the target address already belongs to this account
+     * @throws {InvalidInputException} When the current password is wrong or the address is unchanged
+     * @throws {ResourceConflictException} When the target address is already in use
      */
-    requestEmailChange(newEmail: string) {
+    requestEmailChange(newEmail: string, currentPasswordMatches: boolean, emailInUse: boolean) {
         this.assertNotDeleted(this.requestEmailChange.name);
 
         if (this.props.isBanned) {
             throw new AccessDeniedException();
         }
 
+        this.assertCurrentPassword(currentPasswordMatches, true);
+
         if (newEmail === this.props.email) {
-            throw new InvalidInputException('The new email address must differ from the current address.');
+            throw new InvalidInputException(InvalidInputMessage.EMAIL_UNCHANGED);
+        }
+
+        if (emailInUse) {
+            throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
         }
 
         const now = new Date();
