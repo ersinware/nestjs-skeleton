@@ -74,7 +74,7 @@ export enum AuditAction {
     USER_REGISTERED = 'USER_REGISTERED',
 
     /**
-     * A change to profile identity, chiefly the email — an account-takeover vector even when self-service.
+     * A change to the user's display name.
      */
     USER_UPDATED = 'USER_UPDATED',
 
@@ -125,7 +125,7 @@ export enum AuditAction {
     ADMIN_ACTIVATION_FAILED = 'ADMIN_ACTIVATION_FAILED',
 
     /**
-     * A change to an admin's profile identity, chiefly the email — an account-takeover vector even when self-service.
+     * A change to an admin's display name.
      */
     ADMIN_UPDATED = 'ADMIN_UPDATED',
 

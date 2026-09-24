@@ -4,19 +4,16 @@
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
 import { ArrayMinSize, ArrayUnique, IsArray, IsUUID } from 'class-validator';
 
 /**
  * A non-empty, duplicate-free set of dead-letter jobs to discard atomically.
  */
-@Exclude()
 @ApiSchema({ name: 'PostDeadLetterDiscard', description: 'Exact dead-letter job identifiers to discard.' })
 export class PostDeadLetterDiscardDto {
     /**
      * Pg-boss job UUIDs, which are not necessarily application UUID v7 identifiers.
      */
-    @Expose()
     @IsArray({ message: 'The job IDs must be an array.' })
     @ArrayMinSize(1, { message: 'The job IDs must contain at least one job.' })
     @ArrayUnique({ message: 'The job IDs cannot contain duplicates.' })

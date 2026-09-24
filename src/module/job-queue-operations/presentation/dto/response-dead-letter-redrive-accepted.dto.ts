@@ -5,7 +5,7 @@
 
 import { ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsUuidId } from 'src/core/http';
+import { isUUID } from 'src/core/http';
 
 /**
  * Accepted operation identifier.
@@ -17,6 +17,6 @@ export class ResponseDeadLetterRedriveAcceptedDto {
      * Identifier used to query the operation's status.
      */
     @Expose()
-    @IsUuidId('The operation ID', { version: 'all' })
+    @isUUID('The operation ID', { version: 'all' })
     readonly operationId!: string;
 }

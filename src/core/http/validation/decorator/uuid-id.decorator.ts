@@ -16,7 +16,7 @@ import { IsNotEmpty, IsOptional, IsUUID, ValidateIf } from 'class-validator';
  * @param options UUID version, optionality, and nullability of the field
  * @returns A decorator validating and documenting a UUID identifier
  */
-export function IsUuidId(
+export function isUUID(
     descriptionPrefix: string = 'The unique identifier',
     options: { readonly version?: '7' | 'all'; readonly optional?: boolean; readonly nullable?: boolean } = {},
 ): PropertyDecorator {

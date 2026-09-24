@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
-import { isUuidV7 } from 'src/shared/domain/uuid';
+import { isUUIDV7 } from 'src/shared/domain/uuid';
 import {
     AccessDeniedException,
     AccessDeniedMessage,
@@ -325,7 +325,7 @@ export class User extends PrincipalAggregateRoot {
     ) {
         this.assertNotDeleted(this.confirmEmailChange.name);
 
-        if (!isUuidV7(notificationId)) {
+        if (!isUUIDV7(notificationId)) {
             throw new SystemException('Invalid email change notification ID.', {
                 context: { class: User.name, method: this.confirmEmailChange.name, id: this.id },
             });

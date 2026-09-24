@@ -4,8 +4,7 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
-import { IsUuidId } from 'src/core/http/validation/decorator/uuid-id.decorator';
+import { isUUID } from 'src/core/http/validation/decorator/uuid-id.decorator';
 
 /**
  * The route-parameter name this DTO binds — the one place the `:id` literal lives, so a consumer
@@ -26,12 +25,10 @@ export const ROUTE_PARAM_ID = `:${PARAM_ID}`;
  * so each controller does not redeclare the same parameter validation.
  */
 @ApiSchema({ name: 'ParamId', description: 'Path parameter containing a unique UUID v7' })
-@Exclude()
 export class ParamIdDto {
     /**
      * The unique UUID v7 identifier of the resource.
      */
-    @Expose()
-    @IsUuidId()
+    @isUUID()
     readonly id!: string;
 }

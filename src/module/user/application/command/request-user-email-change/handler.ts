@@ -72,11 +72,11 @@ export class RequestUserEmailChangeCommandHandler implements ICommandHandler<Req
             throw new InvalidInputException();
         }
 
+        user.requestEmailChange(command.newEmail);
+
         if (await this.emailInUsePort.isEmailInUse(command.newEmail)) {
             throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
         }
-
-        user.requestEmailChange(command.newEmail);
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);

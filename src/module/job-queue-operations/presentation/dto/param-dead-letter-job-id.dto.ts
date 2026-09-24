@@ -4,19 +4,16 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
-import { IsUuidId } from 'src/core/http';
+import { isUUID } from 'src/core/http';
 
 /**
  * Path parameters identifying one pg-boss dead-letter job.
  */
-@Exclude()
 @ApiSchema({ name: 'ParamDeadLetterJobId', description: 'A dead-letter job identifier.' })
 export class ParamDeadLetterJobIdDto {
     /**
      * The pg-boss job UUID, which may not be an application UUID v7.
      */
-    @Expose()
-    @IsUuidId('The job ID', { version: 'all' })
+    @isUUID('The job ID', { version: 'all' })
     readonly id!: string;
 }

@@ -4,7 +4,7 @@
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose, Transform, Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
     IsInt,
     IsOptional,
@@ -61,13 +61,11 @@ class PaginationWindowConstraint implements ValidatorConstraintInterface {
  * Shared input contract for offset-paginated list endpoints; both fields fall back
  * to their defaults when the client omits them.
  */
-@Exclude()
 @ApiSchema({ name: 'QueryPagination', description: 'Query parameters for pagination' })
 export class QueryPaginationDto {
     /**
      * The page number to retrieve.
      */
-    @Expose()
     @IsOptional()
     @Type(() => Number)
     @Transform(({ value }) => (value ?? PAGINATION_DEFAULT_PAGE) as number)
@@ -86,7 +84,6 @@ export class QueryPaginationDto {
     /**
      * The number of items to retrieve per page.
      */
-    @Expose()
     @IsOptional()
     @Type(() => Number)
     @Transform(({ value }) => (value ?? PAGINATION_DEFAULT_LIMIT) as number)

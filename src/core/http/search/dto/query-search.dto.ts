@@ -4,7 +4,6 @@
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { QueryPaginationDto } from 'src/core/http/pagination/dto/query-pagination.dto';
 import { Trim } from 'src/core/http/validation/decorator/trim.decorator';
@@ -16,13 +15,11 @@ const SEARCH_MIN_LENGTH = 1,
  * Extends pagination with an optional search term, so searchable list endpoints
  * share one input contract instead of redefining the field per module.
  */
-@Exclude()
 @ApiSchema({ name: 'QuerySearch', description: 'Generic query parameters for pagination and search.' })
 export class QuerySearchDto extends QueryPaginationDto {
     /**
      * The free-text term the endpoint matches against its searchable fields.
      */
-    @Expose()
     @IsOptional()
     @Trim()
     @IsString({ message: 'Search term must be a string.' })

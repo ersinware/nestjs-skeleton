@@ -1,5 +1,5 @@
 /**
- * @file uuid-v7.ts
+ * @file uuid-v7.util.ts
  * @description Validates UUID v7 identifiers used by application-owned records.
  */
 
@@ -9,6 +9,6 @@
  * @param value Identifier to inspect
  * @returns Whether the identifier is a UUID v7
  */
-export function isUuidV7(value: string): boolean {
+export function isUUIDV7(value: string): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }

@@ -4,7 +4,7 @@
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
     IsDate,
     IsEnum,
@@ -14,7 +14,7 @@ import {
     type ValidationArguments,
     type ValidatorConstraintInterface,
 } from 'class-validator';
-import { IsUuidId, QueryPaginationDto } from 'src/core/http';
+import { isUUID, QueryPaginationDto } from 'src/core/http';
 import { AuditAction } from 'src/core/observability/audit';
 
 /**
@@ -56,13 +56,11 @@ class TimeRangeConstraint implements ValidatorConstraintInterface {
  * Narrows the audit trail listing. Only indexed columns are filterable, so any combination stays a
  * bounded read.
  */
-@Exclude()
 @ApiSchema({ name: 'QueryAuditTrail', description: 'Query parameters for filtering and paginating the audit trail.' })
 export class QueryAuditTrailDto extends QueryPaginationDto {
     /**
      * The action to restrict the listing to.
      */
-    @Expose()
     @IsOptional()
     @IsEnum(AuditAction, { message: 'The action must be a known audit action.' })
     @ApiProperty({
@@ -77,21 +75,18 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
     /**
      * The actor whose records to list.
      */
-    @Expose()
-    @IsUuidId('The actor ID', { optional: true })
+    @isUUID('The actor ID', { optional: true })
     readonly actorId?: string;
 
     /**
      * The subject whose records to list.
      */
-    @Expose()
-    @IsUuidId('The target ID', { optional: true })
+    @isUUID('The target ID', { optional: true })
     readonly targetId?: string;
 
     /**
      * The inclusive lower bound of the record time.
      */
-    @Expose()
     @IsOptional()
     @Type(() => Date)
     @IsDate({ message: 'The from date must be a valid ISO 8601 date-time.' })
@@ -109,7 +104,6 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
     /**
      * The inclusive upper bound of the record time.
      */
-    @Expose()
     @IsOptional()
     @Type(() => Date)
     @IsDate({ message: 'The to date must be a valid ISO 8601 date-time.' })

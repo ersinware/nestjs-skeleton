@@ -35,7 +35,7 @@ export function IsEmailAddress(options: { readonly normalize?: boolean } = {}): 
             format: 'email',
             minLength: EMAIL_MIN_LENGTH,
             maxLength: EMAIL_MAX_LENGTH,
-            description: `${EMAIL_LABEL}.` + (options.normalize === false ? '' : ' Trimmed before validation.'),
+            description: `${EMAIL_LABEL}.`,
             example: 'user@example.com',
         }),
     );

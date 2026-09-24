@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsUuidId } from 'src/core/http';
+import { isUUID } from 'src/core/http';
 import type { DeadLetterRedriveStatus } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/query';
 
 /**
@@ -18,7 +18,7 @@ export class ResponseDeadLetterRedriveStatusDto {
      * Identifier returned when the operation was accepted.
      */
     @Expose()
-    @IsUuidId('The operation ID', { version: 'all' })
+    @isUUID('The operation ID', { version: 'all' })
     readonly operationId!: string;
 
     /**
