@@ -42,9 +42,11 @@ import { ActivateAdminCommand } from 'src/module/admin/application/command/activ
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import { ChangeAdminPasswordCommand } from 'src/module/admin/application/command/change-admin-password/command';
 import { ChangeAdminPermissionsCommand } from 'src/module/admin/application/command/change-admin-permissions/command';
+import { ConfirmAdminEmailChangeCommand } from 'src/module/admin/application/command/confirm-admin-email-change/command';
 import { CreateAdminCommand } from 'src/module/admin/application/command/create-admin/command';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
+import { RequestAdminEmailChangeCommand } from 'src/module/admin/application/command/request-admin-email-change/command';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { GetAdminByIdQuery } from 'src/module/admin/application/query/get-admin-by-id/query';
@@ -54,8 +56,14 @@ import { ListAdminsQuery } from 'src/module/admin/application/query/list-admins/
 import { PatchAdminPasswordDto } from 'src/module/admin/presentation/dto/patch-admin-password.dto';
 import { PatchAdminDto } from 'src/module/admin/presentation/dto/patch-admin.dto';
 import { PostAdminActivateDto } from 'src/module/admin/presentation/dto/post-admin-activate.dto';
+import { PostAdminEmailChangeDto } from 'src/module/admin/presentation/dto/post-admin-email-change.dto';
+import { PostAdminEmailConfirmDto } from 'src/module/admin/presentation/dto/post-admin-email-confirm.dto';
 import { PostAdminDto } from 'src/module/admin/presentation/dto/post-admin.dto';
 import { PutAdminPermissionsDto } from 'src/module/admin/presentation/dto/put-admin-permissions.dto';
+import {
+    ResponseAdminEmailChangeLoginRequiredDto,
+    ResponseAdminEmailChangeSessionDto,
+} from 'src/module/admin/presentation/dto/response-admin-email-change.dto';
 import {
     ResponseAdminPasswordLoginRequiredDto,
     ResponseAdminPasswordSessionDto,
@@ -222,7 +230,7 @@ export class AdminController {
      * token, never from the client.
      *
      * @param principal The verified principal of the current request
-     * @param patchAdminDto The optional display name to update
+     * @param patchAdminDto The required display name to update
      * @returns The updated, serialized profile of the current admin
      */
     @Patch('me')
@@ -248,6 +256,94 @@ export class AdminController {
             ResponseAdminDto,
             await this.queryPipeline.execute(new GetFreshAdminByIdQuery(principal.id)),
         );
+    }
+
+    /**
+     * Requests a confirmation link without changing the current address or sessions.
+     *
+     * @param principal The verified principal requesting the change
+     * @param postAdminEmailChangeDto The new address and current password proof
+     */
+    @Post('me/email')
+    @PrincipalOnly(PrincipalType.ADMIN)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Request current admin email change',
+        description:
+            'Verifies the current password and queues a confirmation link to the new address. Each request replaces the previous link, even for the same address; the current email and sessions remain unchanged.',
+    })
+    @ApiNoContentResponse({
+        description: 'Confirmation request and delivery job committed; email delivery is asynchronous.',
+    })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse()
+    async requestEmailChangeMe(
+        @CurrentPrincipal() principal: Principal,
+        @Body() postAdminEmailChangeDto: PostAdminEmailChangeDto,
+    ) {
+        await this.commandPipeline.execute(
+            new RequestAdminEmailChangeCommand(
+                principal.id,
+                postAdminEmailChangeDto.newEmail,
+                postAdminEmailChangeDto.currentPassword,
+            ),
+        );
+    }
+
+    /**
+     * Consumes emailed proof for the authenticated account and replaces its sessions.
+     *
+     * @param principal The verified principal confirming the change
+     * @param postAdminEmailConfirmDto The token delivered to the pending address
+     * @returns The committed email change with replacement tokens or a sign-in requirement
+     */
+    @Post('me/email/confirm')
+    @PrincipalOnly(PrincipalType.ADMIN)
+    @HttpCode(HttpStatus.OK)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Confirm current admin email change',
+        description:
+            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, queues an old-address notice, and attempts to open a replacement session.',
+    })
+    @ApiExtraModels(ResponseAdminEmailChangeSessionDto, ResponseAdminEmailChangeLoginRequiredDto)
+    @ApiOkResponse({
+        description:
+            'Email changed. Discard old tokens; use the replacement pair or sign in with the new address and unchanged password. Session unavailability does not undo the email change.',
+        schema: {
+            type: 'object',
+            oneOf: [
+                { $ref: getSchemaPath(ResponseAdminEmailChangeSessionDto) },
+                { $ref: getSchemaPath(ResponseAdminEmailChangeLoginRequiredDto) },
+            ],
+            discriminator: {
+                propertyName: 'session',
+                mapping: {
+                    created: getSchemaPath(ResponseAdminEmailChangeSessionDto),
+                    login_required: getSchemaPath(ResponseAdminEmailChangeLoginRequiredDto),
+                },
+            },
+        },
+    })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceConflictResponse()
+    async confirmEmailChangeMe(
+        @CurrentPrincipal() principal: Principal,
+        @Body() postAdminEmailConfirmDto: PostAdminEmailConfirmDto,
+    ): Promise<ResponseAdminEmailChangeSessionDto | ResponseAdminEmailChangeLoginRequiredDto> {
+        const result = await this.commandPipeline.execute(
+            new ConfirmAdminEmailChangeCommand(principal.id, postAdminEmailConfirmDto.token),
+        );
+
+        return result.session === 'created'
+            ? plainToInstance(ResponseAdminEmailChangeSessionDto, result)
+            : plainToInstance(ResponseAdminEmailChangeLoginRequiredDto, result);
     }
 
     /**

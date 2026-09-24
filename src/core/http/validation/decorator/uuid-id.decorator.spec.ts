@@ -4,14 +4,14 @@
  */
 
 import { validateSync } from 'class-validator';
-import { IsUuidId } from 'src/core/http/validation/decorator/uuid-id.decorator';
+import { isUUID } from 'src/core/http/validation/decorator/uuid-id.decorator';
 import { describe, expect, it } from 'vitest';
 
 /**
  * Application identifiers default to UUID v7.
  */
 class EntityIdDto {
-    @IsUuidId('The entity ID')
+    @isUUID('The entity ID')
     readonly id!: string;
 }
 
@@ -19,7 +19,7 @@ class EntityIdDto {
  * Pg-boss identifiers accept any UUID version.
  */
 class JobIdDto {
-    @IsUuidId('The job ID', { version: 'all' })
+    @isUUID('The job ID', { version: 'all' })
     readonly id!: string;
 }
 
@@ -27,7 +27,7 @@ class JobIdDto {
  * Nullable IDs remain required but may explicitly be null.
  */
 class NullableIdDto {
-    @IsUuidId('The actor ID', { nullable: true })
+    @isUUID('The actor ID', { nullable: true })
     readonly id!: string | null;
 }
 
@@ -35,7 +35,7 @@ class NullableIdDto {
  * Optional IDs may be omitted without becoming nullable in OpenAPI.
  */
 class OptionalIdDto {
-    @IsUuidId('The target ID', { optional: true })
+    @isUUID('The target ID', { optional: true })
     readonly id?: string;
 }
 
@@ -60,7 +60,7 @@ function schemaFor(type: new () => object): Record<string, unknown> {
     return Reflect.getMetadata('swagger/apiModelProperties', type.prototype as object, 'id') as Record<string, unknown>;
 }
 
-describe('IsUuidId', () => {
+describe('isUUID', () => {
     const v7 = '018f43c3-6bb3-7d72-911e-848821a837c3';
     const v4 = 'b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f';
 

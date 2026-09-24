@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsUuidId } from 'src/core/http';
+import { isUUID } from 'src/core/http';
 
 /**
  * Public dead-letter metadata without payloads or error output.
@@ -17,7 +17,7 @@ export class ResponseDeadLetterJobDto {
      * Dead-letter copy identifier.
      */
     @Expose()
-    @IsUuidId('The dead-letter job ID', { version: 'all' })
+    @isUUID('The dead-letter job ID', { version: 'all' })
     readonly id!: string;
 
     /**
@@ -38,7 +38,7 @@ export class ResponseDeadLetterJobDto {
      * Original job identifier.
      */
     @Expose()
-    @IsUuidId('The source job ID', { version: 'all' })
+    @isUUID('The source job ID', { version: 'all' })
     readonly sourceId!: string;
 
     /**
@@ -59,13 +59,13 @@ export class ResponseDeadLetterJobDto {
      * Stable logical delivery identifier.
      */
     @Expose()
-    @IsUuidId('The delivery ID', { version: 'all' })
+    @isUUID('The delivery ID', { version: 'all' })
     readonly deliveryId!: string;
 
     /**
      * Aggregate identifier carried by the original job.
      */
     @Expose()
-    @IsUuidId('The aggregate ID')
+    @isUUID('The aggregate ID')
     readonly aggregateId!: string;
 }

@@ -41,8 +41,10 @@ import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/s
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
 import { ChangeUserPermissionsCommand } from 'src/module/user/application/command/change-user-permissions/command';
+import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/command/confirm-user-email-change/command';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
+import { RequestUserEmailChangeCommand } from 'src/module/user/application/command/request-user-email-change/command';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import { GetFreshUserByIdQuery } from 'src/module/user/application/query/get-fresh-user-by-id/query';
@@ -51,8 +53,14 @@ import { ListUserPermissionCatalogQuery } from 'src/module/user/application/quer
 import { ListUsersQuery } from 'src/module/user/application/query/list-users/query';
 import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
+import { PostUserEmailChangeDto } from 'src/module/user/presentation/dto/post-user-email-change.dto';
+import { PostUserEmailConfirmDto } from 'src/module/user/presentation/dto/post-user-email-confirm.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { PutUserPermissionsDto } from 'src/module/user/presentation/dto/put-user-permissions.dto';
+import {
+    ResponseUserEmailChangeLoginRequiredDto,
+    ResponseUserEmailChangeSessionDto,
+} from 'src/module/user/presentation/dto/response-user-email-change.dto';
 import {
     ResponseUserPasswordLoginRequiredDto,
     ResponseUserPasswordSessionDto,
@@ -213,7 +221,7 @@ export class UserController {
      * Updates the currently authenticated user's display name.
      *
      * @param principal The verified principal of the current request
-     * @param patchUserDto The optional display name to update
+     * @param patchUserDto The required display name to update
      * @returns The updated, serialized profile of the current user
      */
     @Patch('me')
@@ -239,6 +247,94 @@ export class UserController {
             ResponseUserDto,
             await this.queryPipeline.execute(new GetFreshUserByIdQuery(principal.id)),
         );
+    }
+
+    /**
+     * Requests a confirmation link without changing the current address or sessions.
+     *
+     * @param principal The verified principal requesting the change
+     * @param postUserEmailChangeDto The new address and current password proof
+     */
+    @Post('me/email')
+    @PrincipalOnly(PrincipalType.USER)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Request current user email change',
+        description:
+            'Verifies the current password and queues a confirmation link to the new address. Each request replaces the previous link, even for the same address; the current email and sessions remain unchanged.',
+    })
+    @ApiNoContentResponse({
+        description: 'Confirmation request and delivery job committed; email delivery is asynchronous.',
+    })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse()
+    async requestEmailChangeMe(
+        @CurrentPrincipal() principal: Principal,
+        @Body() postUserEmailChangeDto: PostUserEmailChangeDto,
+    ) {
+        await this.commandPipeline.execute(
+            new RequestUserEmailChangeCommand(
+                principal.id,
+                postUserEmailChangeDto.newEmail,
+                postUserEmailChangeDto.currentPassword,
+            ),
+        );
+    }
+
+    /**
+     * Consumes emailed proof for the authenticated account and replaces its sessions.
+     *
+     * @param principal The verified principal confirming the change
+     * @param postUserEmailConfirmDto The token delivered to the pending address
+     * @returns The committed email change with replacement tokens or a sign-in requirement
+     */
+    @Post('me/email/confirm')
+    @PrincipalOnly(PrincipalType.USER)
+    @HttpCode(HttpStatus.OK)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Confirm current user email change',
+        description:
+            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, queues an old-address notice, and attempts to open a replacement session.',
+    })
+    @ApiExtraModels(ResponseUserEmailChangeSessionDto, ResponseUserEmailChangeLoginRequiredDto)
+    @ApiOkResponse({
+        description:
+            'Email changed. Discard old tokens; use the replacement pair or sign in with the new address and unchanged password. Session unavailability does not undo the email change.',
+        schema: {
+            type: 'object',
+            oneOf: [
+                { $ref: getSchemaPath(ResponseUserEmailChangeSessionDto) },
+                { $ref: getSchemaPath(ResponseUserEmailChangeLoginRequiredDto) },
+            ],
+            discriminator: {
+                propertyName: 'session',
+                mapping: {
+                    created: getSchemaPath(ResponseUserEmailChangeSessionDto),
+                    login_required: getSchemaPath(ResponseUserEmailChangeLoginRequiredDto),
+                },
+            },
+        },
+    })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceConflictResponse()
+    async confirmEmailChangeMe(
+        @CurrentPrincipal() principal: Principal,
+        @Body() postUserEmailConfirmDto: PostUserEmailConfirmDto,
+    ): Promise<ResponseUserEmailChangeSessionDto | ResponseUserEmailChangeLoginRequiredDto> {
+        const result = await this.commandPipeline.execute(
+            new ConfirmUserEmailChangeCommand(principal.id, postUserEmailConfirmDto.token),
+        );
+
+        return result.session === 'created'
+            ? plainToInstance(ResponseUserEmailChangeSessionDto, result)
+            : plainToInstance(ResponseUserEmailChangeLoginRequiredDto, result);
     }
 
     /**

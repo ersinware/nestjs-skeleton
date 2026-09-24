@@ -4,27 +4,23 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
 import { IsEmailAddress, IsStrongPassword } from 'src/core/http';
 
 /**
  * Validates login credentials at the transport boundary; shared by the user and admin login routes,
  * which accept the identical payload.
  */
-@Exclude()
 @ApiSchema({ name: 'PostLogin', description: 'Input validation schema for user or admin login credentials' })
 export class PostLoginDto {
     /**
      * The email address identifying the account.
      */
-    @Expose()
     @IsEmailAddress()
     readonly email!: string;
 
     /**
      * The plain-text password to verify against the stored hash.
      */
-    @Expose()
     @IsStrongPassword()
     readonly password!: string;
 }

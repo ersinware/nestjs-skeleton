@@ -17,7 +17,7 @@ export { IsJwtToken, TOKEN_MAX_LENGTH } from 'src/core/http/validation/decorator
 export { IsPermissionList } from 'src/core/http/validation/decorator/permission-list.decorator';
 export { IsPersonName } from 'src/core/http/validation/decorator/person-name.decorator';
 export { IsStrongPassword } from 'src/core/http/validation/decorator/strong-password.decorator';
-export { IsUuidId } from 'src/core/http/validation/decorator/uuid-id.decorator';
+export { isUUID } from 'src/core/http/validation/decorator/uuid-id.decorator';
 export { PARAM_ID, ParamIdDto, ROUTE_PARAM_ID } from 'src/core/http/validation/dto/param-id.dto';
 export { NotEmptyBodyPipe } from 'src/core/http/validation/pipe/not-empty-body.pipe';
 export { RequestValidationMessage } from 'src/core/http/validation/request-validation-message.enum';

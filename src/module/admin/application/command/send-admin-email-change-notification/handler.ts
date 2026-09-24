@@ -48,7 +48,7 @@ export class SendAdminEmailChangeNotificationCommandHandler implements ICommandH
             to: recipient.previousEmail,
             subject: 'Your account email address was changed',
             body:
-                `<p>The email address for your account was changed on ${escapeHtml(recipient.createdAt.toISOString())}.</p>` +
+                `<p>The email address for your account was changed on ${escapeHtml(recipient.createdAt.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' }))} UTC.</p>` +
                 `<p>If you did not make this change, contact support immediately.</p>`,
         });
     }

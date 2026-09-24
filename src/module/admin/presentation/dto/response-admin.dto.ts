@@ -5,7 +5,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsEmailAddress, IsPermissionList, IsPersonName, IsUuidId } from 'src/core/http';
+import { IsEmailAddress, IsPermissionList, IsPersonName, isUUID } from 'src/core/http';
 import type { Permission } from 'src/shared/domain/principal';
 
 /**
@@ -19,7 +19,7 @@ export class ResponseAdminDto {
      * The unique identifier of the admin, used to address follow-up operations.
      */
     @Expose()
-    @IsUuidId('The admin ID')
+    @isUUID('The admin ID')
     readonly id!: string;
 
     /**

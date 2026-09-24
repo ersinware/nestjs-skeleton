@@ -79,11 +79,11 @@ export class RequestAdminEmailChangeCommandHandler implements ICommandHandler<Re
             throw new InvalidInputException();
         }
 
+        admin.requestEmailChange(command.newEmail);
+
         if (await this.emailInUsePort.isEmailInUse(command.newEmail)) {
             throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
         }
-
-        admin.requestEmailChange(command.newEmail);
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
