@@ -25,19 +25,29 @@ import {
  * travels to the auditor alone, as {@link AuditRecordInput.reason}, never as exception context.
  */
 enum AuthRejectionReason {
-    /** No account matches the email within the requested principal context. */
+    /**
+     * No account matches the email within the requested principal context.
+     */
     ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
 
-    /** The account is banned from authenticating. */
+    /**
+     * The account is banned from authenticating.
+     */
     INACTIVE_ACCOUNT = 'ACCOUNT_IS_INACTIVE',
 
-    /** The account has no password yet and requires activation. */
+    /**
+     * The account has no password yet and requires activation.
+     */
     PENDING_ACCOUNT = 'ACCOUNT_PENDING_ACTIVATION',
 
-    /** The supplied password does not match the stored password hash. */
+    /**
+     * The supplied password does not match the stored password hash.
+     */
     INVALID_PASSWORD = 'INVALID_PASSWORD',
 
-    /** Session opening was rejected because a newer account version or the same session already exists. */
+    /**
+     * Session opening was rejected because a newer account version or the same session already exists.
+     */
     SESSION_SUPERSEDED = 'SESSION_SUPERSEDED',
 }
 

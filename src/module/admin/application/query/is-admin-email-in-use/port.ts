@@ -4,7 +4,7 @@
  */
 
 /**
- * Identifies the email availability contract.
+ * Identifies the {@link IIsAdminEmailInUsePort} email availability contract.
  */
 export const TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT = Symbol();
 

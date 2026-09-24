@@ -6,7 +6,7 @@
 import type { GetAdminEmailConfirmationRecipientResult } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/query';
 
 /**
- * Identifies the confirmation recipient query contract.
+ * Identifies the {@link IGetAdminEmailConfirmationRecipientPort} query contract.
  */
 export const TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT = Symbol();
 

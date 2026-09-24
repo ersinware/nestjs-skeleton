@@ -11,7 +11,9 @@ import tseslint from 'typescript-eslint';
  * Declared once because every block that narrows `no-restricted-imports` must re-state it.
  */
 const RELATIVE_IMPORT_PATTERN = {
-    /** `.` and `..` address a folder's own `index.ts` without a path segment, so the globs alone miss them. */
+    /**
+     * `.` and `..` address a folder's own `index.ts` without a path segment, so the globs alone miss them.
+     */
     group: ['.', '..', './*', '../*'],
     message: 'Relative imports are not allowed. Please use absolute imports starting with "src/" or "test/".',
 };
@@ -158,7 +160,9 @@ export default tseslint.config(
                 'error',
                 {
                     default: 'disallow',
-                    /** Without this the rule sees only local elements and every npm import is invisible. */
+                    /**
+                     * Without this the rule sees only local elements and every npm import is invisible.
+                     */
                     checkAllOrigins: true,
                     rules: [
                         {

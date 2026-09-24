@@ -25,8 +25,23 @@ export class GetUserAuthStateQuery extends Query<GetUserAuthStateResult> {
  * the session version it mints the new pair at, and the permissions the fresh access token must carry.
  */
 export type GetUserAuthStateResult = {
+    /**
+     * Whether the account is barred from authentication.
+     */
     readonly isBanned: boolean;
+
+    /**
+     * Current session version used for newly issued access tokens.
+     */
     readonly sessionVersion: number;
+
+    /**
+     * Minimum version accepted for refresh tokens.
+     */
     readonly revocationVersion: number;
+
+    /**
+     * Permissions currently assigned to the account.
+     */
     readonly permissions: readonly Permission[];
 };

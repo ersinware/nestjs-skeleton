@@ -22,16 +22,24 @@ export type AuditDetail = Readonly<Record<string, string | readonly string[]>>;
  * {@link AuditAction} states its own outcome.
  */
 export type AuditRecordInput = {
-    /** What happened, outcome included; the record's only required fact. */
+    /**
+     * What happened, outcome included; the record's only required fact.
+     */
     readonly action: AuditAction;
 
-    /** Why a refusal happened; meaningless on an action that cannot fail. */
+    /**
+     * Why a refusal happened; meaningless on an action that cannot fail.
+     */
     readonly reason?: string;
 
-    /** The subject the action was applied to. */
+    /**
+     * The subject the action was applied to.
+     */
     readonly targetId?: string;
 
-    /** What the action changed, when `targetId` alone does not say. */
+    /**
+     * What the action changed, when `targetId` alone does not say.
+     */
     readonly detail?: AuditDetail;
 };
 

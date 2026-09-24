@@ -8,10 +8,14 @@ import type { DoneFuncWithErrOrRes, FastifyReply, FastifyRequest } from 'fastify
 import { HEADER_CACHE_CONTROL, HttpCachePolicy } from 'src/core/http/caching/http-cache-policy.enum';
 import { isSafeMethod } from 'src/core/http/caching/safe-method.util';
 
-/** Validator header carrying the body's fingerprint. */
+/**
+ * Validator header carrying the body's fingerprint.
+ */
 const HEADER_ETAG = 'etag';
 
-/** Conditional request header the client returns its stored `ETag` in. */
+/**
+ * Conditional request header the client returns its stored `ETag` in.
+ */
 const HEADER_IF_NONE_MATCH = 'if-none-match';
 
 /**

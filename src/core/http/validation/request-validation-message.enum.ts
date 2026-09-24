@@ -9,9 +9,13 @@
  * `ApiDefaultInvalidRequestResponse` documentation decorator.
  */
 export enum RequestValidationMessage {
-    /** The request body failed validation. */
+    /**
+     * The request body failed validation.
+     */
     PAYLOAD = 'Invalid request payload format.',
 
-    /** A path or query parameter failed validation. */
+    /**
+     * A path or query parameter failed validation.
+     */
     PARAM = 'Invalid request parameter format.',
 }

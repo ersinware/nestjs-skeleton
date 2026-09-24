@@ -45,6 +45,9 @@ export const UnhealthyIndicatorMessage = {
  * State of a healthy indicator.
  */
 export type HealthyIndicatorState = {
+    /**
+     * Marks this indicator as healthy.
+     */
     readonly status: 'up';
 };
 
@@ -52,9 +55,24 @@ export type HealthyIndicatorState = {
  * Read model of a fully healthy system.
  */
 type HealthyReadModel = {
+    /**
+     * Reports that every indicator is healthy.
+     */
     readonly status: 'ok';
+
+    /**
+     * Healthy state of every reported indicator.
+     */
     readonly info: Readonly<Record<HealthIndicatorKey, HealthyIndicatorState>>;
+
+    /**
+     * Empty failure map for a fully healthy report.
+     */
     readonly error: Readonly<Record<string, never>>;
+
+    /**
+     * Complete per-indicator state for the report.
+     */
     readonly details: Readonly<Record<HealthIndicatorKey, HealthyIndicatorState>>;
 };
 
@@ -62,7 +80,14 @@ type HealthyReadModel = {
  * State of an unhealthy indicator; the message names the failure.
  */
 export type UnhealthyIndicatorState = {
+    /**
+     * Marks this indicator as unhealthy.
+     */
     readonly status: 'down';
+
+    /**
+     * Diagnostic reason this indicator failed.
+     */
     readonly message: string;
 };
 
@@ -70,7 +95,14 @@ export type UnhealthyIndicatorState = {
  * State of an indicator in either condition; the message is present only when down.
  */
 export type HealthyOrUnhealthyIndicatorState = {
+    /**
+     * Health state of this indicator.
+     */
     readonly status: 'up' | 'down';
+
+    /**
+     * Diagnostic reason when this indicator is down.
+     */
     readonly message?: string;
 };
 
@@ -78,9 +110,24 @@ export type HealthyOrUnhealthyIndicatorState = {
  * Read model of a system with at least one failed indicator.
  */
 type UnhealthyReadModel = {
+    /**
+     * Reports that at least one indicator failed.
+     */
     readonly status: 'error';
+
+    /**
+     * Healthy indicators present in this report.
+     */
     readonly info: Readonly<Partial<Record<HealthIndicatorKey, HealthyIndicatorState>>>;
+
+    /**
+     * Failed indicators and their diagnostic states.
+     */
     readonly error: Readonly<Partial<Record<HealthIndicatorKey, UnhealthyIndicatorState>>>;
+
+    /**
+     * Complete healthy and failed indicator states.
+     */
     readonly details: Readonly<Record<HealthIndicatorKey, HealthyOrUnhealthyIndicatorState>>;
 };
 

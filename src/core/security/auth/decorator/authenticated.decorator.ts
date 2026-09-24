@@ -5,7 +5,9 @@
 
 import { SetMetadata } from '@nestjs/common';
 
-/** Metadata key marking deliberate access for any authenticated principal. */
+/**
+ * Metadata key marking deliberate access for any authenticated principal.
+ */
 export const KEY_DECORATOR_AUTHENTICATED = 'KEY_DECORATOR_AUTHENTICATED';
 
 /**

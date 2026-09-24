@@ -27,9 +27,28 @@ export class GetAdminCredentialsByEmailQuery extends Query<GetAdminCredentialsBy
  * whether such an account may authenticate is the login flow's decision.
  */
 export type GetAdminCredentialsByEmailResult = {
+    /**
+     * Identifier of the account represented by this row.
+     */
     readonly id: string;
+
+    /**
+     * Stored password hash, or null before admin activation.
+     */
     readonly password: string | null;
+
+    /**
+     * Permissions currently assigned to the account.
+     */
     readonly permissions: readonly Permission[];
+
+    /**
+     * Whether the account is barred from authentication.
+     */
     readonly isBanned: boolean;
+
+    /**
+     * Current session version used for newly issued access tokens.
+     */
     readonly sessionVersion: number;
 };

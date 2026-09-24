@@ -58,14 +58,18 @@ describe('GlobalExceptionFilter', () => {
         } as unknown as ArgumentsHost;
     }
 
-    /** Extracts the `ErrorDefaultDto` the filter replied with. */
+    /**
+     * Extracts the `ErrorDefaultDto` the filter replied with.
+     */
     function repliedDto(): ErrorDefaultDto {
         const [, body] = mockReply.mock.calls[0] as [unknown, { readonly error: ErrorDefaultDto }];
 
         return body.error;
     }
 
-    /** Extracts the raw status code the filter replied with. */
+    /**
+     * Extracts the raw status code the filter replied with.
+     */
     function repliedStatus(): number {
         const [, , statusCode] = mockReply.mock.calls[0] as [unknown, unknown, number];
 

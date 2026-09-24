@@ -35,6 +35,13 @@ export class RefreshTokensCommand extends Command<RefreshTokensResult> {
  * Result of the RefreshTokensCommand: the freshly issued token pair.
  */
 export type RefreshTokensResult = {
+    /**
+     * Access token issued by the successful token rotation.
+     */
     readonly accessToken: string;
+
+    /**
+     * Refresh token issued by the successful token rotation.
+     */
     readonly refreshToken: string;
 };

@@ -7,7 +7,9 @@ import { applyDecorators, HttpStatus, SetMetadata } from '@nestjs/common';
 import { ApiResponse } from '@nestjs/swagger';
 import { HttpCachePolicy } from 'src/core/http/caching/http-cache-policy.enum';
 
-/** Metadata key under which the route's cache policy is stored. */
+/**
+ * Metadata key under which the route's cache policy is stored.
+ */
 export const KEY_DECORATOR_HTTP_CACHE = 'KEY_DECORATOR_HTTP_CACHE';
 
 /**

@@ -7,15 +7,23 @@
  * Payload discriminator preventing one token type from being accepted as another.
  */
 export enum AuthTokenType {
-    /** Short-lived token authorizing API requests. */
+    /**
+     * Short-lived token authorizing API requests.
+     */
     ACCESS = 'access',
 
-    /** Long-lived token that only mints new token pairs. */
+    /**
+     * Long-lived token that only mints new token pairs.
+     */
     REFRESH = 'refresh',
 
-    /** Single-use-by-state token that only activates a pending account; it authorizes nothing else. */
+    /**
+     * Single-use-by-state token that only activates a pending account; it authorizes nothing else.
+     */
     INVITE = 'invite',
 
-    /** Confirms a persisted email change request; it grants no session access. */
+    /**
+     * Confirms a persisted email change request; it grants no session access.
+     */
     EMAIL_CONFIRM = 'email_confirm',
 }

@@ -17,15 +17,23 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
 import type { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
-/** The principal hash tag colocates keys used by each atomic operation. */
+/**
+ * The principal hash tag colocates keys used by each atomic operation.
+ */
 const SessionKeys = {
-    /** Identifies the account-wide minimum accepted access-token version. */
+    /**
+     * Identifies the account-wide minimum accepted access-token version.
+     */
     version: (id: string): string => `auth:{${id}}:version`,
 
-    /**  Identifies the stable session record, including its credential deadlines. */
+    /**
+     * Identifies the stable session record, including its credential deadlines.
+     */
     session: (id: string, type: PrincipalType, sid: string): string => `auth:{${id}}:${type}:session:${sid}`,
 
-    /** Identifies the grace marker for a consumed refresh credential. */
+    /**
+     * Identifies the grace marker for a consumed refresh credential.
+     */
     tombstone: (id: string, type: PrincipalType, sid: string, jti: string): string =>
         `auth:{${id}}:${type}:rotated:${sid}:${jti}`,
 };
@@ -82,7 +90,9 @@ redis.call('SET', KEYS[3], replacementSession.sessionVersion, 'EX', math.max(ton
 return 1
 `;
 
-/** KEYS: version, session. ARGV: access version. Read-only admission has no TTL renewal. */
+/**
+ * KEYS: version, session. ARGV: access version. Read-only admission has no TTL renewal.
+ */
 const CHECK_SESSION_LUA = `
 local storedVersion = redis.call('GET', KEYS[1])
 if not storedVersion or tonumber(ARGV[1]) < tonumber(storedVersion) then
@@ -99,7 +109,9 @@ end
 return 1
 `;
 
-/** KEYS: version. ARGV: candidate floor, retention independent of any individual session. */
+/**
+ * KEYS: version. ARGV: candidate floor, retention independent of any individual session.
+ */
 const VERSION_LUA = `
 local storedVersion = redis.call('GET', KEYS[1])
 local version = tonumber(ARGV[1])
@@ -110,13 +122,19 @@ redis.call('SET', KEYS[1], version, 'EX', math.max(tonumber(ARGV[2]), redis.call
 return 1
 `;
 
-/** All instances coordinate through the session Redis; missing state always denies access. */
+/**
+ * All instances coordinate through the session Redis; missing state always denies access.
+ */
 @Injectable()
 export class SessionAdapter implements ISessionPort {
-    /** Retains account floors for at least either credential's configured lifetime. */
+    /**
+     * Retains account floors for at least either credential's configured lifetime.
+     */
     private readonly versionTtlSeconds: number;
 
-    /** Per-consumed-credential grace, allowing several rapid rotations without losing history. */
+    /**
+     * Per-consumed-credential grace, allowing several rapid rotations without losing history.
+     */
     private readonly rotationGraceTtlSeconds: number;
 
     /**

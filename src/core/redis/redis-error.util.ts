@@ -3,7 +3,9 @@
  * @description Classifies Redis availability failures independently of consumer failure policies.
  */
 
-/** Transport error codes for standalone Redis connections. */
+/**
+ * Transport error codes for standalone Redis connections.
+ */
 const CONNECTION_CODES: ReadonlySet<string> = new Set([
     'ECONNREFUSED',
     'ECONNRESET',

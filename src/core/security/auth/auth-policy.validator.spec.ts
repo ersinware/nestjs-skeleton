@@ -36,23 +36,33 @@ describe('AuthPolicyModule bootstrap', () => {
     it('discovers all valid policy kinds and ignores undecorated helper methods', async () => {
         @Controller('valid')
         class ValidController {
-            /** Public GET also verifies RequestMethod.GET = 0 is discovered. */
+            /**
+             * Public GET also verifies RequestMethod.GET = 0 is discovered.
+             */
             @Get('public')
             @Public()
             publicRoute() {}
-            /** Authenticated route. */
+            /**
+             * Authenticated route.
+             */
             @Get('authenticated')
             @Authenticated()
             authenticatedRoute() {}
-            /** Principal-specific route. */
+            /**
+             * Principal-specific route.
+             */
             @Get('principal')
             @PrincipalOnly(PrincipalType.USER)
             principalRoute() {}
-            /** Permission-specific route. */
+            /**
+             * Permission-specific route.
+             */
             @Get('permission')
             @Permissions(Permission.HEALTH_DETAIL_READ)
             permissionRoute() {}
-            /** Not an HTTP endpoint; needs no access policy. */
+            /**
+             * Not an HTTP endpoint; needs no access policy.
+             */
             helper() {}
         }
         await expect(bootstrap([ValidController])).resolves.toBeUndefined();
@@ -61,7 +71,9 @@ describe('AuthPolicyModule bootstrap', () => {
     it('rejects an unprotected GET before bootstrap completes', async () => {
         @Controller('missing')
         class MissingController {
-            /** Deliberately missing a policy. */
+            /**
+             * Deliberately missing a policy.
+             */
             @Get()
             endpoint() {}
         }
@@ -72,7 +84,9 @@ describe('AuthPolicyModule bootstrap', () => {
         @Controller('conflict')
         @Permissions(Permission.HEALTH_DETAIL_READ)
         class ConflictingController {
-            /** Cannot remove the class protection. */
+            /**
+             * Cannot remove the class protection.
+             */
             @Get()
             @Public()
             endpoint() {}
@@ -82,7 +96,9 @@ describe('AuthPolicyModule bootstrap', () => {
 
     it('validates inherited HTTP methods', async () => {
         class BaseController {
-            /** Inherited unprotected route. */
+            /**
+             * Inherited unprotected route.
+             */
             @Get()
             inherited() {}
         }
@@ -94,7 +110,9 @@ describe('AuthPolicyModule bootstrap', () => {
     it('accepts inherited class protection and method requirements', async () => {
         @Permissions(Permission.ADMIN_ACCOUNT_READ)
         class BaseController {
-            /** Inherited restricted route. */
+            /**
+             * Inherited restricted route.
+             */
             @Get()
             @Permissions(Permission.ADMIN_ACCOUNT_BAN)
             inherited() {}
@@ -108,11 +126,15 @@ describe('AuthPolicyModule bootstrap', () => {
         let constructions = 0;
         @Controller({ path: 'scoped', scope: Scope.REQUEST })
         class ScopedController {
-            /** Construction must not be necessary for metadata validation. */
+            /**
+             * Construction must not be necessary for metadata validation.
+             */
             constructor() {
                 constructions++;
             }
-            /** Deliberately unprotected scoped route. */
+            /**
+             * Deliberately unprotected scoped route.
+             */
             @Get()
             endpoint() {}
         }
@@ -124,7 +146,9 @@ describe('AuthPolicyModule bootstrap', () => {
         @Controller({ path: 'scoped', scope: Scope.REQUEST })
         @Authenticated()
         class ScopedController {
-            /** Class-protected scoped route. */
+            /**
+             * Class-protected scoped route.
+             */
             @Get()
             endpoint() {}
         }
@@ -135,13 +159,17 @@ describe('AuthPolicyModule bootstrap', () => {
         @Controller('valid')
         @Public()
         class ValidController {
-            /** Public endpoint. */
+            /**
+             * Public endpoint.
+             */
             @Get()
             endpoint() {}
         }
         @Controller('invalid')
         class InvalidController {
-            /** Missing policy. */
+            /**
+             * Missing policy.
+             */
             @Get()
             endpoint() {}
         }

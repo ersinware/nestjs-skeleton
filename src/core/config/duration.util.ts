@@ -3,7 +3,9 @@
  * @description Converts configured duration strings to whole seconds at library boundaries.
  */
 
-/** Seconds in each admitted duration unit. */
+/**
+ * Seconds in each admitted duration unit.
+ */
 const UNIT_SECONDS: Readonly<Record<string, number>> = { s: 1, m: 60, h: 3600, d: 86400 };
 
 /**

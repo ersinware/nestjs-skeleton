@@ -3,7 +3,9 @@
  * @description The `Cache-Control` values a route may declare, and the header they are written to.
  */
 
-/** Response header carrying the route's cache policy. */
+/**
+ * Response header carrying the route's cache policy.
+ */
 export const HEADER_CACHE_CONTROL = 'cache-control';
 
 /**
@@ -15,10 +17,18 @@ export const HEADER_CACHE_CONTROL = 'cache-control';
  * never on an `@Audited` route.
  */
 export enum HttpCachePolicy {
-    /** Never stored. For probes, tokens, and anything a stale copy of would be wrong. */
+    /**
+     * Never stored. For probes, tokens, and anything a stale copy of would be wrong.
+     */
     NO_STORE = 'no-store',
-    /** Stored by the end client only, revalidated on every use. The default for identity-scoped reads. */
+
+    /**
+     * Stored by the end client only, revalidated on every use. The default for identity-scoped reads.
+     */
     PRIVATE_REVALIDATE = 'private, no-cache',
-    /** Storable by shared caches, revalidated on every use. For identity-free data only. */
+
+    /**
+     * Storable by shared caches, revalidated on every use. For identity-free data only.
+     */
     PUBLIC_REVALIDATE = 'public, no-cache',
 }

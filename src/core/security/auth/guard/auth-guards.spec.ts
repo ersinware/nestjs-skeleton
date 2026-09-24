@@ -44,7 +44,9 @@ function fixture(
     classPolicies: readonly (ClassDecorator & MethodDecorator)[] = [],
 ): GuardFixture {
     class ControllerFixture {
-        /** Protected endpoint. */
+        /**
+         * Protected endpoint.
+         */
         endpoint(this: void) {}
     }
     for (const policy of classPolicies) policy(ControllerFixture);

@@ -26,13 +26,43 @@ export class ListAdminsQuery extends Query<ListAdminsResult> {
  * One page of admin read-models plus the total row count for pagination.
  */
 export type ListAdminsResult = {
+    /**
+     * Account read models in the requested page.
+     */
     readonly data: readonly {
+        /**
+         * Identifier of the account represented by this row.
+         */
         readonly id: string;
+
+        /**
+         * Current email address of the account.
+         */
         readonly email: string;
+
+        /**
+         * Display name of the account.
+         */
         readonly name: string;
+
+        /**
+         * Permissions currently assigned to the account.
+         */
         readonly permissions: readonly Permission[];
+
+        /**
+         * Whether the account is barred from authentication.
+         */
         readonly isBanned: boolean;
+
+        /**
+         * Whether the admin has completed activation.
+         */
         readonly isActivated: boolean;
     }[];
+
+    /**
+     * Total matching accounts across all pages.
+     */
     readonly total: number;
 };
