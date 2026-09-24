@@ -4,13 +4,15 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import type { IGetAdminEmailConfirmationRecipientPort } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/port';
+import type { GetAdminEmailConfirmationRecipientResult } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/query';
 import { type IGetAdminInviteRecipientPort } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
 import { type GetAdminInviteRecipientResult } from 'src/module/admin/application/query/get-admin-invite-recipient/query';
 import { type IGetAdminNoticeRecipientPort } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
@@ -19,6 +21,7 @@ import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/q
 import { type GetAdminSessionVersionResult } from 'src/module/admin/application/query/get-admin-session-version/query';
 import { type IGetFreshAdminByIdPort } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
 import { type GetFreshAdminByIdResult } from 'src/module/admin/application/query/get-fresh-admin-by-id/query';
+import type { IIsAdminEmailInUsePort } from 'src/module/admin/application/query/is-admin-email-in-use/port';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 
 /**
@@ -27,6 +30,8 @@ import { admin } from 'src/module/admin/infrastructure/admin.schema';
 @Injectable()
 export class AdminReaderAdapter
     implements
+        IIsAdminEmailInUsePort,
+        IGetAdminEmailConfirmationRecipientPort,
         IGetAdminAuthStatePort,
         IGetAdminCredentialsByEmailPort,
         IGetFreshAdminByIdPort,
@@ -201,6 +206,67 @@ export class AdminReaderAdapter
                         .limit(1)
                 )[0] ?? null
             );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Checks the same address scope as the unique constraint, including deleted accounts.
+     *
+     * @param email Target address to check
+     * @returns Whether the address is already held
+     */
+    async isEmailInUse(email: string): Promise<boolean> {
+        try {
+            return (
+                (await this.database.select({ id: admin.id }).from(admin).where(eq(admin.email, email)).limit(1))
+                    .length > 0
+            );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads pending metadata only for an eligible account.
+     *
+     * @param id Target account identifier
+     * @param deliveryId Request identity assigned to the delivery job
+     * @returns Recipient metadata, or null when delivery is no longer allowed
+     */
+    async getEmailConfirmationRecipient(
+        id: string,
+        deliveryId: string,
+    ): Promise<GetAdminEmailConfirmationRecipientResult | null> {
+        try {
+            return ((
+                await this.database
+                    .select({
+                        name: admin.name,
+                        pendingEmailRequestId: admin.pendingEmailRequestId,
+                        pendingEmail: admin.pendingEmail,
+                        pendingEmailExpiresAt: admin.pendingEmailExpiresAt,
+                        pendingEmailRevocationVersion: admin.pendingEmailRevocationVersion,
+                    })
+                    .from(admin)
+                    .where(
+                        and(
+                            eq(admin.id, id),
+                            isNull(admin.deletedAt),
+                            eq(admin.isBanned, false),
+                            isNotNull(admin.password),
+                            isNotNull(admin.pendingEmailRequestId),
+                            isNotNull(admin.pendingEmail),
+                            isNotNull(admin.pendingEmailExpiresAt),
+                            isNotNull(admin.pendingEmailRevocationVersion),
+                            eq(admin.pendingEmailRequestId, deliveryId),
+                            gt(admin.pendingEmailExpiresAt, new Date()),
+                            eq(admin.pendingEmailRevocationVersion, admin.revocationVersion),
+                        ),
+                    )
+                    .limit(1)
+            )[0] ?? null) as GetAdminEmailConfirmationRecipientResult | null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }

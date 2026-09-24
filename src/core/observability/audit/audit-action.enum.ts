@@ -29,6 +29,16 @@ export enum AuditAction {
     /** Self-service password change; every previously minted token is revoked. */
     PASSWORD_CHANGED = 'PASSWORD_CHANGED',
 
+    /**
+     * A password-verified email change request and its delivery were committed.
+     */
+    EMAIL_CHANGE_REQUESTED = 'EMAIL_CHANGE_REQUESTED',
+
+    /**
+     * An email change request failed current-password verification.
+     */
+    EMAIL_CHANGE_REQUEST_FAILED = 'EMAIL_CHANGE_REQUEST_FAILED',
+
     /** An authenticated caller was refused by the authorization guard or a domain administration rule — written by the global filter on 403. */
     ACCESS_DENIED = 'ACCESS_DENIED',
 
