@@ -28,6 +28,8 @@ export class ConfirmUserEmailChangeCommand
     }
 
     /**
+     * Identifies the user projection to evict after successful dispatch.
+     *
      * @returns Cached user projection to evict after confirmation
      */
     invalidatedKeys(): readonly string[] {

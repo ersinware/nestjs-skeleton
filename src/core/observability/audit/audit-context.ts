@@ -14,18 +14,51 @@ import type { PrincipalType } from 'src/shared/domain/principal';
  * `AuthenticationGuard` verifies a token. Identity is optional: a `@Public()` route has no actor.
  */
 export type AuditContext = {
+    /**
+     * The client address resolved according to the trusted proxy configuration.
+     */
     readonly remoteAddress: string;
+
+    /**
+     * The matched route template, or the request path without its query string.
+     */
     readonly route: string;
+
+    /**
+     * The HTTP method of the request.
+     */
     readonly method: string;
+
+    /**
+     * The client-supplied user agent, capped at the request hook.
+     */
     readonly userAgent?: string;
+
+    /**
+     * The principal identifier added after authentication verifies the actor.
+     */
     actorId?: string;
+
+    /**
+     * The actor's owning context, used to resolve the principal identifier.
+     */
     actorType?: PrincipalType;
 };
 
 /**
  * Ambient storage for the current request's {@link AuditContext}.
  */
-const auditContextStorage = new AsyncLocalStorage<AuditContext>();
+const auditContextStorage = new AsyncLocalStorage<{
+    /**
+     * Persistable request facts, kept separate from in-memory exception tracking.
+     */
+    readonly context: AuditContext;
+
+    /**
+     * Exceptions whose refusal evidence was durably accepted within this context.
+     */
+    readonly auditedExceptions: WeakSet<object>;
+}>();
 
 /**
  * Publishes a verified principal into the ambient context — the only way the identity half is
@@ -36,9 +69,11 @@ const auditContextStorage = new AsyncLocalStorage<AuditContext>();
  * @param actorType The kind of the verified principal, so the id resolves to its owning context.
  */
 export function publishAuditActor(actorId: string, actorType: PrincipalType) {
-    const context = auditContextStorage.getStore();
+    const context = auditContextStorage.getStore()?.context;
 
-    if (!context) return;
+    if (!context) {
+        return;
+    }
 
     context.actorId = actorId;
     context.actorType = actorType;
@@ -53,7 +88,7 @@ export function publishAuditActor(actorId: string, actorType: PrincipalType) {
  * @returns Whatever the callback returns.
  */
 export function runWithAuditContext<T>(context: AuditContext, callback: () => T): T {
-    return auditContextStorage.run(context, callback);
+    return auditContextStorage.run({ context, auditedExceptions: new WeakSet<object>() }, callback);
 }
 
 /**
@@ -62,5 +97,28 @@ export function runWithAuditContext<T>(context: AuditContext, callback: () => T)
  * @returns The ambient context, or undefined when none was opened.
  */
 export function getAuditContext(): Readonly<AuditContext> | undefined {
-    return auditContextStorage.getStore();
+    return auditContextStorage.getStore()?.context;
+}
+
+/**
+ * Marks an exception only after its refusal record has committed; no-op without a context.
+ *
+ * @param exception The same exception the handler will rethrow
+ */
+export function markExceptionAsAudited(exception: object) {
+    auditContextStorage.getStore()?.auditedExceptions.add(exception);
+}
+
+/**
+ * Checks whether this context already contains durable evidence for the caught exception.
+ *
+ * @param exception The caught value
+ * @returns Whether this exact exception has been audited in the current context
+ */
+export function isExceptionAudited(exception: unknown): boolean {
+    return (
+        exception !== null &&
+        typeof exception === 'object' &&
+        (auditContextStorage.getStore()?.auditedExceptions.has(exception) ?? false)
+    );
 }

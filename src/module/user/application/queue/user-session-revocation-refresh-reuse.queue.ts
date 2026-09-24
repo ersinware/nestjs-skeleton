@@ -39,7 +39,7 @@ export class UserSessionRevocationRefreshReuseQueue implements IJobConsumer {
      */
     async consume(job: Job) {
         await this.commandPipeline.execute(
-            new RevokeUserSessionsCommand(job.aggregateId, SessionRevocationReason.REFRESH_REUSE),
+            new RevokeUserSessionsCommand(job.aggregateId, SessionRevocationReason.REFRESH_REUSE, job.deliveryId),
         );
     }
 }

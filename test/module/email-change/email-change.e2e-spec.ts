@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { PgBoss, type JobWithMetadata } from 'pg-boss';
 import { symbols, type DestinationStream } from 'pino';
 import { TOKEN_CACHE_PORT, type ICachePort } from 'src/core/cache';
-import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
+import { TOKEN_DATABASE_CLIENT, TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
 import {
     JOB_QUEUE_DEAD_LETTER,
@@ -49,8 +49,9 @@ import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { user, emailChangeNotification as userNotification } from 'src/module/user/infrastructure/user.schema';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
-import { DependencyUnavailableException } from 'src/shared/exception';
+import { AccessDeniedException, DependencyUnavailableException } from 'src/shared/exception';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -310,7 +311,7 @@ describe.each(CASES)('$route email change', (context) => {
      * @param action Expected event category
      * @returns Matching audit rows
      */
-    async function evidence(action: AuditAction): Promise<(typeof audit.$inferSelect)[]> {
+    async function evidence(action: DomainFailureAuditAction | AuditAction): Promise<(typeof audit.$inferSelect)[]> {
         return database
             .select()
             .from(audit)
@@ -427,7 +428,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect(response.statusCode).toBe(400);
         expect(await state()).toEqual(before);
         expect(await jobs(context.queues.EMAIL_CONFIRMATION)).toEqual([]);
-        expect(await evidence(AuditAction.EMAIL_CHANGE_REQUEST_FAILED)).toMatchObject([
+        expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED)).toMatchObject([
             { actorId: account.id, actorType: context.kind, reason: 'CURRENT_PASSWORD_MISMATCH' },
         ]);
     });
@@ -475,7 +476,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect(next.claims.jti).not.toBe(first.claims.jti);
         await deliver(job.data);
         expect(sendEmail).toHaveBeenCalledTimes(2);
-        expect(await evidence(AuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
+        expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
         const before = await state();
         expect((await http('POST', '/email/confirm', { token: first.token })).statusCode).toBe(400);
         expect(await state()).toEqual(before);
@@ -517,21 +518,40 @@ describe.each(CASES)('$route email change', (context) => {
                 token = await tokenPort.generateEmailConfirmationToken(claims);
             }
             const response = await http('POST', '/email/confirm', { token });
-            expect(response.statusCode).toBe(400);
+            const expectedStatus = fault === 'subject' || fault === 'principal' ? 403 : 400;
+            expect(response.statusCode).toBe(expectedStatus);
             expect(response.json()).toMatchObject({
-                error: { statusCode: 400, message: ['The email confirmation is invalid or has expired.'] },
+                error: { statusCode: expectedStatus, message: expect.any(Array) as unknown },
             });
             expect(await state()).toEqual(before);
             expect(await notices()).toEqual([]);
             expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toEqual([]);
             expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
-            const failures = await evidence(AuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED);
-            expect(failures).toHaveLength(1);
-            expect(failures[0]!.targetId).toBe(
-                fault === 'subject' ? (await tokenPort.verifyEmailConfirmationToken(token)).sub : null,
-            );
+            const failures = await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED);
+            if (expectedStatus === 403) {
+                expect(failures).toHaveLength(1);
+                expect(failures[0]!.targetId).toBe(
+                    fault === 'subject' ? (await tokenPort.verifyEmailConfirmationToken(token)).sub : null,
+                );
+            } else {
+                expect(failures).toEqual([]);
+            }
+            if (expectedStatus === 403) {
+                expect(await evidence(AuditAction.ACCESS_DENIED)).toEqual([]);
+            }
         },
     );
+
+    it('returns 404 without auditing a verified proof whose account was removed', async () => {
+        const proof = await pending();
+        await database.delete(context.table).where(eq(context.table.id, account.id));
+
+        const response = await http('POST', '/email/confirm', { token: proof.token });
+        expect(response.statusCode).toBe(404);
+        expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
+        expect(await notices()).toEqual([]);
+        expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
+    });
 
     it('commits the change, rejects all old sessions and accepts only registered replacement tokens', async () => {
         const secondSession = await tokenPort.generateTokens(
@@ -790,9 +810,7 @@ describe.each(CASES)('$route email change', (context) => {
         });
         expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(400);
         expect(await state()).toEqual(before);
-        expect(await evidence(AuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toMatchObject([
-            { reason: 'REQUEST_EXPIRED' },
-        ]);
+        expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
         expect(await notices()).toEqual([]);
     });
 
@@ -824,7 +842,7 @@ describe.each(CASES)('$route email change', (context) => {
             }
             await deliver(job.data);
             expect(sendEmail).not.toHaveBeenCalled();
-            expect(await evidence(AuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
+            expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
         },
     );
 
@@ -946,12 +964,52 @@ describe.each(CASES)('$route email change', (context) => {
                 })
                 .where(eq(context.table.id, account.id));
             const before = await state();
-            expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(400);
+            expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(
+                reason === 'banned' ? 403 : reason === 'deleted' ? 404 : 400,
+            );
             expect(await state()).toEqual(before);
             expect(await notices()).toEqual([]);
-            expect(await evidence(AuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toHaveLength(1);
+            expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toHaveLength(
+                reason === 'banned' ? 1 : 0,
+            );
+            expect(await evidence(AuditAction.ACCESS_DENIED)).toEqual([]);
         },
     );
+
+    it('keeps refusal evidence when the enclosing mutation and its success audit roll back', async () => {
+        const before = await state(),
+            refusal = new AccessDeniedException('Injected business refusal'),
+            auditPort = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
+
+        await expect(
+            app.get<ITransactionPort>(TOKEN_TRANSACTION_PORT).run(async () => {
+                await database
+                    .update(context.table)
+                    .set({ name: 'Rolled back mutation' })
+                    .where(eq(context.table.id, account.id));
+                await auditPort.record({ action: AuditAction.EMAIL_CHANGE_REQUESTED, targetId: account.id });
+                await auditPort.record(
+                    {
+                        action: DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED,
+                        targetId: account.id,
+                        reason: 'REFUSAL_FIXTURE',
+                    },
+                    { markExceptionAsAudited: refusal },
+                );
+                throw refusal;
+            }),
+        ).rejects.toBe(refusal);
+
+        expect(await state()).toEqual(before);
+        const rows = await database.select().from(audit).where(eq(audit.targetId, account.id));
+        expect(rows).toMatchObject([
+            {
+                action: DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED,
+                targetId: account.id,
+                reason: 'REFUSAL_FIXTURE',
+            },
+        ]);
+    });
 
     it.each(['audit', 'job'] as const)('rolls back a new request when %s persistence fails', async (fault) => {
         const before = await state();

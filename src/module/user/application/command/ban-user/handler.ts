@@ -15,7 +15,12 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Bans an existing user, revoking all of their active sessions.
@@ -44,6 +49,9 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, vo
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the user does not exist
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: BanUserCommand) {
         const user = await this.userWriterPort.load(command.id);
@@ -54,8 +62,16 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, vo
 
         // On an already-banned account `ban()` is a no-op: nothing changed, so there is nothing to
         // persist, audit, or evict.
-        if (!user.ban(command.actor)) {
-            return;
+        try {
+            if (!user.ban(command.actor)) {
+                return;
+            }
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
         await this.transactionPort.run(async () => {

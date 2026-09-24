@@ -6,10 +6,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { trace } from '@opentelemetry/api';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
-import { getAuditContext } from 'src/core/observability/audit/audit-context';
+import { TOKEN_DATABASE_CLIENT, runOutsideDatabaseTransaction, translateConnectionFailure } from 'src/core/database';
+import { getAuditContext, markExceptionAsAudited } from 'src/core/observability/audit/audit-context';
 import { audit } from 'src/core/observability/audit/audit.schema';
-import { AuditRecordInput, IAuditPort } from 'src/core/observability/audit/port/audit.port';
+import { AuditRecordInput, AuditRecordOptions, IAuditPort } from 'src/core/observability/audit/port/audit.port';
 
 /**
  * Appends audit records on the primary connection. Never fail-open: a record that cannot be
@@ -25,14 +25,31 @@ export class AuditAdapter implements IAuditPort {
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
-     * Completes the input with the ambient audit context and inserts the row; outside a request
-     * the row is unattributed. Time and context are fixed here (the id by the schema) so a
-     * deferred write would carry the same fact. The context is spread BEFORE the input so an
-     * ambient value never overwrites a stated one.
+     * Adds request context and records the audit entry in the current transaction, if any.
+     * With `markExceptionAsAudited`, writes independently to survive rollback and marks the
+     * exception only after commit.
      *
      * @param input What happened and to whom.
+     * @param options Refusal exception marked only after its independent write commits.
      */
-    async record(input: AuditRecordInput) {
+    async record(input: AuditRecordInput, options?: AuditRecordOptions) {
+        if (options?.markExceptionAsAudited) {
+            await runOutsideDatabaseTransaction(() => this.insert(input));
+            markExceptionAsAudited(options.markExceptionAsAudited);
+
+            return;
+        }
+
+        await this.insert(input);
+    }
+
+    /**
+     * Appends evidence through the executor selected by the current database context.
+     *
+     * @param input Persistable facts supplied by the caller
+     * @throws {DependencyUnavailableException} When the audit database is unavailable
+     */
+    private async insert(input: AuditRecordInput) {
         try {
             await this.database.insert(audit).values({
                 ...getAuditContext(),

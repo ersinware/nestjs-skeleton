@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Persists user session revocation, audit evidence, and follow-up jobs.
+ * @description Persists user session revocation and follow-up jobs.
  */
 
 import { Inject } from '@nestjs/common';
@@ -12,6 +12,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
+import { isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Coordinates durable revocation of all sessions for a user.
@@ -21,9 +22,9 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort Commit boundary for the aggregate, jobs, and audit
+     * @param transactionPort Commit boundary for the aggregate, audit, and jobs
      * @param userWriterPort The port used to load and save the user aggregate
-     * @param auditPort The port used to record the revocation
+     * @param auditPort Records completed revocations and any audited aggregate refusal
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -43,11 +44,27 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
             return;
         }
 
-        user.revokeSessions(command.reason);
+        try {
+            user.revokeSessions(command.reason);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: AuditAction.USER_SESSIONS_REVOKED, targetId: user.id });
+            await this.auditPort.record({
+                action: AuditAction.USER_SESSIONS_REVOKED,
+                targetId: user.id,
+                detail: {
+                    deliveryId: command.deliveryId,
+                    reason: command.reason,
+                    sessionVersion: String(user.sessionVersion),
+                },
+            });
         });
     }
 }

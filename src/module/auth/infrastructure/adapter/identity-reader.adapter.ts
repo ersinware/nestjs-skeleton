@@ -40,7 +40,6 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
      * @param principalType The bounded context that owns the identity
      * @param email The email address to search for
      * @returns The associated identity
-     * @throws {ResourceNotFoundException} If no identity is found
      */
     async getCredentialsByEmail(principalType: PrincipalType, email: string): Promise<AuthIdentity> {
         // Exhaustive on purpose: a kind added to the enum without a routing arm here must fail
@@ -61,7 +60,6 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
      * @param principalType The bounded context that owns the identity
      * @param id The unique identifier of the target identity
      * @returns The ban status, session counters and permissions
-     * @throws {ResourceNotFoundException} If no identity is found
      */
     async getAuthState(principalType: PrincipalType, id: string): Promise<AuthState> {
         switch (principalType) {
@@ -82,6 +80,7 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
  * because a broken code path must surface as 500 + Sentry.
  *
  * @param principalType The kind no routing arm claimed
+ * @returns Never returns normally
  * @throws {SystemException} Always — reaching it at runtime is a bug.
  */
 function assertPrincipalTypeExhausted(principalType: never): never {

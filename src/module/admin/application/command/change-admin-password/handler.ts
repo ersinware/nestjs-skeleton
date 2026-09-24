@@ -19,7 +19,12 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { PrincipalType } from 'src/shared/domain/principal';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Changes the password for an existing admin account.
@@ -56,6 +61,9 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
      * @throws {ResourceNotFoundException} When the admin does not exist
      * @throws {AccessDeniedException} When the loaded account is banned
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     async execute(command: ChangeAdminPasswordCommand): Promise<ChangeAdminPasswordResult> {
         const { id, newPassword } = command,
@@ -67,11 +75,19 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
 
         const hashedPassword = admin.password;
 
-        admin.changePassword(
-            await this.hashingPort.hash(newPassword),
-            await this.hashingPort.verify(hashedPassword, command.currentPassword),
-            await this.hashingPort.verify(hashedPassword, newPassword),
-        );
+        try {
+            admin.changePassword(
+                await this.hashingPort.hash(newPassword),
+                await this.hashingPort.verify(hashedPassword, command.currentPassword),
+                await this.hashingPort.verify(hashedPassword, newPassword),
+            );
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);

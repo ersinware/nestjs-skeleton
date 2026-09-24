@@ -35,6 +35,8 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
      *
      * @param command Exact dead-letter job identifiers
      * @throws {ResourceNotFoundException} When any requested job is missing from the shared dead-letter queue
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the queue returns an invalid mutation result
      */
     async execute(command: DiscardDeadLetterJobsCommand) {
         await this.transactionPort.run(async () => {

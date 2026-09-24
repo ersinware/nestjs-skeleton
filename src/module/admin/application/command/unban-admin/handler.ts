@@ -12,7 +12,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Lifts the ban on the admin account. Unlike banning, no session eviction is needed: the session
@@ -39,6 +39,9 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
      * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account or actor violates the mutation contract
      */
     async execute(command: UnbanAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -50,8 +53,16 @@ export class UnbanAdminCommandHandler implements ICommandHandler<UnbanAdminComma
         // `unban()` reports whether the account actually transitioned. On an account that is not
         // banned there is nothing to persist or audit — an entry for a ban that was never in place
         // would fabricate a fact.
-        if (!admin.unban(command.actor)) {
-            return;
+        try {
+            if (!admin.unban(command.actor)) {
+                return;
+            }
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
         await this.transactionPort.run(async () => {

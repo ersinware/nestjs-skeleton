@@ -31,6 +31,7 @@ export class AdminFacade {
      * Resolves the authentication identity for an admin by their email address.
      *
      * @param email The email address of the target admin
+     * @returns The admin credential read model
      * @throws {ResourceNotFoundException} When no active admin exists with the given email.
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
@@ -42,6 +43,7 @@ export class AdminFacade {
      * Resolves an admin's authentication state (ban status, session counters, permissions) by their unique identifier.
      *
      * @param id The unique identifier of the target admin
+     * @returns The admin ban status, session counters, and permissions
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
      * @throws {DependencyUnavailableException} When the database is unreachable
      */

@@ -43,6 +43,8 @@ function isCacheInvalidatingCommand(command: ICommand): command is ICommand & IC
 @Injectable()
 export class CacheInvalidationBehavior implements ICommandBehavior {
     /**
+     * Connects post-command eviction to the shared cache port.
+     *
      * @param cachePort The cache the behavior evicts through
      */
     constructor(@Inject(TOKEN_CACHE_PORT) private readonly cachePort: ICachePort) {}

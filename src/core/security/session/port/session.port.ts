@@ -84,6 +84,7 @@ export interface ISessionPort {
      * @param session Replacement credential with the original session identity.
      * @returns The atomic rotation decision.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
+     * @throws {SystemException} When the session store returns an unsupported rotation result
      */
     rotateSession(id: string, oldJti: string, session: SessionRegistration): Promise<RotateOutcome>;
 

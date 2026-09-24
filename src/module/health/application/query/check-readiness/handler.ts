@@ -23,6 +23,8 @@ export class CheckReadinessQueryHandler implements IQueryHandler<CheckReadinessQ
 
     /**
      * Executes the query.
+     *
+     * @throws {ServiceUnavailableException} When a checked health indicator fails
      */
     async execute(): Promise<void> {
         await this.port.checkReadiness();

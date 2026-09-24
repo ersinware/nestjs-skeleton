@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Persists admin session revocation, audit evidence, and follow-up jobs.
+ * @description Persists admin session revocation and follow-up jobs.
  */
 
 import { Inject } from '@nestjs/common';
@@ -12,6 +12,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
+import { isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Coordinates durable revocation of all sessions for an admin.
@@ -21,9 +22,9 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort Commit boundary for the aggregate, jobs, and audit
+     * @param transactionPort Commit boundary for the aggregate, audit, and jobs
      * @param adminWriterPort The port used to load and save the admin aggregate
-     * @param auditPort The port used to record the revocation
+     * @param auditPort Records completed revocations and any audited aggregate refusal
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -43,11 +44,27 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
             return;
         }
 
-        admin.revokeSessions(command.reason);
+        try {
+            admin.revokeSessions(command.reason);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AuditAction.ADMIN_SESSIONS_REVOKED, targetId: admin.id });
+            await this.auditPort.record({
+                action: AuditAction.ADMIN_SESSIONS_REVOKED,
+                targetId: admin.id,
+                detail: {
+                    deliveryId: command.deliveryId,
+                    reason: command.reason,
+                    sessionVersion: String(admin.sessionVersion),
+                },
+            });
         });
     }
 }

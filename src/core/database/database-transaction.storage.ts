@@ -26,3 +26,13 @@ export const transactionStorage = new AsyncLocalStorage<DatabaseTransactionExecu
 export function runInDatabaseTransactionContext<T>(transaction: NodePgDatabase, work: () => Promise<T>): Promise<T> {
     return transactionStorage.run(transaction, work);
 }
+
+/**
+ * Runs independently committed refusal evidence outside a mutation's ambient transaction.
+ *
+ * @param work The audit write that must survive rollback of the rejected operation
+ * @returns The independently committed write result
+ */
+export function runOutsideDatabaseTransaction<T>(work: () => Promise<T>): Promise<T> {
+    return transactionStorage.exit(work);
+}

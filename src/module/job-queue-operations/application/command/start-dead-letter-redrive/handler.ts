@@ -36,6 +36,8 @@ export class StartDeadLetterRedriveCommandHandler implements ICommandHandler<Sta
      *
      * @returns Identifier of the accepted redrive operation
      * @throws {ResourceConflictException} When another redrive is queued or active
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the queue returns an invalid mutation result
      */
     async execute(): Promise<string> {
         const operationId = randomUUID();

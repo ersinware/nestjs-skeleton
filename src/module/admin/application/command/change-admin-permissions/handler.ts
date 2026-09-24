@@ -14,7 +14,12 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Replaces an admin's permission set. The aggregate decides whether the actor may (self, root, the
@@ -46,6 +51,9 @@ export class ChangeAdminPermissionsCommandHandler implements ICommandHandler<Cha
      * @throws {ResourceNotFoundException} When the target admin does not exist.
      * @throws {AccessDeniedException} When the actor targets themselves or root, moves a tier marker without being root, or revokes from a manager without being root.
      * @throws {InvalidInputException} When the set holds a permission an admin may not hold.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: ChangeAdminPermissionsCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -55,7 +63,17 @@ export class ChangeAdminPermissionsCommandHandler implements ICommandHandler<Cha
         }
 
         // A set that already holds changes nothing: nothing to persist, audit, or evict.
-        const change = admin.changePermissions(command.permissions, command.actor);
+        let change;
+
+        try {
+            change = admin.changePermissions(command.permissions, command.actor);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         if (!change) {
             return;

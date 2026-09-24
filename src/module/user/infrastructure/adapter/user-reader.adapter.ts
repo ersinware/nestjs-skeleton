@@ -23,6 +23,7 @@ import { type GetUserNoticeRecipientResult } from 'src/module/user/application/q
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
 import type { IIsUserEmailInUsePort } from 'src/module/user/application/query/is-user-email-in-use/port';
+import type { IsUserEmailInUseResult } from 'src/module/user/application/query/is-user-email-in-use/query';
 import { emailChangeNotification, user } from 'src/module/user/infrastructure/user.schema';
 
 /**
@@ -46,6 +47,8 @@ export class UserReaderAdapter
         IGetUserSessionVersionPort
 {
     /**
+     * Connects authoritative account reads to the primary database.
+     *
      * @param database The Drizzle client on the primary connection
      */
     constructor(@Inject(TOKEN_DATABASE_CLIENT) private readonly database: NodePgDatabase) {}
@@ -183,14 +186,15 @@ export class UserReaderAdapter
      * Checks the same address scope as the unique constraint, including deleted accounts.
      *
      * @param email Target address to check
-     * @returns Whether the address is already held
+     * @returns Result indicating whether the address is already held
      */
-    async isEmailInUse(email: string): Promise<boolean> {
+    async isEmailInUse(email: string): Promise<IsUserEmailInUseResult> {
         try {
-            return (
-                (await this.database.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)).length >
-                0
-            );
+            return {
+                isInUse:
+                    (await this.database.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1))
+                        .length > 0,
+            };
         } catch (error) {
             throw translateConnectionFailure(error);
         }

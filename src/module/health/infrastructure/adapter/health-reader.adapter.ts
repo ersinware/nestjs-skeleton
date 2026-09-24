@@ -65,6 +65,8 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
      * the sole exemption to "infrastructure translates". The global filter keys on
      * `instanceof HttpException` to decide what each health path discloses; translating here would
      * put a normalized error body back onto the anonymous readiness probe.
+     *
+     * @returns The complete healthy indicator report
      */
     async getStatus(): Promise<GetHealthStatusResult> {
         return this.toHealthyReadModel(
@@ -140,6 +142,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
      *
      * @param result The report of a passed check.
      * @returns The healthy read model.
+     * @throws {SystemException} When the report is not healthy or any required indicator is missing or down
      */
     private toHealthyReadModel(result: HealthCheckResult): GetHealthStatusResult {
         if (result.status !== 'ok') {
@@ -171,6 +174,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
      * @param result The report of a passed check.
      * @param key The indicator to narrow.
      * @returns The healthy indicator state.
+     * @throws {SystemException} When the required indicator is missing or down
      */
     private assertHealthy(result: HealthCheckResult, key: HealthIndicatorKey): { readonly status: 'up' } {
         if (result.details[key]?.status !== 'up') {

@@ -37,6 +37,8 @@ export interface IQueryBehavior {
 @Injectable()
 export class QueryPipeline {
     /**
+     * Binds query dispatch to the configured behavior chain.
+     *
      * @param queryBus The framework bus the chain ultimately delegates to
      * @param behaviors The ordered behaviors wrapping each dispatch
      */
@@ -49,6 +51,7 @@ export class QueryPipeline {
      * Dispatches a query through the behavior chain. Accepts only a typed `Query<TResult>`, so the
      * result type is always inferred from the query and never falls back to `unknown` — a query that
      * does not carry its result type on the `Query<T>` base is a compile error, by design.
+     * Handler and awaited behavior failures reject the dispatch unchanged.
      *
      * @param query The query to dispatch
      * @returns The query result, from a behavior (e.g. cache) or the handler

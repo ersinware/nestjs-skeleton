@@ -14,7 +14,12 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Marks a user account as deleted.
@@ -43,6 +48,9 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the user does not exist
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When the delivery queue does not accept every required job
      */
     async execute(command: DeleteUserCommand) {
         const user = await this.userWriterPort.load(command.id);
@@ -51,7 +59,15 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
             throw new ResourceNotFoundException();
         }
 
-        user.markAsDeleted();
+        try {
+            user.markAsDeleted();
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({ action: AuditAction.USER_DELETED });

@@ -148,6 +148,7 @@ export async function login(
  * @param reason Why the attempt was rejected — the audit record's own vocabulary
  * @param targetId The rejected account's id, absent when no account matched the email
  * @returns The exception the caller throws
+ * @throws {DependencyUnavailableException} When the refusal audit cannot reach its database
  */
 async function denyLogin(
     auditPort: IAuditPort,

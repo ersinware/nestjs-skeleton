@@ -27,8 +27,6 @@ export class DatabaseCleanerAdapter implements IDatabaseCleanerPort {
      * their own logical schemas. No `CASCADE`/`RESTART IDENTITY`: modules link by plain UUID columns
      * (no FK constraints) and keys are UUIDs (no identity sequences), so both clauses would be dead
      * weight.
-     *
-     * @throws {Error} If the truncation query fails.
      */
     async cleanup() {
         await this.database.execute(sql`

@@ -36,6 +36,7 @@ export class GetDeadLetterRedriveQueryHandler implements IQueryHandler<
      * @param query Operation identifier
      * @returns Current public lifecycle view
      * @throws {ResourceNotFoundException} When the operation is absent or no longer retained
+     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
      */
     async execute(query: GetDeadLetterRedriveQuery): Promise<GetDeadLetterRedriveResult> {
         const operation = await this.port.getRedrive(query.operationId);

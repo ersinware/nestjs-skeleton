@@ -31,6 +31,7 @@ export class GetAdminAuthStateQueryHandler implements IQueryHandler<GetAdminAuth
      * @param query The query parameters
      * @returns The admin's ban status, session counters and permissions
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetAdminAuthStateQuery): Promise<GetAdminAuthStateResult> {
         const result = await this.port.getAuthState(query.id);

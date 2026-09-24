@@ -27,6 +27,7 @@ export class ListUsersQueryHandler implements IQueryHandler<ListUsersQuery, List
      *
      * @param query The query containing pagination parameters
      * @returns A paginated list of users
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: ListUsersQuery): Promise<ListUsersResult> {
         return this.port.listUsers(query.params);

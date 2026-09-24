@@ -30,6 +30,7 @@ export interface IUserWriterPort {
      * @throws {ResourceConflictException} When the email address is already in use, or when the row
      * was modified by another request since the aggregate was loaded (optimistic lock)
      * @throws {DependencyUnavailableException} When the database is unreachable
+     * @throws {SystemException} When the queue does not accept every aggregate job
      */
     save(user: User): Promise<void>;
 }

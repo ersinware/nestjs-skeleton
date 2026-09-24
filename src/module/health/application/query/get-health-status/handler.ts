@@ -28,6 +28,8 @@ export class GetHealthStatusQueryHandler implements IQueryHandler<GetHealthStatu
      * Executes the query.
      *
      * @returns The health report.
+     * @throws {ServiceUnavailableException} When a checked health indicator fails
+     * @throws {SystemException} When a successful health report violates the indicator contract
      */
     async execute(): Promise<GetHealthStatusResult> {
         return this.port.getStatus();

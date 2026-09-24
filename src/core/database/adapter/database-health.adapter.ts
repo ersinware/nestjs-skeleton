@@ -40,8 +40,6 @@ export class DatabaseHealthAdapter implements IDatabaseHealthPort {
      * Verifies connectivity with a `SELECT 1` query. On failure the driver error is logged once per
      * outage episode — the health alarm brings the operator in, this warn names the cause — and then
      * rethrown so the health indicator reports the connection as down.
-     *
-     * @throws {Error} If the connectivity query fails.
      */
     async ping() {
         try {

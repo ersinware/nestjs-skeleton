@@ -14,7 +14,12 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Bans the admin account and revokes all of its active sessions. The aggregate refuses an actor
@@ -45,6 +50,9 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, 
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
      * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: BanAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -55,8 +63,16 @@ export class BanAdminCommandHandler implements ICommandHandler<BanAdminCommand, 
 
         // On an already-banned account `ban()` is a no-op: nothing changed, so there is nothing to
         // persist, audit, or evict.
-        if (!admin.ban(command.actor)) {
-            return;
+        try {
+            if (!admin.ban(command.actor)) {
+                return;
+            }
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
         await this.transactionPort.run(async () => {

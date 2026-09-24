@@ -4,6 +4,7 @@
  */
 
 import { AuditAction } from 'src/core/observability/audit/audit-action.enum';
+import type { DomainFailureAuditAction } from 'src/shared/domain/audit';
 
 /**
  * Dependency injection token representing the {@link IAuditPort} contract.
@@ -25,7 +26,7 @@ export type AuditRecordInput = {
     /**
      * What happened, outcome included; the record's only required fact.
      */
-    readonly action: AuditAction;
+    readonly action: AuditAction | DomainFailureAuditAction;
 
     /**
      * Why a refusal happened; meaningless on an action that cannot fail.
@@ -44,6 +45,17 @@ export type AuditRecordInput = {
 };
 
 /**
+ * Completion behavior for a refusal record, separate from persisted evidence.
+ */
+export type AuditRecordOptions = {
+    /**
+     * Exception to mark in the current request after durable acceptance. This refusal record
+     * bypasses any ambient mutation transaction so a later rollback cannot erase its evidence.
+     */
+    readonly markExceptionAsAudited?: object;
+};
+
+/**
  * Contract for recording an audit entry.
  */
 export interface IAuditPort {
@@ -53,8 +65,11 @@ export interface IAuditPort {
      * durability requires the outer run() to commit. Outside a transaction, waits for durable
      * acceptance. Failed writes must propagate out of the transaction callback to roll it back.
      *
+     * Marked refusal records commit independently of any ambient transaction.
+     *
      * @param input What happened and to whom.
+     * @param options Optional refusal exception to mark after durable acceptance.
      * @throws {DependencyUnavailableException} When the audit store is unreachable
      */
-    record(input: AuditRecordInput): Promise<void>;
+    record(input: AuditRecordInput, options?: AuditRecordOptions): Promise<void>;
 }

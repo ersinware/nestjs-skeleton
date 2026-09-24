@@ -14,7 +14,12 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { ExceptionKind, ResourceNotFoundException, isExceptionOfKind } from 'src/shared/exception';
+import {
+    ExceptionKind,
+    ResourceNotFoundException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
  * Soft-deletes the admin account and revokes all of its active sessions. The aggregate refuses an
@@ -45,6 +50,9 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
      * @param command The command payload
      * @throws {ResourceNotFoundException} When the target admin does not exist.
      * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: DeleteAdminCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -53,7 +61,15 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
             throw new ResourceNotFoundException();
         }
 
-        admin.markAsDeleted(command.actor);
+        try {
+            admin.markAsDeleted(command.actor);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: admin.id });

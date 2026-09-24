@@ -22,6 +22,8 @@ export class DeleteUserCommand extends Command<void> implements ICacheInvalidati
     }
 
     /**
+     * Identifies the cached user projection invalidated after this command succeeds.
+     *
      * @returns The cache keys to evict on success — the user's cached projection
      */
     invalidatedKeys(): readonly string[] {

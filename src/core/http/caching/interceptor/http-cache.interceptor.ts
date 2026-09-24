@@ -21,6 +21,8 @@ import { SystemException } from 'src/shared/exception';
 @Injectable()
 export class HttpCacheInterceptor implements NestInterceptor {
     /**
+     * Reads explicit route cache policies through the shared reflector.
+     *
      * @param reflector Reads the `@HttpCache` metadata off the matched route.
      */
     constructor(private readonly reflector: Reflector) {}

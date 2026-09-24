@@ -18,22 +18,17 @@ export type GetAdminInviteRecipientResult = {
     readonly name: string;
 
     /**
-     * Current account revocation version used to reject invalidated invitations.
+     * Identity shared with the invitation delivery job.
      */
-    readonly revocationVersion: number;
+    readonly inviteId: string;
 
     /**
-     * Identity shared with the invitation delivery job, or null when no invitation remains.
+     * Fixed invitation expiry preserved across delivery retries.
      */
-    readonly inviteId: string | null;
+    readonly inviteExpiresAt: Date;
 
     /**
-     * Fixed invitation expiry preserved across delivery retries, or null when no invitation remains.
+     * Account revocation version captured at invitation issuance.
      */
-    readonly inviteExpiresAt: Date | null;
-
-    /**
-     * Account revocation version captured at invitation issuance, or null when no invitation remains.
-     */
-    readonly inviteRevocationVersion: number | null;
+    readonly inviteRevocationVersion: number;
 };

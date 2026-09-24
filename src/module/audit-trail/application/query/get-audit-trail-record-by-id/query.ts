@@ -5,6 +5,7 @@
 
 import { Query } from '@nestjs/cqrs';
 import { AuditAction, type AuditDetail } from 'src/core/observability/audit';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
 /**
@@ -33,7 +34,7 @@ export type GetAuditTrailRecordByIdResult = {
     /**
      * Recorded action and outcome.
      */
-    readonly action: AuditAction;
+    readonly action: AuditAction | DomainFailureAuditAction;
 
     /**
      * Internal refusal reason when the action was rejected.

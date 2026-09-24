@@ -14,6 +14,8 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
 @Injectable()
 export class SessionHealthAdapter implements ISessionHealthPort {
     /**
+     * Connects health checks to the session Redis connection.
+     *
      * @param sessionRedis The session store Redis client.
      */
     constructor(@Inject(TOKEN_SESSION_CONNECTION) private readonly sessionRedis: Redis) {}

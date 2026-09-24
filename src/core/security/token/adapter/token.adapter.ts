@@ -100,6 +100,7 @@ export class TokenAdapter implements ITokenPort {
 
     /**
      * Creates a fresh session identity and signs its first credential pair.
+     *
      * @param principal Verified owner and current permissions.
      * @param sessionVersion Current account version.
      * @returns Credentials and the exact metadata required by the session store.
@@ -113,6 +114,7 @@ export class TokenAdapter implements ITokenPort {
 
     /**
      * Signs a credential pair while preserving the supplied session identity and absolute deadline.
+     *
      * @param principal Verified owner and current permissions.
      * @param sessionVersion Current account version.
      * @param identity Session identity whose deadline must remain unchanged.
@@ -240,6 +242,7 @@ export class TokenAdapter implements ITokenPort {
 
     /**
      * Allows an expired rotated credential to close its still-live session.
+     *
      * @param token Signed refresh credential.
      * @returns Verified owner and session identity.
      */
@@ -320,6 +323,7 @@ export class TokenAdapter implements ITokenPort {
      * @param expectedType The type this verification method is responsible for
      * @param ignoreExpiration Allow credential expiry only for session closure.
      * @returns The decoded token payload
+     * @throws {UnauthenticatedException} When signature, lifetime, or token type verification fails
      */
     private async verifyToken<T extends { readonly type: AuthTokenType }>(
         token: string,
@@ -355,7 +359,7 @@ export class TokenAdapter implements ITokenPort {
      *
      * @param actual The type discriminator carried by the verified payload
      * @param expected The type the calling verify method promises
-     * @throws {Error} When the two do not match.
+     * @throws {UnauthenticatedException} When the token discriminator does not match the expected type.
      */
     private assertTokenType(actual: AuthTokenType, expected: AuthTokenType) {
         if (actual !== expected) {
@@ -365,7 +369,9 @@ export class TokenAdapter implements ITokenPort {
 
     /**
      * Rejects legacy or malformed session claims before using them as store keys or authorization data.
+     *
      * @param payload Signature-verified session claims.
+     * @throws {UnauthenticatedException} When session claims are malformed or the absolute lifetime has expired
      */
     private assertSessionClaims(payload: AccessTokenPayload | RefreshTokenPayload) {
         if (
@@ -388,7 +394,9 @@ export class TokenAdapter implements ITokenPort {
 
     /**
      * Rejects missing credential identifiers before rotation or logout.
+     *
      * @param jti Verified refresh identifier.
+     * @throws {UnauthenticatedException} When the credential identifier is not a UUID v4
      */
     private assertRefreshJti(jti: string) {
         if (typeof jti !== 'string' || !UUID_V4_PATTERN.test(jti)) {

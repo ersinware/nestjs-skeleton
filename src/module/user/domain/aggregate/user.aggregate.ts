@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
 import { isUUIDV7 } from 'src/shared/domain/uuid';
 import {
@@ -118,21 +119,6 @@ enum ConfirmEmailChangeRejectionReason {
      * The account is banned from email changes.
      */
     ACCOUNT_BANNED = 'ACCOUNT_BANNED',
-
-    /**
-     * The proof predates the account's current full revocation.
-     */
-    REQUEST_REVOKED = 'REQUEST_REVOKED',
-
-    /**
-     * The proof does not match the stored pending request.
-     */
-    REQUEST_MISMATCH = 'REQUEST_MISMATCH',
-
-    /**
-     * The stored request expired before consumption.
-     */
-    REQUEST_EXPIRED = 'REQUEST_EXPIRED',
 }
 
 /**
@@ -216,6 +202,8 @@ export class User extends PrincipalAggregateRoot {
 
     /**
      * Returns the full aggregate state for persistence.
+     *
+     * @returns Persistable aggregate state
      */
     toSnapshot(): UserSnapshot {
         return {
@@ -267,7 +255,11 @@ export class User extends PrincipalAggregateRoot {
             throw new AccessDeniedException();
         }
 
-        this.assertPasswordChange(currentPasswordMatches, newPasswordMatchesCurrent);
+        this.assertPasswordChange(
+            currentPasswordMatches,
+            newPasswordMatchesCurrent,
+            DomainFailureAuditAction.PASSWORD_CHANGE_FAILED,
+        );
 
         this.props.password = password;
         this.revokeAllSessions();
@@ -294,7 +286,7 @@ export class User extends PrincipalAggregateRoot {
             throw new AccessDeniedException();
         }
 
-        this.assertCurrentPassword(currentPasswordMatches, true);
+        this.assertCurrentPassword(currentPasswordMatches, DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED);
 
         if (newEmail === this.props.email) {
             throw new InvalidInputException(InvalidInputMessage.EMAIL_UNCHANGED);
@@ -355,14 +347,15 @@ export class User extends PrincipalAggregateRoot {
 
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+                audit: {
+                    action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
+                    reason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+                },
             });
         }
 
         if (payload.emailRevocationVersion !== this.revocationVersion) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_REVOKED,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         if (
@@ -372,15 +365,11 @@ export class User extends PrincipalAggregateRoot {
             this.props.pendingEmailExpiresAt === null ||
             payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime()
         ) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_MISMATCH,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         if (this.props.pendingEmailExpiresAt.getTime() <= Date.now()) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                auditReason: ConfirmEmailChangeRejectionReason.REQUEST_EXPIRED,
-            });
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
         this.props.email = this.props.pendingEmail;
@@ -409,7 +398,7 @@ export class User extends PrincipalAggregateRoot {
      * @param actor The verified principal making the change
      * @returns What was granted and revoked, or null when nothing changed — the caller persists and
      * audits only on a real transition
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or the actor is not an admin
      * @throws {InvalidInputException} When the set holds a permission a user may not hold
      */
     changePermissions(permissions: readonly Permission[], actor: Principal): PermissionChange | null {
@@ -433,7 +422,7 @@ export class User extends PrincipalAggregateRoot {
      * @param actor The verified principal imposing the ban
      * @returns Whether the account actually transitioned — the caller persists, audits, and evicts
      * only on a real ban, so a repeated request triggers none of them.
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or the actor is not an admin
      */
     ban(actor: Principal): boolean {
         this.assertNotDeleted(this.ban.name);
@@ -459,7 +448,7 @@ export class User extends PrincipalAggregateRoot {
      * @param actor The verified principal lifting the ban
      * @returns Whether the account actually transitioned — the caller persists and audits only on a
      * real unban, so lifting a ban that was never in place triggers neither.
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or the actor is not an admin
      */
     unban(actor: Principal): boolean {
         this.assertNotDeleted(this.unban.name);

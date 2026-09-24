@@ -15,10 +15,12 @@ export class RevokeAdminSessionsCommand extends Command<void> {
      *
      * @param id The unique identifier of the admin whose sessions must be revoked
      * @param reason Why the sessions are revoked
+     * @param deliveryId Identifier of the job requesting this revocation
      */
     constructor(
         readonly id: string,
         readonly reason: SessionRevocationReason,
+        readonly deliveryId: string,
     ) {
         super();
     }

@@ -52,6 +52,8 @@ import { Permission } from 'src/shared/domain/principal';
 @ApiDefaultDependencyUnavailableResponse()
 export class AuditTrailController {
     /**
+     * Dispatches audit disclosures through the query pipeline.
+     *
      * @param queryPipeline The CQRS query pipeline
      */
     constructor(private readonly queryPipeline: QueryPipeline) {}
@@ -61,6 +63,7 @@ export class AuditTrailController {
      *
      * @param query The filter and pagination parameters
      * @returns The paginated list of record summaries
+     * @throws {DependencyUnavailableException} When the audit database is unavailable
      */
     @Get()
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
@@ -90,6 +93,8 @@ export class AuditTrailController {
      *
      * @param params The path parameters carrying the record ID
      * @returns The requested record
+     * @throws {ResourceNotFoundException} When no record exists with the given ID
+     * @throws {DependencyUnavailableException} When the audit database is unavailable
      */
     @Get(ROUTE_PARAM_ID)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)

@@ -102,6 +102,9 @@ export class UserWriterAdapter implements IUserWriterPort {
 
     /**
      * Maps a database row to the User aggregate root.
+     *
+     * @param row Persisted user state
+     * @returns Reconstituted user aggregate
      */
     private mapToDomain(row: InferSelectModel<typeof userSchema>): User {
         return User.reconstitute({

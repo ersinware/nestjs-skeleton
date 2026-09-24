@@ -17,7 +17,7 @@ import {
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import {
     RefreshTokensCommand,
-    RefreshTokensMessage,
+    RefreshTokensRejectionMessage,
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
@@ -73,7 +73,8 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
      * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
-     * @throws {DependencyUnavailableException} When the session cache, job queue, or audit store is unreachable.
+     * @throws {DependencyUnavailableException} When identity lookup, session rotation, job persistence, or audit persistence is unavailable.
+     * @throws {SystemException} When rotation returns an unsupported outcome or the remediation job is not accepted
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
@@ -81,6 +82,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         try {
             payload = await this.tokenPort.verifyRefreshToken(command.refreshToken);
         } catch (error) {
+            // Hide token-type details from verification failures behind the generic refresh refusal.
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                 throw new UnauthenticatedException();
             }
@@ -139,7 +141,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 targetId: sub,
             });
 
-            throw new ResourceConflictException(RefreshTokensMessage.CONCURRENT_REFRESH);
+            throw new ResourceConflictException(RefreshTokensRejectionMessage.CONCURRENT_REFRESH);
         }
 
         if (outcome !== RotateOutcome.REUSE_DETECTED) {
@@ -147,10 +149,12 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         }
 
         // Commit the reuse evidence and revocation request before rejecting the credential.
+        const deliveryId = randomUUID();
+
         await this.transactionPort.run(async () => {
             await this.jobQueueWriterPort.enqueue([
                 {
-                    deliveryId: randomUUID(),
+                    deliveryId,
                     aggregateId: sub,
                     queueName: REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE[principalType],
                 },
@@ -158,6 +162,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             await this.auditPort.record({
                 action: AuditAction.REFRESH_REUSE_DETECTED,
                 targetId: sub,
+                detail: { deliveryId },
             });
         });
 
@@ -169,8 +174,10 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
 /**
  * Rejects unhandled rotation outcomes before any reuse remediation.
+ *
  * @param outcome Outcome missing an explicit handler branch.
  * @returns Never returns normally.
+ * @throws {SystemException} When a rotation outcome has no handling branch
  */
 function rejectUnhandledRotateOutcome(outcome: never): never {
     throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`, {

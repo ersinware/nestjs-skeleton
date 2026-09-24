@@ -21,34 +21,27 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import {
+    AccessDeniedException,
     ExceptionKind,
     InvalidInputException,
+    ResourceNotFoundException,
     isExceptionOfKind,
-    isExceptionWithAuditReason,
+    isExceptionWithAudit,
 } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 /**
  * Refusal reasons decided before aggregate validation.
  */
-const ConfirmAdminEmailChangeRejectionReason = {
-    /**
-     * Proof signature, type, expiry or claims failed verification.
-     */
-    INVALID_TOKEN: 'INVALID_TOKEN',
-
+enum ConfirmAdminEmailChangeRejectionReason {
     /**
      * Verified proof does not belong to the authenticated principal.
      */
-    PRINCIPAL_MISMATCH: 'PRINCIPAL_MISMATCH',
-
-    /**
-     * Verified proof names an account that no longer exists.
-     */
-    ACCOUNT_NOT_FOUND: 'ACCOUNT_NOT_FOUND',
-} as const;
+    PRINCIPAL_MISMATCH = 'PRINCIPAL_MISMATCH',
+}
 
 /**
  * Confirms against current primary state; account mutation, delivery, and audit share a commit.
@@ -66,7 +59,7 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
      * @param notificationWriterPort Stores the immutable old-address recipient
      * @param tokenPort Verifies the proof and signs replacement credentials
      * @param sessionPort Registers a replacement session after commit
-     * @param auditPort Records completed changes and expected refusals
+     * @param auditPort Records completed changes and security refusals
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -83,8 +76,12 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
      *
      * @param command Authenticated account and emailed token
      * @returns Replacement credentials or an instruction to sign in again
-     * @throws {InvalidInputException} When the token or current request is invalid
+     * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
+     * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
+     * @throws {ResourceNotFoundException} When the authenticated account no longer exists
      * @throws {ResourceConflictException} When the email is taken or the account changed concurrently
+     * @throws {SystemException} When the loaded account violates the confirmation contract, or the queue does not accept every required job
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: ConfirmAdminEmailChangeCommand): Promise<ConfirmAdminEmailChangeResult> {
         let payload;
@@ -93,24 +90,45 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
             payload = await this.tokenPort.verifyEmailConfirmationToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw await this.deny(ConfirmAdminEmailChangeRejectionReason.INVALID_TOKEN);
+                throw new InvalidInputException('The email confirmation is invalid or has expired.');
             }
 
             throw error;
         }
 
         if (payload.sub !== command.id) {
-            throw await this.deny(ConfirmAdminEmailChangeRejectionReason.PRINCIPAL_MISMATCH, payload.sub);
+            const error = new AccessDeniedException();
+
+            await this.auditPort.record(
+                {
+                    action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
+                    reason: ConfirmAdminEmailChangeRejectionReason.PRINCIPAL_MISMATCH,
+                    targetId: payload.sub,
+                },
+                { markExceptionAsAudited: error },
+            );
+
+            throw error;
         }
 
         if (payload.principalType !== PrincipalType.ADMIN) {
-            throw await this.deny(ConfirmAdminEmailChangeRejectionReason.PRINCIPAL_MISMATCH);
+            const error = new AccessDeniedException();
+
+            await this.auditPort.record(
+                {
+                    action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
+                    reason: ConfirmAdminEmailChangeRejectionReason.PRINCIPAL_MISMATCH,
+                },
+                { markExceptionAsAudited: error },
+            );
+
+            throw error;
         }
 
         const admin = await this.adminWriterPort.load(command.id);
 
         if (!admin) {
-            throw await this.deny(ConfirmAdminEmailChangeRejectionReason.ACCOUNT_NOT_FOUND);
+            throw new ResourceNotFoundException();
         }
 
         const notification = { id: uuidv7(), aggregateId: admin.id, previousEmail: admin.email };
@@ -118,8 +136,8 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
         try {
             admin.confirmEmailChange(payload, notification.id);
         } catch (error) {
-            if (isExceptionWithAuditReason(error)) {
-                throw await this.deny(error.auditReason);
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
             }
 
             throw error;
@@ -153,22 +171,5 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
             accessToken: tokenPairWithSession.accessToken,
             refreshToken: tokenPairWithSession.refreshToken,
         };
-    }
-
-    /**
-     * Persists the internal reason and returns the shared client-safe refusal.
-     *
-     * @param reason Internal refusal reason
-     * @param targetId Distinct account named by a mismatched verified proof
-     * @returns Uniform invalid confirmation response
-     */
-    private async deny(reason: string, targetId?: string): Promise<InvalidInputException> {
-        await this.auditPort.record({
-            action: AuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-            reason,
-            ...(targetId && { targetId }),
-        });
-
-        return new InvalidInputException('The email confirmation is invalid or has expired.');
     }
 }

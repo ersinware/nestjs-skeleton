@@ -109,7 +109,6 @@ type RevocationCase = {
     readonly sourceQueue: AdminSessionRevocationJobQueue | UserSessionRevocationJobQueue;
     readonly sessionQueue: AdminJobQueue.SESSION_RECONCILE | UserJobQueue.SESSION_RECONCILE;
     readonly noticeQueue: AdminJobQueue.REFRESH_REUSE_NOTICE | UserJobQueue.REFRESH_REUSE_NOTICE;
-    readonly consumerAudit: AuditAction.ADMIN_SESSIONS_REVOKED | AuditAction.USER_SESSIONS_REVOKED;
 };
 
 /**
@@ -142,7 +141,6 @@ const CASES: readonly RevocationCase[] = [
         sourceQueue: UserSessionRevocationJobQueue.LOGOUT_ALL,
         sessionQueue: UserJobQueue.SESSION_RECONCILE,
         noticeQueue: UserJobQueue.REFRESH_REUSE_NOTICE,
-        consumerAudit: AuditAction.USER_SESSIONS_REVOKED,
     },
     {
         principalType: PrincipalType.ADMIN,
@@ -150,7 +148,6 @@ const CASES: readonly RevocationCase[] = [
         sourceQueue: AdminSessionRevocationJobQueue.LOGOUT_ALL,
         sessionQueue: AdminJobQueue.SESSION_RECONCILE,
         noticeQueue: AdminJobQueue.REFRESH_REUSE_NOTICE,
-        consumerAudit: AuditAction.ADMIN_SESSIONS_REVOKED,
     },
     {
         principalType: PrincipalType.USER,
@@ -158,7 +155,6 @@ const CASES: readonly RevocationCase[] = [
         sourceQueue: UserSessionRevocationJobQueue.REFRESH_REUSE,
         sessionQueue: UserJobQueue.SESSION_RECONCILE,
         noticeQueue: UserJobQueue.REFRESH_REUSE_NOTICE,
-        consumerAudit: AuditAction.USER_SESSIONS_REVOKED,
     },
     {
         principalType: PrincipalType.ADMIN,
@@ -166,7 +162,6 @@ const CASES: readonly RevocationCase[] = [
         sourceQueue: AdminSessionRevocationJobQueue.REFRESH_REUSE,
         sessionQueue: AdminJobQueue.SESSION_RECONCILE,
         noticeQueue: AdminJobQueue.REFRESH_REUSE_NOTICE,
-        consumerAudit: AuditAction.ADMIN_SESSIONS_REVOKED,
     },
 ];
 
@@ -247,7 +242,7 @@ describe('Auth session-revocation jobs', () => {
 
     it.each(CASES)(
         'delivers $cause for $principalType only through its owner queue and commits every owner effect',
-        async ({ principalType, cause, sourceQueue, sessionQueue, noticeQueue, consumerAudit }) => {
+        async ({ principalType, cause, sourceQueue, sessionQueue, noticeQueue }) => {
             const aggregateId = uuidv7();
             aggregateIds.push(aggregateId);
             await insertPrincipal(aggregateId, principalType);
@@ -324,7 +319,7 @@ describe('Auth session-revocation jobs', () => {
                 aggregateId,
             });
             expect(ownerState).toEqual({ version: 1, sessionVersion: 1, revocationVersion: 1 });
-            expect(auditRows.map(({ action }) => action).sort()).toEqual([consumerAudit, expectedProducerAudit].sort());
+            expect(auditRows.map(({ action }) => action)).toEqual([expectedProducerAudit]);
             expect(sessionJobs).toHaveLength(1);
             expect(sessionJobs[0]?.data.aggregateId).toBe(aggregateId);
             expect(noticeJobs).toHaveLength(cause === 'refresh-reuse' ? 1 : 0);

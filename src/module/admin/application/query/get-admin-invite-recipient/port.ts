@@ -15,11 +15,12 @@ export const TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT = Symbol();
  */
 export interface IGetAdminInviteRecipientPort {
     /**
-     * Reads a pending, non-banned, non-deleted admin's invitation details.
+     * Reads a current, eligible invitation for the requested delivery.
      *
      * @param id The unique identifier of the target admin
-     * @returns The invitation details, or null when the admin is no longer eligible
+     * @param deliveryId The original invitation delivery identity
+     * @returns The invitation details, or null when delivery is no longer allowed
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    getInviteRecipient(id: string): Promise<GetAdminInviteRecipientResult | null>;
+    getInviteRecipient(id: string, deliveryId: string): Promise<GetAdminInviteRecipientResult | null>;
 }

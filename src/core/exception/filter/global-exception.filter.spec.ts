@@ -14,6 +14,7 @@ import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
 import { AuthTokenType, type AccessTokenPayload } from 'src/core/security/token';
+import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
@@ -314,6 +315,16 @@ describe('GlobalExceptionFilter', () => {
         });
 
         describe('audit-recorded refusals — 403 only', () => {
+            it('does not treat audit metadata as proof that a record was written', async () => {
+                await filter.catch(
+                    new AccessDeniedException('Banned', {
+                        audit: { action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED, reason: 'ACCOUNT_BANNED' },
+                    }),
+                    createHost(),
+                );
+                expect(mockAuditPort.record).toHaveBeenCalledTimes(1);
+            });
+
             it('should record an ACCESS_DENIED audit entry for a 403', async () => {
                 await filter.catch(new AccessDeniedException('Insufficient privileges.'), createHost());
 

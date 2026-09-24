@@ -47,18 +47,22 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * Redis session records expire by TTL; sweeping them could delete a concurrent new login.
      *
      * @param command The logout all command parameters
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the revocation job is not accepted
      */
     async execute(command: LogoutAllCommand) {
+        const deliveryId = randomUUID();
+
         await this.transactionPort.run(async () => {
             await this.jobQueueWriterPort.enqueue([
                 {
-                    deliveryId: randomUUID(),
+                    deliveryId,
                     aggregateId: command.id,
                     queueName: LOGOUT_ALL_QUEUE_BY_PRINCIPAL_TYPE[command.principalType],
                 },
             ]);
             // The verified principal already identifies the actor in the audit context.
-            await this.auditPort.record({ action: AuditAction.LOGOUT_ALL });
+            await this.auditPort.record({ action: AuditAction.LOGOUT_ALL, detail: { deliveryId } });
         });
     }
 }

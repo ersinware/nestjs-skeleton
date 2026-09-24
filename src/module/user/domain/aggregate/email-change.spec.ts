@@ -150,9 +150,7 @@ describe('User email change invariants', () => {
         account.pullJobs();
         vi.setSystemTime(claims.exp * 1000);
         const before = account.toSnapshot();
-        expect(() => account.confirmEmailChange(claims, notificationId)).toThrow(
-            expect.objectContaining({ auditReason: 'REQUEST_EXPIRED' }),
-        );
+        expect(() => account.confirmEmailChange(claims, notificationId)).toThrow(InvalidInputException);
         expect(account.toSnapshot()).toEqual(before);
         expect(account.pullJobs()).toEqual([]);
     });

@@ -13,6 +13,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { isExceptionWithAudit } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -38,14 +39,28 @@ export class CreateAdminCommandHandler implements ICommandHandler<CreateAdminCom
      *
      * @param command The command payload
      * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the delivery queue does not accept every required job
      */
     async execute(command: CreateAdminCommand) {
-        const admin = Admin.create({
-            id: uuidv7(),
-            email: command.email,
-            name: command.name,
-            password: null,
-        });
+        const id = uuidv7();
+
+        let admin;
+
+        try {
+            admin = Admin.create({
+                id,
+                email: command.email,
+                name: command.name,
+                password: null,
+            });
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);

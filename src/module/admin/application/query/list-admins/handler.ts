@@ -26,6 +26,7 @@ export class ListAdminsQueryHandler implements IQueryHandler<ListAdminsQuery, Li
      *
      * @param query The query carrying the pagination parameters
      * @returns The paginated list of admins
+     * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: ListAdminsQuery): Promise<ListAdminsResult> {
         return this.port.listAdmins(query.params);

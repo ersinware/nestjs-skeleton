@@ -17,6 +17,8 @@ import { AccessDeniedException } from 'src/shared/exception';
 @Injectable()
 export class AuthorizationGuard implements CanActivate {
     /**
+     * Reads the route restrictions applied to verified principals.
+     *
      * @param reflector Reads the endpoint access policy.
      */
     constructor(private readonly reflector: Reflector) {}

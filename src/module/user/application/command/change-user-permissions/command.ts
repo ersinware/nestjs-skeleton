@@ -31,6 +31,8 @@ export class ChangeUserPermissionsCommand extends Command<void> implements ICach
     }
 
     /**
+     * Identifies the cached user projection invalidated after this command succeeds.
+     *
      * @returns The cache keys to evict on success — the user's cached projection
      */
     invalidatedKeys(): readonly string[] {
