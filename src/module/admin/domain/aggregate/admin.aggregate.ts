@@ -125,6 +125,36 @@ type AdminSnapshot = {
 } & Readonly<AdminProps>;
 
 /**
+ * Account-owned administrative refusal reasons preserved in audit evidence.
+ */
+enum AdminAdministrationRejectionReason {
+    /**
+     * The actor attempted to administer their own account.
+     */
+    SELF_TARGET = 'SELF_TARGET',
+
+    /**
+     * The target account holds root authority.
+     */
+    ROOT_TARGET = 'ROOT_TARGET',
+
+    /**
+     * The actor lacks root authority to administer a permission manager.
+     */
+    MANAGER_REQUIRES_ROOT = 'MANAGER_REQUIRES_ROOT',
+
+    /**
+     * Root authority cannot be granted through an administrative mutation.
+     */
+    ROOT_PERMISSION_GRANT_FORBIDDEN = 'ROOT_PERMISSION_GRANT_FORBIDDEN',
+
+    /**
+     * The actor lacks root authority to appoint a permission manager.
+     */
+    MANAGER_APPOINTMENT_REQUIRES_ROOT = 'MANAGER_APPOINTMENT_REQUIRES_ROOT',
+}
+
+/**
  * Account-owned activation refusal reasons; only their string values leave the aggregate.
  */
 enum ActivateAdminRejectionReason {
@@ -548,7 +578,15 @@ export class Admin extends PrincipalAggregateRoot {
 
         // Root is provisioned outside this mutation and cannot be granted.
         if (permissions.includes(Permission.ADMIN_ROOT)) {
-            throw new AccessDeniedException('The root permission is held by exactly one account and is never granted.');
+            throw new AccessDeniedException(
+                'The root permission is held by exactly one account and is never granted.',
+                {
+                    audit: {
+                        action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                        reason: AdminAdministrationRejectionReason.ROOT_PERMISSION_GRANT_FORBIDDEN,
+                    },
+                },
+            );
         }
 
         // Only root may appoint a permission manager.
@@ -556,7 +594,12 @@ export class Admin extends PrincipalAggregateRoot {
             permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
             !actor.permissions.includes(Permission.ADMIN_ROOT)
         ) {
-            throw new AccessDeniedException('Only root may appoint a permission manager.');
+            throw new AccessDeniedException('Only root may appoint a permission manager.', {
+                audit: {
+                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAdministrationRejectionReason.MANAGER_APPOINTMENT_REQUIRES_ROOT,
+                },
+            });
         }
 
         const change = this.applyPermissions(permissions);
@@ -683,18 +726,33 @@ export class Admin extends PrincipalAggregateRoot {
         super.assertAdministrableBy(actor);
 
         if (actor.id === this.id) {
-            throw new AccessDeniedException('An admin cannot administer their own account.');
+            throw new AccessDeniedException('An admin cannot administer their own account.', {
+                audit: {
+                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAdministrationRejectionReason.SELF_TARGET,
+                },
+            });
         }
 
         if (this.permissions.includes(Permission.ADMIN_ROOT)) {
-            throw new AccessDeniedException('The root account cannot be administered.');
+            throw new AccessDeniedException('The root account cannot be administered.', {
+                audit: {
+                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAdministrationRejectionReason.ROOT_TARGET,
+                },
+            });
         }
 
         if (
             this.permissions.includes(Permission.ADMIN_PERMISSION_MANAGE) &&
             !actor.permissions.includes(Permission.ADMIN_ROOT)
         ) {
-            throw new AccessDeniedException('A permission manager is administered by root alone.');
+            throw new AccessDeniedException('A permission manager is administered by root alone.', {
+                audit: {
+                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAdministrationRejectionReason.MANAGER_REQUIRES_ROOT,
+                },
+            });
         }
     }
 

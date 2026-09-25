@@ -24,7 +24,7 @@
 - Use `@Audited` / `AuditInterceptor` only for reads/disclosures: await durable audit acceptance before emitting results; audit failure fails the response, handler failure creates no disclosure record. Filter 403 ownership: [Exceptions](exceptions.md#exceptions); its audit failures follow error reporting without replacing the original response.
 - `auditContextHook` (`main.ts`, `onRequest`) seeds transport before guards; authentication adds verified, session-checked identity before authorization. Never publish unverified payloads; interceptors are too late.
 - Audit actors travel via AsyncLocalStorage, never command payloads; absent non-HTTP actors leave unattributed records. Business actors remain explicit ([Authentication & Authorization](security-and-sessions.md#authentication--authorization)).
-- Callers supply only non-ambient facts. Audit actions include outcome; `actorType` identifies the actor's owning context. Use `targetId` for a distinct subject or actorless action; omit it when the subject is the actor.
+- Callers supply only non-ambient facts. Audit actions include outcome; `actorType` identifies the actor's owning context. Use `targetId` for a distinct subject or actorless action; omit it for self-service on the actor's own account. Administrative refusals and explicit-ID disclosures retain `targetId` even when it equals `actorId`.
 - Apply retention and data minimization: no tokens, passwords, or full PII payloads; restrict `AuditDetail` values to identifiers, enums, and relevant version counters. At the hook, prefer matched route templates, strip queries from unmatched paths, and cap user-agent length.
 
 ### Dependency Outages
