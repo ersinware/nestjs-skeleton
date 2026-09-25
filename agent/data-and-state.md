@@ -18,6 +18,7 @@
 
 ### Adapters
 
+- For read-model queries, filter eligibility in SQL unless the rejected state is needed for a distinct response or audit. Order applicable predicates as lookup key, soft-delete scope, then eligibility; preserve reads that require deleted rows. Predicate order is a readability convention, not an execution-order guarantee.
 - Keep module aggregate writers and query readers separate: writers load/save aggregates through one write port each; readers return read-models. Read-only modules need no writer ([CQRS](architecture.md#cqrs)).
 - Group source readers by source and relevant thin ports, never one adapter per port. Keep unrelated sources out; composition adapters may combine sources ([CQRS](architecture.md#cqrs)). Primary/replica readers: `<module>-reader.adapter.ts` / `<module>-replica-reader.adapter.ts`.
 - Core adapters follow capabilities (`cache`, `cache-health`, `cache-cleaner`), not forced reader/writer pairs; split divergent responsibilities into meaningful sub-concepts.

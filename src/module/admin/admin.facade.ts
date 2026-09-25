@@ -6,13 +6,13 @@
 import { Injectable } from '@nestjs/common';
 import { QueryPipeline } from 'src/core/cqrs';
 import {
-    GetAdminAuthStateQuery,
-    type GetAdminAuthStateResult,
-} from 'src/module/admin/application/query/get-admin-auth-state/query';
-import {
     GetAdminCredentialsByEmailQuery,
     type GetAdminCredentialsByEmailResult,
 } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
+import {
+    GetAdminRefreshStateQuery,
+    type GetAdminRefreshStateResult,
+} from 'src/module/admin/application/query/get-admin-refresh-state/query';
 
 /**
  * Read-only facade of the admin bounded context. Other modules inject this instead of anything
@@ -40,14 +40,15 @@ export class AdminFacade {
     }
 
     /**
-     * Resolves an admin's authentication state (ban status, session counters, permissions) by their unique identifier.
+     * Resolves current token claims for an account eligible to refresh the supplied token version.
      *
-     * @param id The unique identifier of the target admin
-     * @returns The admin ban status, session counters, and permissions
-     * @throws {ResourceNotFoundException} When no active admin exists with the given ID.
+     * @param id The account identifier
+     * @param tokenSessionVersion The verified refresh token's session version
+     * @returns Current token claims for the eligible account
+     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, or the token version is revoked
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    async getAuthState(id: string): Promise<GetAdminAuthStateResult> {
-        return this.queryPipeline.execute(new GetAdminAuthStateQuery(id));
+    async getRefreshState(id: string, tokenSessionVersion: number): Promise<GetAdminRefreshStateResult> {
+        return this.queryPipeline.execute(new GetAdminRefreshStateQuery(id, tokenSessionVersion));
     }
 }

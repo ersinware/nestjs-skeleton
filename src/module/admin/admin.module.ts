@@ -33,8 +33,6 @@ import { SendAdminInviteCommandHandler } from 'src/module/admin/application/comm
 import { SendAdminRefreshReuseNoticeCommandHandler } from 'src/module/admin/application/command/send-admin-refresh-reuse-notice/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
 import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
-import { GetAdminAuthStateQueryHandler } from 'src/module/admin/application/query/get-admin-auth-state/handler';
-import { TOKEN_GET_ADMIN_AUTH_STATE_PORT } from 'src/module/admin/application/query/get-admin-auth-state/port';
 import { GetAdminByIdQueryHandler } from 'src/module/admin/application/query/get-admin-by-id/handler';
 import { TOKEN_GET_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-admin-by-id/port';
 import { GetAdminCredentialsByEmailQueryHandler } from 'src/module/admin/application/query/get-admin-credentials-by-email/handler';
@@ -43,6 +41,8 @@ import { TOKEN_GET_ADMIN_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT } from 'src/mo
 import { TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/port';
 import { TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
 import { TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
+import { GetAdminRefreshStateQueryHandler } from 'src/module/admin/application/query/get-admin-refresh-state/handler';
+import { TOKEN_GET_ADMIN_REFRESH_STATE_PORT } from 'src/module/admin/application/query/get-admin-refresh-state/port';
 import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/application/query/get-admin-session-version/port';
 import { GetFreshAdminByIdQueryHandler } from 'src/module/admin/application/query/get-fresh-admin-by-id/handler';
 import { TOKEN_GET_FRESH_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
@@ -115,24 +115,24 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         GetAdminByIdQueryHandler,
         GetFreshAdminByIdQueryHandler,
         GetAdminCredentialsByEmailQueryHandler,
-        GetAdminAuthStateQueryHandler,
+        GetAdminRefreshStateQueryHandler,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
         {
             provide: TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
             useClass: AdminEmailChangeNotificationWriterAdapter,
         },
-        { provide: TOKEN_GET_ADMIN_AUTH_STATE_PORT, useClass: AdminReaderAdapter },
-        { provide: TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_REFRESH_STATE_PORT, useClass: AdminReaderAdapter },
+        { provide: TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         {
             provide: TOKEN_GET_ADMIN_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT,
-            useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT,
+            useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT,
         },
-        { provide: TOKEN_GET_FRESH_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useExisting: TOKEN_GET_ADMIN_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_FRESH_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReplicaReaderAdapter },
         { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useExisting: TOKEN_LIST_ADMINS_PORT },
     ],

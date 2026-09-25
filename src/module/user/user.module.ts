@@ -32,8 +32,6 @@ import { UnbanUserCommandHandler } from 'src/module/user/application/command/unb
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
 import { GetFreshUserByIdQueryHandler } from 'src/module/user/application/query/get-fresh-user-by-id/handler';
 import { TOKEN_GET_FRESH_USER_BY_ID_PORT } from 'src/module/user/application/query/get-fresh-user-by-id/port';
-import { GetUserAuthStateQueryHandler } from 'src/module/user/application/query/get-user-auth-state/handler';
-import { TOKEN_GET_USER_AUTH_STATE_PORT } from 'src/module/user/application/query/get-user-auth-state/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
 import { TOKEN_GET_USER_BY_ID_PORT } from 'src/module/user/application/query/get-user-by-id/port';
 import { GetUserCredentialsByEmailQueryHandler } from 'src/module/user/application/query/get-user-credentials-by-email/handler';
@@ -41,6 +39,8 @@ import { TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/user/applic
 import { TOKEN_GET_USER_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-email-change-notification-recipient/port';
 import { TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-email-confirmation-recipient/port';
 import { TOKEN_GET_USER_NOTICE_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-notice-recipient/port';
+import { GetUserRefreshStateQueryHandler } from 'src/module/user/application/query/get-user-refresh-state/handler';
+import { TOKEN_GET_USER_REFRESH_STATE_PORT } from 'src/module/user/application/query/get-user-refresh-state/port';
 import { TOKEN_GET_USER_SESSION_VERSION_PORT } from 'src/module/user/application/query/get-user-session-version/port';
 import { TOKEN_IS_USER_EMAIL_IN_USE_PORT } from 'src/module/user/application/query/is-user-email-in-use/port';
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
@@ -111,24 +111,24 @@ import { UserFacade } from 'src/module/user/user.facade';
         GetUserByIdQueryHandler,
         GetFreshUserByIdQueryHandler,
         GetUserCredentialsByEmailQueryHandler,
-        GetUserAuthStateQueryHandler,
+        GetUserRefreshStateQueryHandler,
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
         {
             provide: TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
             useClass: UserEmailChangeNotificationWriterAdapter,
         },
-        { provide: TOKEN_GET_USER_AUTH_STATE_PORT, useClass: UserReaderAdapter },
-        { provide: TOKEN_IS_USER_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_USER_REFRESH_STATE_PORT, useClass: UserReaderAdapter },
+        { provide: TOKEN_IS_USER_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         {
             provide: TOKEN_GET_USER_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT,
-            useExisting: TOKEN_GET_USER_AUTH_STATE_PORT,
+            useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT,
         },
-        { provide: TOKEN_GET_FRESH_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
-        { provide: TOKEN_GET_USER_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_AUTH_STATE_PORT },
+        { provide: TOKEN_GET_FRESH_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
+        { provide: TOKEN_GET_USER_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_LIST_USERS_PORT, useClass: UserReplicaReaderAdapter },
     ],
     exports: [UserFacade],

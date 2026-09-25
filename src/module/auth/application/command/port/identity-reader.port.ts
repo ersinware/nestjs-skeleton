@@ -42,18 +42,9 @@ export type AuthIdentity = {
 };
 
 /**
- * The slice of an identity the refresh flow re-reads on every rotation: enough to reject a banned
- * account or a refresh token minted before the last full revocation, plus the version to mint the
- * new pair at and the permissions the fresh access token must carry. Derived from
- * {@link AuthIdentity} so the two contracts cannot drift apart; `revocationVersion` is refresh's
- * alone, since login always mints at the current version.
+ * Current claims returned only when the account and supplied token version permit refresh.
  */
-export type AuthState = Pick<AuthIdentity, 'permissions' | 'isBanned' | 'sessionVersion'> & {
-    /**
-     * The session version of the last full revocation; a refresh token below it is dead
-     */
-    readonly revocationVersion: number;
-};
+export type RefreshState = Pick<AuthIdentity, 'permissions' | 'sessionVersion'>;
 
 /**
  * The single read surface authentication needs over every kind of principal.
@@ -75,13 +66,14 @@ export interface IIdentityReaderPort {
     getCredentialsByEmail(principalType: PrincipalType, email: string): Promise<AuthIdentity>;
 
     /**
-     * Retrieves an identity's ban status, session counters and permissions by its unique identifier.
+     * Reads current claims for an account eligible to refresh the supplied token version.
      *
      * @param principalType The bounded context that owns the identity
      * @param id The unique identifier of the target identity
-     * @returns The ban status, session counters and permissions
-     * @throws {ResourceNotFoundException} If no identity is found
+     * @param tokenSessionVersion The verified refresh token's session version
+     * @returns Current token claims for the eligible account
+     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, or the token version is revoked
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    getAuthState(principalType: PrincipalType, id: string): Promise<AuthState>;
+    getRefreshState(principalType: PrincipalType, id: string, tokenSessionVersion: number): Promise<RefreshState>;
 }

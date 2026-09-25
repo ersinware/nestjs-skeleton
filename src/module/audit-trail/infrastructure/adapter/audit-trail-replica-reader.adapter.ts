@@ -31,8 +31,8 @@ export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPor
     constructor(@Inject(TOKEN_DATABASE_REPLICA_CLIENT) private readonly database: NodePgDatabase) {}
 
     /**
-     * Reads one newest-first page of record summaries. Every filter targets an indexed column and
-     * the sort matches the index order, so the read never scans the trail.
+     * Reads one newest-first page of record summaries. Available indexes support the filters and
+     * ordering; the planner chooses the access path based on selectivity and statistics.
      *
      * @param params The filters and pagination parameters
      * @returns The page of records plus the total row count matching the filters

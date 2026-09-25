@@ -42,7 +42,7 @@ export class UserReplicaReaderAdapter implements IListUsersPort {
             searchFilter = or(ilike(user.name, pattern), ilike(user.email, pattern));
         }
 
-        const conditions = and(searchFilter, isNull(user.deletedAt));
+        const conditions = and(isNull(user.deletedAt), searchFilter);
 
         try {
             const [data, countResult] = await Promise.all([

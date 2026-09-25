@@ -94,25 +94,13 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
         let identity;
         try {
-            identity = await this.identityReaderPort.getAuthState(principalType, sub);
+            identity = await this.identityReaderPort.getRefreshState(principalType, sub, payload.sessionVersion);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw new UnauthenticatedException();
             }
 
             throw error;
-        }
-
-        if (identity.isBanned) {
-            throw new UnauthenticatedException();
-        }
-
-        // The DB is the authority. The floor is the last FULL revocation, not the current version:
-        // a permission change advances the version alone, so the access tokens it retired are
-        // refreshed here into ones carrying the new set, while a ban or password change moves the
-        // floor and kills this refresh token too.
-        if (payload.sessionVersion < identity.revocationVersion) {
-            throw new UnauthenticatedException();
         }
 
         // The access token is minted from the freshly read permissions, never from the old token:

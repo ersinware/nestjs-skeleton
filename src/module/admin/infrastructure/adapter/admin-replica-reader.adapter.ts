@@ -72,7 +72,7 @@ export class AdminReplicaReaderAdapter implements IGetAdminByIdPort, IListAdmins
             searchFilter = or(ilike(admin.name, pattern), ilike(admin.email, pattern));
         }
 
-        const conditions = and(searchFilter, isNull(admin.deletedAt));
+        const conditions = and(isNull(admin.deletedAt), searchFilter);
 
         try {
             const [data, countResult] = await Promise.all([
