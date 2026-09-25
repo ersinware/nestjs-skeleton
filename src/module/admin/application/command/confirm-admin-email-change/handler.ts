@@ -104,6 +104,7 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
                     action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
                     reason: ConfirmAdminEmailChangeRejectionReason.PRINCIPAL_MISMATCH,
                     targetId: payload.sub,
+                    detail: { targetPrincipalType: payload.principalType },
                 },
                 { markExceptionAsAudited: error },
             );
@@ -118,6 +119,8 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
                 {
                     action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
                     reason: ConfirmAdminEmailChangeRejectionReason.PRINCIPAL_MISMATCH,
+                    targetId: payload.sub,
+                    detail: { targetPrincipalType: payload.principalType },
                 },
                 { markExceptionAsAudited: error },
             );

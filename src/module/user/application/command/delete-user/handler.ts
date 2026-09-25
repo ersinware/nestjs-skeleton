@@ -63,7 +63,7 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
             user.markAsDeleted();
         } catch (error) {
             if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
             }
 
             throw error;
