@@ -74,6 +74,9 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
      * @returns The email payload to send
      */
     private buildInviteEmail(to: string, name: string, token: string): EmailPayload {
+        const url = new URL(this.configService.getOrThrow<string>(ENV.ADMIN_INVITE_URL));
+        url.searchParams.set('token', token);
+
         return {
             to,
             subject: 'You have been invited as an administrator',
@@ -81,7 +84,7 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
                 `<p>Hi ${escapeHtml(name)},</p>` +
                 `<p>An administrator account has been created for this email address. ` +
                 `To activate it, choose your password using the link below:</p>` +
-                `<p><a href="${escapeHtml(`${this.configService.getOrThrow<string>(ENV.ADMIN_INVITE_URL)}?token=${encodeURIComponent(token)}`)}">Activate your account</a></p>` +
+                `<p><a href="${escapeHtml(url.toString())}">Activate your account</a></p>` +
                 `<p>The link expires after a limited time. If it has expired, ask the administrator ` +
                 `who invited you to send a new one. If you did not expect this invitation, you can ` +
                 `safely ignore this email.</p>`,

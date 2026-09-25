@@ -1,12 +1,13 @@
 /**
  * @file eslint.config.spec.ts
- * @description Verifies that `boundaries/elements` in eslint.config.mjs still describes the folders actually on disk under core/ and shared/.
+ * @description Verifies filesystem alignment and module shared import boundaries against the real ESLint configuration.
  */
 
-import { existsSync, readdirSync } from 'node:fs';
+import { ESLint, type Linter } from 'eslint';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * The two pillars whose folders are declared one by one. `module/` is excluded on purpose:
@@ -137,5 +138,117 @@ describe('boundaries/elements', () => {
         // `<shelf>/*` pattern makes it an element, so it is reachable at any depth with no barrel
         // to cross. It has to become one or the other.
         expect(barrelless).toEqual([]);
+    });
+});
+
+describe('module shared boundaries', () => {
+    let eslint: ESLint;
+    const sharedDirectory = 'src/module/admin/shared';
+    const sharedDirectoryExisted = existsSync(sharedDirectory);
+    // Real files let the resolver verify boundaries independently of production vocabulary.
+    mkdirSync(sharedDirectory, { recursive: true });
+    const fixtureDirectory = mkdtempSync(`${sharedDirectory}/boundary-fixture-`);
+    const sharedContract = `${fixtureDirectory}/contract`;
+    writeFileSync(`${sharedContract}.ts`, 'export type Contract = string;\n');
+
+    afterAll(() => {
+        rmSync(fixtureDirectory, { recursive: true });
+        if (!sharedDirectoryExisted) {
+            rmdirSync(sharedDirectory);
+        }
+    });
+
+    beforeAll(async () => {
+        const config = (await new ESLint().calculateConfigForFile('src/module/admin/shared/probe.ts')) as Linter.Config;
+
+        // Keep the production parser, resolution and boundary settings. Synthetic source paths
+        // need no TypeScript program; unrelated style rules would obscure permission failures.
+        eslint = new ESLint({
+            overrideConfigFile: true,
+            overrideConfig: [
+                {
+                    plugins: config.plugins ?? {},
+                    settings: config.settings ?? {},
+                    files: ['src/**/*.ts'],
+                    languageOptions: {
+                        ...config.languageOptions,
+                        parserOptions: { project: false, projectService: false },
+                    },
+                    rules: Object.fromEntries(
+                        Object.entries(config.rules ?? {}).filter(
+                            ([name]) => name.startsWith('boundaries/') || name === 'import-x/no-unresolved',
+                        ),
+                    ),
+                },
+            ],
+        });
+    });
+
+    const moduleFiles = [
+        'domain/aggregate/probe.ts',
+        'application/query/probe.ts',
+        'infrastructure/adapter/probe.ts',
+        'presentation/dto/probe.ts',
+        'shared/probe.ts',
+        'shared/vocabulary/nested/probe.ts',
+        'MODULE.facade.ts',
+        'MODULE.module.ts',
+    ];
+    const cases = [
+        ...moduleFiles.flatMap((file) =>
+            ['admin', 'user'].map((module) => ({
+                from: `src/module/${module}/${file.replace('MODULE', module)}`,
+                to: sharedContract,
+                allowed: module === 'admin',
+            })),
+        ),
+        ...[
+            'src/module/admin/index.ts',
+            'src/module/user/index.ts',
+            'src/core/http/probe.ts',
+            'src/core/cqrs/probe.ts',
+            'src/shared/domain/principal/probe.ts',
+            'src/instrument.ts',
+            'src/tracing.ts',
+        ].map((from) => ({ from, to: sharedContract, allowed: false })),
+        ...['src/shared/domain/principal', 'src/shared/exception', 'node:crypto'].map((to) => ({
+            from: 'src/module/admin/shared/probe.ts',
+            to,
+            allowed: true,
+        })),
+        ...[
+            'src/module/admin/domain/aggregate/admin.aggregate',
+            'src/module/admin/application/query/list-admins/query',
+            'src/module/admin/infrastructure/admin.schema',
+            'src/module/admin/presentation/dto/response-admin.dto',
+            'src/module/admin/admin.facade',
+            'src/module/admin/admin.module',
+            'src/module/admin',
+            'src/module/user',
+            'src/core/http',
+            'src/core/cqrs',
+            'src/shared/domain/principal/permission.enum',
+            '@nestjs/common',
+        ].map((to) => ({ from: 'src/module/admin/shared/probe.ts', to, allowed: false })),
+    ];
+
+    // Type imports and re-exports must not create an alternative route around isolation.
+    describe.each(['value import', 'type import', 're-export'])('%s', (syntax) => {
+        it.each(cases)('$from → $to (allowed: $allowed)', async ({ from, to, allowed }) => {
+            const source =
+                syntax === 'value import'
+                    ? `import '${to}';`
+                    : syntax === 'type import'
+                      ? `import type { Contract } from '${to}';`
+                      : `export { Contract } from '${to}';`;
+            const results = await eslint.lintText(source, { filePath: from });
+
+            expect(results).toHaveLength(1);
+            // A denied case must fail for the architectural rule itself, never an unresolved
+            // dependency, unclassified path or parser error that accidentally looks like a denial.
+            expect(results[0]?.messages.map(({ ruleId }) => ruleId)).toEqual(
+                allowed ? [] : ['boundaries/dependencies'],
+            );
+        });
     });
 });

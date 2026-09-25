@@ -48,15 +48,15 @@ export class JobQueueOperationsAdapter
      */
     async getDeadLetterReadyCount(): Promise<number> {
         try {
-            const [stats] = await this.boss.getQueueStats(JOB_QUEUE_DEAD_LETTER, { force: true });
+            const row = (await this.boss.getQueueStats(JOB_QUEUE_DEAD_LETTER, { force: true }))[0];
 
-            if (!stats) {
+            if (!row) {
                 throw new SystemException('The job queue returned no dead-letter statistics.', {
                     context: { class: this.constructor.name, method: this.getDeadLetterReadyCount.name },
                 });
             }
 
-            return stats.readyCount;
+            return row.readyCount;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -69,15 +69,15 @@ export class JobQueueOperationsAdapter
      */
     async getDeadLetterRedriveFailedCount(): Promise<number> {
         try {
-            const [stats] = await this.boss.getQueueStats(JOB_QUEUE_DEAD_LETTER_REDRIVE, { force: true });
+            const row = (await this.boss.getQueueStats(JOB_QUEUE_DEAD_LETTER_REDRIVE, { force: true }))[0];
 
-            if (!stats) {
+            if (!row) {
                 throw new SystemException('The job queue returned no redrive-operation statistics.', {
                     context: { class: this.constructor.name, method: this.getDeadLetterRedriveFailedCount.name },
                 });
             }
 
-            return stats.failedCount;
+            return row.failedCount;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -95,21 +95,21 @@ export class JobQueueOperationsAdapter
                 FROM pgboss.job
                 WHERE name = ${JOB_QUEUE_DEAD_LETTER}
             `),
-                value = result.rows[0]?.oldest_created_on;
+                oldest = result.rows[0]?.oldest_created_on;
 
             // MIN returns null for an empty queue; a missing row yields undefined and must fail validation.
-            if (value === null) {
+            if (oldest === null) {
                 return null;
             }
 
-            const oldest = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
-            if (oldest === null || Number.isNaN(oldest.getTime())) {
+            const _oldest = oldest instanceof Date ? oldest : typeof oldest === 'string' ? new Date(oldest) : null;
+            if (_oldest === null || Number.isNaN(_oldest.getTime())) {
                 throw new SystemException('The job queue returned an invalid oldest dead-letter timestamp.', {
                     context: { class: this.constructor.name, method: this.getOldestDeadLetterCreatedOn.name },
                 });
             }
 
-            return oldest;
+            return _oldest;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -254,9 +254,9 @@ export class JobQueueOperationsAdapter
      */
     async getDeadLetterJob(id: string): Promise<DeadLetterJob | null> {
         try {
-            const [job] = await this.boss.findJobs<unknown>(JOB_QUEUE_DEAD_LETTER, { id });
+            const row = (await this.boss.findJobs<unknown>(JOB_QUEUE_DEAD_LETTER, { id }))[0];
 
-            return !job ? null : this.toDeadLetterJob(job);
+            return !row ? null : this.toDeadLetterJob(row);
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -270,15 +270,15 @@ export class JobQueueOperationsAdapter
      */
     async getDeadLetterRedrive(operationId: string): Promise<DeadLetterRedriveOperation | null> {
         try {
-            const [job] = await this.boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId });
+            const row = (await this.boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId }))[0];
 
-            return !job
+            return !row
                 ? null
                 : {
-                      id: job.id,
-                      state: job.state,
-                      createdOn: job.createdOn,
-                      completedOn: job.completedOn,
+                      id: row.id,
+                      state: row.state,
+                      createdOn: row.createdOn,
+                      completedOn: row.completedOn,
                   };
         } catch (error) {
             throw translateConnectionFailure(error);

@@ -59,7 +59,7 @@ export class AuditTrailReplicaReaderAdapter implements IListAuditTrailRecordsPor
                     })
                     .from(audit)
                     .where(conditions)
-                    .orderBy(desc(audit.occurredAt), desc(audit.id))
+                    .orderBy(desc(audit.id))
                     .limit(params.limit)
                     .offset((params.page - 1) * params.limit),
                 this.database.select({ total: count() }).from(audit).where(conditions),

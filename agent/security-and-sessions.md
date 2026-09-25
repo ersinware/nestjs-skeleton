@@ -45,10 +45,11 @@
 
 ### Admin Invitations
 
+- Create the pending admin at invitation time so the account email unique constraint reserves the address. Activation completes that same account; re-invitation remains subject to account administration rules.
 - Persist invitation metadata, never the JWT: UUID v4 `inviteId` (= job `deliveryId`), whole-second `inviteExpiresAt`, and `inviteRevocationVersion`. The aggregate owns the fixed three-day lifetime; no TTL configuration or handler-supplied timestamps. Metadata is all null or all populated for a passwordless account.
 - `inviteRevocationVersion` captures the account's `revocationVersion` at issuance; never substitute the current version on delivery. Re-invite calls `revokeAllSessions` before replacing the invitation; pending accounts need no Redis sync. Persist state, job, and audit atomically ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
-- Activation handlers verify the JWT, load from primary, and hash the password. The aggregate checks account eligibility, exact invitation binding, and expiry before setting the password and clearing metadata; persistence uses the optimistic lock without a counter bump.
+- Delivery checks do not authorize activation: an in-flight email can race with account changes. Activation must independently recheck account eligibility, exact invitation binding, and expiry; save under the loaded optimistic version without advancing session counters.
 - Audit only banned-account activation refusals; preserve refusal kinds instead of flattening them into one invalid-input response ([Exceptions](exceptions.md#exceptions)).
 
 ### Email Change State
