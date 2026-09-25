@@ -4,11 +4,9 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
-import { type IGetAdminAuthStatePort } from 'src/module/admin/application/query/get-admin-auth-state/port';
-import { type GetAdminAuthStateResult } from 'src/module/admin/application/query/get-admin-auth-state/query';
 import { type IGetAdminCredentialsByEmailPort } from 'src/module/admin/application/query/get-admin-credentials-by-email/port';
 import { type GetAdminCredentialsByEmailResult } from 'src/module/admin/application/query/get-admin-credentials-by-email/query';
 import type { IGetAdminEmailChangeNotificationRecipientPort } from 'src/module/admin/application/query/get-admin-email-change-notification-recipient/port';
@@ -19,6 +17,8 @@ import { type IGetAdminInviteRecipientPort } from 'src/module/admin/application/
 import { type GetAdminInviteRecipientResult } from 'src/module/admin/application/query/get-admin-invite-recipient/query';
 import { type IGetAdminNoticeRecipientPort } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
 import { type GetAdminNoticeRecipientResult } from 'src/module/admin/application/query/get-admin-notice-recipient/query';
+import { type IGetAdminRefreshStatePort } from 'src/module/admin/application/query/get-admin-refresh-state/port';
+import { type GetAdminRefreshStateResult } from 'src/module/admin/application/query/get-admin-refresh-state/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
 import { type GetAdminSessionVersionResult } from 'src/module/admin/application/query/get-admin-session-version/query';
 import { type IGetFreshAdminByIdPort } from 'src/module/admin/application/query/get-fresh-admin-by-id/port';
@@ -36,7 +36,7 @@ export class AdminReaderAdapter
         IIsAdminEmailInUsePort,
         IGetAdminEmailChangeNotificationRecipientPort,
         IGetAdminEmailConfirmationRecipientPort,
-        IGetAdminAuthStatePort,
+        IGetAdminRefreshStatePort,
         IGetAdminCredentialsByEmailPort,
         IGetFreshAdminByIdPort,
         IGetAdminInviteRecipientPort,
@@ -129,9 +129,9 @@ export class AdminReaderAdapter
                     .where(
                         and(
                             eq(admin.id, id),
+                            isNull(admin.deletedAt),
                             eq(admin.isBanned, false),
                             isNull(admin.password),
-                            isNull(admin.deletedAt),
                             isNotNull(admin.inviteId),
                             isNotNull(admin.inviteExpiresAt),
                             isNotNull(admin.inviteRevocationVersion),
@@ -193,24 +193,30 @@ export class AdminReaderAdapter
     }
 
     /**
-     * Reads an admin's authentication state.
+     * Reads current claims only when the account and token version permit refresh.
      *
-     * @param id The unique identifier of the target admin
-     * @returns The auth state, or null when no non-deleted admin exists
+     * @param id The account identifier
+     * @param tokenSessionVersion The verified refresh token's session version
+     * @returns Current token claims, or null when refresh is not allowed
      */
-    async getAuthState(id: string): Promise<GetAdminAuthStateResult | null> {
+    async getRefreshState(id: string, tokenSessionVersion: number): Promise<GetAdminRefreshStateResult | null> {
         try {
             return (
                 (
                     await this.database
                         .select({
-                            isBanned: admin.isBanned,
                             sessionVersion: admin.sessionVersion,
-                            revocationVersion: admin.revocationVersion,
                             permissions: admin.permissions,
                         })
                         .from(admin)
-                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
+                        .where(
+                            and(
+                                eq(admin.id, id),
+                                isNull(admin.deletedAt),
+                                eq(admin.isBanned, false),
+                                lte(admin.revocationVersion, tokenSessionVersion),
+                            ),
+                        )
                         .limit(1)
                 )[0] ?? null
             );

@@ -4,12 +4,10 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetFreshUserByIdPort } from 'src/module/user/application/query/get-fresh-user-by-id/port';
-import { type IGetUserAuthStatePort } from 'src/module/user/application/query/get-user-auth-state/port';
-import { type GetUserAuthStateResult } from 'src/module/user/application/query/get-user-auth-state/query';
 import { type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
 import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
@@ -20,6 +18,8 @@ import type { IGetUserEmailConfirmationRecipientPort } from 'src/module/user/app
 import type { GetUserEmailConfirmationRecipientResult } from 'src/module/user/application/query/get-user-email-confirmation-recipient/query';
 import { type IGetUserNoticeRecipientPort } from 'src/module/user/application/query/get-user-notice-recipient/port';
 import { type GetUserNoticeRecipientResult } from 'src/module/user/application/query/get-user-notice-recipient/query';
+import { type IGetUserRefreshStatePort } from 'src/module/user/application/query/get-user-refresh-state/port';
+import { type GetUserRefreshStateResult } from 'src/module/user/application/query/get-user-refresh-state/query';
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
 import type { IIsUserEmailInUsePort } from 'src/module/user/application/query/is-user-email-in-use/port';
@@ -40,7 +40,7 @@ export class UserReaderAdapter
         IGetUserEmailChangeNotificationRecipientPort,
         IGetUserEmailConfirmationRecipientPort,
         IGetFreshUserByIdPort,
-        IGetUserAuthStatePort,
+        IGetUserRefreshStatePort,
         IGetUserByIdPort,
         IGetUserCredentialsByEmailPort,
         IGetUserNoticeRecipientPort,
@@ -156,24 +156,30 @@ export class UserReaderAdapter
     }
 
     /**
-     * Reads a user's ban status, session counters and permissions by ID.
+     * Reads current claims only when the account and token version permit refresh.
      *
-     * @param id The unique identifier
-     * @returns The auth state, or null if not found
+     * @param id The account identifier
+     * @param tokenSessionVersion The verified refresh token's session version
+     * @returns Current token claims, or null when refresh is not allowed
      */
-    async getAuthState(id: string): Promise<GetUserAuthStateResult | null> {
+    async getRefreshState(id: string, tokenSessionVersion: number): Promise<GetUserRefreshStateResult | null> {
         try {
             return (
                 (
                     await this.database
                         .select({
-                            isBanned: user.isBanned,
                             sessionVersion: user.sessionVersion,
-                            revocationVersion: user.revocationVersion,
                             permissions: user.permissions,
                         })
                         .from(user)
-                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
+                        .where(
+                            and(
+                                eq(user.id, id),
+                                isNull(user.deletedAt),
+                                eq(user.isBanned, false),
+                                lte(user.revocationVersion, tokenSessionVersion),
+                            ),
+                        )
                         .limit(1)
                 )[0] ?? null
             );

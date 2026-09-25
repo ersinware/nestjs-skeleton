@@ -54,7 +54,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
  */
 const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
     refreshTokens = vi.fn<ITokenPort['refreshTokens']>(),
-    getAuthState = vi.fn<IIdentityReaderPort['getAuthState']>(),
+    getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>(),
     rotateSession = vi.fn<ISessionPort['rotateSession']>(),
     tokenPort: ITokenPort = {
         generateTokens: vi.fn(),
@@ -69,7 +69,7 @@ const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
     },
     identityReaderPort: IIdentityReaderPort = {
         getCredentialsByEmail: vi.fn(),
-        getAuthState,
+        getRefreshState,
     },
     sessionPort: ISessionPort = {
         openSession: vi.fn(),
@@ -269,11 +269,9 @@ describe('Auth session-revocation jobs', () => {
                     sessionVersion: 0,
                     type: AuthTokenType.REFRESH,
                 });
-                getAuthState.mockResolvedValueOnce({
+                getRefreshState.mockResolvedValueOnce({
                     permissions: [],
-                    isBanned: false,
                     sessionVersion: 0,
-                    revocationVersion: 0,
                 });
                 refreshTokens.mockResolvedValueOnce({
                     accessToken: 'unused-access-token',
@@ -304,7 +302,12 @@ describe('Auth session-revocation jobs', () => {
             const sourceJobs = await findJobs(sourceQueue, aggregateId),
                 ownerState = await readPrincipalState(aggregateId, principalType),
                 auditRows = await database
-                    .select({ action: audit.action })
+                    .select({
+                        action: audit.action,
+                        actorId: audit.actorId,
+                        targetId: audit.targetId,
+                        detail: audit.detail,
+                    })
                     .from(audit)
                     .where(or(eq(audit.actorId, aggregateId), eq(audit.targetId, aggregateId))),
                 sessionJobs = await findJobs(sessionQueue, aggregateId),
@@ -319,7 +322,28 @@ describe('Auth session-revocation jobs', () => {
                 aggregateId,
             });
             expect(ownerState).toEqual({ version: 1, sessionVersion: 1, revocationVersion: 1 });
-            expect(auditRows.map(({ action }) => action)).toEqual([expectedProducerAudit]);
+            expect(auditRows).toHaveLength(2);
+            expect(auditRows).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        action: expectedProducerAudit,
+                        detail: { deliveryId: sourceJobs[0]?.data.deliveryId },
+                    }),
+                    {
+                        action:
+                            principalType === PrincipalType.ADMIN
+                                ? AuditAction.ADMIN_SESSIONS_REVOKED
+                                : AuditAction.USER_SESSIONS_REVOKED,
+                        actorId: null,
+                        targetId: aggregateId,
+                        detail: {
+                            deliveryId: sourceJobs[0]?.data.deliveryId,
+                            reason: cause === 'logout-all' ? 'logout_all' : 'refresh_reuse',
+                            sessionVersion: '1',
+                        },
+                    },
+                ]),
+            );
             expect(sessionJobs).toHaveLength(1);
             expect(sessionJobs[0]?.data.aggregateId).toBe(aggregateId);
             expect(noticeJobs).toHaveLength(cause === 'refresh-reuse' ? 1 : 0);

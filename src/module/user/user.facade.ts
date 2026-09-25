@@ -6,13 +6,13 @@
 import { Injectable } from '@nestjs/common';
 import { QueryPipeline } from 'src/core/cqrs';
 import {
-    GetUserAuthStateQuery,
-    type GetUserAuthStateResult,
-} from 'src/module/user/application/query/get-user-auth-state/query';
-import {
     GetUserCredentialsByEmailQuery,
     type GetUserCredentialsByEmailResult,
 } from 'src/module/user/application/query/get-user-credentials-by-email/query';
+import {
+    GetUserRefreshStateQuery,
+    type GetUserRefreshStateResult,
+} from 'src/module/user/application/query/get-user-refresh-state/query';
 
 /**
  * Read-only facade of the user bounded context. Other modules inject this instead of anything
@@ -40,14 +40,15 @@ export class UserFacade {
     }
 
     /**
-     * Resolves a user's authentication state (ban status, session counters, permissions) by their unique identifier.
+     * Resolves current token claims for an account eligible to refresh the supplied token version.
      *
-     * @param id The unique identifier of the target user
-     * @returns The user's ban status, session counters and permissions
-     * @throws {ResourceNotFoundException} When no active user exists with the given ID
+     * @param id The account identifier
+     * @param tokenSessionVersion The verified refresh token's session version
+     * @returns Current token claims for the eligible account
+     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, or the token version is revoked
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    async getAuthState(id: string): Promise<GetUserAuthStateResult> {
-        return this.queryPipeline.execute(new GetUserAuthStateQuery(id));
+    async getRefreshState(id: string, tokenSessionVersion: number): Promise<GetUserRefreshStateResult> {
+        return this.queryPipeline.execute(new GetUserRefreshStateQuery(id, tokenSessionVersion));
     }
 }

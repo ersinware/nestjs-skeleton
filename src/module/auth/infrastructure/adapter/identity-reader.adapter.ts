@@ -7,8 +7,8 @@ import { Injectable } from '@nestjs/common';
 import { AdminFacade } from 'src/module/admin';
 import type {
     AuthIdentity,
-    AuthState,
     IIdentityReaderPort,
+    RefreshState,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import { UserFacade } from 'src/module/user';
 import { PrincipalType } from 'src/shared/domain/principal';
@@ -55,18 +55,23 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
     }
 
     /**
-     * Retrieves an identity's ban status, session counters and permissions by its unique identifier.
+     * Reads current claims for an account eligible to refresh the supplied token version.
      *
      * @param principalType The bounded context that owns the identity
      * @param id The unique identifier of the target identity
-     * @returns The ban status, session counters and permissions
+     * @param tokenSessionVersion The verified refresh token's session version
+     * @returns Current token claims for the eligible account
      */
-    async getAuthState(principalType: PrincipalType, id: string): Promise<AuthState> {
+    async getRefreshState(
+        principalType: PrincipalType,
+        id: string,
+        tokenSessionVersion: number,
+    ): Promise<RefreshState> {
         switch (principalType) {
             case PrincipalType.ADMIN:
-                return this.adminFacade.getAuthState(id);
+                return this.adminFacade.getRefreshState(id, tokenSessionVersion);
             case PrincipalType.USER:
-                return this.userFacade.getAuthState(id);
+                return this.userFacade.getRefreshState(id, tokenSessionVersion);
             default:
                 return assertPrincipalTypeExhausted(principalType);
         }

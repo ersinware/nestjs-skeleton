@@ -17,6 +17,7 @@ import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 import {
     DependencyUnavailableException,
     ResourceConflictException,
+    ResourceNotFoundException,
     UnauthenticatedException,
 } from 'src/shared/exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 describe('RefreshTokensCommandHandler', () => {
     const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>();
     const refreshTokens = vi.fn<ITokenPort['refreshTokens']>();
-    const getAuthState = vi.fn<IIdentityReaderPort['getAuthState']>();
+    const getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>();
     const rotateSession = vi.fn<ISessionPort['rotateSession']>();
     const enqueue = vi.fn<IJobQueueWriterPort['enqueue']>();
     const run = vi.fn<ITransactionPort['run']>();
@@ -56,10 +57,8 @@ describe('RefreshTokensCommandHandler', () => {
             refreshToken: 'refresh',
             session,
         });
-        getAuthState.mockResolvedValue({
-            isBanned: false,
+        getRefreshState.mockResolvedValue({
             sessionVersion: 2,
-            revocationVersion: 1,
             permissions: [Permission.HEALTH_DETAIL_READ],
         });
         rotateSession.mockResolvedValue(RotateOutcome.ROTATED);
@@ -67,7 +66,7 @@ describe('RefreshTokensCommandHandler', () => {
         run.mockImplementation(async (cb: () => Promise<unknown>) => cb());
         handler = new RefreshTokensCommandHandler(
             { verifyRefreshToken, refreshTokens } as unknown as ITokenPort,
-            { getAuthState } as unknown as IIdentityReaderPort,
+            { getRefreshState } as unknown as IIdentityReaderPort,
             { rotateSession } as unknown as ISessionPort,
             { enqueue },
             { run } as unknown as ITransactionPort,
@@ -80,6 +79,7 @@ describe('RefreshTokensCommandHandler', () => {
             accessToken: 'access',
             refreshToken: 'refresh',
         });
+        expect(getRefreshState).toHaveBeenCalledWith(PrincipalType.USER, 'user-1', 1);
         expect(refreshTokens).toHaveBeenCalledWith(
             { id: 'user-1', type: PrincipalType.USER, permissions: [Permission.HEALTH_DETAIL_READ] },
             2,
@@ -88,14 +88,22 @@ describe('RefreshTokensCommandHandler', () => {
         expect(rotateSession).toHaveBeenCalledWith('user-1', 'old-jti', session);
     });
 
-    it.each([
-        { isBanned: true, revocationVersion: 1 },
-        { isBanned: false, revocationVersion: 2 },
-    ])('rejects authoritative account refusal before signing or rotation', async (state) => {
-        getAuthState.mockResolvedValueOnce({ ...state, sessionVersion: 2, permissions: [] });
+    it('rejects an ineligible or missing account before signing or rotation without refusal audit', async () => {
+        getRefreshState.mockRejectedValueOnce(new ResourceNotFoundException());
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(UnauthenticatedException);
         expect(refreshTokens).not.toHaveBeenCalled();
         expect(rotateSession).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(record).not.toHaveBeenCalled();
+    });
+
+    it('propagates unavailable identity storage without signing or rotation', async () => {
+        const failure = new DependencyUnavailableException();
+        getRefreshState.mockRejectedValueOnce(failure);
+        await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBe(failure);
+        expect(refreshTokens).not.toHaveBeenCalled();
+        expect(rotateSession).not.toHaveBeenCalled();
+        expect(record).not.toHaveBeenCalled();
     });
 
     it('does not treat logout or expiry as new account-wide reuse', async () => {
