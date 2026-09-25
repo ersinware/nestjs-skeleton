@@ -4,7 +4,6 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
@@ -46,7 +45,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
                     .limit(1)
             )[0];
 
-            return row ? this.mapToDomain(row) : null;
+            return row ? Admin.reconstitute(row) : null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -58,7 +57,7 @@ export class AdminWriterAdapter implements IAdminWriterPort {
      * @param admin The aggregate to save
      */
     async save(admin: Admin) {
-        const payload = admin.toSnapshot();
+        const snapshot = admin.toSnapshot();
 
         let affected: number | null;
 
@@ -69,16 +68,16 @@ export class AdminWriterAdapter implements IAdminWriterPort {
             affected = (
                 await this.database
                     .insert(adminSchema)
-                    .values(payload)
+                    .values(snapshot)
                     .onConflictDoUpdate({
                         target: adminSchema.id,
                         set: {
-                            ...payload,
+                            ...snapshot,
                             id: undefined,
                             createdAt: undefined,
-                            version: payload.version + 1,
+                            version: snapshot.version + 1,
                         },
-                        setWhere: eq(adminSchema.version, payload.version),
+                        setWhere: eq(adminSchema.version, snapshot.version),
                     })
             ).rowCount;
         } catch (error) {
@@ -98,35 +97,5 @@ export class AdminWriterAdapter implements IAdminWriterPort {
         }
 
         await this.jobQueueWriterPort.enqueue(admin.pullJobs());
-    }
-
-    /**
-     * Reconstitutes an Admin aggregate from a database row.
-     *
-     * @param row Persisted admin row
-     * @returns Reconstituted aggregate
-     */
-    private mapToDomain(row: InferSelectModel<typeof adminSchema>): Admin {
-        return Admin.reconstitute({
-            id: row.id,
-            version: row.version,
-            email: row.email,
-            name: row.name,
-            password: row.password,
-            pendingEmailRequestId: row.pendingEmailRequestId,
-            pendingEmail: row.pendingEmail,
-            pendingEmailExpiresAt: row.pendingEmailExpiresAt,
-            pendingEmailRevocationVersion: row.pendingEmailRevocationVersion,
-            inviteId: row.inviteId,
-            inviteExpiresAt: row.inviteExpiresAt,
-            inviteRevocationVersion: row.inviteRevocationVersion,
-            permissions: row.permissions,
-            isBanned: row.isBanned,
-            deletedAt: row.deletedAt,
-            sessionVersion: row.sessionVersion,
-            revocationVersion: row.revocationVersion,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-        });
     }
 }

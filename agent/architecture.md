@@ -8,15 +8,16 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 - `shared` → `shared`
 - `core`, `coreCqrs`, `bootstrap` → `shared`, `core`
-- `domain` → `shared`, own `domain`
-- `application` → `shared`, `core`, `coreCqrs`, own `domain`, own `application`
-- `infrastructure` → `shared`, `core`, own `domain`, own `application`, own `infrastructure`, any `moduleIndex`
-- `presentation` → `shared`, `core`, `coreCqrs`, own `application`, own `presentation`
-- `facade` → `coreCqrs`, own `application`
+- `moduleShared` → `shared`, own `moduleShared`
+- `domain` → `shared`, own `moduleShared`, own `domain`
+- `application` → own `moduleShared`, `shared`, `core`, `coreCqrs`, own `domain`, own `application`
+- `infrastructure` → own `moduleShared`, `shared`, `core`, own `domain`, own `application`, own `infrastructure`, any `moduleIndex`
+- `presentation` → own `moduleShared`, `shared`, `core`, `coreCqrs`, own `application`, own `presentation`
+- `facade` → own `moduleShared`, `coreCqrs`, own `application`
 - `moduleIndex` → own `facade`, own `module`
-- `module` → `shared`, `core`, `coreCqrs`, own `presentation`, own `application`, own `infrastructure`, own `facade`, any `moduleIndex`
+- `module` → own `moduleShared`, `shared`, `core`, `coreCqrs`, own `presentation`, own `application`, own `infrastructure`, own `facade`, any `moduleIndex`
 
-- `src/module/<context>/domain/` and `src/shared/`: no npm or I/O; Node builtins allowed without I/O. Elsewhere, npm remains subject to architectural constraints.
+- `src/module/<context>/{domain,shared}/` and `src/shared/`: no npm or I/O; Node builtins allowed without I/O. Elsewhere, npm remains subject to architectural constraints.
 - `src/module/<context>/application/` uses core contracts (ports/exceptions/types/utils), never adapters or direct DB/cache clients. Barrel access does not guarantee symbol suitability ([Barrels](architecture.md#barrels)).
 - Classify all `src/**/*.ts` except composition roots `src/main.ts` and `src/app.module.ts`; none may be imported.
 - No unresolved/unclassified dependencies, cycles (including same-layer), or self-imports. No devDependencies in `src/` except `*.spec.ts`.
@@ -65,6 +66,7 @@ Module layout; create only needed parts. Omit `domain/` without an owned aggrega
 ```text
 src/module/<context>/
   index.ts  <context>.module.ts  <context>.facade.ts
+  shared/               # module-owned contracts used across its layers
   domain/
     aggregate/  job/
   application/
@@ -89,11 +91,12 @@ Within `src/`, group by ownership and reasons to change, never TS kind. Placemen
 2. Other code stays with its owning concept, not its consumers.
 3. Shared vocabulary gets a content-named file at the owning concept root.
 
+- `src/module/<context>/shared/` holds pure enums, data types, and constants shared by that module's layers. Group by concept; keep business behavior in domain and project-wide contracts in `src/shared/`. Access follows [Layer Isolation](#layer-isolation) and [Barrels](#barrels).
 - Separate contracts whose meanings/change drivers diverge; merge only when they represent the same concept. Split growing concepts into meaningfully named sub-concepts, never arbitrary file/kind buckets.
 - Use singular role folders from the first file: adapter, port, command, query, listener, queue, cron, job, controller, dto, decorator, guard, filter, hook, interceptor, pipe.
 - Keep module/facade/schema files flat; module schemas: `infrastructure/<context>.schema.ts`. Identify data sources in filenames, not folders ([Adapters](data-and-state.md#adapters)).
 - Use kebab-case names and dot-separated suffixes. Concept/use-case names may be plural when meaningful; role folders remain singular.
-- No kind/generic buckets or bare filenames (`type`, `enum`, `constant`, `util`, `interface`, `class`, `payload`, `common`, `shared`, `helper`, `misc`); never nest pillar names (`shared`, `core`, `module`) below source pillars.
+- No kind/generic buckets or bare filenames (`type`, `enum`, `constant`, `util`, `interface`, `class`, `payload`, `common`, `shared`, `helper`, `misc`); never nest pillar names (`shared`, `core`, `module`) below source pillars. The sole exception is `src/module/<context>/shared/`.
 - Content-named files may use kind suffixes when independently justified by ownership. Prefer architectural roles over implementation kinds: `.adapter.ts`, never `.class.ts`.
 - A role file directly inside its concept uses the bare role (`command.ts`, `handler.ts`, `port.ts`, `module.ts`); inside a role folder, include its subject (`adapter/user-reader.adapter.ts`, never `adapter/adapter.ts`).
 

@@ -10,6 +10,7 @@ import { TOKEN_DATABASE_CLIENT, runOutsideDatabaseTransaction, translateConnecti
 import { getAuditContext, markExceptionAsAudited } from 'src/core/observability/audit/audit-context';
 import { audit } from 'src/core/observability/audit/audit.schema';
 import { AuditRecordInput, AuditRecordOptions, IAuditPort } from 'src/core/observability/audit/port/audit.port';
+import { uuidv7 } from 'uuidv7';
 
 /**
  * Appends audit records on the primary connection. Never fail-open: a record that cannot be
@@ -56,6 +57,7 @@ export class AuditAdapter implements IAuditPort {
                 ...input,
                 traceId: trace.getActiveSpan()?.spanContext().traceId ?? null,
                 occurredAt: new Date(),
+                id: uuidv7(),
             });
         } catch (error) {
             throw translateConnectionFailure(error);

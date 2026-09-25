@@ -9,7 +9,6 @@ import type { AuditAction } from 'src/core/observability/audit/audit-action.enum
 import type { AuditDetail } from 'src/core/observability/audit/port/audit.port';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import type { PrincipalType } from 'src/shared/domain/principal';
-import { uuidv7 } from 'uuidv7';
 
 /**
  * The PostgreSQL logical schema of the audit concern. Core owns it because audit is cross-cutting
@@ -25,12 +24,9 @@ export const audit = auditSchema.table(
     'audit',
     {
         /**
-         * Primary key as UUID v7, so id order is time order. Generated here, not by the database:
-         * `gen_random_uuid()` is v4 and would lose the ordering.
+         * Primary key as UUID v7, supplied by the audit adapter when it stamps the record.
          */
-        id: uuid('id')
-            .primaryKey()
-            .$defaultFn(() => uuidv7()),
+        id: uuid('id').primaryKey(),
 
         /**
          * What happened; each action states its own outcome.
@@ -97,17 +93,12 @@ export const audit = auditSchema.table(
         occurredAt: timestamp('occurred_at').notNull(),
     },
     (table) => [
-        // Every index ends in `(occurred_at DESC, id DESC)`, the listing's exact ORDER BY, so a page is
-        // read in index order with no sort step; `id` (UUID v7) breaks same-millisecond ties, keeping
-        // page boundaries deterministic.
+        // The primary key orders unfiltered pages; this index supports occurredAt range filters.
+        index('audit_occurred_at_idx').on(table.occurredAt),
 
-        // The unfiltered listing and the time-range filter.
-        index('audit_occurred_at_idx').on(table.occurredAt.desc(), table.id.desc()),
-
-        // One equality filter each; the leading column lands the planner on that slice already in
-        // listing order. Combined filters use the most selective index and check the rest on the rows.
-        index('audit_actor_idx').on(table.actorId, table.occurredAt.desc(), table.id.desc()),
-        index('audit_target_idx').on(table.targetId, table.occurredAt.desc(), table.id.desc()),
-        index('audit_action_idx').on(table.action, table.occurredAt.desc(), table.id.desc()),
+        // Equality filters can use these indexes while returning rows in id order.
+        index('audit_actor_idx').on(table.actorId, table.id.desc()),
+        index('audit_target_idx').on(table.targetId, table.id.desc()),
+        index('audit_action_idx').on(table.action, table.id.desc()),
     ],
 );

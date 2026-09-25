@@ -530,9 +530,7 @@ describe.each(CASES)('$route email change', (context) => {
             const failures = await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED);
             if (expectedStatus === 403) {
                 expect(failures).toHaveLength(1);
-                expect(failures[0]!.targetId).toBe(
-                    fault === 'subject' ? (await tokenPort.verifyEmailConfirmationToken(token)).sub : null,
-                );
+                expect(failures[0]!.targetId).toBe((await tokenPort.verifyEmailConfirmationToken(token)).sub);
             } else {
                 expect(failures).toEqual([]);
             }

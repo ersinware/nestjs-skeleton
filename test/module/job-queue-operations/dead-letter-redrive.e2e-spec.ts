@@ -293,12 +293,13 @@ describe('Dead-letter redrive', () => {
     });
 
     it('rolls back the orchestration job when its audit insert fails', async () => {
+        const before = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort();
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new Error('Intentional audit failure.'));
 
         await request(app.getHttpServer()).post(REDRIVE_PATH).auth('redrive', { type: 'bearer' }).expect(500);
 
         const operations = await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE);
-        expect(operations).toHaveLength(0);
+        expect(operations.map((job) => job.id).sort()).toEqual(before);
         const records = await database
             .select()
             .from(audit)
@@ -425,10 +426,11 @@ describe('Dead-letter redrive', () => {
     }, 45_000);
 
     it('enforces permissions and validates status IDs without starting or disclosing an operation', async () => {
+        const before = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort();
         await request(app.getHttpServer()).post(REDRIVE_PATH).expect(401);
         await request(app.getHttpServer()).post(REDRIVE_PATH).auth('read', { type: 'bearer' }).expect(403);
         await request(app.getHttpServer()).post(REDRIVE_PATH).auth('none', { type: 'bearer' }).expect(403);
-        expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).toHaveLength(0);
+        expect((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort()).toEqual(before);
 
         await request(app.getHttpServer())
             .get(`${REDRIVE_PATH}/not-a-uuid`)

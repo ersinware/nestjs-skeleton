@@ -102,6 +102,7 @@ export default tseslint.config(
                 { type: 'moduleIndex', pattern: 'src/module/*/index.ts', mode: 'file', capture: ['module'] },
                 { type: 'facade', pattern: 'src/module/*/*.facade.ts', mode: 'file', capture: ['module'] },
                 { type: 'module', pattern: 'src/module/*/*.module.ts', mode: 'file', capture: ['module'] },
+                { type: 'moduleShared', pattern: 'src/module/*/shared/**', capture: ['module'] },
                 { type: 'domain', pattern: 'src/module/*/domain/**', capture: ['module'] },
                 { type: 'application', pattern: 'src/module/*/application/**', capture: ['module'] },
                 { type: 'infrastructure', pattern: 'src/module/*/infrastructure/**', capture: ['module'] },
@@ -187,8 +188,17 @@ export default tseslint.config(
                             allow: [{ to: { type: 'shared' } }, { to: { type: 'core' } }],
                         },
                         {
+                            // Module vocabulary stays reachable only through the owning module's layers.
+                            from: { type: 'moduleShared' },
+                            allow: [
+                                { to: { type: 'shared' } },
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
+                            ],
+                        },
+                        {
                             from: { type: 'domain' },
                             allow: [
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'shared' } },
                                 { to: { type: 'domain', captured: { module: '{{from.captured.module}}' } } },
                             ],
@@ -196,6 +206,7 @@ export default tseslint.config(
                         {
                             from: { type: 'application' },
                             allow: [
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'shared' } },
                                 { to: { type: 'core' } },
                                 { to: { type: 'coreCqrs' } },
@@ -206,6 +217,7 @@ export default tseslint.config(
                         {
                             from: { type: 'infrastructure' },
                             allow: [
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'shared' } },
                                 { to: { type: 'core' } },
                                 { to: { type: 'domain', captured: { module: '{{from.captured.module}}' } } },
@@ -217,6 +229,7 @@ export default tseslint.config(
                         {
                             from: { type: 'presentation' },
                             allow: [
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'shared' } },
                                 { to: { type: 'core' } },
                                 { to: { type: 'coreCqrs' } },
@@ -232,6 +245,7 @@ export default tseslint.config(
                              */
                             from: { type: 'facade' },
                             allow: [
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'coreCqrs' } },
                                 { to: { type: 'application', captured: { module: '{{from.captured.module}}' } } },
                             ],
@@ -246,6 +260,7 @@ export default tseslint.config(
                         {
                             from: { type: 'module' },
                             allow: [
+                                { to: { type: 'moduleShared', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'presentation', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'application', captured: { module: '{{from.captured.module}}' } } },
                                 { to: { type: 'infrastructure', captured: { module: '{{from.captured.module}}' } } },
@@ -267,13 +282,13 @@ export default tseslint.config(
                         },
                         /**
                          * Domain must stay framework-free so a bounded context can be lifted into its
-                         * own service without a rewrite. `shared` is held to the same bar because
-                         * domain imports it — a package admitted there reaches domain transitively.
+                         * own service without a rewrite. Global and module shared areas follow the same bar:
+                         * packages admitted there reach domain transitively.
                          * Only `external` (npm) is denied; Node builtins stay legal. Subtracts from
                          * the blanket allowance above, so it must come after it.
                          */
                         {
-                            from: { type: ['domain', 'shared'] },
+                            from: { type: ['domain', 'shared', 'moduleShared'] },
                             disallow: [{ to: { origin: 'external' } }],
                             message:
                                 'The domain and shared layers are pure TypeScript and must not import any external package (agent/architecture.md#layer-isolation).',

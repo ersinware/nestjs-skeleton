@@ -4,7 +4,6 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import type { InferSelectModel } from 'drizzle-orm';
 import { and, eq, isNull } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, isUniqueViolation, translateConnectionFailure } from 'src/core/database';
@@ -46,7 +45,7 @@ export class UserWriterAdapter implements IUserWriterPort {
                     .limit(1)
             )[0];
 
-            return row ? this.mapToDomain(row) : null;
+            return row ? User.reconstitute(row) : null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -58,7 +57,7 @@ export class UserWriterAdapter implements IUserWriterPort {
      * @param user The aggregate to save
      */
     async save(user: User) {
-        const payload = user.toSnapshot();
+        const snapshot = user.toSnapshot();
 
         let affected: number | null;
 
@@ -69,16 +68,16 @@ export class UserWriterAdapter implements IUserWriterPort {
             affected = (
                 await this.database
                     .insert(userSchema)
-                    .values(payload)
+                    .values(snapshot)
                     .onConflictDoUpdate({
                         target: userSchema.id,
                         set: {
-                            ...payload,
+                            ...snapshot,
                             id: undefined,
                             createdAt: undefined,
-                            version: payload.version + 1,
+                            version: snapshot.version + 1,
                         },
-                        setWhere: eq(userSchema.version, payload.version),
+                        setWhere: eq(userSchema.version, snapshot.version),
                     })
             ).rowCount;
         } catch (error) {
@@ -98,32 +97,5 @@ export class UserWriterAdapter implements IUserWriterPort {
         }
 
         await this.jobQueueWriterPort.enqueue(user.pullJobs());
-    }
-
-    /**
-     * Maps a database row to the User aggregate root.
-     *
-     * @param row Persisted user state
-     * @returns Reconstituted user aggregate
-     */
-    private mapToDomain(row: InferSelectModel<typeof userSchema>): User {
-        return User.reconstitute({
-            id: row.id,
-            version: row.version,
-            email: row.email,
-            name: row.name,
-            password: row.password,
-            pendingEmailRequestId: row.pendingEmailRequestId,
-            pendingEmail: row.pendingEmail,
-            pendingEmailExpiresAt: row.pendingEmailExpiresAt,
-            pendingEmailRevocationVersion: row.pendingEmailRevocationVersion,
-            permissions: row.permissions,
-            isBanned: row.isBanned,
-            deletedAt: row.deletedAt,
-            sessionVersion: row.sessionVersion,
-            revocationVersion: row.revocationVersion,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-        });
     }
 }

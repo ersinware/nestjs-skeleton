@@ -4,13 +4,14 @@
  */
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { randomUUID } from 'node:crypto';
 import { TOKEN_CACHE_HEALTH_PORT, type ICacheHealthPort } from 'src/core/cache';
 import type { IDatabaseHealthPort } from 'src/core/database';
 import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
-import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
-import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
+import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import request from 'supertest';
-import { expectDataDto, expectErrorDto } from 'test/shared/dto-assertion.util';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,6 +20,17 @@ describe('HealthController', () => {
 
     beforeEach(async () => {
         app = await createTestApp();
+        vi.spyOn(app.get<ITokenPort>(TOKEN_TOKEN_PORT), 'verifyAccessToken').mockResolvedValue({
+            sub: randomUUID(),
+            sid: randomUUID(),
+            sessionExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+            exp: Math.floor(Date.now() / 1000) + 900,
+            principalType: PrincipalType.ADMIN,
+            permissions: [Permission.HEALTH_DETAIL_READ],
+            sessionVersion: 0,
+            type: AuthTokenType.ACCESS,
+        });
+        vi.spyOn(app.get<ISessionPort>(TOKEN_SESSION_PORT), 'isSessionActive').mockResolvedValue(true);
     });
 
     afterEach(async () => {
@@ -36,10 +48,9 @@ describe('HealthController', () => {
 
         await request(app.getHttpServer())
             .get('/api/health')
+            .auth('health', { type: 'bearer' })
             .expect(200)
             .expect((res) => {
-                expectDataDto(res.body, ResponseHealthyDto);
-
                 expect(res.body).toStrictEqual({
                     data: {
                         status: 'ok',
@@ -77,10 +88,9 @@ describe('HealthController', () => {
 
         await request(app.getHttpServer())
             .get('/api/health')
+            .auth('health', { type: 'bearer' })
             .expect(503)
             .expect((res) => {
-                expectErrorDto(res.body, ResponseUnhealthyDto);
-
                 expect(res.body).toStrictEqual({
                     error: {
                         status: 'error',
