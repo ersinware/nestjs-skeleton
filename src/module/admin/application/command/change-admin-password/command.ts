@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import { SessionOutcome } from 'src/core/security/session';
 
 /**
  * Command to change an existing admin's password.
@@ -33,7 +34,7 @@ export type ChangeAdminPasswordResult =
           /**
            * Confirms that a replacement session was opened after the password change.
            */
-          readonly session: 'created';
+          readonly session: SessionOutcome.CREATED;
 
           /**
            * Access token issued for the replacement session.
@@ -49,5 +50,5 @@ export type ChangeAdminPasswordResult =
           /**
            * The password change committed, but the client must sign in again.
            */
-          readonly session: 'login_required';
+          readonly session: SessionOutcome.LOGIN_REQUIRED;
       };

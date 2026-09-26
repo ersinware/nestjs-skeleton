@@ -16,3 +16,4 @@ export {
     type SessionRegistration,
 } from 'src/core/security/session/port/session.port';
 export type { SessionIdentity } from 'src/core/security/session/session-identity.type';
+export { SessionOutcome } from 'src/core/security/session/session-outcome.enum';

@@ -5,6 +5,7 @@
 
 import { Command } from '@nestjs/cqrs';
 import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
+import { SessionOutcome } from 'src/core/security/session';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
@@ -45,7 +46,7 @@ export type ConfirmUserEmailChangeResult =
           /**
            * Confirms that a replacement session was opened after the email change.
            */
-          readonly session: 'created';
+          readonly session: SessionOutcome.CREATED;
 
           /**
            * Access token issued for the replacement session.
@@ -61,5 +62,5 @@ export type ConfirmUserEmailChangeResult =
           /**
            * The email change committed, but the client must sign in again.
            */
-          readonly session: 'login_required';
+          readonly session: SessionOutcome.LOGIN_REQUIRED;
       };
