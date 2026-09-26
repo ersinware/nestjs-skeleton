@@ -39,6 +39,21 @@ type UserProps = {
     password: string;
 
     /**
+     * Pending activation identity shared with the delivery job.
+     */
+    activationId: string | null;
+
+    /**
+     * Fixed activation deadline at whole-second precision.
+     */
+    activationExpiresAt: Date | null;
+
+    /**
+     * Account revocation version captured when activation proof is issued.
+     */
+    activationRevocationVersion: number | null;
+
+    /**
      * Request identity shared with the confirmation delivery job.
      */
     pendingEmailRequestId: string | null;
@@ -175,6 +190,9 @@ export class User extends PrincipalAggregateRoot {
 
         return new User({
             ...props,
+            activationId: null,
+            activationExpiresAt: null,
+            activationRevocationVersion: null,
             pendingEmailRequestId: null,
             pendingEmail: null,
             pendingEmailExpiresAt: null,
@@ -569,6 +587,33 @@ export class User extends PrincipalAggregateRoot {
      */
     get password(): string {
         return this.props.password;
+    }
+
+    /**
+     * Returns the pending activation identity.
+     *
+     * @returns The stored value, or null when no activation is pending
+     */
+    get activationId(): string | null {
+        return this.props.activationId;
+    }
+
+    /**
+     * Returns the fixed activation deadline.
+     *
+     * @returns The stored value, or null when no activation is pending
+     */
+    get activationExpiresAt(): Date | null {
+        return this.props.activationExpiresAt;
+    }
+
+    /**
+     * Returns the revocation version captured for activation.
+     *
+     * @returns The stored value, or null when no activation is pending
+     */
+    get activationRevocationVersion(): number | null {
+        return this.props.activationRevocationVersion;
     }
 
     /**

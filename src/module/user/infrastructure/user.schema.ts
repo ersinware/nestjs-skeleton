@@ -41,6 +41,21 @@ export const user = userSchema.table(
         password: text('password').notNull(),
 
         /**
+         * Pending activation identity; cleared only by successful activation.
+         */
+        activationId: uuid('activation_id'),
+
+        /**
+         * Fixed activation deadline at whole-second precision.
+         */
+        activationExpiresAt: timestamp('activation_expires_at'),
+
+        /**
+         * Full revocation version captured when activation proof is issued.
+         */
+        activationRevocationVersion: integer('activation_revocation_version'),
+
+        /**
          * Request identity shared with the confirmation delivery job.
          */
         pendingEmailRequestId: uuid('pending_email_request_id'),
@@ -102,8 +117,12 @@ export const user = userSchema.table(
     },
     (table) => [
         check(
+            'user_activation_check',
+            sql`((${table.activationId} IS NULL AND ${table.activationExpiresAt} IS NULL AND ${table.activationRevocationVersion} IS NULL) OR (${table.activationId} IS NOT NULL AND ${table.activationExpiresAt} IS NOT NULL AND ${table.activationRevocationVersion} IS NOT NULL AND ${table.activationRevocationVersion} >= 0))`,
+        ),
+        check(
             'user_pending_email_check',
-            sql`((${table.pendingEmailRequestId} IS NULL AND ${table.pendingEmail} IS NULL AND ${table.pendingEmailExpiresAt} IS NULL AND ${table.pendingEmailRevocationVersion} IS NULL) OR (${table.pendingEmailRequestId} IS NOT NULL AND ${table.pendingEmail} IS NOT NULL AND ${table.pendingEmailExpiresAt} IS NOT NULL AND ${table.pendingEmailRevocationVersion} IS NOT NULL AND ${table.pendingEmailRevocationVersion} >= 0))`,
+            sql`((${table.pendingEmailRequestId} IS NULL AND ${table.pendingEmail} IS NULL AND ${table.pendingEmailExpiresAt} IS NULL AND ${table.pendingEmailRevocationVersion} IS NULL) OR (${table.pendingEmailRequestId} IS NOT NULL AND ${table.pendingEmail} IS NOT NULL AND ${table.pendingEmailExpiresAt} IS NOT NULL AND ${table.pendingEmailRevocationVersion} IS NOT NULL AND ${table.pendingEmailRevocationVersion} >= 0 AND ${table.activationId} IS NULL))`,
         ),
         // Partial index over live rows: serves every `id = ? AND deleted_at IS NULL` lookup and the
         // listing's `ORDER BY id DESC` (UUID v7, so creation order) with no sort step. The email lookup
