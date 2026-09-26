@@ -8,6 +8,8 @@ import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetFreshUserByIdPort } from 'src/module/user/application/query/get-fresh-user-by-id/port';
+import { type IGetUserActivationRecipientPort } from 'src/module/user/application/query/get-user-activation-recipient/port';
+import { type GetUserActivationRecipientResult } from 'src/module/user/application/query/get-user-activation-recipient/query';
 import { type IGetUserByIdPort } from 'src/module/user/application/query/get-user-by-id/port';
 import { type GetUserByIdResult } from 'src/module/user/application/query/get-user-by-id/query';
 import { type IGetUserCredentialsByEmailPort } from 'src/module/user/application/query/get-user-credentials-by-email/port';
@@ -37,6 +39,7 @@ import { emailChangeNotification, user } from 'src/module/user/infrastructure/us
 export class UserReaderAdapter
     implements
         IIsUserEmailInUsePort,
+        IGetUserActivationRecipientPort,
         IGetUserEmailChangeNotificationRecipientPort,
         IGetUserEmailConfirmationRecipientPort,
         IGetFreshUserByIdPort,
@@ -104,6 +107,45 @@ export class UserReaderAdapter
                         .limit(1)
                 )[0] ?? null
             );
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
+     * Reads the current details required to activate an eligible pending user.
+     *
+     * @param id The unique identifier of the target user
+     * @param deliveryId The original activation delivery identity
+     * @returns The activation details, or null when delivery is no longer allowed
+     */
+    async getActivationRecipient(id: string, deliveryId: string): Promise<GetUserActivationRecipientResult | null> {
+        try {
+            return ((
+                await this.database
+                    .select({
+                        email: user.email,
+                        name: user.name,
+                        activationId: user.activationId,
+                        activationExpiresAt: user.activationExpiresAt,
+                        activationRevocationVersion: user.activationRevocationVersion,
+                    })
+                    .from(user)
+                    .where(
+                        and(
+                            eq(user.id, id),
+                            isNull(user.deletedAt),
+                            eq(user.isBanned, false),
+                            isNotNull(user.activationId),
+                            isNotNull(user.activationExpiresAt),
+                            isNotNull(user.activationRevocationVersion),
+                            eq(user.activationId, deliveryId),
+                            gt(user.activationExpiresAt, new Date()),
+                            eq(user.activationRevocationVersion, user.revocationVersion),
+                        ),
+                    )
+                    .limit(1)
+            )[0] ?? null) as GetUserActivationRecipientResult | null;
         } catch (error) {
             throw translateConnectionFailure(error);
         }

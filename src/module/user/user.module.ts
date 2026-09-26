@@ -25,6 +25,7 @@ import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
 import { RequestUserEmailChangeCommandHandler } from 'src/module/user/application/command/request-user-email-change/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
+import { SendUserActivationCommandHandler } from 'src/module/user/application/command/send-user-activation/handler';
 import { SendUserEmailChangeNotificationCommandHandler } from 'src/module/user/application/command/send-user-email-change-notification/handler';
 import { SendUserEmailConfirmationCommandHandler } from 'src/module/user/application/command/send-user-email-confirmation/handler';
 import { SendUserRefreshReuseNoticeCommandHandler } from 'src/module/user/application/command/send-user-refresh-reuse-notice/handler';
@@ -32,6 +33,7 @@ import { UnbanUserCommandHandler } from 'src/module/user/application/command/unb
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
 import { GetFreshUserByIdQueryHandler } from 'src/module/user/application/query/get-fresh-user-by-id/handler';
 import { TOKEN_GET_FRESH_USER_BY_ID_PORT } from 'src/module/user/application/query/get-fresh-user-by-id/port';
+import { TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-activation-recipient/port';
 import { GetUserByIdQueryHandler } from 'src/module/user/application/query/get-user-by-id/handler';
 import { TOKEN_GET_USER_BY_ID_PORT } from 'src/module/user/application/query/get-user-by-id/port';
 import { GetUserCredentialsByEmailQueryHandler } from 'src/module/user/application/query/get-user-credentials-by-email/handler';
@@ -46,6 +48,7 @@ import { TOKEN_IS_USER_EMAIL_IN_USE_PORT } from 'src/module/user/application/que
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
+import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
 import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
 import { UserEmailChangeNotificationQueue } from 'src/module/user/application/queue/user-email-change-notification.queue';
 import { UserEmailConfirmationQueue } from 'src/module/user/application/queue/user-email-confirmation.queue';
@@ -78,6 +81,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         CqrsPipelineModule,
         JobQueueModule.forFeature(
             [
+                UserActivationQueue,
                 UserEmailConfirmationQueue,
                 UserEmailChangeNotificationQueue,
                 UserCacheQueue,
@@ -93,6 +97,7 @@ import { UserFacade } from 'src/module/user/user.facade';
     providers: [
         UserFacade,
         RegisterUserCommandHandler,
+        SendUserActivationCommandHandler,
         UpdateUserCommandHandler,
         ChangeUserPasswordCommandHandler,
         ConfirmUserEmailChangeCommandHandler,
@@ -118,6 +123,7 @@ import { UserFacade } from 'src/module/user/user.facade';
             useClass: UserEmailChangeNotificationWriterAdapter,
         },
         { provide: TOKEN_GET_USER_REFRESH_STATE_PORT, useClass: UserReaderAdapter },
+        { provide: TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_IS_USER_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         {

@@ -8,6 +8,11 @@
  */
 export enum UserJobQueue {
     /**
+     * Sends the activation link for a pending user account.
+     */
+    ACTIVATION = 'user.activation.queue.v1',
+
+    /**
      * Notifies the previous address after a confirmed email change.
      */
     EMAIL_CHANGE_NOTIFICATION = 'user.email-change-notification.queue.v1',
