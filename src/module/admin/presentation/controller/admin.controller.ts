@@ -38,6 +38,7 @@ import {
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
+import { SessionOutcome } from 'src/core/security/session';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import { ChangeAdminPasswordCommand } from 'src/module/admin/application/command/change-admin-password/command';
@@ -349,8 +350,8 @@ export class AdminController {
             discriminator: {
                 propertyName: 'session',
                 mapping: {
-                    created: getSchemaPath(ResponseAdminEmailChangeSessionDto),
-                    login_required: getSchemaPath(ResponseAdminEmailChangeLoginRequiredDto),
+                    [SessionOutcome.CREATED]: getSchemaPath(ResponseAdminEmailChangeSessionDto),
+                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseAdminEmailChangeLoginRequiredDto),
                 },
             },
         },
@@ -368,7 +369,7 @@ export class AdminController {
             new ConfirmAdminEmailChangeCommand(principal.id, postAdminEmailConfirmDto.token),
         );
 
-        return result.session === 'created'
+        return result.session === SessionOutcome.CREATED
             ? plainToInstance(ResponseAdminEmailChangeSessionDto, result)
             : plainToInstance(ResponseAdminEmailChangeLoginRequiredDto, result);
     }
@@ -409,8 +410,8 @@ export class AdminController {
             discriminator: {
                 propertyName: 'session',
                 mapping: {
-                    created: getSchemaPath(ResponseAdminPasswordSessionDto),
-                    login_required: getSchemaPath(ResponseAdminPasswordLoginRequiredDto),
+                    [SessionOutcome.CREATED]: getSchemaPath(ResponseAdminPasswordSessionDto),
+                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseAdminPasswordLoginRequiredDto),
                 },
             },
         },
@@ -434,7 +435,7 @@ export class AdminController {
             ),
         );
 
-        return result.session === 'created'
+        return result.session === SessionOutcome.CREATED
             ? plainToInstance(ResponseAdminPasswordSessionDto, result)
             : plainToInstance(ResponseAdminPasswordLoginRequiredDto, result);
     }

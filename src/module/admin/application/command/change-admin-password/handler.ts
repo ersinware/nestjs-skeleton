@@ -8,7 +8,7 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { SessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     ChangeAdminPasswordCommand,
@@ -103,18 +103,18 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
         // reconciliation remains responsible for propagating the session version mirror.
         try {
             if (!(await this.sessionPort.openSession(id, tokenPairWithSession.session))) {
-                return { session: 'login_required' };
+                return { session: SessionOutcome.LOGIN_REQUIRED };
             }
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return { session: 'login_required' };
+                return { session: SessionOutcome.LOGIN_REQUIRED };
             }
 
             throw error;
         }
 
         return {
-            session: 'created',
+            session: SessionOutcome.CREATED,
             accessToken: tokenPairWithSession.accessToken,
             refreshToken: tokenPairWithSession.refreshToken,
         };

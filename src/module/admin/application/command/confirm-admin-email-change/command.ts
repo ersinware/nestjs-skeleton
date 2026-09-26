@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import { SessionOutcome } from 'src/core/security/session';
 
 /**
  * Completes a pending email change for the authenticated admin.
@@ -31,7 +32,7 @@ export type ConfirmAdminEmailChangeResult =
           /**
            * Confirms that a replacement session was opened after the email change.
            */
-          readonly session: 'created';
+          readonly session: SessionOutcome.CREATED;
 
           /**
            * Access token issued for the replacement session.
@@ -47,5 +48,5 @@ export type ConfirmAdminEmailChangeResult =
           /**
            * The email change committed, but the client must sign in again.
            */
-          readonly session: 'login_required';
+          readonly session: SessionOutcome.LOGIN_REQUIRED;
       };

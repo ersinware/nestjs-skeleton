@@ -38,6 +38,7 @@ import {
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
+import { SessionOutcome } from 'src/core/security/session';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
 import { ChangeUserPermissionsCommand } from 'src/module/user/application/command/change-user-permissions/command';
@@ -339,8 +340,8 @@ export class UserController {
             discriminator: {
                 propertyName: 'session',
                 mapping: {
-                    created: getSchemaPath(ResponseUserEmailChangeSessionDto),
-                    login_required: getSchemaPath(ResponseUserEmailChangeLoginRequiredDto),
+                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserEmailChangeSessionDto),
+                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseUserEmailChangeLoginRequiredDto),
                 },
             },
         },
@@ -358,7 +359,7 @@ export class UserController {
             new ConfirmUserEmailChangeCommand(principal.id, postUserEmailConfirmDto.token),
         );
 
-        return result.session === 'created'
+        return result.session === SessionOutcome.CREATED
             ? plainToInstance(ResponseUserEmailChangeSessionDto, result)
             : plainToInstance(ResponseUserEmailChangeLoginRequiredDto, result);
     }
@@ -399,8 +400,8 @@ export class UserController {
             discriminator: {
                 propertyName: 'session',
                 mapping: {
-                    created: getSchemaPath(ResponseUserPasswordSessionDto),
-                    login_required: getSchemaPath(ResponseUserPasswordLoginRequiredDto),
+                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserPasswordSessionDto),
+                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseUserPasswordLoginRequiredDto),
                 },
             },
         },
@@ -424,7 +425,7 @@ export class UserController {
             ),
         );
 
-        return result.session === 'created'
+        return result.session === SessionOutcome.CREATED
             ? plainToInstance(ResponseUserPasswordSessionDto, result)
             : plainToInstance(ResponseUserPasswordLoginRequiredDto, result);
     }

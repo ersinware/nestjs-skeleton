@@ -6,6 +6,7 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { IsJwtToken } from 'src/core/http';
+import { SessionOutcome } from 'src/core/security/session';
 
 /**
  * An email change that opened a replacement session for this client.
@@ -17,8 +18,13 @@ export class ResponseAdminEmailChangeSessionDto {
      * Identifies the result carrying a fresh token pair.
      */
     @Expose()
-    @ApiProperty({ type: String, enum: ['created'], example: 'created', description: 'A new session was created.' })
-    readonly session!: 'created';
+    @ApiProperty({
+        type: String,
+        enum: [SessionOutcome.CREATED],
+        example: SessionOutcome.CREATED,
+        description: 'A new session was created.',
+    })
+    readonly session!: SessionOutcome.CREATED;
 
     /**
      * The replacement access token.
@@ -50,10 +56,10 @@ export class ResponseAdminEmailChangeLoginRequiredDto {
     @Expose()
     @ApiProperty({
         type: String,
-        enum: ['login_required'],
-        example: 'login_required',
+        enum: [SessionOutcome.LOGIN_REQUIRED],
+        example: SessionOutcome.LOGIN_REQUIRED,
         description:
             'Email changed, but session storage was unavailable or a newer session version superseded this change. Discard old tokens and sign in with the new email address.',
     })
-    readonly session!: 'login_required';
+    readonly session!: SessionOutcome.LOGIN_REQUIRED;
 }
