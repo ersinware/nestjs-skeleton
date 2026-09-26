@@ -1,6 +1,6 @@
 /**
  * @file token.port.ts
- * @description Port contract for generating and verifying JWT session, invitation, and email confirmation tokens.
+ * @description Port contract for generating and verifying JWT session, activation, and email confirmation tokens.
  */
 
 import type { SessionIdentity, SessionRegistration } from 'src/core/security/session';
@@ -8,6 +8,7 @@ import type { AccessTokenPayload } from 'src/core/security/token/access-token-pa
 import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
+import type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';
 import type { Principal } from 'src/shared/domain/principal';
 
 /**
@@ -36,7 +37,7 @@ export type TokenPairWithSession = {
 };
 
 /**
- * Contract for generating and verifying JWT session, invitation, and email confirmation tokens.
+ * Contract for generating and verifying JWT session, activation, and email confirmation tokens.
  */
 export interface ITokenPort {
     /**
@@ -107,6 +108,23 @@ export interface ITokenPort {
      * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid invitation claims.
      */
     verifyInviteToken(token: string): Promise<InviteTokenPayload>;
+
+    /**
+     * Signs persisted user activation claims without generating identity or timestamps.
+     *
+     * @param payload Fixed claims loaded from the pending account.
+     * @returns The signed user activation token.
+     */
+    generateUserActivationToken(payload: Omit<UserActivationTokenPayload, 'type'>): Promise<string>;
+
+    /**
+     * Verifies user activation claims; callers must still check current account state and password.
+     *
+     * @param token The JWT user activation token string.
+     * @returns Verified user activation claims.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid activation claims.
+     */
+    verifyUserActivationToken(token: string): Promise<UserActivationTokenPayload>;
 
     /**
      * Signs persisted email request claims without generating identity or timestamps.

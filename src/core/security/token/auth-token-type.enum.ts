@@ -23,6 +23,11 @@ export enum AuthTokenType {
     INVITE = 'invite',
 
     /**
+     * Activates a pending user after the current password is verified.
+     */
+    USER_ACTIVATION = 'user_activation',
+
+    /**
      * Confirms a persisted email change request; it grants no session access.
      */
     EMAIL_CONFIRM = 'email_confirm',

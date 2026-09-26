@@ -52,6 +52,8 @@ describe('env.validation.config', () => {
         JWT_REFRESH_TTL: '7d',
         JWT_INVITE_SECRET: 'invite-secret-at-least-32-bytes!',
         ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
+        JWT_USER_ACTIVATION_SECRET: 'user-activation-secret-at-least-32-bytes',
+        USER_ACTIVATION_URL: 'http://localhost:3001/user/activate',
 
         JWT_EMAIL_CONFIRM_SECRET: 'email-confirm-secret-at-least-32-bytes',
         ADMIN_EMAIL_CONFIRM_URL: 'http://localhost:3001/admin/email/confirm',
