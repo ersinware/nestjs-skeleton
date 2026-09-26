@@ -16,6 +16,7 @@ import type { EmailConfirmationTokenPayload } from 'src/core/security/token/emai
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { ITokenPort, TokenPairWithSession } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
+import type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
@@ -71,6 +72,11 @@ export class TokenAdapter implements ITokenPort {
     private readonly inviteSecret: string;
 
     /**
+     * Separate signing secret for user activation proofs.
+     */
+    private readonly userActivationSecret: string;
+
+    /**
      * Separate signing secret for email change proofs.
      */
     private readonly emailConfirmationSecret: string;
@@ -95,6 +101,7 @@ export class TokenAdapter implements ITokenPort {
         this.accessSecret = configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
         this.refreshSecret = configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET);
         this.inviteSecret = configService.getOrThrow<string>(ENV.JWT_INVITE_SECRET);
+        this.userActivationSecret = configService.getOrThrow<string>(ENV.JWT_USER_ACTIVATION_SECRET);
         this.emailConfirmationSecret = configService.getOrThrow<string>(ENV.JWT_EMAIL_CONFIRM_SECRET);
     }
 
@@ -182,6 +189,25 @@ export class TokenAdapter implements ITokenPort {
                 type: AuthTokenType.INVITE,
             },
             { secret: this.inviteSecret, algorithm: 'HS256', noTimestamp: true },
+        );
+    }
+
+    /**
+     * Reproduces the persisted activation proof without extending its lifetime.
+     *
+     * @param payload Fixed claims loaded from the pending account
+     * @returns Signed user activation token
+     */
+    async generateUserActivationToken(payload: Omit<UserActivationTokenPayload, 'type'>): Promise<string> {
+        return this.jwtService.signAsync(
+            {
+                sub: payload.sub,
+                jti: payload.jti,
+                activationRevocationVersion: payload.activationRevocationVersion,
+                exp: payload.exp,
+                type: AuthTokenType.USER_ACTIVATION,
+            },
+            { secret: this.userActivationSecret, algorithm: 'HS256', noTimestamp: true },
         );
     }
 
@@ -278,6 +304,35 @@ export class TokenAdapter implements ITokenPort {
             payload.exp <= 0 ||
             !Number.isSafeInteger(payload.inviteRevocationVersion) ||
             payload.inviteRevocationVersion < 0
+        ) {
+            throw new UnauthenticatedException();
+        }
+
+        return payload;
+    }
+
+    /**
+     * Verifies a user activation token's signature, expiry, type, and revocation version.
+     *
+     * @param token The JWT user activation token string
+     * @returns The decoded user activation token payload
+     */
+    async verifyUserActivationToken(token: string): Promise<UserActivationTokenPayload> {
+        const payload = await this.verifyToken<UserActivationTokenPayload>(
+            token,
+            this.userActivationSecret,
+            AuthTokenType.USER_ACTIVATION,
+        );
+
+        if (
+            typeof payload.sub !== 'string' ||
+            payload.sub.length === 0 ||
+            typeof payload.jti !== 'string' ||
+            !UUID_V4_PATTERN.test(payload.jti) ||
+            !Number.isSafeInteger(payload.exp) ||
+            payload.exp <= 0 ||
+            !Number.isSafeInteger(payload.activationRevocationVersion) ||
+            payload.activationRevocationVersion < 0
         ) {
             throw new UnauthenticatedException();
         }

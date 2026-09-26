@@ -21,6 +21,7 @@ describe('TokenAdapter session lifetime', () => {
         JWT_REFRESH_SECRET: 'r'.repeat(32),
         JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
+        JWT_USER_ACTIVATION_SECRET: 'u'.repeat(32),
         JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
     };
     let adapter: TokenAdapter;

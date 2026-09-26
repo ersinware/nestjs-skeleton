@@ -80,6 +80,8 @@ function fixture(
         refreshTokens: vi.fn(),
         generateInviteToken: vi.fn(),
         verifyInviteToken: vi.fn(),
+        generateUserActivationToken: vi.fn(),
+        verifyUserActivationToken: vi.fn(),
         generateEmailConfirmationToken: vi.fn(),
         verifyEmailConfirmationToken: vi.fn(),
     } satisfies ITokenPort;
