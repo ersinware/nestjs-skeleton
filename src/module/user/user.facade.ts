@@ -32,7 +32,7 @@ export class UserFacade {
      *
      * @param email The email address of the target user
      * @returns The user credential read model
-     * @throws {ResourceNotFoundException} When no active user exists with the given email
+     * @throws {ResourceNotFoundException} When no non-deleted user exists with the given email
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
     async getCredentialsByEmail(email: string): Promise<GetUserCredentialsByEmailResult> {
@@ -45,7 +45,7 @@ export class UserFacade {
      * @param id The account identifier
      * @param tokenSessionVersion The verified refresh token's session version
      * @returns Current token claims for the eligible account
-     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, or the token version is revoked
+     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, pending activation, or the token version is revoked
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
     async getRefreshState(id: string, tokenSessionVersion: number): Promise<GetUserRefreshStateResult> {

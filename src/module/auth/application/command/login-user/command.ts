@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { CredentialLoginResult } from 'src/module/auth/application/command/login.util';
 
 /**
  * Command to log in a user using email and password.
@@ -24,16 +25,6 @@ export class LoginUserCommand extends Command<LoginUserResult> {
 }
 
 /**
- * Result of the LoginUserCommand: the freshly issued token pair.
+ * Result of the LoginUserCommand: a session or an activation prompt.
  */
-export type LoginUserResult = {
-    /**
-     * Access token issued by the successful user login.
-     */
-    readonly accessToken: string;
-
-    /**
-     * Refresh token issued by the successful user login.
-     */
-    readonly refreshToken: string;
-};
+export type LoginUserResult = CredentialLoginResult;

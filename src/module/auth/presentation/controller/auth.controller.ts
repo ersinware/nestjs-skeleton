@@ -4,7 +4,15 @@
  */
 
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBearerAuth,
+    ApiExtraModels,
+    ApiNoContentResponse,
+    ApiOkResponse,
+    ApiOperation,
+    ApiTags,
+    getSchemaPath,
+} from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline } from 'src/core/cqrs';
@@ -17,6 +25,7 @@ import {
 } from 'src/core/doc';
 import { RequestValidationMessage } from 'src/core/http';
 import { Authenticated, CurrentPrincipal, Public } from 'src/core/security/auth';
+import { SessionOutcome } from 'src/core/security/session';
 import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
@@ -28,6 +37,10 @@ import {
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
+import {
+    ResponseUserLoginActivationRequiredDto,
+    ResponseUserLoginSessionDto,
+} from 'src/module/auth/presentation/dto/response-user-login.dto';
 import type { Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedMessage } from 'src/shared/exception';
 
@@ -53,7 +66,7 @@ export class AuthController {
      * Authenticates a user's credentials and opens a session.
      *
      * @param dto The user's email and password
-     * @returns The generated access and refresh token pair
+     * @returns A new session with tokens, or an activation-required outcome without tokens
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
@@ -62,16 +75,36 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate user',
-        description: 'Validates user credentials and issues a JWT access and refresh token pair.',
+        description: 'Validates user credentials and opens a session only for activated accounts.',
     })
-    @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
+    @ApiExtraModels(ResponseUserLoginSessionDto, ResponseUserLoginActivationRequiredDto)
+    @ApiOkResponse({
+        description: 'Authenticated or awaiting account activation.',
+        schema: {
+            type: 'object',
+            oneOf: [
+                { $ref: getSchemaPath(ResponseUserLoginSessionDto) },
+                { $ref: getSchemaPath(ResponseUserLoginActivationRequiredDto) },
+            ],
+            discriminator: {
+                propertyName: 'session',
+                mapping: {
+                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserLoginSessionDto),
+                    [SessionOutcome.ACTIVATION_REQUIRED]: getSchemaPath(ResponseUserLoginActivationRequiredDto),
+                },
+            },
+        },
+    })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
-    async loginUser(@Body() dto: PostLoginDto): Promise<ResponseTokensDto> {
-        return plainToInstance(
-            ResponseTokensDto,
-            await this.commandPipeline.execute(new LoginUserCommand(dto.email, dto.password)),
-        );
+    async loginUser(
+        @Body() dto: PostLoginDto,
+    ): Promise<ResponseUserLoginSessionDto | ResponseUserLoginActivationRequiredDto> {
+        const result = await this.commandPipeline.execute(new LoginUserCommand(dto.email, dto.password));
+
+        return result.session === SessionOutcome.CREATED
+            ? plainToInstance(ResponseUserLoginSessionDto, result)
+            : plainToInstance(ResponseUserLoginActivationRequiredDto, result);
     }
 
     /**

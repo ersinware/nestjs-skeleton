@@ -1,6 +1,6 @@
 /**
  * @file session-outcome.enum.ts
- * @description Outcomes returned by operations that may open a session after committing a change.
+ * @description Outcomes returned by authentication and operations that may open a session.
  */
 
 /**
@@ -11,6 +11,11 @@ export enum SessionOutcome {
      * A session was opened and its token pair is included.
      */
     CREATED = 'created',
+
+    /**
+     * Credentials are valid, but the account must be activated before a session can open.
+     */
+    ACTIVATION_REQUIRED = 'activation_required',
 
     /**
      * The mutation committed, but the client must sign in again.

@@ -36,6 +36,11 @@ export type GetUserCredentialsByEmailResult = {
     readonly password: string;
 
     /**
+     * Whether the account must complete email activation before a session can open.
+     */
+    readonly requiresActivation: boolean;
+
+    /**
      * Permissions currently assigned to the account.
      */
     readonly permissions: readonly Permission[];

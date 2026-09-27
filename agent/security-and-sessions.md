@@ -12,7 +12,7 @@
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
 - Invitation activation and email confirmation receive verified claims for the target aggregate; a `sub` mismatch throws `SystemException`. Email confirmation handlers must reject session/token ownership mismatches before calling the aggregate.
 - Admin self-service mutations and password access require activation; a null password is a `SystemException`.
-- Both principal kinds share `login.util.ts` and uniform `CREDENTIALS` refusals. Each credential-login refusal performs one Argon2 verification; unknown/pending/banned accounts use `simulateVerify` with a boot-generated, current-cost hash.
+- Both principal kinds share `login.util.ts`. Invalid credentials receive uniform `CREDENTIALS` refusals; each refused login performs one Argon2 verification. Unknown/banned/passwordless accounts use `simulateVerify` with a boot-generated, current-cost hash. Only a pending user with a correct password receives audited `session: activation_required`, without tokens or a session.
 
 ### Administration
 
@@ -36,6 +36,7 @@
 - Redis mirrors only `sessionVersion`; refresh checks primary `revocationVersion`. Version writes never lower an existing floor or shorten its TTL, retained for at least the longer configured credential lifetime. Revocation bumps, never deletes; lost keys lose this protection.
 - Access checks reject missing versions or tokens below the stored floor (401); recognized session availability failures become `DependencyUnavailableException` (503). Redis authentication/command/Lua and unknown errors propagate unchanged. Never substitute an accepting default or return login/refresh success after required session operations fail.
 - Rejected login registration yields an audited `CREDENTIALS` refusal without tokens.
+- User refresh requires activation; pending users receive the ordinary 401, not a login activation outcome. User self-service mutations require activation at the aggregate boundary.
 - Password-change and email-change-request refusals audit incorrect current-password proof; unchanged proposed passwords are ordinary invalid input without audit.
 - Banned accounts cannot change passwords (403). A stale guard mirror must not permit fresh token issuance. Persist the password before issuing replacement tokens at the committed version; await atomic Redis version synchronization/session opening before returning them.
 - Password-change and email-confirmation outcomes return 200: `session: created` includes fresh tokens; recognized session unavailability or a newer Redis version yields `session: login_required` without tokens, instructing clients to discard old tokens and sign in again. Session failure does not undo the committed change; unexpected errors propagate.
