@@ -452,7 +452,8 @@ export class UserController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Register user',
-        description: 'Creates a pending account and queues an activation email. Sign-in requires activation.',
+        description:
+            'Creates a pending account with the supplied password and queues an activation email. The link expires after three days; sign-in requires activation. An existing email returns 409.',
     })
     @ApiNoContentResponse({ description: 'Pending account and activation delivery request committed.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
@@ -481,7 +482,7 @@ export class UserController {
     @ApiOperation({
         summary: 'Activate user account',
         description:
-            'Verifies the emailed activation token and existing password, activates the account, then attempts to open a session.',
+            'Verifies the emailed activation token and registration password, activates the account, then attempts to open a session. Expired links require another activation email.',
     })
     @ApiExtraModels(ResponseUserActivationSessionDto, ResponseUserActivationLoginRequiredDto)
     @ApiOkResponse({
@@ -534,7 +535,7 @@ export class UserController {
     @ApiOperation({
         summary: 'Resend user activation email',
         description:
-            'Requests a new activation email for an eligible pending account without revealing account status.',
+            'Requests another activation email without revealing account status. Eligible pending accounts keep an unexpired link and its original deadline; expired or revoked links receive a new three-day deadline.',
     })
     @ApiNoContentResponse({ description: 'Request accepted regardless of account existence or activation status.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)

@@ -25,7 +25,12 @@ describe('User email change invariants', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-09-24T10:00:00.987Z'));
-        account = User.create(initial);
+        account = User.reconstitute({
+            ...User.create(initial).toSnapshot(),
+            activationId: null,
+            activationExpiresAt: null,
+            activationRevocationVersion: null,
+        });
     });
     afterEach(() => vi.useRealTimers());
 
