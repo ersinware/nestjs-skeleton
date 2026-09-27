@@ -15,7 +15,7 @@ export const TOKEN_GET_USER_REFRESH_STATE_PORT = Symbol();
  */
 export interface IGetUserRefreshStatePort {
     /**
-     * Reads a non-deleted, non-banned account whose revocation floor accepts the token version.
+     * Reads an activated, non-deleted, non-banned account whose revocation floor accepts the token version.
      *
      * @param id The account identifier
      * @param tokenSessionVersion The verified refresh token's session version

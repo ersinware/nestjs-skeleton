@@ -33,7 +33,7 @@ export class GetUserRefreshStateQueryHandler implements IQueryHandler<
      *
      * @param query The query parameters
      * @returns Current token claims for the eligible account
-     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, or the token version is revoked
+     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, pending activation, or the token version is revoked
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetUserRefreshStateQuery): Promise<GetUserRefreshStateResult> {

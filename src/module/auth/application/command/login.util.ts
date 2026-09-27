@@ -5,7 +5,7 @@
 
 import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
-import type { ISessionPort } from 'src/core/security/session';
+import { SessionOutcome, type ISessionPort } from 'src/core/security/session';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
 import type { PrincipalType } from 'src/shared/domain/principal';
@@ -36,7 +36,7 @@ enum AuthRejectionReason {
     INACTIVE_ACCOUNT = 'ACCOUNT_IS_INACTIVE',
 
     /**
-     * The account has no password yet and requires activation.
+     * The account has no password yet, or a user still needs activation after password proof.
      */
     PENDING_ACCOUNT = 'ACCOUNT_PENDING_ACTIVATION',
 
@@ -52,6 +52,17 @@ enum AuthRejectionReason {
 }
 
 /**
+ * Result shared by credential login handlers; only the created branch contains tokens.
+ */
+export type CredentialLoginResult =
+    | {
+          readonly session: SessionOutcome.CREATED;
+          readonly accessToken: string;
+          readonly refreshToken: string;
+      }
+    | { readonly session: SessionOutcome.ACTIVATION_REQUIRED };
+
+/**
  * Authenticates an email/password pair against the given kind of principal and opens a fresh session.
  *
  * One implementation for both kinds on purpose: every security property of the flow — the deny
@@ -63,7 +74,7 @@ enum AuthRejectionReason {
  * @param principalType The kind of principal the credentials authenticate against
  * @param email The email address identifying the account
  * @param password The plain-text password to verify
- * @returns The generated access and refresh token pair
+ * @returns A token pair when a session opens, or an activation-required outcome
  * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or a newer session version supersedes the login.
  * @throws {DependencyUnavailableException} When a required dependency is unavailable.
  */
@@ -78,7 +89,7 @@ export async function login(
     principalType: PrincipalType,
     email: string,
     password: string,
-): Promise<{ readonly accessToken: string; readonly refreshToken: string }> {
+): Promise<CredentialLoginResult> {
     let identity;
 
     try {
@@ -104,8 +115,8 @@ export async function login(
         throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, id);
     }
 
-    // A pending account has no password yet, so there is nothing to verify against until its owner
-    // activates it.
+    // An invited admin has no password until activation. Pending users already have a hash and
+    // continue through the real verification below.
     if (!currentPassword) {
         await ports.hashingPort.simulateVerify(password);
 
@@ -114,6 +125,21 @@ export async function login(
 
     if (!(await ports.hashingPort.verify(currentPassword, password))) {
         throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, id);
+    }
+
+    /**
+     * Reached only when the account exists, is not banned, has a password, and the supplied
+     * password matches. For a user still awaiting activation, record the refusal and return
+     * without generating tokens or opening a session.
+     */
+    if (identity.requiresActivation) {
+        await ports.auditPort.record({
+            action: AuditAction.LOGIN_FAILED,
+            reason: AuthRejectionReason.PENDING_ACCOUNT,
+            targetId: id,
+        });
+
+        return { session: SessionOutcome.ACTIVATION_REQUIRED };
     }
 
     const tokenPairWithSession = await ports.tokenPort.generateTokens(
@@ -129,7 +155,11 @@ export async function login(
 
     await ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
 
-    return { accessToken: tokenPairWithSession.accessToken, refreshToken: tokenPairWithSession.refreshToken };
+    return {
+        session: SessionOutcome.CREATED,
+        accessToken: tokenPairWithSession.accessToken,
+        refreshToken: tokenPairWithSession.refreshToken,
+    };
 }
 
 /**

@@ -4,7 +4,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT, translateConnectionFailure } from 'src/core/database';
 import { type IGetFreshUserByIdPort } from 'src/module/user/application/query/get-fresh-user-by-id/port';
@@ -98,6 +98,7 @@ export class UserReaderAdapter
                         .select({
                             id: user.id,
                             password: user.password,
+                            requiresActivation: sql<boolean>`${user.activationId} is not null`,
                             permissions: user.permissions,
                             isBanned: user.isBanned,
                             sessionVersion: user.sessionVersion,
@@ -219,6 +220,7 @@ export class UserReaderAdapter
                                 eq(user.id, id),
                                 isNull(user.deletedAt),
                                 eq(user.isBanned, false),
+                                isNull(user.activationId),
                                 lte(user.revocationVersion, tokenSessionVersion),
                             ),
                         )

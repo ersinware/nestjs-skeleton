@@ -36,7 +36,7 @@ export class GetUserCredentialsByEmailQueryHandler implements IQueryHandler<
      *
      * @param query The query parameters
      * @returns The credentials read model
-     * @throws {ResourceNotFoundException} When no active user exists with the given email
+     * @throws {ResourceNotFoundException} When no non-deleted user exists with the given email
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetUserCredentialsByEmailQuery): Promise<GetUserCredentialsByEmailResult> {

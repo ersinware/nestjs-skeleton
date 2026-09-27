@@ -21,9 +21,14 @@ export type AuthIdentity = {
     readonly id: string;
 
     /**
-     * The hashed password of the identity, or null while the account is pending activation
+     * The hashed password of the identity, or null before an invited admin sets one
      */
     readonly password: string | null;
+
+    /**
+     * Whether this identity must complete activation before opening a session.
+     */
+    readonly requiresActivation: boolean;
 
     /**
      * The permissions the identity currently holds, embedded into freshly minted access tokens
@@ -72,7 +77,7 @@ export interface IIdentityReaderPort {
      * @param id The unique identifier of the target identity
      * @param tokenSessionVersion The verified refresh token's session version
      * @returns Current token claims for the eligible account
-     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, or the token version is revoked
+     * @throws {ResourceNotFoundException} When the account is missing, deleted, banned, pending activation, or the token version is revoked
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
     getRefreshState(principalType: PrincipalType, id: string, tokenSessionVersion: number): Promise<RefreshState>;

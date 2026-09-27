@@ -240,10 +240,11 @@ export class User extends PrincipalAggregateRoot {
      *
      * @param name The new display name
      * @returns Whether the name changed
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or is pending activation
      */
     updateName(name: string): boolean {
         this.assertNotDeleted(this.updateName.name);
+        this.assertActivated(this.updateName.name);
 
         if (name === this.props.name) {
             return false;
@@ -262,12 +263,13 @@ export class User extends PrincipalAggregateRoot {
      * @param password Replacement password hash
      * @param currentPasswordMatches Whether the submitted current password matches the loaded hash
      * @param newPasswordMatchesCurrent Whether the proposed new password matches that same hash
-     * @throws {SystemException} When the account has been soft-deleted
+     * @throws {SystemException} When the account has been soft-deleted or is pending activation
      * @throws {AccessDeniedException} When the account is banned
      * @throws {InvalidInputException} When the current password is wrong or the new password is unchanged
      */
     changePassword(password: string, currentPasswordMatches: boolean, newPasswordMatchesCurrent: boolean) {
         this.assertNotDeleted(this.changePassword.name);
+        this.assertActivated(this.changePassword.name);
 
         if (this.props.isBanned) {
             throw new AccessDeniedException();
@@ -292,13 +294,14 @@ export class User extends PrincipalAggregateRoot {
      * @param newEmail Validated and normalized target email address
      * @param currentPasswordMatches Whether the submitted current password matches the loaded hash
      * @param emailInUse Whether an account already holds the requested address
-     * @throws {SystemException} When the account is deleted
+     * @throws {SystemException} When the account is deleted or pending activation
      * @throws {AccessDeniedException} When the account is banned
      * @throws {InvalidInputException} When the current password is wrong or the address is unchanged
      * @throws {ResourceConflictException} When the target address is already in use
      */
     requestEmailChange(newEmail: string, currentPasswordMatches: boolean, emailInUse: boolean) {
         this.assertNotDeleted(this.requestEmailChange.name);
+        this.assertActivated(this.requestEmailChange.name);
 
         if (this.props.isBanned) {
             throw new AccessDeniedException();
@@ -336,7 +339,7 @@ export class User extends PrincipalAggregateRoot {
      *
      * @param payload Identity and expiry claims after signature, type, and principal verification
      * @param notificationId Identity shared with the immutable old-address notification record
-     * @throws {SystemException} When the account is deleted, differs from the token subject, or the notification ID is invalid
+     * @throws {SystemException} When the account is deleted, pending activation, differs from the token subject, or the notification ID is invalid
      * @throws {AccessDeniedException} When the account is ineligible for confirmation
      * @throws {InvalidInputException} When the request is revoked, mismatched, consumed, or expired
      */
@@ -350,6 +353,7 @@ export class User extends PrincipalAggregateRoot {
         notificationId: string,
     ) {
         this.assertNotDeleted(this.confirmEmailChange.name);
+        this.assertActivated(this.confirmEmailChange.name);
 
         if (!isUUIDV7(notificationId)) {
             throw new SystemException('Invalid email change notification ID.', {
@@ -516,14 +520,18 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Soft deletes the user and bumps the session version for a permanent cut-off, since a deleted
-     * account must never be reachable by any previously minted token. Self-service, so it takes no
-     * actor: the owner is the only principal that deletes a user account.
+     * Soft deletes an activated user and bumps the session version for a permanent cut-off, since
+     * a deleted account must never be reachable by any previously minted token. Self-service, so
+     * it takes no actor: the owner is the only principal that deletes a user account.
+     *
+     * @throws {SystemException} When a pending account reaches authenticated self-service
      */
     markAsDeleted() {
         if (this.deletedAt) {
             return;
         }
+
+        this.assertActivated(this.markAsDeleted.name);
 
         const now = new Date();
 
@@ -534,6 +542,20 @@ export class User extends PrincipalAggregateRoot {
 
         this.addCacheInvalidationJob();
         this.addSessionReconciliationJob();
+    }
+
+    /**
+     * Rejects self-service mutations before email activation has completed.
+     *
+     * @param method The attempted aggregate method
+     * @throws {SystemException} When an inactive user reaches authenticated self-service
+     */
+    private assertActivated(method: string) {
+        if (this.props.activationId !== null) {
+            throw new SystemException('An inactive user reached an authenticated self-service flow.', {
+                context: { class: User.name, method, id: this.id },
+            });
+        }
     }
 
     /**

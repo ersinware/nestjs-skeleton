@@ -7,7 +7,7 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { SessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { LoginAdminCommand, type LoginAdminResult } from 'src/module/auth/application/command/login-admin/command';
 import { login } from 'src/module/auth/application/command/login.util';
@@ -16,6 +16,7 @@ import {
     type IIdentityReaderPort,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import { PrincipalType } from 'src/shared/domain/principal';
+import { SystemException } from 'src/shared/exception';
 
 /**
  * Handles the LoginAdminCommand.
@@ -47,9 +48,10 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
+     * @throws {SystemException} When the admin identity incorrectly requires user activation
      */
     async execute(command: LoginAdminCommand): Promise<LoginAdminResult> {
-        return login(
+        const result = await login(
             {
                 identityReaderPort: this.identityReaderPort,
                 hashingPort: this.hashingPort,
@@ -61,5 +63,13 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
             command.email,
             command.password,
         );
+
+        if (result.session !== SessionOutcome.CREATED) {
+            throw new SystemException('Admin identity unexpectedly requires user activation.', {
+                context: { class: this.constructor.name, method: this.execute.name },
+            });
+        }
+
+        return { accessToken: result.accessToken, refreshToken: result.refreshToken };
     }
 }

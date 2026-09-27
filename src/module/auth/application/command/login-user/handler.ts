@@ -44,7 +44,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
      * Executes the login user command.
      *
      * @param command The login user command parameters
-     * @returns The generated access and refresh tokens
+     * @returns A token pair for an activated user, or an activation-required outcome
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */

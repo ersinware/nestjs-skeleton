@@ -46,7 +46,7 @@ export class IdentityReaderAdapter implements IIdentityReaderPort {
         // compilation, never silently fall through to another context's facade.
         switch (principalType) {
             case PrincipalType.ADMIN:
-                return this.adminFacade.getCredentialsByEmail(email);
+                return { ...(await this.adminFacade.getCredentialsByEmail(email)), requiresActivation: false };
             case PrincipalType.USER:
                 return this.userFacade.getCredentialsByEmail(email);
             default:
