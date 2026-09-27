@@ -152,6 +152,11 @@ enum ConfirmEmailChangeRejectionReason {
 }
 
 /**
+ * Pending user activation proof remains valid for three days.
+ */
+const ACTIVATION_LIFETIME_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
  * Pending email confirmations remain valid for thirty minutes from request creation.
  */
 const EMAIL_CHANGE_LIFETIME_MS = 30 * 60 * 1000;
@@ -317,6 +322,40 @@ export class User extends PrincipalAggregateRoot {
         this.props.activationExpiresAt = null;
         this.props.activationRevocationVersion = null;
         this.props.updatedAt = new Date();
+    }
+
+    /**
+     * Requests another activation email while preserving valid proof or renewing stale proof.
+     * Returns false for banned or already active accounts so the public caller can give the same
+     * response as for an unknown address without creating a delivery.
+     *
+     * @returns Whether an eligible pending account queued a delivery
+     * @throws {SystemException} When the account is deleted or pending metadata is incomplete
+     */
+    resendActivation(): boolean {
+        this.assertNotDeleted(this.resendActivation.name);
+
+        if (this.props.isBanned || this.props.activationId === null) {
+            return false;
+        }
+
+        if (this.props.activationExpiresAt === null || this.props.activationRevocationVersion === null) {
+            throw new SystemException('Pending user activation metadata is incomplete.', {
+                context: { class: User.name, method: this.resendActivation.name, id: this.id },
+            });
+        }
+
+        if (
+            this.props.activationExpiresAt.getTime() <= Date.now() ||
+            this.props.activationRevocationVersion !== this.revocationVersion
+        ) {
+            this.issueActivation();
+        }
+
+        this.props.updatedAt = new Date();
+        this.addActivationJob();
+
+        return true;
     }
 
     /**
@@ -640,6 +679,34 @@ export class User extends PrincipalAggregateRoot {
                 context: { class: User.name, method, id: this.id },
             });
         }
+    }
+
+    /**
+     * Replaces activation proof with a new request identity and fixed deadline.
+     */
+    private issueActivation() {
+        this.props.activationId = randomUUID();
+        this.props.activationExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + ACTIVATION_LIFETIME_MS);
+        this.props.activationRevocationVersion = this.revocationVersion;
+    }
+
+    /**
+     * Queues delivery for the current pending activation request.
+     */
+    private addActivationJob() {
+        if (this.props.activationId === null) {
+            throw new SystemException('Cannot deliver activation without a pending request.', {
+                context: { class: User.name, method: this.addActivationJob.name, id: this.id },
+            });
+        }
+
+        this.addJob([
+            {
+                deliveryId: this.props.activationId,
+                aggregateId: this.id,
+                queueName: UserJobQueue.ACTIVATION,
+            },
+        ]);
     }
 
     /**

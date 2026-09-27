@@ -24,6 +24,15 @@ export interface IUserWriterPort {
     load(id: string): Promise<User | null>;
 
     /**
+     * Loads a non-deleted user aggregate by its exact normalized email for mutation.
+     *
+     * @param email The normalized account email address
+     * @returns The user aggregate root, or null if no live user is found
+     * @throws {DependencyUnavailableException} When the database is unreachable
+     */
+    loadByEmail(email: string): Promise<User | null>;
+
+    /**
      * Persists the aggregate and its accumulated jobs in the caller's transaction.
      *
      * @param user The aggregate to save

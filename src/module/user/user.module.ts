@@ -25,6 +25,7 @@ import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
 import { RequestUserEmailChangeCommandHandler } from 'src/module/user/application/command/request-user-email-change/handler';
+import { ResendUserActivationCommandHandler } from 'src/module/user/application/command/resend-user-activation/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
 import { SendUserActivationCommandHandler } from 'src/module/user/application/command/send-user-activation/handler';
 import { SendUserEmailChangeNotificationCommandHandler } from 'src/module/user/application/command/send-user-email-change-notification/handler';
@@ -99,6 +100,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         UserFacade,
         ActivateUserCommandHandler,
         RegisterUserCommandHandler,
+        ResendUserActivationCommandHandler,
         SendUserActivationCommandHandler,
         UpdateUserCommandHandler,
         ChangeUserPasswordCommandHandler,

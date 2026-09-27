@@ -78,6 +78,11 @@ export enum AuditAction {
     USER_REGISTERED = 'USER_REGISTERED',
 
     /**
+     * A pending user's activation delivery request was committed; delivery may follow.
+     */
+    USER_ACTIVATION_REQUESTED = 'USER_ACTIVATION_REQUESTED',
+
+    /**
      * A pending user account was activated after email and password proof.
      */
     USER_ACTIVATED = 'USER_ACTIVATED',
