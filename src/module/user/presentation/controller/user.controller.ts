@@ -439,21 +439,22 @@ export class UserController {
     }
 
     /**
-     * Registers a new user account. Public: this is the sign-up route. Returns no body — the client
-     * signs in with the submitted credentials and reads the profile from `me`.
+     * Registers a pending user account and queues its activation email. The 204 response confirms
+     * the request was committed, not that the email was delivered; sign-in requires activation.
      *
      * @param postUserDto The registration payload
      * @throws {ResourceConflictException} When the email address is already in use
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the activation job is not accepted by the queue
      */
     @Public()
     @Post()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Register user',
-        description: 'Registers a new user account. Public sign-up route.',
+        description: 'Creates a pending account and queues an activation email. Sign-in requires activation.',
     })
-    @ApiNoContentResponse({ description: 'User account successfully created.' })
+    @ApiNoContentResponse({ description: 'Pending account and activation delivery request committed.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
     async register(@Body() postUserDto: PostUserDto) {

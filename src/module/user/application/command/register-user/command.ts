@@ -6,7 +6,7 @@
 import { Command } from '@nestjs/cqrs';
 
 /**
- * Command to register a new user account on their own behalf.
+ * Command to register a pending user account on their own behalf.
  */
 export class RegisterUserCommand extends Command<void> {
     /**

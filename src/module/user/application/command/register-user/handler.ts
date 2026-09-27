@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Handles RegisterUserCommand. Creates and persists a new User aggregate root.
+ * @description Handles RegisterUserCommand. Persists a pending User and its activation delivery.
  */
 
 import { Inject } from '@nestjs/common';
@@ -18,17 +18,17 @@ import { isExceptionWithAudit } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
 /**
- * Registers a new user account on the user's own behalf.
+ * Registers a pending user account and its activation delivery.
  */
 @CommandHandler(RegisterUserCommand)
 export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the business write and audit
-     * @param userWriterPort The port used to persist the user aggregate
+     * @param transactionPort The commit boundary for the account, delivery job, and audit
+     * @param userWriterPort The port used to persist the user aggregate and its jobs
      * @param hashingPort The port used to hash passwords
-     * @param auditPort The port used to record the registration for the audit trail
+     * @param auditPort The port used to record the pending registration
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -38,11 +38,12 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
     ) {}
 
     /**
-     * Executes the register user command.
+     * Commits the pending account, initial delivery job, and registration audit together.
      *
      * @param command The command payload
      * @throws {ResourceConflictException} When the email address is already in use
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the activation job is not accepted by the queue
      */
     async execute(command: RegisterUserCommand) {
         const id = uuidv7();

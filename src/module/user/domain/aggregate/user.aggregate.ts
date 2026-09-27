@@ -200,32 +200,36 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Creates a new User with a fresh lifecycle state and no permissions.
+     * Creates a pending User with activation delivery and no permissions.
      *
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
     static create(props: { readonly id: string } & Readonly<Pick<UserProps, 'email' | 'name' | 'password'>>): User {
-        const now = new Date();
+        const now = new Date(),
+            user = new User({
+                ...props,
+                activationId: null,
+                activationExpiresAt: null,
+                activationRevocationVersion: null,
+                pendingEmailRequestId: null,
+                pendingEmail: null,
+                pendingEmailExpiresAt: null,
+                pendingEmailRevocationVersion: null,
+                isBanned: false,
+                version: 0,
+                deletedAt: null,
+                permissions: [],
+                sessionVersion: 0,
+                revocationVersion: 0,
+                createdAt: now,
+                updatedAt: now,
+            });
 
-        return new User({
-            ...props,
-            activationId: null,
-            activationExpiresAt: null,
-            activationRevocationVersion: null,
-            pendingEmailRequestId: null,
-            pendingEmail: null,
-            pendingEmailExpiresAt: null,
-            pendingEmailRevocationVersion: null,
-            isBanned: false,
-            version: 0,
-            deletedAt: null,
-            permissions: [],
-            sessionVersion: 0,
-            revocationVersion: 0,
-            createdAt: now,
-            updatedAt: now,
-        });
+        user.issueActivation();
+        user.addActivationJob();
+
+        return user;
     }
 
     /**

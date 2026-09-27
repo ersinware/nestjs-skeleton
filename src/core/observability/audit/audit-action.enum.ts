@@ -73,7 +73,7 @@ export enum AuditAction {
     EMAIL_CHANGED = 'EMAIL_CHANGED',
 
     /**
-     * A user registered their own account — the birth of the trail's subject; public route, so unattributed.
+     * A pending user and its first activation delivery request were committed; public route, so unattributed.
      */
     USER_REGISTERED = 'USER_REGISTERED',
 
