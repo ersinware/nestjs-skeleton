@@ -47,6 +47,7 @@ import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/comma
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { RequestUserEmailChangeCommand } from 'src/module/user/application/command/request-user-email-change/command';
+import { ResendUserActivationCommand } from 'src/module/user/application/command/resend-user-activation/command';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import { GetFreshUserByIdQuery } from 'src/module/user/application/query/get-fresh-user-by-id/query';
@@ -56,6 +57,7 @@ import { ListUsersQuery } from 'src/module/user/application/query/list-users/que
 import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserActivateDto } from 'src/module/user/presentation/dto/post-user-activate.dto';
+import { PostUserActivationResendDto } from 'src/module/user/presentation/dto/post-user-activation-resend.dto';
 import { PostUserEmailChangeDto } from 'src/module/user/presentation/dto/post-user-email-change.dto';
 import { PostUserEmailConfirmDto } from 'src/module/user/presentation/dto/post-user-email-confirm.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
@@ -513,6 +515,31 @@ export class UserController {
         return result.session === SessionOutcome.CREATED
             ? plainToInstance(ResponseUserActivationSessionDto, result)
             : plainToInstance(ResponseUserActivationLoginRequiredDto, result);
+    }
+
+    /**
+     * Returns the same 204 for eligible, unknown, and ineligible accounts so callers cannot use
+     * this public route to discover account existence or activation status. A 204 confirms only
+     * request handling, not email delivery; validation, concurrency, and infrastructure errors propagate.
+     *
+     * @param postUserActivationResendDto The account email address
+     * @throws {ResourceConflictException} When the account changed concurrently
+     * @throws {DependencyUnavailableException} When database, queue, or audit persistence is unavailable
+     * @throws {SystemException} When pending metadata is incomplete or required jobs are not accepted
+     */
+    @Public()
+    @Post('activation/resend')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({
+        summary: 'Resend user activation email',
+        description:
+            'Requests a new activation email for an eligible pending account without revealing account status.',
+    })
+    @ApiNoContentResponse({ description: 'Request accepted regardless of account existence or activation status.' })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
+    async resendActivation(@Body() postUserActivationResendDto: PostUserActivationResendDto) {
+        await this.commandPipeline.execute(new ResendUserActivationCommand(postUserActivationResendDto.email));
     }
 
     /**

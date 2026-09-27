@@ -52,6 +52,28 @@ export class UserWriterAdapter implements IUserWriterPort {
     }
 
     /**
+     * Loads a non-deleted user aggregate by exact normalized email for mutation.
+     *
+     * @param email The normalized account email address
+     * @returns The user aggregate root, or null if no live user is found
+     */
+    async loadByEmail(email: string): Promise<User | null> {
+        try {
+            const row = (
+                await this.database
+                    .select()
+                    .from(userSchema)
+                    .where(and(eq(userSchema.email, email), isNull(userSchema.deletedAt)))
+                    .limit(1)
+            )[0];
+
+            return row ? User.reconstitute(row) : null;
+        } catch (error) {
+            throw translateConnectionFailure(error);
+        }
+    }
+
+    /**
      * Upserts the aggregate under the optimistic lock and queues its jobs in the caller's transaction.
      *
      * @param user The aggregate to save
