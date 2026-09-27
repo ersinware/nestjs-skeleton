@@ -7,10 +7,10 @@ import { ApiSchema } from '@nestjs/swagger';
 import { IsEmailAddress, IsPersonName, IsStrongPassword } from 'src/core/http';
 
 /**
- * Registration payload. The composed decorators enforce email format, name shape, and password
- * strength in one place each.
+ * Registration payload for a pending account. The composed decorators enforce email format,
+ * name shape, and password strength in one place each.
  */
-@ApiSchema({ name: 'PostUser', description: 'Input validation schema for user registration and creation.' })
+@ApiSchema({ name: 'PostUser', description: 'Input for creating a pending user account.' })
 export class PostUserDto {
     /**
      * The unique email address to associate with the new account.
@@ -25,7 +25,7 @@ export class PostUserDto {
     readonly name!: string;
 
     /**
-     * The plain-text password, hashed before persistence.
+     * The password chosen at registration, hashed before persistence and required for activation.
      */
     @IsStrongPassword()
     readonly password!: string;
