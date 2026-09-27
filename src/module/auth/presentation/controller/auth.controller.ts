@@ -75,7 +75,8 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate user',
-        description: 'Validates user credentials and opens a session only for activated accounts.',
+        description:
+            'Validates credentials. Activated users receive a session; pending users with the correct password receive activation_required without tokens and can request another activation email.',
     })
     @ApiExtraModels(ResponseUserLoginSessionDto, ResponseUserLoginActivationRequiredDto)
     @ApiOkResponse({
