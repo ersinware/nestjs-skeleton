@@ -14,6 +14,7 @@ import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
+import { ActivateUserCommandHandler } from 'src/module/user/application/command/activate-user/handler';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
 import { ChangeUserPermissionsCommandHandler } from 'src/module/user/application/command/change-user-permissions/handler';
@@ -96,6 +97,7 @@ import { UserFacade } from 'src/module/user/user.facade';
     controllers: [UserController],
     providers: [
         UserFacade,
+        ActivateUserCommandHandler,
         RegisterUserCommandHandler,
         SendUserActivationCommandHandler,
         UpdateUserCommandHandler,

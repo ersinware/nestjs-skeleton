@@ -28,6 +28,11 @@ export enum DomainFailureAuditAction {
     ADMIN_ACTIVATION_FAILED = 'ADMIN_ACTIVATION_FAILED',
 
     /**
+     * Rejected user activation; the record carries the reason the client never sees.
+     */
+    USER_ACTIVATION_FAILED = 'USER_ACTIVATION_FAILED',
+
+    /**
      * An administrative mutation was refused by admin hierarchy or self-target restrictions.
      */
     ADMIN_ADMINISTRATION_DENIED = 'ADMIN_ADMINISTRATION_DENIED',

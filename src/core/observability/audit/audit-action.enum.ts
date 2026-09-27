@@ -78,6 +78,11 @@ export enum AuditAction {
     USER_REGISTERED = 'USER_REGISTERED',
 
     /**
+     * A pending user account was activated after email and password proof.
+     */
+    USER_ACTIVATED = 'USER_ACTIVATED',
+
+    /**
      * A change to the user's display name.
      */
     USER_UPDATED = 'USER_UPDATED',

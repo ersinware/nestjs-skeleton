@@ -39,6 +39,7 @@ import {
 import { AuditAction, Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
 import { SessionOutcome } from 'src/core/security/session';
+import { ActivateUserCommand } from 'src/module/user/application/command/activate-user/command';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
 import { ChangeUserPermissionsCommand } from 'src/module/user/application/command/change-user-permissions/command';
@@ -54,10 +55,15 @@ import { ListUserPermissionCatalogQuery } from 'src/module/user/application/quer
 import { ListUsersQuery } from 'src/module/user/application/query/list-users/query';
 import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
+import { PostUserActivateDto } from 'src/module/user/presentation/dto/post-user-activate.dto';
 import { PostUserEmailChangeDto } from 'src/module/user/presentation/dto/post-user-email-change.dto';
 import { PostUserEmailConfirmDto } from 'src/module/user/presentation/dto/post-user-email-confirm.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { PutUserPermissionsDto } from 'src/module/user/presentation/dto/put-user-permissions.dto';
+import {
+    ResponseUserActivationLoginRequiredDto,
+    ResponseUserActivationSessionDto,
+} from 'src/module/user/presentation/dto/response-user-activation.dto';
 import {
     ResponseUserEmailChangeLoginRequiredDto,
     ResponseUserEmailChangeSessionDto,
@@ -452,6 +458,61 @@ export class UserController {
         await this.commandPipeline.execute(
             new RegisterUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
         );
+    }
+
+    /**
+     * Consumes emailed proof and the current password to activate a pending account.
+     *
+     * @param postUserActivateDto The activation token and existing password
+     * @returns Session credentials or an instruction to sign in after activation
+     * @throws {InvalidInputException} When the proof or password is invalid or expired
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceNotFoundException} When the verified proof refers to a missing account
+     * @throws {ResourceConflictException} When the account is active or changed concurrently
+     * @throws {SystemException} When the loaded account violates the activation contract
+     * @throws {DependencyUnavailableException} When required database or audit persistence is unavailable
+     */
+    @Public()
+    @Post('activate')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Activate user account',
+        description:
+            'Verifies the emailed activation token and existing password, activates the account, then attempts to open a session.',
+    })
+    @ApiExtraModels(ResponseUserActivationSessionDto, ResponseUserActivationLoginRequiredDto)
+    @ApiOkResponse({
+        description:
+            'Account activated. Use the new token pair or sign in with the existing password if session creation was unavailable.',
+        schema: {
+            type: 'object',
+            oneOf: [
+                { $ref: getSchemaPath(ResponseUserActivationSessionDto) },
+                { $ref: getSchemaPath(ResponseUserActivationLoginRequiredDto) },
+            ],
+            discriminator: {
+                propertyName: 'session',
+                mapping: {
+                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserActivationSessionDto),
+                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseUserActivationLoginRequiredDto),
+                },
+            },
+        },
+    })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse()
+    async activate(
+        @Body() postUserActivateDto: PostUserActivateDto,
+    ): Promise<ResponseUserActivationSessionDto | ResponseUserActivationLoginRequiredDto> {
+        const result = await this.commandPipeline.execute(
+            new ActivateUserCommand(postUserActivateDto.token, postUserActivateDto.password),
+        );
+
+        return result.session === SessionOutcome.CREATED
+            ? plainToInstance(ResponseUserActivationSessionDto, result)
+            : plainToInstance(ResponseUserActivationLoginRequiredDto, result);
     }
 
     /**
