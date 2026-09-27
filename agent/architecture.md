@@ -39,7 +39,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 ## CQRS
 
-- Commands extend `Command<R>`; return affected id/`void`, except auth token results and credential-login/password-change/email-confirmation session outcomes ([Security & Sessions](security-and-sessions.md#session-versions--failure-semantics)). Mutate aggregates through their methods; pass whole aggregates to write ports ([Adapters](data-and-state.md#adapters)).
+- Commands extend `Command<R>`; return affected id/`void`, except auth token results and credential-login/password-change/email-confirmation/user-activation session outcomes ([Security & Sessions](security-and-sessions.md#session-versions--failure-semantics)). Mutate aggregates through their methods; pass whole aggregates to write ports ([Adapters](data-and-state.md#adapters)).
 - Dispatched queries extend `Query<T>`; queries never mutate business state. Infer dispatch results from queries; explicit return signatures use query-owned read-models, never domain types.
 - In `src/module/<context>/application/query/<name>/`, keep results in `query.ts`, outbound contracts in `port.ts`; add `handler.ts` for pipeline dispatch, omit it for direct port reads.
 - Outbound query handlers use one purpose-specific local port; compose sources behind it in adapters, even for forwarding/merging ([Adapters](data-and-state.md#adapters)). Static permission catalogs need no outbound port.

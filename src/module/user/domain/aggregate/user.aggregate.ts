@@ -127,6 +127,21 @@ type UserSnapshot = {
 } & Readonly<UserProps>;
 
 /**
+ * Account-owned activation refusal reasons retained in audit evidence.
+ */
+enum ActivateUserRejectionReason {
+    /**
+     * The account is banned from activation.
+     */
+    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
+
+    /**
+     * The supplied password does not match the account's current password.
+     */
+    INVALID_PASSWORD = 'INVALID_PASSWORD',
+}
+
+/**
  * Account-owned email confirmation refusals; handling boundaries consume their audit reasons.
  */
 enum ConfirmEmailChangeRejectionReason {
@@ -233,6 +248,75 @@ export class User extends PrincipalAggregateRoot {
             revocationVersion: this.revocationVersion,
             ...this.props,
         };
+    }
+
+    /**
+     * Consumes activation proof after checking the account and existing password.
+     *
+     * @param payload Signature-verified activation claims
+     * @param currentPasswordMatches Whether the supplied password matches the loaded hash
+     * @throws {SystemException} When the account is deleted or differs from the verified subject
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account has already been activated
+     * @throws {InvalidInputException} When the proof or current password is invalid
+     */
+    activate(
+        payload: {
+            readonly sub: string;
+            readonly jti: string;
+            readonly activationRevocationVersion: number;
+            readonly exp: number;
+        },
+        currentPasswordMatches: boolean,
+    ) {
+        this.assertNotDeleted(this.activate.name);
+
+        if (payload.sub !== this.id) {
+            throw new SystemException('Verified token subject does not match the target account.', {
+                context: { class: User.name, method: this.activate.name, id: this.id, sub: payload.sub },
+            });
+        }
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: DomainFailureAuditAction.USER_ACTIVATION_FAILED,
+                    reason: ActivateUserRejectionReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        if (this.props.activationId === null) {
+            throw new ResourceConflictException(ResourceConflictMessage.DEFAULT);
+        }
+
+        if (
+            payload.jti !== this.props.activationId ||
+            payload.activationRevocationVersion !== this.revocationVersion ||
+            payload.activationRevocationVersion !== this.props.activationRevocationVersion ||
+            this.props.activationExpiresAt === null ||
+            payload.exp * 1000 !== this.props.activationExpiresAt.getTime()
+        ) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
+        }
+
+        if (this.props.activationExpiresAt.getTime() <= Date.now()) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
+        }
+
+        if (!currentPasswordMatches) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
+                audit: {
+                    action: DomainFailureAuditAction.USER_ACTIVATION_FAILED,
+                    reason: ActivateUserRejectionReason.INVALID_PASSWORD,
+                },
+            });
+        }
+
+        this.props.activationId = null;
+        this.props.activationExpiresAt = null;
+        this.props.activationRevocationVersion = null;
+        this.props.updatedAt = new Date();
     }
 
     /**
