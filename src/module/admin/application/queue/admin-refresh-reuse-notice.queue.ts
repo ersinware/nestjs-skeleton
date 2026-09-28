@@ -42,6 +42,8 @@ export class AdminRefreshReuseNoticeQueue implements IJobConsumer {
      * @param job Refresh-token reuse notice job
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new SendAdminRefreshReuseNoticeCommand(job.aggregateId));
+        await this.commandPipeline.execute(
+            new SendAdminRefreshReuseNoticeCommand(job.aggregateId, job.deliveryId, this.name),
+        );
     }
 }

@@ -29,6 +29,22 @@ export type EmailPayload = {
 };
 
 /**
+ * Identifies one queued email delivery independently of a provider. The sender
+ * and payload may distinguish changed requests under this identity.
+ */
+export type EmailDeliveryIdentity = {
+    /**
+     * The queue that owns this delivery.
+     */
+    readonly queueName: string;
+
+    /**
+     * The owner-assigned identity retained across job retries.
+     */
+    readonly deliveryId: string;
+};
+
+/**
  * Contract for sending transactional emails, keeping the provider swappable behind the port.
  */
 export interface IEmailerPort {
@@ -36,7 +52,8 @@ export interface IEmailerPort {
      * Sends an email.
      *
      * @param data The recipient, subject, and body of the email
+     * @param delivery The owning queue and stable delivery identity
      * @throws {Error} The raw provider error when the send fails.
      */
-    sendEmail(data: EmailPayload): Promise<void>;
+    sendEmail(data: EmailPayload, delivery: EmailDeliveryIdentity): Promise<void>;
 }

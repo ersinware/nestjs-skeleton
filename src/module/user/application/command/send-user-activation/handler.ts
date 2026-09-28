@@ -61,6 +61,7 @@ export class SendUserActivationCommandHandler implements ICommandHandler<SendUse
                 }),
                 recipient.activationExpiresAt,
             ),
+            { queueName: command.queueName, deliveryId: command.deliveryId },
         );
     }
 

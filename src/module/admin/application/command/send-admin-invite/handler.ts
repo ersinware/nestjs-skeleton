@@ -62,6 +62,7 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
                     inviteRevocationVersion: recipient.inviteRevocationVersion,
                 }),
             ),
+            { queueName: command.queueName, deliveryId: command.deliveryId },
         );
     }
 

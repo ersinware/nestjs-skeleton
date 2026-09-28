@@ -14,10 +14,12 @@ export class SendAdminInviteCommand extends Command<void> {
      *
      * @param id The unique identifier of the pending admin
      * @param deliveryId The invitation delivery identity retained across retries
+     * @param queueName The queue that owns this delivery
      */
     constructor(
         readonly id: string,
         readonly deliveryId: string,
+        readonly queueName: string,
     ) {
         super();
     }
