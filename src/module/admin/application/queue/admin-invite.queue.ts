@@ -42,6 +42,6 @@ export class AdminInviteQueue implements IJobConsumer {
      * @param job Invitation job
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new SendAdminInviteCommand(job.aggregateId, job.deliveryId));
+        await this.commandPipeline.execute(new SendAdminInviteCommand(job.aggregateId, job.deliveryId, this.name));
     }
 }

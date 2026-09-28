@@ -42,6 +42,8 @@ export class AdminEmailConfirmationQueue implements IJobConsumer {
      * @param job Email confirmation job
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new SendAdminEmailConfirmationCommand(job.aggregateId, job.deliveryId));
+        await this.commandPipeline.execute(
+            new SendAdminEmailConfirmationCommand(job.aggregateId, job.deliveryId, this.name),
+        );
     }
 }

@@ -45,7 +45,10 @@ export class SendAdminRefreshReuseNoticeCommandHandler implements ICommandHandle
             return;
         }
 
-        await this.emailerPort.sendEmail(this.buildSecurityEmail(recipient.email, recipient.name));
+        await this.emailerPort.sendEmail(this.buildSecurityEmail(recipient.email, recipient.name), {
+            queueName: command.queueName,
+            deliveryId: command.deliveryId,
+        });
     }
 
     /**

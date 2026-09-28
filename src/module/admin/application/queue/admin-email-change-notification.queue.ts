@@ -42,6 +42,6 @@ export class AdminEmailChangeNotificationQueue implements IJobConsumer {
      * @param job Committed notification delivery
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new SendAdminEmailChangeNotificationCommand(job.deliveryId));
+        await this.commandPipeline.execute(new SendAdminEmailChangeNotificationCommand(job.deliveryId, this.name));
     }
 }

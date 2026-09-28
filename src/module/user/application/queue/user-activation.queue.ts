@@ -42,6 +42,6 @@ export class UserActivationQueue implements IJobConsumer {
      * @param job Activation job
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new SendUserActivationCommand(job.aggregateId, job.deliveryId));
+        await this.commandPipeline.execute(new SendUserActivationCommand(job.aggregateId, job.deliveryId, this.name));
     }
 }

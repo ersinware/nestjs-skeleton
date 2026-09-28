@@ -13,8 +13,12 @@ export class SendUserEmailChangeNotificationCommand extends Command<void> {
      * Initializes a historical notice delivery.
      *
      * @param id Immutable notification identity
+     * @param queueName The queue that owns this delivery
      */
-    constructor(readonly id: string) {
+    constructor(
+        readonly id: string,
+        readonly queueName: string,
+    ) {
         super();
     }
 }

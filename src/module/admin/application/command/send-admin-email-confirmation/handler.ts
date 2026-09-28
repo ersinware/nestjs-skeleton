@@ -64,6 +64,7 @@ export class SendAdminEmailConfirmationCommandHandler implements ICommandHandler
                     emailRevocationVersion: recipient.pendingEmailRevocationVersion,
                 }),
             ),
+            { queueName: command.queueName, deliveryId: command.deliveryId },
         );
     }
 
