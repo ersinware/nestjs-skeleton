@@ -52,15 +52,25 @@ describe('User activation', () => {
         ]);
     });
 
-    it('preserves valid proof and deadline while each resend queues a distinct delivery', () => {
+    it('replaces valid proof and deadline on every resend with a distinct delivery', () => {
         const original = proof();
         account.pullJobs();
         vi.advanceTimersByTime(60_000);
         expect(account.resendActivation()).toBe(true);
-        expect(proof()).toEqual(original);
-        expect(account.pullJobs()).toHaveLength(1);
+        const firstResend = proof();
+        expect(firstResend.jti).not.toBe(original.jti);
+        expect(firstResend.exp).toBe(original.exp + 60);
+        expect(account.pullJobs()).toEqual([
+            { aggregateId: account.id, deliveryId: firstResend.jti, queueName: UserJobQueue.ACTIVATION },
+        ]);
+        expect(() => account.activate(original, true)).toThrow(InvalidInputException);
         expect(account.resendActivation()).toBe(true);
-        expect(account.pullJobs()).toHaveLength(1);
+        const secondResend = proof();
+        expect(secondResend.jti).not.toBe(firstResend.jti);
+        expect(account.pullJobs()).toEqual([
+            { aggregateId: account.id, deliveryId: secondResend.jti, queueName: UserJobQueue.ACTIVATION },
+        ]);
+        expect(() => account.activate(firstResend, true)).toThrow(InvalidInputException);
     });
 
     it('renews expired proof for three days and rejects the old proof', () => {

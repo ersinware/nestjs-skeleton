@@ -334,22 +334,31 @@ describe('User registration and activation', () => {
         expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATED)).toHaveLength(0);
     });
 
-    it('resends valid proof without extending its deadline and renews an expired request', async () => {
+    it('replaces valid and expired proofs, invalidating prior links and deliveries', async () => {
         const row = await register();
+        const oldToken = await proof(row);
+        const originalJob = (await jobs(row.id))[0]!;
         const resend = () =>
             app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } });
         expect((await resend()).statusCode).toBe(204);
-        const [same] = await database.select().from(user).where(eq(user.id, row.id));
-        expect(same!.activationId).toBe(row.activationId);
-        expect(same!.activationExpiresAt).toEqual(row.activationExpiresAt);
+        const [replaced] = await database.select().from(user).where(eq(user.id, row.id));
+        expect(replaced!.activationId).not.toBe(row.activationId);
+        expect(replaced!.activationExpiresAt!.getTime()).toBeGreaterThanOrEqual(row.activationExpiresAt!.getTime());
         expect(await jobs(row.id)).toHaveLength(2);
         sendEmail.mockResolvedValue(undefined);
-        const validJobs = await jobs(row.id);
-        for (const delivery of validJobs) {
-            await app.get(UserActivationQueue).consume(delivery.data);
-        }
-        expect(sendEmail).toHaveBeenCalledTimes(2);
-        expect(sendEmail.mock.calls[0]![0].body).toBe(sendEmail.mock.calls[1]![0].body);
+        await app.get(UserActivationQueue).consume(originalJob.data);
+        expect(sendEmail).not.toHaveBeenCalled();
+        const replacementJob = (await jobs(row.id)).find((job) => job.data.deliveryId === replaced!.activationId)!;
+        await app.get(UserActivationQueue).consume(replacementJob.data);
+        expect(sendEmail).toHaveBeenCalledOnce();
+        expect(sendEmail.mock.calls[0]![1]).toEqual({
+            queueName: UserJobQueue.ACTIVATION,
+            deliveryId: replaced!.activationId,
+        });
+        expect(
+            (await app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token: oldToken, password } }))
+                .statusCode,
+        ).toBe(400);
 
         await database
             .update(user)
@@ -357,7 +366,7 @@ describe('User registration and activation', () => {
             .where(eq(user.id, row.id));
         expect((await resend()).statusCode).toBe(204);
         const [renewed] = await database.select().from(user).where(eq(user.id, row.id));
-        expect(renewed!.activationId).not.toBe(row.activationId);
+        expect(renewed!.activationId).not.toBe(replaced!.activationId);
         expect(renewed!.activationExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 60 * 60 * 1000 - 5_000);
         expect(await jobs(row.id)).toHaveLength(3);
         expect(

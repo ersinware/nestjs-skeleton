@@ -12,8 +12,8 @@ import { TOKEN_EMAILER_PORT } from 'src/core/email/port/emailer.port';
 
 /**
  * Exposes email delivery to the rest of the application. The environment decides the
- * binding: test gets the no-op adapter (no Gmail credentials required, no quota spent),
- * every other environment gets the Gmail adapter.
+ * binding: test gets the no-op adapter (no provider call or quota spent),
+ * every other environment gets the Resend adapter.
  */
 @Module({
     providers: [

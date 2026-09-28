@@ -572,34 +572,6 @@ export class EnvironmentVariables {
     readonly EMAIL_API_KEY!: string;
 
     /**
-     * Sender email address for Gmail API.
-     */
-    @IsString()
-    @IsEmail()
-    readonly GMAIL_USER_EMAIL!: string;
-
-    /**
-     * Google OAuth2 client ID for Gmail API.
-     */
-    @IsString()
-    @Matches(/\S/)
-    readonly GMAIL_CLIENT_ID!: string;
-
-    /**
-     * Google OAuth2 client secret for Gmail API.
-     */
-    @IsString()
-    @Matches(/\S/)
-    readonly GMAIL_CLIENT_SECRET!: string;
-
-    /**
-     * Google OAuth2 refresh token for Gmail API.
-     */
-    @IsString()
-    @Matches(/\S/)
-    readonly GMAIL_REFRESH_TOKEN!: string;
-
-    /**
      * Sentry DSN (Data Source Name) for error tracking; empty disables Sentry initialization.
      */
     @ValidateIf((_object, value: unknown) => value !== '')
