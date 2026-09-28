@@ -535,7 +535,7 @@ export class UserController {
     @ApiOperation({
         summary: 'Resend user activation email',
         description:
-            'Requests another activation email without revealing account status. Eligible pending accounts keep an unexpired link and its original deadline; expired or revoked links receive a new three-day deadline.',
+            'Requests another activation email without revealing account status. Each accepted request replaces the previous link and starts a new three-day deadline.',
     })
     @ApiNoContentResponse({ description: 'Request accepted regardless of account existence or activation status.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)

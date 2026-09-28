@@ -329,7 +329,7 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Requests another activation email while preserving valid proof or renewing stale proof.
+     * Requests another activation email with a fresh proof, invalidating the previous link.
      * Returns false for banned or already active accounts so the public caller can give the same
      * response as for an unknown address without creating a delivery.
      *
@@ -349,13 +349,7 @@ export class User extends PrincipalAggregateRoot {
             });
         }
 
-        if (
-            this.props.activationExpiresAt.getTime() <= Date.now() ||
-            this.props.activationRevocationVersion !== this.revocationVersion
-        ) {
-            this.issueActivation();
-        }
-
+        this.issueActivation();
         this.props.updatedAt = new Date();
         this.addActivationJob();
 
