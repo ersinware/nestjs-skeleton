@@ -35,4 +35,4 @@ Mutation evidence and durable delivery require both [Jobs & Messaging](agent/job
 
 ## Reference Stack
 
-NestJS / SWC; Fastify; PostgreSQL / Drizzle (`pg`) / pg-boss; Redis (`ioredis`); Gmail (`googleapis`); Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud; Vitest / Supertest / Spectral / Schemathesis.
+NestJS / SWC; Fastify; PostgreSQL / Drizzle (`pg`) / pg-boss; Redis (`ioredis`); Resend (`resend`); Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud; Vitest / Supertest / Spectral / Schemathesis.

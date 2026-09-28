@@ -64,10 +64,6 @@ describe('env.validation.config', () => {
 
         EMAIL_FROM_ADDRESS: 'sender@example.com',
         EMAIL_API_KEY: 'email-api-key',
-        GMAIL_USER_EMAIL: 'user@gmail.com',
-        GMAIL_CLIENT_ID: 'gmail-client-id',
-        GMAIL_CLIENT_SECRET: 'gmail-client-secret',
-        GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
 
         SENTRY_DSN: 'https://publickey@sentry.example/1',
         SENTRY_ENVIRONMENT: ExceptionTrackerEnvironment.TEST,
@@ -283,7 +279,7 @@ describe('env.validation.config', () => {
         ['ADMIN_INVITE_URL', 'https://'],
         ['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'ftp://localhost/traces'],
         ['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'not-a-url'],
-        ['GMAIL_USER_EMAIL', 'not-an-email'],
+        ['EMAIL_FROM_ADDRESS', 'not-an-email'],
         ['JWT_ACCESS_SECRET', '   '],
         ['JWT_REFRESH_SECRET', 123],
         ['OTEL_SDK_DISABLED', 'yes'],

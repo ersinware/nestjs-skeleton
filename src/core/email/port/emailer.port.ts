@@ -53,7 +53,7 @@ export interface IEmailerPort {
      *
      * @param data The recipient, subject, and body of the email
      * @param delivery The owning queue and stable delivery identity
-     * @throws {Error} The raw provider error when the send fails.
+     * @throws {SystemException} When the provider rejects the email request.
      */
     sendEmail(data: EmailPayload, delivery: EmailDeliveryIdentity): Promise<void>;
 }
