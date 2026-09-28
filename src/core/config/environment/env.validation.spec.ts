@@ -62,6 +62,8 @@ describe('env.validation.config', () => {
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
 
+        EMAIL_FROM_ADDRESS: 'sender@example.com',
+        EMAIL_API_KEY: 'email-api-key',
         GMAIL_USER_EMAIL: 'user@gmail.com',
         GMAIL_CLIENT_ID: 'gmail-client-id',
         GMAIL_CLIENT_SECRET: 'gmail-client-secret',

@@ -558,6 +558,20 @@ export class EnvironmentVariables {
     readonly HEALTH_RSS_LIMIT_MB!: number;
 
     /**
+     * Verified sender address for transactional email.
+     */
+    @IsString()
+    @IsEmail()
+    readonly EMAIL_FROM_ADDRESS!: string;
+
+    /**
+     * API credential for the configured email provider.
+     */
+    @IsString()
+    @Matches(/\S/)
+    readonly EMAIL_API_KEY!: string;
+
+    /**
      * Sender email address for Gmail API.
      */
     @IsString()
