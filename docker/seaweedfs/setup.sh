@@ -17,4 +17,8 @@ exists=$(s3 list-buckets --query "Buckets[?Name=='$bucket'].Name" --output text)
 if [ -z "$exists" ]; then
     s3 create-bucket --bucket "$bucket" > /dev/null
 fi
+
+# Browser uploads need preflight permission and readable multipart ETags.
+s3 put-bucket-cors --bucket "$bucket" --cors-configuration '{"CORSRules":[{"AllowedOrigins":["*"],"AllowedMethods":["GET","PUT","POST","DELETE","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"]}]}'
+
 printf 'Local S3 bucket %s is ready.\n' "$bucket"

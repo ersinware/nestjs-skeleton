@@ -30,6 +30,13 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Cross-context mutations use durable jobs with owner-defined shared contracts ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - No `forwardRef()`; redesign cyclic dependencies.
 
+## Object Storage
+
+- `core/storage` is technical only; owning workflows authorize uploads and select keys, file limits, and cache policies. No standalone upload/signing API.
+- Use one S3 client with an endpoint reachable by backend and browser. Never rewrite presigned URLs; sign required upload headers and return them to the client.
+- Conditional writes prevent overwrites, not URL reuse after object deletion; never assume presigned URLs are single-use.
+- Persist/return object keys; frontend owns CDN URLs and configuration.
+
 ## Dependency Injection
 
 - DI tokens use `Symbol()` without arguments, except Redis connection tokens whose distinct descriptions identify connections in outage logs. Port bindings: token in the interface file; consumers `@Inject(TOKEN)`; module `{ provide: TOKEN, useClass: Adapter }`. Share identically configured adapters across ports with `useExisting`.

@@ -1,7 +1,6 @@
 /**
  * @file env.validation.ts
- * @description Declares every environment variable's contract and validates the raw environment at
- * boot, so the application never starts with a missing or invalid variable.
+ * @description Boot-time environment validation and conversion.
  */
 
 import { applyDecorators } from '@nestjs/common';
@@ -33,16 +32,8 @@ import { Environment } from 'src/core/config/environment/node-env.enum';
 import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
 
 /**
- * The two shapes this application accepts: `false`, or a comma-separated list of IPv4/IPv6
- * addresses, CIDR ranges and the named presets (`loopback`, `linklocal`, `uniquelocal`).
- *
- * Fastify would also take a trusted-HOP COUNT; that form is deliberately excluded. A count is
- * positional: inserting a CDN or a service-mesh sidecar shifts which hop is believed and nothing
- * fails — the audit record's `remoteAddress` quietly starts naming the wrong party. A list names the
- * machines actually operated; a hop not on it is never believed, whatever position it arrives in.
- *
- * This pattern checks list syntax; the property validator also checks IP addresses and CIDR
- * prefix lengths before the value reaches proxy-addr.
+ * Accepts `false` or named/IP/CIDR proxy lists, never hop counts: proxy-chain changes can
+ * otherwise change which client address is trusted. Address validity is checked separately.
  */
 export const TRUST_PROXY_PATTERN =
     /^(?:false|(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal)(?:\s*,\s*(?:[\da-fA-F.:]+(?:\/\d{1,3})?|loopback|linklocal|uniquelocal))*)$/;
@@ -106,11 +97,10 @@ function IsTrustedProxyList(): PropertyDecorator {
 }
 
 /**
- * Maps an empty string to `undefined`, so an optional variable left as `NAME=` in an env file counts
- * as unset — `@IsOptional` skips `undefined`, not ''.
+ * Treats an empty optional environment value as unset.
  *
- * @param params The transform parameter object.
- * @returns `undefined` for an empty string, the original value otherwise.
+ * @param params Transform input containing the raw value.
+ * @returns Undefined for an empty string; otherwise the original value.
  */
 function emptyToUndefined<T>({ value }: { readonly value: T }): T | undefined {
     return value === '' ? undefined : value;
@@ -135,9 +125,7 @@ function IsRedisHost(): PropertyDecorator {
 }
 
 /**
- * Validates a boolean environment variable arriving as the string 'true'/'false'.
- *
- * Converts only the two explicit boolean strings; validation rejects every other value.
+ * Accepts only explicit true/false environment values.
  *
  * @returns The composed property decorator.
  */
@@ -146,11 +134,10 @@ function IsEnvBoolean(): PropertyDecorator {
 }
 
 /**
- * Transforms the strings 'true'/'false' to actual booleans, leaving any other value untouched for
- * `@IsBoolean` to reject.
+ * Converts recognized boolean strings and leaves invalid values for validation.
  *
- * @param params The transform parameter object.
- * @returns The converted boolean, or the original value if it is not a recognized boolean string.
+ * @param params Transform input containing the raw value.
+ * @returns A boolean for recognized values; otherwise the original value.
  */
 function transformToBoolean<T>({ value }: { readonly value: T }): boolean | T {
     if (value === 'true' || value === true) {
@@ -203,8 +190,7 @@ function IsHttpUrl(): PropertyDecorator {
 }
 
 /**
- * The contract of every environment variable the application declares, enforced with
- * `class-validator` constraints at boot.
+ * Validated application environment.
  */
 export class EnvironmentVariables {
     /**
@@ -222,13 +208,8 @@ export class EnvironmentVariables {
     readonly NODE_ENV!: Environment;
 
     /**
-     * Which reverse-proxy hops in front of the app may be believed when they claim a client's IP.
-     *
-     * Every downstream decision keyed on "who made this request" — today the audit record's
-     * `remoteAddress`, and any IP-keyed control added later — resolves to `request.ip`, derived from the
-     * client-writable `X-Forwarded-For` header; trusting it blindly hands the client its own
-     * identity. Accepted values are `false` (no proxy) or a comma-separated list of proxy
-     * IPs/CIDRs; both `true` and a bare hop count are rejected — see {@link TRUST_PROXY_PATTERN}.
+     * Trusted proxy addresses or `false`; unrestricted trust would let clients spoof their IP.
+     * Hop counts are excluded because proxy-chain changes alter which address is trusted.
      */
     @IsString()
     @Matches(/^(?!true$)/, {
@@ -437,9 +418,8 @@ export class EnvironmentVariables {
     readonly SESSION_ABSOLUTE_TTL_USER!: string;
 
     /**
-     * Grace window (e.g. '10s') during which replay of a just-rotated refresh token is audited and
-     * rejected as a conflict without full session-family revocation. Timing cannot prove legitimacy.
-     * Limited to 1–60 seconds: Redis requires positive expiry and longer grace delays reuse remediation.
+     * 1–60 second replay grace: conflicts are audited without family revocation.
+     * Timing alone cannot establish whether a replay is legitimate.
      */
     @IsString()
     @ValidateBy({
@@ -558,6 +538,45 @@ export class EnvironmentVariables {
     readonly HEALTH_RSS_LIMIT_MB!: number;
 
     /**
+     * Bucket used for server-owned object keys.
+     */
+    @IsString()
+    @Matches(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
+    readonly STORAGE_BUCKET!: string;
+
+    /**
+     * Region used for S3 request signing.
+     */
+    @IsString()
+    @Matches(/^[a-z0-9-]+$/)
+    readonly STORAGE_REGION!: string;
+
+    /**
+     * Optional S3-compatible endpoint for local development and tests.
+     */
+    @Transform(emptyToUndefined)
+    @IsOptional()
+    @IsString()
+    @IsHttpUrl()
+    readonly STORAGE_ENDPOINT?: string;
+
+    /**
+     * Maximum time in seconds to establish an S3 connection.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly STORAGE_CONNECT_TIMEOUT!: number;
+
+    /**
+     * Maximum time in seconds for an S3 request.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly STORAGE_REQUEST_TIMEOUT!: number;
+
+    /**
      * Verified sender address for transactional email.
      */
     @IsString()
@@ -616,37 +635,31 @@ export class EnvironmentVariables {
     readonly OTEL_SERVICE_NAME!: string;
 
     /**
-     * Comma-separated `key=value` resource attributes (`service.namespace`,
-     * `deployment.environment.name`). Read natively by the OTel SDK; declared here so a missing value
-     * fails at boot instead of leaving the telemetry unlabelled.
+     * OTel resource attributes, including service namespace and deployment environment.
      */
     @IsString()
     @Matches(/^[^\s=,]+=[^,]*(?:,[^\s=,]+=[^,]*)*$/)
     readonly OTEL_RESOURCE_ATTRIBUTES!: string;
 
     /**
-     * Preserves resource detection and generates a unique instance ID on every SDK startup.
-     * Keep serviceinstance last so a static environment attribute cannot override its UUID.
+     * Resource detectors, with serviceinstance last to preserve its generated ID.
      */
     @IsIn(['env,host,process,serviceinstance'])
     readonly OTEL_NODE_RESOURCE_DETECTORS!: string;
 
     /**
-     * Semantic-convention generation the HTTP instrumentation emits: `http` for the stable names
-     * (`http.route`, `http_server_request_duration_seconds`), `http/dup` for both during a migration.
-     * Read natively by the OTel SDK; declared so the metric names cannot silently change per env.
+     * HTTP semantic convention mode; controls emitted span and metric names.
      */
     @IsIn(['http', 'http/dup'])
     readonly OTEL_SEMCONV_STABILITY_OPT_IN!: string;
 }
 
 /**
- * Transforms incoming raw environment variables into the `EnvironmentVariables` class and validates them.
- * Throws an error to prevent application startup if any validation constraints fail.
+ * Converts and validates the boot environment.
  *
- * @param config Raw object containing environment variables (typically process.env).
- * @returns Validated and typed environment variables instance.
- * @throws {Error} containing validation failure details if any environment variable is missing or invalid.
+ * @param config Raw environment values.
+ * @returns Validated environment values.
+ * @throws {Error} When configuration is missing or invalid.
  */
 export function validateConfig(config: Record<string, unknown>): EnvironmentVariables {
     const validatedConfig = plainToInstance(EnvironmentVariables, config, {

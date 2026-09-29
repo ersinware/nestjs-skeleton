@@ -1,6 +1,6 @@
 /**
  * @file test-app.factory.ts
- * @description Compiles and bootstraps NestJS Fastify application instances for E2E integration tests.
+ * @description E2E application factory.
  */
 
 import { VersioningType } from '@nestjs/common';
@@ -9,19 +9,23 @@ import { Test } from '@nestjs/testing';
 import { AppModule } from 'src/app.module';
 import { httpCacheHook } from 'src/core/http';
 import { auditContextHook } from 'src/core/observability/audit';
+import { TOKEN_STORAGE_PORT } from 'src/core/storage';
 import type { OptionsTestApp } from 'test/shared/interface/e2e-spec.interface';
 
 /**
- * Compiles and initializes a NestJS Fastify application with testing overrides and routing conventions.
+ * Initializes the application with E2E routing and provider overrides.
  *
- * @param options Configurations for custom controller registration and module override providers.
- * @returns A promise resolving to the fully initialized Fastify app instance.
+ * @param options Optional controllers and provider overrides.
+ * @returns An initialized Fastify application.
  */
 export async function createTestApp(options?: OptionsTestApp): Promise<NestFastifyApplication> {
     const builder = Test.createTestingModule({
         imports: [AppModule],
         controllers: [...(options?.extraControllers ?? [])],
     });
+
+    // Fail on unexpected storage use in E2E tests that do not provision S3.
+    builder.overrideProvider(TOKEN_STORAGE_PORT).useValue({});
 
     (options?.overrides ?? []).forEach((override) => {
         builder.overrideProvider(override.provide).useValue(override.useValue);

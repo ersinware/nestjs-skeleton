@@ -1,6 +1,6 @@
 /**
  * @file app.module.ts
- * @description Root module: aggregates every core concern and bounded context, and binds the global guards, pipes, interceptors, and exception filter.
+ * @description Application dependency and global provider composition.
  */
 
 import { Module, ValidationPipe } from '@nestjs/common';
@@ -18,6 +18,7 @@ import { LoggerModule } from 'src/core/observability/logger';
 import { AuthenticationGuard, AuthorizationGuard, AuthPolicyModule } from 'src/core/security/auth';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
+import { StorageModule } from 'src/core/storage';
 import { AdminModule } from 'src/module/admin';
 import { AuditTrailModule } from 'src/module/audit-trail';
 import { AuthModule } from 'src/module/auth';
@@ -42,6 +43,7 @@ import { UserModule } from 'src/module/user';
         DatabaseModule,
         EmailModule,
         TokenModule,
+        StorageModule,
         SessionModule,
         AuthPolicyModule,
         HealthModule,
@@ -77,15 +79,12 @@ import { UserModule } from 'src/module/user';
                 transform: true,
             }),
         },
-        // Outermost: a missing or misplaced cache policy is a wiring bug and must fail before any
-        // other interceptor or the handler runs.
+        // Check cache policy before other interceptors or the handler run.
         {
             provide: APP_INTERCEPTOR,
             useClass: HttpCacheInterceptor,
         },
-        // The ambient audit context is seeded by `auditContextHook` and completed by `AuthenticationGuard`,
-        // both of which run before any interceptor — so the actor is already in scope when this
-        // records an `@Audited` disclosure.
+        // Audit context and verified identity are available before interceptors run.
         {
             provide: APP_INTERCEPTOR,
             useClass: AuditInterceptor,
