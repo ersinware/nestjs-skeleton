@@ -30,7 +30,7 @@ import {
 } from 'src/core/storage/port/storage.port';
 import { TOKEN_S3_CLIENT } from 'src/core/storage/storage-client.token';
 import { translateStorageError } from 'src/core/storage/storage-error.util';
-import { planStorageUpload } from 'src/core/storage/storage-upload-policy';
+import { MAX_PARTS, planStorageUpload } from 'src/core/storage/storage-upload-policy';
 import { InvalidInputException, SystemException } from 'src/shared/exception';
 
 /**
@@ -114,6 +114,7 @@ export class S3StorageAdapter implements IStoragePort {
             }
         }
 
+        // A lost create response leaves no upload ID to abort; bucket lifecycle must reclaim it.
         let uploadId: string;
 
         try {
@@ -165,8 +166,13 @@ export class S3StorageAdapter implements IStoragePort {
                                         Key: request.key,
                                         UploadId: uploadId,
                                         PartNumber: partNumber,
+                                        // Blob/File uploads supply this header automatically in browsers.
+                                        ContentLength: Math.min(
+                                            plan.partSizeBytes,
+                                            request.sizeBytes - index * plan.partSizeBytes,
+                                        ),
                                     }),
-                                    { expiresIn, signingDate: now },
+                                    { expiresIn, signingDate: now, signableHeaders: new Set(['content-length']) },
                                 ),
                                 headers: {},
                                 expiresAt: new Date(now.getTime() + expiresIn * 1000),
@@ -185,7 +191,7 @@ export class S3StorageAdapter implements IStoragePort {
                     }),
                 );
             } catch {
-                // Preserve the signing failure; multipart cleanup is best effort.
+                // Preserve the signing failure; failed cleanup needs bucket abort-incomplete lifecycle.
             }
 
             throw translateStorageError(error, {
@@ -235,11 +241,15 @@ export class S3StorageAdapter implements IStoragePort {
      */
     async completeMultipart(request: StorageCompleteMultipartRequest) {
         if (
+            !Number.isInteger(request.partCount) ||
+            request.partCount < 1 ||
+            request.partCount > MAX_PARTS ||
             request.parts.length !== request.partCount ||
             request.parts.some((part, index) => part.partNumber !== index + 1 || !part.etag)
         ) {
             throw new InvalidInputException('Multipart manifest does not match the upload plan.');
         }
+
         try {
             await this.client.send(
                 new CompleteMultipartUploadCommand({

@@ -6,13 +6,15 @@
 import {
     DependencyUnavailableException,
     DependencyUnavailableMessage,
-    type ExceptionContext,
+    InvalidInputException,
+    InvalidInputMessage,
     ResourceConflictException,
     ResourceConflictMessage,
     ResourceNotFoundException,
     ResourceNotFoundMessage,
     SystemException,
     toError,
+    type ExceptionContext,
 } from 'src/shared/exception';
 
 /**
@@ -57,7 +59,7 @@ type StorageProviderError = {
 /**
  * Converts known provider failures for the adapter to throw; unknown errors keep their identity.
  *
- * @param _error SDK or transport rejection.
+ * @param error SDK or transport rejection.
  * @param context Adapter operation that observed the failure.
  * @returns A mapped application exception or the normalized original error.
  */
@@ -75,8 +77,12 @@ export function translateStorageError(error: unknown, context: ExceptionContext)
 
     const status = _error.$metadata?.httpStatusCode;
 
-    if (status === 404 || name === 'NotFound' || name === 'NoSuchKey') {
+    if (status === 404 || name === 'NotFound' || name === 'NoSuchKey' || name === 'NoSuchUpload') {
         return new ResourceNotFoundException(ResourceNotFoundMessage.DEFAULT, { cause: _error });
+    }
+
+    if (['InvalidPart', 'InvalidPartOrder', 'EntityTooSmall'].includes(name)) {
+        return new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: _error });
     }
 
     if (status === 409 || status === 412 || name === 'ConditionalRequestConflict' || name === 'PreconditionFailed') {

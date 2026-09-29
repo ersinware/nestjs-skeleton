@@ -16,14 +16,14 @@ export const MULTIPART_THRESHOLD_BYTES = 7 * 1024 * 1024;
 export const MULTIPART_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
 /**
+ * S3 maximum number of parts in one multipart upload.
+ */
+export const MAX_PARTS = 10_000;
+
+/**
  * S3 maximum size of one multipart part (5 GiB).
  */
 const MAX_PART_BYTES = 5 * 1024 * 1024 * 1024;
-
-/**
- * S3 maximum number of parts in one multipart upload.
- */
-const MAX_PARTS = 10_000;
 
 /**
  * Largest object representable by the part size and count limits.

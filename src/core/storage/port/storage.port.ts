@@ -64,7 +64,7 @@ export type StorageUploadRequest = {
 };
 
 /**
- * One presigned browser PUT request, including all headers that must be sent unchanged.
+ * One presigned browser PUT request; multipart bodies must be Blob/File slices of the planned size.
  */
 export type StorageSignedRequest = {
     /**
@@ -73,7 +73,7 @@ export type StorageSignedRequest = {
     readonly url: string;
 
     /**
-     * Required request headers.
+     * Headers set by the caller; browsers supply signed multipart Content-Length from the body.
      */
     readonly headers: Readonly<Record<string, string>>;
 
@@ -273,10 +273,12 @@ export interface IStoragePort {
 
     /**
      * Completes a session conditionally using the client-observed manifest.
+     * A timeout has an unknown outcome; reconcile with HEAD before retrying or restarting.
      *
      * @param request Authorized session identity, expected part count, and completed manifest.
      * @throws {InvalidInputException} When the manifest is invalid.
-     * @throws {ResourceConflictException} When an object already occupies the key.
+     * @throws {ResourceConflictException} On 409 (restart required) or 412 (key occupied); cause retains the provider code.
+     * @throws {ResourceNotFoundException} When the session was aborted, completed, or does not exist.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.
      */
@@ -286,6 +288,7 @@ export interface IStoragePort {
      * Aborts an unfinished multipart session without deleting a completed object.
      *
      * @param request Authorized session identity.
+     * @throws {ResourceNotFoundException} When the session no longer exists; completed objects remain intact.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.
      */
