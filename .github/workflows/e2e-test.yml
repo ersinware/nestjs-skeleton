@@ -49,6 +49,25 @@ jobs:
             - name: Check out code
               uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+            # Start after checkout so the S3 config can be copied into the container.
+            - name: Start SeaweedFS
+              run: |
+                  storage_container=$(docker create \
+                    --network host \
+                    chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d \
+                    server -ip=127.0.0.1 -ip.bind=0.0.0.0 -master.telemetry=false -filer -s3 \
+                    -s3.config=/etc/seaweedfs/s3.json -s3.port.iceberg=0 -s3.port.lance=0)
+                  echo "STORAGE_CONTAINER=$storage_container" >> "$GITHUB_ENV"
+                  docker cp docker/seaweedfs/s3.json "$storage_container:/etc/seaweedfs/s3.json"
+                  docker start "$storage_container"
+                  curl --retry 30 --retry-delay 1 --retry-connrefused --retry-max-time 30 --connect-timeout 1 --silent --show-error --output /dev/null http://127.0.0.1:8333/
+
+            - name: Prepare S3 test bucket
+              run: |
+                  docker run --rm -i --network host -e S3_ENDPOINT_URL=http://127.0.0.1:8333 --entrypoint /bin/sh \
+                    amazon/aws-cli:2.34.0@sha256:97cc5f847898f54432492c128408c62e0df2153d9ad36573be8e5a03826123b0 \
+                    -s storage-test < docker/seaweedfs/setup.sh
+
             - name: Cache Vitest E2E results
               uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
               with:
@@ -103,3 +122,10 @@ jobs:
               run: |
                   npm run ci:start:wait
                   npm run test:contract
+
+            - name: Remove S3 test container
+              if: always()
+              run: |
+                  if [ -n "${STORAGE_CONTAINER:-}" ]; then
+                    docker rm -fv "$STORAGE_CONTAINER"
+                  fi

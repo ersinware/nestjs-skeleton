@@ -48,6 +48,46 @@ services:
         networks:
             - api-network
 
+    seaweedfs:
+        image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+        container_name: seaweedfs
+        restart: always
+        # server starts no lifecycle worker; mini starts additional background components.
+        command: >-
+            server -ip=seaweedfs -ip.bind=0.0.0.0
+            -master.telemetry=false -filer -s3
+            -s3.config=/etc/seaweedfs/s3.json
+            -s3.port.iceberg=0 -s3.port.lance=0
+        ports:
+            - '127.0.0.1:8333:8333'
+        volumes:
+            - seaweedfs_data:/data
+            - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - wget -q -O /dev/null http://localhost:9333/cluster/status && wget -q -O /dev/null http://localhost:8888/ && nc -z localhost 8333
+            interval: 5s
+            timeout: 3s
+            retries: 12
+            start_period: 10s
+        logging: *logging
+        networks:
+            - api-network
+
+    storage-init:
+        image: amazon/aws-cli:2.34.0@sha256:97cc5f847898f54432492c128408c62e0df2153d9ad36573be8e5a03826123b0
+        depends_on:
+            seaweedfs:
+                condition: service_healthy
+        entrypoint: ['/bin/sh', '/etc/seaweedfs/setup.sh']
+        command: ['storage-development']
+        volumes:
+            - ./docker/seaweedfs:/etc/seaweedfs:ro
+        logging: *logging
+        networks:
+            - api-network
+
     api:
         environment:
             OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:?}
@@ -95,5 +135,6 @@ networks:
 volumes:
     pg_data_vol:
     redis_session_data:
+    seaweedfs_data:
     # Exporter queues and log offsets survive recreation; docker:*:down:clean removes them.
     otel_collector_data:
