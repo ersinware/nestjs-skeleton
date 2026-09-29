@@ -1,14 +1,12 @@
 /**
  * @file env.constant.ts
- * @description Constant map of environment variable names, kept in exact key parity with the
- * `EnvironmentVariables` validation class at compile time.
+ * @description Names of validated environment variables.
  */
 
 import type { EnvironmentVariables } from 'src/core/config/environment/env.validation';
 
 /**
- * Every declared environment variable name as a string key, for `ConfigService` lookups. Adding or
- * removing a property in `EnvironmentVariables` without updating this object fails compilation.
+ * ConfigService keys kept in compile-time parity with `EnvironmentVariables`.
  */
 export const ENV = {
     PORT: 'PORT',
@@ -60,6 +58,12 @@ export const ENV = {
 
     HEALTH_HEAP_LIMIT_MB: 'HEALTH_HEAP_LIMIT_MB',
     HEALTH_RSS_LIMIT_MB: 'HEALTH_RSS_LIMIT_MB',
+
+    STORAGE_BUCKET: 'STORAGE_BUCKET',
+    STORAGE_REGION: 'STORAGE_REGION',
+    STORAGE_ENDPOINT: 'STORAGE_ENDPOINT',
+    STORAGE_CONNECT_TIMEOUT: 'STORAGE_CONNECT_TIMEOUT',
+    STORAGE_REQUEST_TIMEOUT: 'STORAGE_REQUEST_TIMEOUT',
 
     EMAIL_FROM_ADDRESS: 'EMAIL_FROM_ADDRESS',
     EMAIL_API_KEY: 'EMAIL_API_KEY',

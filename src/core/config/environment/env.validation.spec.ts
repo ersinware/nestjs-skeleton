@@ -62,6 +62,12 @@ describe('env.validation.config', () => {
         HEALTH_HEAP_LIMIT_MB: 200,
         HEALTH_RSS_LIMIT_MB: 200,
 
+        STORAGE_BUCKET: 'storage-test',
+        STORAGE_REGION: 'us-east-1',
+        STORAGE_ENDPOINT: 'http://127.0.0.1:8333',
+        STORAGE_CONNECT_TIMEOUT: 2,
+        STORAGE_REQUEST_TIMEOUT: 10,
+
         EMAIL_FROM_ADDRESS: 'sender@example.com',
         EMAIL_API_KEY: 'email-api-key',
 
@@ -108,6 +114,28 @@ describe('env.validation.config', () => {
             }
         },
     );
+
+    it.each(['STORAGE_BUCKET', 'STORAGE_REGION', 'STORAGE_CONNECT_TIMEOUT', 'STORAGE_REQUEST_TIMEOUT'])(
+        'requires %s at boot',
+        (key) => {
+            const config: Record<string, unknown> = { ...validConfig };
+            delete config[key];
+            expect(() => validateConfig(config)).toThrow();
+        },
+    );
+
+    it('rejects invalid storage configuration and accepts an absent endpoint', () => {
+        for (const change of [
+            { STORAGE_BUCKET: '' },
+            { STORAGE_REGION: '' },
+            { STORAGE_ENDPOINT: 'ftp://localhost' },
+            { STORAGE_CONNECT_TIMEOUT: 0 },
+            { STORAGE_REQUEST_TIMEOUT: -1 },
+        ]) {
+            expect(() => validateConfig({ ...validConfig, ...change })).toThrow();
+        }
+        expect(validateConfig({ ...validConfig, STORAGE_ENDPOINT: '' }).STORAGE_ENDPOINT).toBeUndefined();
+    });
 
     it('should return a validated EnvironmentVariables instance when config is valid', () => {
         const result = validateConfig(validConfig);

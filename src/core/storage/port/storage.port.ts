@@ -53,11 +53,6 @@ export type StorageUploadRequest = {
     readonly contentType: string;
 
     /**
-     * Caller-owned metadata, including the upload intent identifier.
-     */
-    readonly metadata: Readonly<Record<string, string>>;
-
-    /**
      * Cache metadata for this object.
      */
     readonly cache: StorageCachePolicy;
@@ -69,14 +64,9 @@ export type StorageUploadRequest = {
 };
 
 /**
- * One presigned browser request, including all headers that must be sent unchanged.
+ * One presigned browser PUT request, including all headers that must be sent unchanged.
  */
 export type StorageSignedRequest = {
-    /**
-     * HTTP method to send.
-     */
-    readonly method: 'PUT';
-
     /**
      * Presigned URL including its signed host.
      */
@@ -91,6 +81,21 @@ export type StorageSignedRequest = {
      * Actual signing expiry, no later than the upload deadline.
      */
     readonly expiresAt: Date;
+};
+
+/**
+ * A numbered part URL in a multipart upload plan.
+ */
+export type StorageSignedPart = {
+    /**
+     * One-based S3 part number.
+     */
+    readonly partNumber: number;
+
+    /**
+     * Request to upload or retry this part.
+     */
+    readonly request: StorageSignedRequest;
 };
 
 /**
@@ -133,60 +138,10 @@ export type StorageUploadPlan =
            * One signed request for each part, in part-number order.
            */
           readonly parts: readonly StorageSignedPart[];
-
-          /**
-           * Absolute deadline of the issued upload requests.
-           */
-          readonly deadline: Date;
       };
 
 /**
- * Identifies a multipart session previously authorized by the owning workflow.
- */
-export type StorageMultipartSession = {
-    /**
-     * Server-owned object key.
-     */
-    readonly key: string;
-
-    /**
-     * S3 upload identifier.
-     */
-    readonly uploadId: string;
-
-    /**
-     * Expected whole-object size for completion checks.
-     */
-    readonly sizeBytes: number;
-
-    /**
-     * Planned size of each part except the last.
-     */
-    readonly partSizeBytes: number;
-
-    /**
-     * Exact number of parts in the plan.
-     */
-    readonly partCount: number;
-};
-
-/**
- * A numbered part URL in a multipart upload plan.
- */
-export type StorageSignedPart = {
-    /**
-     * One-based S3 part number.
-     */
-    readonly partNumber: number;
-
-    /**
-     * Request to upload or retry this part.
-     */
-    readonly request: StorageSignedRequest;
-};
-
-/**
- * Metadata of an existing object; null means a verified absence.
+ * Metadata of an existing object.
  */
 export type StorageObject = {
     /**
@@ -203,16 +158,6 @@ export type StorageObject = {
      * Stored media type, if present.
      */
     readonly contentType?: string;
-
-    /**
-     * Stored Cache-Control value, if present.
-     */
-    readonly cacheControl?: string;
-
-    /**
-     * Stored application metadata.
-     */
-    readonly metadata: Readonly<Record<string, string>>;
 };
 
 /**
@@ -231,7 +176,47 @@ export type StorageCompletedPart = {
 };
 
 /**
- * Object copy with an explicit replacement metadata/cache policy.
+ * Data required to complete one authorized multipart upload.
+ */
+export type StorageCompleteMultipartRequest = {
+    /**
+     * Server-owned object key.
+     */
+    readonly key: string;
+
+    /**
+     * S3 upload identifier.
+     */
+    readonly uploadId: string;
+
+    /**
+     * Exact number of parts authorized by the upload plan.
+     */
+    readonly partCount: number;
+
+    /**
+     * Ordered manifest observed by the client.
+     */
+    readonly parts: readonly StorageCompletedPart[];
+};
+
+/**
+ * Data required to abort one authorized multipart upload.
+ */
+export type StorageAbortMultipartRequest = {
+    /**
+     * Server-owned object key.
+     */
+    readonly key: string;
+
+    /**
+     * S3 upload identifier.
+     */
+    readonly uploadId: string;
+};
+
+/**
+ * Object copy with an explicit content type and cache policy.
  */
 export type StorageCopyRequest = {
     /**
@@ -255,11 +240,6 @@ export type StorageCopyRequest = {
     readonly contentType: string;
 
     /**
-     * Metadata to store at the destination.
-     */
-    readonly metadata: Readonly<Record<string, string>>;
-
-    /**
      * Destination cache policy.
      */
     readonly cache: StorageCachePolicy;
@@ -281,41 +261,42 @@ export interface IStoragePort {
     initiateUpload(request: StorageUploadRequest): Promise<StorageUploadPlan>;
 
     /**
-     * Reads the current object state, distinguishing verified absence from failures.
+     * Reads the current object metadata.
      *
      * @param key Server-owned object key.
-     * @returns Object metadata or null after a verified not-found response.
+     * @returns Object metadata.
+     * @throws {ResourceNotFoundException} When the object is missing.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.
      */
-    headObject(key: string): Promise<StorageObject | null>;
+    headObject(key: string): Promise<StorageObject>;
 
     /**
      * Completes a session conditionally using the client-observed manifest.
      *
-     * @param session Previously authorized multipart session.
-     * @param parts Ordered manifest of successful uploads.
+     * @param request Authorized session identity, expected part count, and completed manifest.
      * @throws {InvalidInputException} When the manifest is invalid.
      * @throws {ResourceConflictException} When an object already occupies the key.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.
      */
-    completeMultipart(session: StorageMultipartSession, parts: readonly StorageCompletedPart[]): Promise<void>;
+    completeMultipart(request: StorageCompleteMultipartRequest): Promise<void>;
 
     /**
      * Aborts an unfinished multipart session without deleting a completed object.
      *
-     * @param session Previously authorized multipart session.
+     * @param request Authorized session identity.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.
      */
-    abortMultipart(session: StorageMultipartSession): Promise<void>;
+    abortMultipart(request: StorageAbortMultipartRequest): Promise<void>;
 
     /**
      * Copies a small object without deleting its source; multipart copy is unsupported.
      *
-     * @param request Source, target, and replacement metadata.
+     * @param request Source, target, content type, and cache policy.
      * @throws {InvalidInputException} When the source exceeds single-copy limits.
+     * @throws {ResourceNotFoundException} When the source object is missing.
      * @throws {ResourceConflictException} When the source no longer matches.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.

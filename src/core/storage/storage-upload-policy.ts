@@ -38,10 +38,9 @@ const MAX_OBJECT_BYTES = MAX_PART_BYTES * MAX_PARTS;
  * @throws {InvalidInputException} When the file size cannot be represented by S3.
  */
 export function planStorageUpload(sizeBytes: number):
-    | { readonly mode: 'single'; readonly sizeBytes: number }
+    | { readonly mode: 'single' }
     | {
           readonly mode: 'multipart';
-          readonly sizeBytes: number;
           readonly partSizeBytes: number;
           readonly partCount: number;
       } {
@@ -50,10 +49,10 @@ export function planStorageUpload(sizeBytes: number):
     }
 
     if (sizeBytes <= MULTIPART_THRESHOLD_BYTES) {
-        return { mode: 'single', sizeBytes };
+        return { mode: 'single' };
     }
 
     const partSizeBytes = Math.max(MULTIPART_PART_SIZE_BYTES, Math.ceil(sizeBytes / MAX_PARTS));
 
-    return { mode: 'multipart', sizeBytes, partSizeBytes, partCount: Math.ceil(sizeBytes / partSizeBytes) };
+    return { mode: 'multipart', partSizeBytes, partCount: Math.ceil(sizeBytes / partSizeBytes) };
 }
