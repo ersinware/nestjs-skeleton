@@ -111,7 +111,7 @@
         "@types/node": "^24.0.0",
         "@types/pg": "^8.23.1",
         "@types/supertest": "^7.0.0",
-        "@vitest/coverage-v8": "^4.1.8",
+        "@vitest/coverage-v8": "^4.1.11",
         "audit-ci": "^7.1.0",
         "chokidar": "^5.0.0",
         "drizzle-kit": "^0.31.10",
@@ -134,7 +134,7 @@
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.20.0",
         "unplugin-swc": "^1.5.1",
-        "vitest": "^4.1.8",
+        "vitest": "^4.1.11",
         "wait-on": "^9.0.10"
     },
     "overrides": {

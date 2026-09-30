@@ -60,6 +60,7 @@ services:
             -s3.port.iceberg=0 -s3.port.lance=0
         ports:
             - '127.0.0.1:8333:8333'
+            - '127.0.0.1:8888:8888'
         volumes:
             - seaweedfs_data:/data
             - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
