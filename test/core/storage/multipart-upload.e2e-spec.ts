@@ -1,77 +1,39 @@
 /**
  * @file multipart-upload.e2e-spec.ts
- * @description Multipart lifecycle through the production storage module and isolated SeaweedFS.
+ * @description Multipart lifecycle through the production storage module and pipeline-owned SeaweedFS.
  */
 
-import { HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
-import type { TestingModule } from '@nestjs/testing';
-import { randomUUID } from 'node:crypto';
-import { once } from 'node:events';
-import { createServer, request as httpRequest } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import {
-    TOKEN_STORAGE_PORT,
-    type IStoragePort,
-    type StorageCompleteMultipartRequest,
-    type StorageUploadPlan,
-} from 'src/core/storage';
-import { TOKEN_S3_CLIENT } from 'src/core/storage/storage-client.token';
+import type { S3Client } from '@aws-sdk/client-s3';
+import { type IStoragePort, type StorageCompleteMultipartRequest, type StorageUploadPlan } from 'src/core/storage';
 import {
     DependencyUnavailableException,
     InvalidInputException,
     ResourceConflictException,
     ResourceNotFoundException,
 } from 'src/shared/exception';
-import { createStorageTestModule } from 'test/shared/storage-test.factory';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { putWithLostResponse, withLostStorageResponse } from 'test/shared/storage-response-loss';
+import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-describe('Multipart upload (SeaweedFS)', () => {
-    let module: TestingModule;
+describe('Multipart upload (storage port)', { timeout: 30_000 }, () => {
+    let fixture: StorageTestFixture;
     let storage: IStoragePort;
     let client: S3Client;
-    const prefix = `contract/${randomUUID()}`;
-    const keys = new Set<string>();
-    const sessions: { key: string; uploadId: string }[] = [];
     const body = Buffer.alloc(11 * 1024 * 1024, 97);
 
     beforeAll(async () => {
-        vi.stubEnv('AWS_ACCESS_KEY_ID', 'local-development');
-        vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'local-development-secret');
-        vi.stubEnv('AWS_SESSION_TOKEN', undefined);
-        module = await createStorageTestModule({
-            STORAGE_BUCKET: 'storage-test',
-            STORAGE_REGION: 'us-east-1',
-            STORAGE_ENDPOINT: 'http://127.0.0.1:8333',
-            STORAGE_CONNECT_TIMEOUT: 2,
-            STORAGE_REQUEST_TIMEOUT: 5,
-        });
-        storage = module.get<IStoragePort>(TOKEN_STORAGE_PORT);
-        client = module.get<S3Client>(TOKEN_S3_CLIENT);
+        fixture = await createStorageTestFixture();
+        storage = fixture.storage;
+        client = fixture.client;
     });
 
     afterEach(async () => {
-        for (const session of sessions.splice(0)) {
-            try {
-                await storage.abortMultipart(session);
-            } catch (error) {
-                if (!(error instanceof ResourceNotFoundException)) {
-                    throw error;
-                }
-            }
-        }
-        for (const key of keys) {
-            await storage.deleteObject(key);
-            keys.delete(key);
-        }
-    });
+        await fixture?.cleanup();
+    }, 30_000);
 
     afterAll(async () => {
-        try {
-            await module?.close();
-        } finally {
-            vi.unstubAllEnvs();
-        }
-    });
+        await fixture?.close();
+    }, 30_000);
 
     /**
      * Creates a run-owned session whose parts and object are always cleaned up.
@@ -79,7 +41,7 @@ describe('Multipart upload (SeaweedFS)', () => {
      * @param key Optional shared key for conditional completion races.
      * @returns Session key and its signed multipart plan.
      */
-    async function initiate(key = `${prefix}/${randomUUID()}`): Promise<{
+    async function initiate(key = fixture.key()): Promise<{
         /**
          * Object key owned by this test.
          */
@@ -89,7 +51,6 @@ describe('Multipart upload (SeaweedFS)', () => {
          */
         readonly plan: Extract<StorageUploadPlan, { mode: 'multipart' }>;
     }> {
-        keys.add(key);
         const plan = await storage.initiateUpload({
             key,
             sizeBytes: body.length,
@@ -100,7 +61,6 @@ describe('Multipart upload (SeaweedFS)', () => {
         if (plan.mode !== 'multipart') {
             throw new Error('Expected multipart upload.');
         }
-        sessions.push({ key, uploadId: plan.uploadId });
         return { key, plan };
     }
 
@@ -143,14 +103,8 @@ describe('Multipart upload (SeaweedFS)', () => {
         const head = await storage.headObject(session.key);
         expect(head).toMatchObject({ sizeBytes: body.length, contentType: 'application/octet-stream' });
         expect(head.etag).not.toBe('');
-        await expect(
-            client.send(new HeadObjectCommand({ Bucket: 'storage-test', Key: session.key })),
-        ).resolves.toMatchObject({
-            ContentLength: body.length,
-            ContentType: 'application/octet-stream',
-            CacheControl: 'no-store',
-        });
-        // SeaweedFS 4.48 treats abort of a completed session as an idempotent success.
+        await expect(fixture.readCacheControl(session.key)).resolves.toBe('no-store');
+        // SeaweedFS treats abort of a completed session as an idempotent success.
         await expect(storage.abortMultipart(manifest)).resolves.toBeUndefined();
         await expect(storage.headObject(session.key)).resolves.toEqual(head);
     });
@@ -190,7 +144,7 @@ describe('Multipart upload (SeaweedFS)', () => {
         await storage.completeMultipart(manifest);
     });
 
-    it('reports NoSuchUpload in SeaweedFS when completing a session with no uploaded parts', async () => {
+    it('refuses completion when no parts were uploaded', async () => {
         const { key, plan } = await initiate();
         await expect(
             storage.completeMultipart({
@@ -203,7 +157,7 @@ describe('Multipart upload (SeaweedFS)', () => {
         await expect(storage.headObject(key)).rejects.toBeInstanceOf(ResourceNotFoundException);
     });
 
-    it('exercises competing completions and exposes the SeaweedFS conditional-write race limitation', async () => {
+    it('exposes the known SeaweedFS conditional completion race limitation', async () => {
         const first = await initiate();
         const second = await initiate(first.key);
         const manifests = await Promise.all([upload(first), upload(second, Buffer.alloc(body.length, 98))]);
@@ -245,47 +199,15 @@ describe('Multipart upload (SeaweedFS)', () => {
     it('retries a part after a lost response and completes using the retry ETag', async () => {
         const session = await initiate();
         const signed = session.plan.parts[0]!.request;
-        await withLostResponse(async (port) => {
-            const url = new URL(signed.url);
-            const response = new Promise<void>((resolve, reject) => {
-                const request = httpRequest(
-                    {
-                        hostname: '127.0.0.1',
-                        port,
-                        path: `${url.pathname}${url.search}`,
-                        method: 'PUT',
-                        headers: { ...signed.headers, host: url.host },
-                        timeout: 5_000,
-                    },
-                    (response) => {
-                        response.resume();
-                        resolve();
-                    },
-                );
-                request.on('error', reject);
-                request.on('timeout', () => request.destroy(new Error('Upload timed out.')));
-                request.end(body.subarray(0, session.plan.partSizeBytes));
-            });
-            await expect(response).rejects.toMatchObject({ code: 'ECONNRESET' });
-        });
+        await putWithLostResponse(signed, body.subarray(0, session.plan.partSizeBytes));
         await storage.completeMultipart(await upload(session));
         expect((await storage.headObject(session.key)).sizeBytes).toBe(body.length);
     });
 
     it('reconciles a lost completion response with HEAD without treating the timeout as failure to upload', async () => {
         const manifest = await upload(await initiate());
-        await withLostResponse(async (port) => {
-            const handler = client.config.requestHandler;
-            client.config.requestHandler = {
-                handle: (request, options) => handler.handle({ ...request, port }, options),
-            };
-            try {
-                await expect(storage.completeMultipart(manifest)).rejects.toBeInstanceOf(
-                    DependencyUnavailableException,
-                );
-            } finally {
-                client.config.requestHandler = handler;
-            }
+        await withLostStorageResponse(client, async () => {
+            await expect(storage.completeMultipart(manifest)).rejects.toBeInstanceOf(DependencyUnavailableException);
         });
         const head = await storage.headObject(manifest.key);
         expect(head.sizeBytes).toBe(body.length);
@@ -295,39 +217,3 @@ describe('Multipart upload (SeaweedFS)', () => {
         await expect(storage.headObject(manifest.key)).resolves.toEqual(head);
     });
 });
-
-/**
- * Drops the response only after the real provider has finished accepting a request.
- *
- * @param action Request directed through the proxy, preserving the original signed Host.
- */
-async function withLostResponse(action: (port: number) => Promise<void>) {
-    const upstreamStatuses: (number | undefined)[] = [];
-    const proxy = createServer((incoming, outgoing) => {
-        const upstream = httpRequest(
-            `http://127.0.0.1:8333${incoming.url}`,
-            {
-                method: incoming.method,
-                headers: incoming.headers,
-            },
-            (response) => {
-                upstreamStatuses.push(response.statusCode);
-                response.resume();
-                response.on('end', () => outgoing.destroy());
-            },
-        );
-        upstream.on('error', () => outgoing.destroy());
-        incoming.pipe(upstream);
-    });
-    proxy.listen(0, '127.0.0.1');
-    await once(proxy, 'listening');
-    try {
-        await action((proxy.address() as AddressInfo).port);
-        expect(upstreamStatuses[0]).toBe(200);
-        // SDK retries after a lost completion can encounter the newly created object.
-        expect(upstreamStatuses.slice(1).every((status) => status === 412)).toBe(true);
-    } finally {
-        proxy.closeAllConnections();
-        await new Promise<void>((resolve, reject) => proxy.close((error) => (error ? reject(error) : resolve())));
-    }
-}
