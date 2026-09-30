@@ -3,6 +3,8 @@
 ### Authentication & Authorization
 
 - JWT signing disables automatic `iat`; signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
+- Upload tokens reuse the token port/adapter; domains own `formHash` computation/verification and expiry. Never embed raw forms or credentials.
+- Each bounded context owns its upload-purpose enum with context-distinct values; use the same value for signing and verification. Core accepts strings; never take `expectedPurpose` from clients.
 - Global guards run authentication before authorization; authentication verifies access JWTs, stable session liveness, and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal.
 - Authorize by permissions, never roles. `src/shared/domain/principal/` owns static `Permission` values and exhaustive `PERMISSION_HOLDER`; holder mismatches throw `InvalidInputException`. Use `<context>:<resource>:<action>` ([Administration](security-and-sessions.md#administration) exceptions); changing persisted values requires migration.
 - Access tokens carry dynamic permission assignments; authorization uses verified claims without additional store reads.

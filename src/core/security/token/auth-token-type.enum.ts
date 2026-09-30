@@ -31,4 +31,9 @@ export enum AuthTokenType {
      * Confirms a persisted email change request; it grants no session access.
      */
     EMAIL_CONFIRM = 'email_confirm',
+
+    /**
+     * Proves that an upload was authorized for a specific workflow and form.
+     */
+    UPLOAD = 'upload',
 }

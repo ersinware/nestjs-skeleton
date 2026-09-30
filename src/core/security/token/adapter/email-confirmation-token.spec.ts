@@ -22,6 +22,7 @@ describe('Email confirmation tokens', () => {
         JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
         JWT_USER_ACTIVATION_SECRET: 'u'.repeat(32),
+        JWT_UPLOAD_SECRET: 'p'.repeat(32),
         JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
     };
     const request: Omit<EmailConfirmationTokenPayload, 'type'> = {
@@ -85,20 +86,23 @@ describe('Email confirmation tokens', () => {
         await expect(adapter.verifyInviteToken(proof)).rejects.toBeInstanceOf(UnauthenticatedException);
     });
 
-    it.each([AuthTokenType.ACCESS, AuthTokenType.REFRESH, AuthTokenType.INVITE, AuthTokenType.USER_ACTIVATION])(
-        'rejects the %s discriminator even with the email signing key',
-        async (type) => {
-            const token = await jwt.signAsync(
-                { ...request, type },
-                {
-                    secret: config.JWT_EMAIL_CONFIRM_SECRET,
-                    algorithm: 'HS256',
-                    noTimestamp: true,
-                },
-            );
-            await expect(adapter.verifyEmailConfirmationToken(token)).rejects.toBeInstanceOf(UnauthenticatedException);
-        },
-    );
+    it.each([
+        AuthTokenType.ACCESS,
+        AuthTokenType.REFRESH,
+        AuthTokenType.INVITE,
+        AuthTokenType.USER_ACTIVATION,
+        AuthTokenType.UPLOAD,
+    ])('rejects the %s discriminator even with the email signing key', async (type) => {
+        const token = await jwt.signAsync(
+            { ...request, type },
+            {
+                secret: config.JWT_EMAIL_CONFIRM_SECRET,
+                algorithm: 'HS256',
+                noTimestamp: true,
+            },
+        );
+        await expect(adapter.verifyEmailConfirmationToken(token)).rejects.toBeInstanceOf(UnauthenticatedException);
+    });
 
     it.each(['sub', 'principalType', 'jti', 'emailRevocationVersion', 'exp', 'type'])(
         'rejects a correctly signed proof without %s',

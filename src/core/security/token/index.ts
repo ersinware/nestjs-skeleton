@@ -10,4 +10,5 @@ export type { InviteTokenPayload } from 'src/core/security/token/invite-token-pa
 export { TokenModule } from 'src/core/security/token/module';
 export { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token/port/token.port';
 export type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
+export type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
 export type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';

@@ -84,6 +84,8 @@ function fixture(
         verifyUserActivationToken: vi.fn(),
         generateEmailConfirmationToken: vi.fn(),
         verifyEmailConfirmationToken: vi.fn(),
+        generateUploadToken: vi.fn(),
+        verifyUploadToken: vi.fn(),
     } satisfies ITokenPort;
     const sessions = {
         getVersion: vi.fn<ISessionPort['getVersion']>().mockResolvedValue(3),

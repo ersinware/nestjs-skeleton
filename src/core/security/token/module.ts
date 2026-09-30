@@ -1,6 +1,6 @@
 /**
  * @file module.ts
- * @description NestJS module providing session, invitation, and email confirmation tokens.
+ * @description NestJS module providing session, upload workflow, invitation, and email confirmation tokens.
  */
 
 import { Module } from '@nestjs/common';
@@ -9,7 +9,7 @@ import { TokenAdapter } from 'src/core/security/token/adapter/token.adapter';
 import { TOKEN_TOKEN_PORT } from 'src/core/security/token/port/token.port';
 
 /**
- * Provides the token port bound to the JWT-backed adapter.
+ * Provides the token port bound to its JWT-backed adapter.
  */
 @Module({
     imports: [JwtModule.register({})],

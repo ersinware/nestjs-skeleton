@@ -54,6 +54,7 @@ describe('env.validation.config', () => {
         ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
         JWT_USER_ACTIVATION_SECRET: 'user-activation-secret-at-least-32-bytes',
         USER_ACTIVATION_URL: 'http://localhost:3001/user/activate',
+        JWT_UPLOAD_SECRET: 'upload-proof-secret-at-least-32-bytes',
 
         JWT_EMAIL_CONFIRM_SECRET: 'email-confirm-secret-at-least-32-bytes',
         ADMIN_EMAIL_CONFIRM_URL: 'http://localhost:3001/admin/email/confirm',
@@ -90,7 +91,7 @@ describe('env.validation.config', () => {
         },
     );
 
-    it.each(['JWT_EMAIL_CONFIRM_SECRET', 'ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(
+    it.each(['JWT_UPLOAD_SECRET', 'JWT_EMAIL_CONFIRM_SECRET', 'ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(
         'requires %s at startup',
         (key) => {
             const config: Record<string, unknown> = { ...validConfig };
@@ -99,8 +100,10 @@ describe('env.validation.config', () => {
         },
     );
 
-    it.each(['', ' '.repeat(32), 'short', 123])('rejects an invalid email confirmation secret: %s', (secret) => {
-        expect(() => validateConfig({ ...validConfig, JWT_EMAIL_CONFIRM_SECRET: secret })).toThrow();
+    it.each(['JWT_UPLOAD_SECRET', 'JWT_EMAIL_CONFIRM_SECRET'])('rejects an invalid %s', (key) => {
+        for (const secret of ['', ' '.repeat(32), 'short', 123]) {
+            expect(() => validateConfig({ ...validConfig, [key]: secret })).toThrow();
+        }
     });
 
     it.each(['ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(

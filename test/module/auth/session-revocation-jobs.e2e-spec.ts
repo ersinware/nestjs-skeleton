@@ -68,6 +68,8 @@ const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
         verifyUserActivationToken: vi.fn(),
         generateEmailConfirmationToken: vi.fn(),
         verifyEmailConfirmationToken: vi.fn(),
+        generateUploadToken: vi.fn(),
+        verifyUploadToken: vi.fn(),
     },
     identityReaderPort: IIdentityReaderPort = {
         getCredentialsByEmail: vi.fn(),
