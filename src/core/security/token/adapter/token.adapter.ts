@@ -16,6 +16,7 @@ import type { EmailConfirmationTokenPayload } from 'src/core/security/token/emai
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { ITokenPort, TokenPairWithSession } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
+import type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
 import type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
@@ -82,6 +83,11 @@ export class TokenAdapter implements ITokenPort {
     private readonly emailConfirmationSecret: string;
 
     /**
+     * Separate signing secret for upload proofs.
+     */
+    private readonly uploadSecret: string;
+
+    /**
      * Reads every per-type secret and lifetime once at boot, so a missing variable fails startup
      * instead of the first token operation.
      *
@@ -103,6 +109,7 @@ export class TokenAdapter implements ITokenPort {
         this.inviteSecret = configService.getOrThrow<string>(ENV.JWT_INVITE_SECRET);
         this.userActivationSecret = configService.getOrThrow<string>(ENV.JWT_USER_ACTIVATION_SECRET);
         this.emailConfirmationSecret = configService.getOrThrow<string>(ENV.JWT_EMAIL_CONFIRM_SECRET);
+        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
     }
 
     /**
@@ -228,6 +235,27 @@ export class TokenAdapter implements ITokenPort {
                 type: AuthTokenType.EMAIL_CONFIRM,
             },
             { secret: this.emailConfirmationSecret, algorithm: 'HS256', noTimestamp: true },
+        );
+    }
+
+    /**
+     * Signs only the upload claims supplied by the owning workflow.
+     *
+     * @param payload Upload claims and fixed expiry.
+     * @returns The signed upload token.
+     */
+    async generateUploadToken(payload: Omit<UploadTokenPayload, 'type'>): Promise<string> {
+        return this.jwtService.signAsync(
+            {
+                sub: payload.sub,
+                jti: payload.jti,
+                purpose: payload.purpose,
+                fileKey: payload.fileKey,
+                formHash: payload.formHash,
+                exp: payload.exp,
+                type: AuthTokenType.UPLOAD,
+            },
+            { secret: this.uploadSecret, algorithm: 'HS256', noTimestamp: true },
         );
     }
 
@@ -363,6 +391,37 @@ export class TokenAdapter implements ITokenPort {
             payload.exp <= 0 ||
             !Number.isSafeInteger(payload.emailRevocationVersion) ||
             payload.emailRevocationVersion < 0
+        ) {
+            throw new UnauthenticatedException();
+        }
+
+        return payload;
+    }
+
+    /**
+     * Verifies upload claims without evaluating the form or workflow state.
+     *
+     * @param token The JWT upload token string.
+     * @param expectedPurpose Server-selected purpose from the owning workflow.
+     * @returns Verified upload claims.
+     */
+    async verifyUploadToken(token: string, expectedPurpose: string): Promise<UploadTokenPayload> {
+        const payload = await this.verifyToken<UploadTokenPayload>(token, this.uploadSecret, AuthTokenType.UPLOAD);
+
+        if (
+            typeof payload.sub !== 'string' ||
+            payload.sub.length === 0 ||
+            typeof payload.jti !== 'string' ||
+            !UUID_V4_PATTERN.test(payload.jti) ||
+            typeof payload.purpose !== 'string' ||
+            payload.purpose.length === 0 ||
+            payload.purpose !== expectedPurpose ||
+            typeof payload.fileKey !== 'string' ||
+            payload.fileKey.length === 0 ||
+            typeof payload.formHash !== 'string' ||
+            payload.formHash.length === 0 ||
+            !Number.isSafeInteger(payload.exp) ||
+            payload.exp <= 0
         ) {
             throw new UnauthenticatedException();
         }

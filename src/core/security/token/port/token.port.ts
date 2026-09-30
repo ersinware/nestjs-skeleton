@@ -1,6 +1,6 @@
 /**
  * @file token.port.ts
- * @description Port contract for generating and verifying JWT session, activation, and email confirmation tokens.
+ * @description Port contract for generating and verifying JWT session, activation, email confirmation, and upload tokens.
  */
 
 import type { SessionIdentity, SessionRegistration } from 'src/core/security/session';
@@ -8,6 +8,7 @@ import type { AccessTokenPayload } from 'src/core/security/token/access-token-pa
 import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
+import type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
 import type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';
 import type { Principal } from 'src/shared/domain/principal';
 
@@ -37,7 +38,7 @@ export type TokenPairWithSession = {
 };
 
 /**
- * Contract for generating and verifying JWT session, activation, and email confirmation tokens.
+ * Contract for generating and verifying JWT session, activation, email confirmation, and upload tokens.
  */
 export interface ITokenPort {
     /**
@@ -118,6 +119,14 @@ export interface ITokenPort {
     generateUserActivationToken(payload: Omit<UserActivationTokenPayload, 'type'>): Promise<string>;
 
     /**
+     * Signs workflow-supplied upload claims without generating identity or timestamps.
+     *
+     * @param payload Upload claims and expiry selected by the owning workflow.
+     * @returns The signed upload token.
+     */
+    generateUploadToken(payload: Omit<UploadTokenPayload, 'type'>): Promise<string>;
+
+    /**
      * Verifies user activation claims; callers must still check current account state and password.
      *
      * @param token The JWT user activation token string.
@@ -142,4 +151,14 @@ export interface ITokenPort {
      * @throws {UnauthenticatedException} When the token has an invalid signature, lifetime, type, or request claims.
      */
     verifyEmailConfirmationToken(token: string): Promise<EmailConfirmationTokenPayload>;
+
+    /**
+     * Verifies an upload proof; callers must still check the form and workflow state.
+     *
+     * @param token The JWT upload token string.
+     * @param expectedPurpose Server-selected purpose from the owning workflow.
+     * @returns Verified upload claims.
+     * @throws {UnauthenticatedException} When the signature, expiry, type, purpose, or claims are invalid.
+     */
+    verifyUploadToken(token: string, expectedPurpose: string): Promise<UploadTokenPayload>;
 }

@@ -502,6 +502,14 @@ export class EnvironmentVariables {
     readonly USER_ACTIVATION_URL!: string;
 
     /**
+     * Separate secret for signing upload proofs.
+     */
+    @IsString()
+    @Matches(/\S/)
+    @IsByteLength(32)
+    readonly JWT_UPLOAD_SECRET!: string;
+
+    /**
      * Separate secret for signing email confirmation tokens.
      */
     @IsString()
