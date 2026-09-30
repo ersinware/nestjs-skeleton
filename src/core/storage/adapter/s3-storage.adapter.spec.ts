@@ -3,7 +3,7 @@
  * @description S3 adapter contract checks without external service calls.
  */
 
-import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CopyObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import { S3StorageAdapter } from 'src/core/storage/adapter/s3-storage.adapter';
 import type { StorageUploadRequest } from 'src/core/storage/port/storage.port';
@@ -163,5 +163,76 @@ describe('S3StorageAdapter', () => {
         const error = new Error('Unexpected SDK failure');
         vi.spyOn(client, 'send').mockRejectedValue(error);
         await expect(adapter.headObject(request.key)).rejects.toBe(error);
+    });
+
+    it('copies with replacement content metadata and leaves the source intact', async () => {
+        const send = vi
+            .fn()
+            .mockResolvedValueOnce({ ContentLength: 3, ETag: '"source-etag"', ContentType: 'image/png' })
+            .mockResolvedValueOnce({});
+        adapter = new S3StorageAdapter({ send } as never, config);
+
+        await expect(
+            adapter.copyObject({
+                sourceKey: 'pending/avatar/user/id with space',
+                destinationKey: 'avatar/user/id',
+                sourceEtag: '"source-etag"',
+                contentType: 'image/webp',
+                cache: {
+                    visibility: 'public',
+                    maxAgeSeconds: 60,
+                    sharedMaxAgeSeconds: 120,
+                    immutable: true,
+                },
+            }),
+        ).resolves.toBeUndefined();
+
+        expect(send).toHaveBeenCalledTimes(2);
+        expect(send.mock.calls[0]?.[0]).toBeInstanceOf(HeadObjectCommand);
+        expect(send.mock.calls[1]?.[0]).toBeInstanceOf(CopyObjectCommand);
+        expect((send.mock.calls[1]?.[0] as CopyObjectCommand).input).toEqual({
+            Bucket: 'storage-test',
+            Key: 'avatar/user/id',
+            CopySource: 'storage-test/pending/avatar/user/id%20with%20space',
+            CopySourceIfMatch: '"source-etag"',
+            ContentType: 'image/webp',
+            MetadataDirective: 'REPLACE',
+            CacheControl: 'public, max-age=60, s-maxage=120, immutable',
+        });
+        expect(send.mock.calls.some(([command]) => command instanceof DeleteObjectCommand)).toBe(false);
+    });
+
+    it('rejects a source above the single-copy limit before copying', async () => {
+        const send = vi.fn().mockResolvedValue({
+            ContentLength: 5_000_000_001,
+            ETag: '"source-etag"',
+            ContentType: 'application/octet-stream',
+        });
+        adapter = new S3StorageAdapter({ send } as never, config);
+
+        await expect(
+            adapter.copyObject({
+                sourceKey: 'pending/source',
+                destinationKey: 'final/destination',
+                sourceEtag: '"source-etag"',
+                contentType: 'application/octet-stream',
+                cache: { visibility: 'no-store' },
+            }),
+        ).rejects.toBeInstanceOf(InvalidInputException);
+        expect(send).toHaveBeenCalledExactlyOnceWith(expect.any(HeadObjectCommand));
+    });
+
+    it('delegates repeated deletes so a missing object remains a successful outcome', async () => {
+        const send = vi.fn().mockResolvedValue({});
+        adapter = new S3StorageAdapter({ send } as never, config);
+
+        await expect(adapter.deleteObject(request.key)).resolves.toBeUndefined();
+        await expect(adapter.deleteObject(request.key)).resolves.toBeUndefined();
+
+        expect(send).toHaveBeenCalledTimes(2);
+        for (const [command] of send.mock.calls) {
+            expect(command).toBeInstanceOf(DeleteObjectCommand);
+            expect((command as DeleteObjectCommand).input).toEqual({ Bucket: 'storage-test', Key: request.key });
+        }
     });
 });

@@ -3,7 +3,7 @@
  * @description Multipart lifecycle through the production storage module and isolated SeaweedFS.
  */
 
-import type { S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import type { TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -143,6 +143,13 @@ describe('Multipart upload (SeaweedFS)', () => {
         const head = await storage.headObject(session.key);
         expect(head).toMatchObject({ sizeBytes: body.length, contentType: 'application/octet-stream' });
         expect(head.etag).not.toBe('');
+        await expect(
+            client.send(new HeadObjectCommand({ Bucket: 'storage-test', Key: session.key })),
+        ).resolves.toMatchObject({
+            ContentLength: body.length,
+            ContentType: 'application/octet-stream',
+            CacheControl: 'no-store',
+        });
         // SeaweedFS 4.48 treats abort of a completed session as an idempotent success.
         await expect(storage.abortMultipart(manifest)).resolves.toBeUndefined();
         await expect(storage.headObject(session.key)).resolves.toEqual(head);
