@@ -59,6 +59,15 @@ export default tseslint.config(
         },
     },
     {
+        files: ['script/storage-demo/browser/**/*.ts'],
+        languageOptions: {
+            globals: {
+                ...Object.fromEntries(Object.keys(globals.node).map((name) => [name, 'off'])),
+                ...globals.browser,
+            },
+        },
+    },
+    {
         /**
          * Scoped to `src/` only: `test/` has no element definitions yet, so `no-unknown-files` would
          * reject every test file. See the TODO in agent/testing.md#testing-rules.

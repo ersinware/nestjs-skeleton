@@ -21,7 +21,7 @@ export default defineConfig({
         clearMocks: true,
         // `eslint.config.spec.ts` tests the repository's own structure, so it runs with the unit
         // suite; the e2e config matches only `*.e2e-spec.ts` and boots an app.
-        include: ['src/**/*.spec.ts', 'eslint.config.spec.ts'],
+        include: ['src/**/*.spec.ts', 'script/storage-demo/browser/**/*.spec.ts', 'eslint.config.spec.ts'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],
