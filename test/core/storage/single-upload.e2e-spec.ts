@@ -3,52 +3,29 @@
  * @description Exercises conditional browser PUTs and HEAD reconciliation against pipeline-owned SeaweedFS.
  */
 
-import type { TestingModule } from '@nestjs/testing';
-import { randomUUID } from 'node:crypto';
-import { once } from 'node:events';
-import { createServer, request as httpRequest } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { TOKEN_STORAGE_PORT, type IStoragePort, type StorageSignedRequest } from 'src/core/storage';
+import { type IStoragePort, type StorageSignedRequest } from 'src/core/storage';
 import { ResourceNotFoundException } from 'src/shared/exception';
-import { createStorageTestModule } from 'test/shared/storage-test.factory';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { putWithLostResponse } from 'test/shared/storage-response-loss';
+import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-describe('Single upload (SeaweedFS)', () => {
-    let module: TestingModule;
+describe('Single upload (storage port)', { timeout: 30_000 }, () => {
+    let fixture: StorageTestFixture;
     let storage: IStoragePort;
-    const prefix = `contract/${randomUUID()}`;
-    const keys = new Set<string>();
     const body = Buffer.from('single upload contract bytes');
 
     beforeAll(async () => {
-        // Fixed local credentials and endpoint prevent fallback to a real AWS account.
-        vi.stubEnv('AWS_ACCESS_KEY_ID', 'local-development');
-        vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'local-development-secret');
-        vi.stubEnv('AWS_SESSION_TOKEN', undefined);
-        module = await createStorageTestModule({
-            STORAGE_BUCKET: 'storage-test',
-            STORAGE_REGION: 'us-east-1',
-            STORAGE_ENDPOINT: 'http://127.0.0.1:8333',
-            STORAGE_CONNECT_TIMEOUT: 2,
-            STORAGE_REQUEST_TIMEOUT: 5,
-        });
-        storage = module.get<IStoragePort>(TOKEN_STORAGE_PORT);
+        fixture = await createStorageTestFixture();
+        storage = fixture.storage;
     });
 
     afterEach(async () => {
-        for (const key of keys) {
-            await storage.deleteObject(key);
-            keys.delete(key);
-        }
-    });
+        await fixture?.cleanup();
+    }, 30_000);
 
     afterAll(async () => {
-        try {
-            await module?.close();
-        } finally {
-            vi.unstubAllEnvs();
-        }
-    });
+        await fixture?.close();
+    }, 30_000);
 
     /**
      * Allocates a run-owned key and obtains the adapter's single PUT contract.
@@ -58,7 +35,7 @@ describe('Single upload (SeaweedFS)', () => {
      */
     async function initiate(sizeBytes = body.length): Promise<{
         /**
-         * Key tracked for cleanup even if a test fails.
+         * Key inside the run-owned cleanup prefix.
          */
         readonly key: string;
         /**
@@ -66,8 +43,7 @@ describe('Single upload (SeaweedFS)', () => {
          */
         readonly signed: StorageSignedRequest;
     }> {
-        const key = `${prefix}/${randomUUID()}`;
-        keys.add(key);
+        const key = fixture.key();
         const plan = await storage.initiateUpload({
             key,
             sizeBytes,
@@ -171,52 +147,3 @@ describe('Single upload (SeaweedFS)', () => {
         expect(response.headers.get('access-control-expose-headers')?.toLowerCase()).toContain('etag');
     });
 });
-
-/**
- * Drops the downstream connection only after SeaweedFS has accepted the PUT.
- *
- * @param signed Upload instructions whose original signed Host is preserved through the proxy.
- * @param body Uploaded bytes.
- */
-async function putWithLostResponse(signed: StorageSignedRequest, body: Buffer) {
-    let upstreamStatus: number | undefined;
-    const proxy = createServer((incoming, outgoing) => {
-        const upstream = httpRequest(signed.url, { method: 'PUT', headers: incoming.headers }, (response) => {
-            upstreamStatus = response.statusCode;
-            response.resume();
-            response.on('end', () => outgoing.destroy());
-        });
-        upstream.on('error', () => outgoing.destroy());
-        incoming.pipe(upstream);
-    });
-    proxy.listen(0, '127.0.0.1');
-    await once(proxy, 'listening');
-
-    try {
-        const url = new URL(signed.url);
-        const upload = new Promise<void>((resolve, reject) => {
-            const request = httpRequest(
-                {
-                    hostname: '127.0.0.1',
-                    port: (proxy.address() as AddressInfo).port,
-                    path: `${url.pathname}${url.search}`,
-                    method: 'PUT',
-                    headers: { ...signed.headers, host: url.host },
-                    timeout: 5_000,
-                },
-                (response) => {
-                    response.resume();
-                    resolve();
-                },
-            );
-            request.on('error', reject);
-            request.on('timeout', () => request.destroy(new Error('Upload timed out.')));
-            request.end(body);
-        });
-        await expect(upload).rejects.toMatchObject({ code: 'ECONNRESET' });
-        expect(upstreamStatus).toBe(200);
-    } finally {
-        proxy.closeAllConnections();
-        await new Promise<void>((resolve, reject) => proxy.close((error) => (error ? reject(error) : resolve())));
-    }
-}
