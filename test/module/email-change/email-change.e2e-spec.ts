@@ -215,7 +215,13 @@ describe.each(CASES)('$route email change', (context) => {
     async function createAccount(email = `${uuidv7()}@example.test`): Promise<Account> {
         const id = uuidv7();
         ids.push(id);
-        await database.insert(context.table).values({ id, email, name: 'Phase Seven', password: hash });
+        await database.insert(context.table).values({
+            id,
+            email,
+            name: 'Phase Seven',
+            password: hash,
+            ...(context.kind === PrincipalType.USER && { avatarKey: `avatar/user/${id}` }),
+        });
         const pair = await tokenPort.generateTokens({ id, type: context.kind, permissions: [] }, 0);
         expect(await sessionPort.openSession(id, pair.session)).toBe(true);
         return { id, email, accessToken: pair.accessToken, refreshToken: pair.refreshToken };

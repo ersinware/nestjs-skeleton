@@ -282,8 +282,7 @@ function resolveExample(schema: unknown, componentsSchemas: Record<string, unkno
 }
 
 /**
- * Aligns component schemas with runtime validation: forbids extra properties on objects,
- * promotes x-force-required tags, and forces minProperties on PATCH models.
+ * Aligns component schemas with runtime validation and documents referenced property types.
  *
  * @param componentsSchemas Dictionary of component schemas, processed in place.
  */
@@ -292,6 +291,17 @@ function postProcessComponents(componentsSchemas: Record<string, unknown>) {
         const schema = componentsSchemas[schemaName] as Record<string, unknown>;
 
         if (!schema) return;
+
+        // Swagger wraps nested DTO references in allOf without an explicit property type.
+        const properties = schema['properties'] as Record<string, Record<string, unknown>> | undefined;
+
+        Object.values(properties ?? {}).forEach((property) => {
+            const allOf = property['allOf'];
+
+            if (!property['type'] && Array.isArray(allOf) && allOf.length === 1) {
+                property['type'] = getSchemaType(allOf[0], componentsSchemas);
+            }
+        });
 
         // Enforce custom forced fields if declared
         if (schema['x-force-required']) {

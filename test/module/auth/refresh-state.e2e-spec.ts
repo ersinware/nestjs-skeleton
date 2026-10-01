@@ -80,7 +80,7 @@ describe('Refresh eligibility reads', () => {
             if (kind === 'admin') {
                 await database.insert(admin).values(values);
             } else {
-                await database.insert(user).values(values);
+                await database.insert(user).values({ ...values, avatarKey: `avatar/user/${id}` });
             }
 
             try {

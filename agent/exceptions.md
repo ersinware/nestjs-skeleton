@@ -2,6 +2,7 @@
 
 - Project-thrown failures use the transport-neutral taxonomy in `src/shared/exception`, never Nest HTTP exceptions. Framework-raised HTTP errors remain supported; health passthrough: [Health Probes](http.md#health-probes).
 - Catch only contract-defined cases; rethrow others unchanged. Translation/fail-open: [Adapters](data-and-state.md#adapters); detached failures: [CQRS](architecture.md#cqrs); delivery failures: [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
+- Classify taxonomy exceptions with `isExceptionOfKind`, never `instanceof`.
 - Keep generic message enums beside their exception classes; never add module-specific vocabulary there. Inline single-use messages; shared use-case messages belong in `command.ts`/`query.ts`, other messages follow [Placement & Naming](architecture.md#placement--naming).
 - Business-rule ownership: [Data & State](data-and-state.md#data--state). Expected business refusals use appropriate taxonomy kinds; broken internal paths use diagnostic `SystemException`.
 - Optional `AppException.audit` carries refusal action/reason, independent of kind and diagnostic `context`; neither reaches clients. Handlers catch aggregate mutation/factory failures, await audit for `isExceptionWithAudit` with `markExceptionAsAudited`, then rethrow the same error; audit failures propagate. Metadata alone never suppresses audit. Durability: [Audit](observability.md#audit).

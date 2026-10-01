@@ -9,6 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { LightMyRequestResponse } from 'fastify';
 import type Redis from 'ioredis';
 import { PgBoss } from 'pg-boss';
+import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
@@ -18,23 +19,30 @@ import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT } from 'src/core/storage';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
+import { MoveUserAvatarCommand } from 'src/module/user/application/command/move-user-avatar/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
+import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
+import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { user } from 'src/module/user/infrastructure/user.schema';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException } from 'src/shared/exception';
+import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 describe('User registration and activation', () => {
     let app: NestFastifyApplication;
+    let storageFixture: StorageTestFixture;
+    const objectKeys = new Set<string>();
     let database: NodePgDatabase;
     let boss: PgBoss;
     let tokenPort: ITokenPort;
@@ -48,7 +56,13 @@ describe('User registration and activation', () => {
     const password = 'Activation-Phase8!123';
 
     beforeAll(async () => {
-        app = await createTestApp({ overrides: [{ provide: TOKEN_EMAILER_PORT, useValue: { sendEmail } }] });
+        storageFixture = await createStorageTestFixture();
+        app = await createTestApp({
+            overrides: [
+                { provide: TOKEN_EMAILER_PORT, useValue: { sendEmail } },
+                { provide: TOKEN_STORAGE_PORT, useValue: storageFixture.storage },
+            ],
+        });
         database = app.get(TOKEN_DATABASE_CLIENT);
         boss = app.get(TOKEN_JOB_QUEUE_CLIENT);
         tokenPort = app.get(TOKEN_TOKEN_PORT);
@@ -104,24 +118,45 @@ describe('User registration and activation', () => {
             } while (cursor !== '0');
         }
         await app.close();
+        for (const key of objectKeys) {
+            await storageFixture.storage.deleteObject(key);
+        }
+        await storageFixture.close();
     }, 30_000);
 
     function data(response: LightMyRequestResponse): Record<string, unknown> {
         return (JSON.parse(response.body) as { data: Record<string, unknown> }).data;
     }
 
+    async function prepareRegistration(email = `${uuidv7()}@example.test`, upload = true, body = 'test') {
+        const form = { email, name: 'Activation Test', password, avatar: { sizeBytes: 4, contentType: 'image/png' } };
+        const response = await app.inject({ method: 'POST', url: '/api/v1/user/initiate', payload: form });
+        expect(response.statusCode).toBe(200);
+        const plan = data(response) as {
+            uploadToken: string;
+            request: { url: string; headers: Record<string, string> };
+        };
+        const claims = await tokenPort.verifyUploadToken(plan.uploadToken, UserUploadPurpose.REGISTRATION);
+        ids.push(claims.sub);
+        objectKeys.add(claims.fileKey);
+        if (upload) {
+            const put = await fetch(plan.request.url, {
+                method: 'PUT',
+                headers: plan.request.headers,
+                body: Buffer.from(body),
+            });
+            expect(put.ok).toBe(true);
+        }
+        return { ...form, uploadToken: plan.uploadToken };
+    }
+
     async function register() {
-        const email = `${uuidv7()}@example.test`;
-        const response = await app.inject({
-            method: 'POST',
-            url: '/api/v1/user',
-            payload: { email, name: 'Activation Test', password },
-        });
+        const payload = await prepareRegistration();
+        const response = await app.inject({ method: 'POST', url: '/api/v1/user', payload });
         expect(response.statusCode).toBe(204);
         expect(response.body).toBe('');
-        const [row] = await database.select().from(user).where(eq(user.email, email));
+        const [row] = await database.select().from(user).where(eq(user.email, payload.email));
         expect(row?.activationId).toBeTruthy();
-        ids.push(row!.id);
         return row!;
     }
 
@@ -147,6 +182,15 @@ describe('User registration and activation', () => {
         const invalid = [
             { url: '/api/v1/user', payload: { email, name: 'Activation Test' } },
             { url: '/api/v1/user', payload: { email, name: 'Activation Test', password, extra: true } },
+            ...[
+                { sizeBytes: 0, contentType: 'image/png' },
+                { sizeBytes: 5 * 1024 * 1024 + 1, contentType: 'image/png' },
+                { sizeBytes: 4, contentType: 'image/svg+xml' },
+                { sizeBytes: 4, contentType: 'image/png', extra: true },
+            ].map((avatar) => ({
+                url: '/api/v1/user/initiate',
+                payload: { email, name: 'Activation Test', password, avatar },
+            })),
             { url: '/api/v1/user/activation/resend', payload: { email: 'invalid' } },
             { url: '/api/v1/user/activate', payload: { token: 'not-a-jwt', password } },
         ];
@@ -178,11 +222,12 @@ describe('User registration and activation', () => {
 
     it('rolls back a registration when audit persistence fails', async () => {
         const email = `${uuidv7()}@example.test`;
+        const payload = await prepareRegistration(email);
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/user',
-            payload: { email, name: 'Activation Test', password },
+            payload,
         });
         expect(response.statusCode).toBe(503);
         expect(await database.select().from(user).where(eq(user.email, email))).toEqual([]);
@@ -190,11 +235,12 @@ describe('User registration and activation', () => {
 
     it('rolls back a registration when the activation job is not accepted', async () => {
         const email = `${uuidv7()}@example.test`;
+        const payload = await prepareRegistration(email);
         vi.spyOn(jobWriterPort, 'enqueue').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/user',
-            payload: { email, name: 'Activation Test', password },
+            payload,
         });
         expect(response.statusCode).toBe(503);
         expect(await database.select().from(user).where(eq(user.email, email))).toEqual([]);
@@ -220,8 +266,8 @@ describe('User registration and activation', () => {
 
         const duplicate = await app.inject({
             method: 'POST',
-            url: '/api/v1/user',
-            payload: { email: row.email, name: 'Other', password },
+            url: '/api/v1/user/initiate',
+            payload: { email: row.email, name: 'Other', password, avatar: { sizeBytes: 4, contentType: 'image/png' } },
         });
         expect(duplicate.statusCode).toBe(409);
         expect(await jobs(row.id)).toHaveLength(1);
@@ -230,10 +276,11 @@ describe('User registration and activation', () => {
 
     it('commits only one account, job, and registration audit for concurrent duplicate emails', async () => {
         const email = `${uuidv7()}@example.test`;
-        const payload = { email, name: 'Activation Test', password };
+        const payload = await prepareRegistration(email);
+        const otherPayload = await prepareRegistration(email);
         const responses = await Promise.all([
             app.inject({ method: 'POST', url: '/api/v1/user', payload }),
-            app.inject({ method: 'POST', url: '/api/v1/user', payload }),
+            app.inject({ method: 'POST', url: '/api/v1/user', payload: otherPayload }),
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         const rows = await database.select().from(user).where(eq(user.email, email));
@@ -243,6 +290,106 @@ describe('User registration and activation', () => {
         expect(
             (await actions(rows[0]!.id)).filter((entry) => entry.action === AuditAction.USER_REGISTERED),
         ).toHaveLength(1);
+    });
+
+    it('rejects missing uploads and changed form bindings without creating accounts', async () => {
+        const payload = await prepareRegistration(undefined, false);
+        for (const candidate of [payload, { ...payload, name: 'Changed' }]) {
+            const response = await app.inject({ method: 'POST', url: '/api/v1/user', payload: candidate });
+            expect(response.statusCode).toBe(400);
+        }
+        expect(await database.select().from(user).where(eq(user.email, payload.email))).toEqual([]);
+    });
+
+    it('checks actual object size and type before committing registration', async () => {
+        const wrongSize = await prepareRegistration(undefined, true, 'wrong-size');
+        const wrongType = await prepareRegistration(undefined, false);
+        const claims = await tokenPort.verifyUploadToken(wrongType.uploadToken, UserUploadPurpose.REGISTRATION);
+        const plan = await storageFixture.storage.initiateUpload({
+            key: claims.fileKey,
+            sizeBytes: 4,
+            contentType: 'image/jpeg',
+            cache: { visibility: 'no-store' },
+            deadline: new Date(Date.now() + 300_000),
+        });
+        if (plan.mode !== 'single') throw new Error('Expected a single avatar upload.');
+        const put = await fetch(plan.request.url, {
+            method: 'PUT',
+            headers: plan.request.headers,
+            body: Buffer.from('test'),
+        });
+        expect(put.ok).toBe(true);
+        for (const payload of [wrongSize, wrongType]) {
+            const response = await app.inject({ method: 'POST', url: '/api/v1/user', payload });
+            expect(response.statusCode).toBe(400);
+            expect(await database.select().from(user).where(eq(user.email, payload.email))).toEqual([]);
+        }
+    });
+
+    it('preserves a committed account and its jobs on upload token replay', async () => {
+        const payload = await prepareRegistration();
+        const responses = await Promise.all([
+            app.inject({ method: 'POST', url: '/api/v1/user', payload }),
+            app.inject({ method: 'POST', url: '/api/v1/user', payload }),
+        ]);
+        expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
+        const [row] = await database.select().from(user).where(eq(user.email, payload.email));
+        const replay = await app.inject({ method: 'POST', url: '/api/v1/user', payload });
+        expect(replay.statusCode).toBe(409);
+        expect((await database.select().from(user).where(eq(user.id, row!.id)))[0]).toEqual(row);
+        expect(await jobs(row!.id)).toHaveLength(1);
+        expect(await boss.findJobs<Job>(UserJobQueue.AVATAR_MOVE, { data: { aggregateId: row!.id } })).toHaveLength(1);
+    });
+
+    it('recovers a copied avatar after transaction rollback and repeats cleanup without recopying', async () => {
+        const row = await register();
+        const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_MOVE, { data: { aggregateId: row.id } });
+        const destination = buildUserPermanentAvatarKey(row.id, job!.data.deliveryId);
+        const source = buildUserPendingAvatarKey(row.id);
+        objectKeys.add(destination);
+        const pipeline = app.get(CommandPipeline);
+        const command = new MoveUserAvatarCommand(row.id, job!.data.deliveryId);
+        vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new DependencyUnavailableException());
+        await expect(pipeline.execute(command)).rejects.toBeInstanceOf(DependencyUnavailableException);
+        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.avatarKey).toBe(source);
+        expect(await storageFixture.storage.headObject(source)).toMatchObject({ sizeBytes: 4 });
+        const copy = vi.spyOn(storageFixture.storage, 'copyObject');
+        await pipeline.execute(command);
+        await pipeline.execute(command);
+        expect(copy).not.toHaveBeenCalled();
+        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.avatarKey).toBe(destination);
+        expect(await storageFixture.storage.headObject(destination)).toMatchObject({
+            sizeBytes: 4,
+            contentType: 'image/png',
+        });
+        expect(await storageFixture.readCacheControl(destination)).toBe(
+            'public, max-age=31536000, s-maxage=31536000, immutable',
+        );
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_AVATAR_FINALIZED),
+        ).toHaveLength(1);
+        await expect(storageFixture.storage.headObject(source)).rejects.toMatchObject({ kind: 'RESOURCE_NOT_FOUND' });
+    });
+
+    it('retries cleanup after the permanent key commits without duplicating its audit', async () => {
+        const row = await register();
+        const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_MOVE, { data: { aggregateId: row.id } });
+        const destination = buildUserPermanentAvatarKey(row.id, job!.data.deliveryId);
+        objectKeys.add(destination);
+        const command = new MoveUserAvatarCommand(row.id, job!.data.deliveryId);
+        const pipeline = app.get(CommandPipeline);
+        vi.spyOn(storageFixture.storage, 'deleteObject').mockRejectedValueOnce(new DependencyUnavailableException());
+        await expect(pipeline.execute(command)).rejects.toMatchObject({ kind: 'DEPENDENCY_UNAVAILABLE' });
+        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.avatarKey).toBe(destination);
+        const copy = vi.spyOn(storageFixture.storage, 'copyObject');
+        await pipeline.execute(command);
+        expect(copy).not.toHaveBeenCalled();
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_AVATAR_FINALIZED),
+        ).toHaveLength(1);
+        await expect(storageFixture.storage.headObject(buildUserPendingAvatarKey(row.id))).rejects.toMatchObject({
+            kind: 'RESOURCE_NOT_FOUND',
+        });
     });
 
     it('keeps missing and banned logins at the ordinary 401 response', async () => {

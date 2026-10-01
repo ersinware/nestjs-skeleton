@@ -4,7 +4,7 @@
  */
 
 import { Inject, Module, OnApplicationBootstrap } from '@nestjs/common';
-import { PgBoss, type Job as PgBossJob } from 'pg-boss';
+import { PgBoss, type JobResult, type Job as PgBossJob } from 'pg-boss';
 import { translateConnectionFailure } from 'src/core/database';
 import { JobQueueDatabaseAdapter } from 'src/core/job-queue/adapter/job-queue-database.adapter';
 import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue/dead-letter-queue.constant';
@@ -14,7 +14,7 @@ import { provisionJobQueue } from 'src/core/job-queue/job-queue-provisioner';
 import { runInJobConsumerSpan } from 'src/core/job-queue/job-trace-context';
 import { Job } from 'src/core/job-queue/job.type';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
-import { DependencyUnavailableException, SystemException } from 'src/shared/exception';
+import { ExceptionKind, SystemException, isExceptionOfKind, toError } from 'src/shared/exception';
 
 /**
  * Identifies the {@link IJobConsumer} instances registered by a feature module.
@@ -58,7 +58,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                     disableDeadLetter: consumer.queueOptions?.disableDeadLetter ?? false,
                 });
             } catch (error) {
-                if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {
+                if (!isExceptionOfKind(translateConnectionFailure(error), ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                     this.errorReporterPort.report(error, {
                         class: JobQueueFeatureModule.name,
                         method: this.onApplicationBootstrap.name,
@@ -89,13 +89,45 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                         ),
                 );
             } else {
-                await this.boss.work<Job>(consumer.name, options, (jobs) => this.consume(consumer, jobs));
+                const nonTransactionalOptions = { ...options, perJobResults: true } as const;
+
+                await this.boss.work<Job, Error, typeof nonTransactionalOptions>(
+                    consumer.name,
+                    nonTransactionalOptions,
+                    (jobs) => this.consumeWithResults(consumer, jobs),
+                );
             }
         }
     }
 
     /**
-     * Runs claimed jobs and rethrows failures so pg-boss can retry them.
+     * Settles non-transactional work individually, bypassing retries only for explicit terminal failures.
+     *
+     * @param consumer Registered non-transactional consumer
+     * @param jobs Claimed pg-boss jobs
+     * @returns Completion, retry, or terminal failure dispositions for pg-boss to persist
+     */
+    private async consumeWithResults(consumer: IJobConsumer, jobs: PgBossJob<Job>[]): Promise<JobResult<Error>[]> {
+        const results: JobResult<Error>[] = [];
+
+        for (const job of jobs) {
+            try {
+                await this.consume(consumer, [job]);
+                results.push({ id: job.id, status: 'completed' });
+            } catch (error) {
+                results.push({
+                    id: job.id,
+                    status: isExceptionOfKind(error, ExceptionKind.TERMINAL_JOB) ? 'deadletter' : 'failed',
+                    output: toError(error),
+                });
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Traces and reports claimed deliveries before propagating failures to worker settlement.
      *
      * @param consumer Registered job consumer
      * @param jobs Claimed pg-boss jobs
@@ -108,14 +140,15 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                 try {
                     await consumer.consume(data);
                 } catch (error) {
-                    if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {
+                    if (!isExceptionOfKind(translateConnectionFailure(error), ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                         this.errorReporterPort.report(error, {
                             class: JobQueueFeatureModule.name,
                             method: this.consume.name,
                             data: {
-                                queueName: consumer.name,
                                 jobId: id,
-                                data,
+                                queueName: consumer.name,
+                                aggregateId: data.aggregateId,
+                                deliveryId: data.deliveryId,
                             },
                         });
                     }

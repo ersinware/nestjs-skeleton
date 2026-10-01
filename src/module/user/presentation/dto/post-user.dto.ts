@@ -4,11 +4,11 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { IsEmailAddress, IsPersonName, IsStrongPassword } from 'src/core/http';
+import { IsEmailAddress, IsFileDescriptor, IsJwtToken, IsPersonName, IsStrongPassword } from 'src/core/http';
+import { PostUserAvatarDto } from 'src/module/user/presentation/dto/post-user-avatar.dto';
 
 /**
- * Registration payload for a pending account. The composed decorators enforce email format,
- * name shape, and password strength in one place each.
+ * Final registration form with the declared avatar and its workflow-bound upload proof.
  */
 @ApiSchema({ name: 'PostUser', description: 'Input for creating a pending user account.' })
 export class PostUserDto {
@@ -29,4 +29,16 @@ export class PostUserDto {
      */
     @IsStrongPassword()
     readonly password!: string;
+
+    /**
+     * File details bound to the form during initiation and checked against the uploaded object.
+     */
+    @IsFileDescriptor(PostUserAvatarDto, { sizeBytes: 1024, contentType: 'image/png' }, 'The avatar descriptor')
+    readonly avatar!: PostUserAvatarDto;
+
+    /**
+     * Workflow-bound upload proof returned by initiation; never an invitation or session token.
+     */
+    @IsJwtToken('The upload token')
+    readonly uploadToken!: string;
 }

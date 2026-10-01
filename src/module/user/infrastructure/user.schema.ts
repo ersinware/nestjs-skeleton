@@ -41,6 +41,11 @@ export const user = userSchema.table(
         password: text('password').notNull(),
 
         /**
+         * Required avatar object key attached during registration.
+         */
+        avatarKey: text('avatar_key').notNull(),
+
+        /**
          * Pending activation identity; cleared only by successful activation.
          */
         activationId: uuid('activation_id'),

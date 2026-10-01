@@ -8,6 +8,11 @@
  */
 export enum UserJobQueue {
     /**
+     * Copies an attached pending avatar and cleans up its source after commit.
+     */
+    AVATAR_MOVE = 'user.avatar-move.queue.v1',
+
+    /**
      * Sends the activation link for a pending user account.
      */
     ACTIVATION = 'user.activation.queue.v1',

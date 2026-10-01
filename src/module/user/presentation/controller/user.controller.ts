@@ -34,6 +34,7 @@ import {
     RequestValidationMessage,
     ResponsePaginationDto,
     ResponsePermissionCatalogDto,
+    ResponseSingleUploadInitiateDto,
     ROUTE_PARAM_ID,
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
@@ -45,6 +46,7 @@ import { ChangeUserPasswordCommand } from 'src/module/user/application/command/c
 import { ChangeUserPermissionsCommand } from 'src/module/user/application/command/change-user-permissions/command';
 import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/command/confirm-user-email-change/command';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
+import { InitiateUserRegistrationCommand } from 'src/module/user/application/command/initiate-user-registration/command';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { RequestUserEmailChangeCommand } from 'src/module/user/application/command/request-user-email-change/command';
 import { ResendUserActivationCommand } from 'src/module/user/application/command/resend-user-activation/command';
@@ -60,6 +62,7 @@ import { PostUserActivateDto } from 'src/module/user/presentation/dto/post-user-
 import { PostUserActivationResendDto } from 'src/module/user/presentation/dto/post-user-activation-resend.dto';
 import { PostUserEmailChangeDto } from 'src/module/user/presentation/dto/post-user-email-change.dto';
 import { PostUserEmailConfirmDto } from 'src/module/user/presentation/dto/post-user-email-confirm.dto';
+import { PostUserInitiateDto } from 'src/module/user/presentation/dto/post-user-initiate.dto';
 import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
 import { PutUserPermissionsDto } from 'src/module/user/presentation/dto/put-user-permissions.dto';
 import {
@@ -439,13 +442,52 @@ export class UserController {
     }
 
     /**
-     * Registers a pending user account and queues its activation email. The 204 response confirms
+     * Prepares the required avatar upload without persisting account state.
+     *
+     * @param postUserInitiateDto Normalized registration form and avatar descriptor
+     * @returns One signed PUT request and the proof accepted by registration
+     * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {DependencyUnavailableException} When the primary database or storage is unavailable
+     * @throws {SystemException} When storage authorization fails or the plan violates the avatar contract
+     */
+    @Public()
+    @Post('initiate')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Prepare user registration',
+        description:
+            'Prepares one conditional avatar PUT valid for five minutes and a form-bound registration proof valid for ten minutes. Registration requires the same form and uploaded avatar.',
+    })
+    @ApiOkResponse({
+        type: ResponseSingleUploadInitiateDto,
+        description: 'Avatar upload request and registration proof.',
+    })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
+    async initiate(@Body() postUserInitiateDto: PostUserInitiateDto): Promise<ResponseSingleUploadInitiateDto> {
+        return plainToInstance(
+            ResponseSingleUploadInitiateDto,
+            await this.commandPipeline.execute(
+                new InitiateUserRegistrationCommand(
+                    postUserInitiateDto.email,
+                    postUserInitiateDto.name,
+                    postUserInitiateDto.password,
+                    postUserInitiateDto.avatar,
+                ),
+            ),
+        );
+    }
+
+    /**
+     * Registers a pending user account with its uploaded avatar and queues activation. The 204 response confirms
      * the request was committed, not that the email was delivered; sign-in requires activation.
      *
      * @param postUserDto The registration payload
-     * @throws {ResourceConflictException} When the email address is already in use
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {SystemException} When the activation job is not accepted by the queue
+     * @throws {UnauthenticatedException} When the upload proof is invalid or expired
+     * @throws {InvalidInputException} When the form or uploaded avatar differs from the proof
+     * @throws {ResourceConflictException} When the identity or email already exists
+     * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
+     * @throws {SystemException} When storage authorization fails or the queue does not accept every job
      */
     @Public()
     @Post()
@@ -453,14 +495,21 @@ export class UserController {
     @ApiOperation({
         summary: 'Register user',
         description:
-            'Creates a pending account with the supplied password and queues an activation email. The link expires after three days; sign-in requires activation. An existing email returns 409.',
+            'Verifies the registration proof, matching form, and uploaded avatar, then commits a pending account with activation and avatar move jobs. Sign-in requires email activation. An existing identity or email returns 409.',
     })
-    @ApiNoContentResponse({ description: 'Pending account and activation delivery request committed.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
+    @ApiNoContentResponse({ description: 'Pending account created, avatar attached, and delivery requests queued.' })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultResourceConflictResponse()
     async register(@Body() postUserDto: PostUserDto) {
         await this.commandPipeline.execute(
-            new RegisterUserCommand(postUserDto.email, postUserDto.name, postUserDto.password),
+            new RegisterUserCommand(
+                postUserDto.email,
+                postUserDto.name,
+                postUserDto.password,
+                postUserDto.avatar,
+                postUserDto.uploadToken,
+            ),
         );
     }
 

@@ -78,6 +78,11 @@ export enum AuditAction {
     USER_REGISTERED = 'USER_REGISTERED',
 
     /**
+     * A user's attached pending avatar was transitioned to its permanent object key.
+     */
+    USER_AVATAR_FINALIZED = 'USER_AVATAR_FINALIZED',
+
+    /**
      * A pending user's activation delivery request was committed; delivery may follow.
      */
     USER_ACTIVATION_REQUESTED = 'USER_ACTIVATION_REQUESTED',

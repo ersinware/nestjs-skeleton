@@ -311,6 +311,7 @@ export class S3StorageAdapter implements IStoragePort {
                     Key: request.destinationKey,
                     CopySource: `${this.bucket}/${request.sourceKey.split('/').map(encodeURIComponent).join('/')}`,
                     CopySourceIfMatch: request.sourceEtag,
+                    IfNoneMatch: '*',
                     ContentType: request.contentType,
                     MetadataDirective: 'REPLACE',
                     CacheControl: buildCacheControlHeader(request.cache),

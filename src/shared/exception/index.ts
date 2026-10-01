@@ -15,5 +15,6 @@ export { InvalidInputException, InvalidInputMessage } from 'src/shared/exception
 export { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception/resource-conflict.exception';
 export { ResourceNotFoundException, ResourceNotFoundMessage } from 'src/shared/exception/resource-not-found.exception';
 export { SystemException, SystemMessage } from 'src/shared/exception/system.exception';
+export { TerminalJobException } from 'src/shared/exception/terminal-job.exception';
 export { toError } from 'src/shared/exception/to-error.util';
 export { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception/unauthenticated.exception';

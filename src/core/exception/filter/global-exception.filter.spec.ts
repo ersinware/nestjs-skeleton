@@ -26,6 +26,7 @@ import {
     ResourceNotFoundMessage,
     SystemException,
     SystemMessage,
+    TerminalJobException,
     UnauthenticatedException,
     type ExceptionContext,
 } from 'src/shared/exception';
@@ -160,6 +161,7 @@ describe('GlobalExceptionFilter', () => {
             [InvalidInputException, HttpStatus.BAD_REQUEST, 'Bad Request'],
             [DependencyUnavailableException, HttpStatus.SERVICE_UNAVAILABLE, 'Service Unavailable'],
             [SystemException, HttpStatus.INTERNAL_SERVER_ERROR, 'Internal Server Error'],
+            [TerminalJobException, HttpStatus.INTERNAL_SERVER_ERROR, 'Internal Server Error'],
         ])(
             'should map %s to its HTTP status and derived status text',
             async (ExceptionClass, statusCode, statusText) => {

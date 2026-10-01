@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
+import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
@@ -37,6 +38,11 @@ type UserProps = {
      * Argon2 password hash used to verify credentials.
      */
     password: string;
+
+    /**
+     * Current attached avatar object key.
+     */
+    avatarKey: string;
 
     /**
      * Pending activation identity shared with the delivery job.
@@ -200,12 +206,17 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Creates a pending User with activation delivery and no permissions.
+     * Creates a pending User with activation and avatar deliveries and no permissions.
      *
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
+     * @throws {InvalidInputException} When the avatar key is not the registration's pending key
      */
-    static create(props: { readonly id: string } & Readonly<Pick<UserProps, 'email' | 'name' | 'password'>>): User {
+    static create(props: Readonly<Pick<UserSnapshot, 'id' | 'email' | 'name' | 'password' | 'avatarKey'>>): User {
+        if (props.avatarKey !== buildUserPendingAvatarKey(props.id)) {
+            throw new InvalidInputException();
+        }
+
         const now = new Date(),
             user = new User({
                 ...props,
@@ -228,6 +239,13 @@ export class User extends PrincipalAggregateRoot {
 
         user.issueActivation();
         user.addActivationJob();
+        user.addJob([
+            {
+                deliveryId: randomUUID(),
+                aggregateId: user.id,
+                queueName: UserJobQueue.AVATAR_MOVE,
+            },
+        ]);
 
         return user;
     }
@@ -257,6 +275,39 @@ export class User extends PrincipalAggregateRoot {
             revocationVersion: this.revocationVersion,
             ...this.props,
         };
+    }
+
+    /**
+     * Attaches the copied object and queues eviction only on a real key transition.
+     *
+     * @param expectedPendingKey Source key expected by the owner delivery
+     * @param finalKey Verified copy destination
+     * @param avatarId Stable avatar identity belonging to the owner delivery
+     * @returns Whether the avatar key changed
+     * @throws {SystemException} When the account has been deleted
+     * @throws {InvalidInputException} When the destination does not match the account and avatar identity
+     * @throws {ResourceConflictException} When another avatar key is already attached
+     */
+    finalizeAvatar(expectedPendingKey: string, finalKey: string, avatarId: string): boolean {
+        this.assertNotDeleted(this.finalizeAvatar.name);
+
+        if (finalKey !== buildUserPermanentAvatarKey(this.id, avatarId)) {
+            throw new InvalidInputException();
+        }
+
+        if (this.props.avatarKey === finalKey) {
+            return false;
+        }
+
+        if (this.props.avatarKey !== expectedPendingKey) {
+            throw new ResourceConflictException();
+        }
+
+        this.props.avatarKey = finalKey;
+        this.props.updatedAt = new Date();
+        this.addCacheInvalidationJob();
+
+        return true;
     }
 
     /**
@@ -758,6 +809,15 @@ export class User extends PrincipalAggregateRoot {
      */
     get password(): string {
         return this.props.password;
+    }
+
+    /**
+     * Returns the attached avatar without constructing a delivery URL.
+     *
+     * @returns Current attached object key
+     */
+    get avatarKey(): string {
+        return this.props.avatarKey;
     }
 
     /**

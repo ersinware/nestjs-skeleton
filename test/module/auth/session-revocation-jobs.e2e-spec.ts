@@ -383,7 +383,7 @@ describe('Auth session-revocation jobs', () => {
         if (principalType === PrincipalType.ADMIN) {
             await database.insert(admin).values(values);
         } else {
-            await database.insert(user).values(values);
+            await database.insert(user).values({ ...values, avatarKey: `avatar/user/${aggregateId}` });
         }
     }
 

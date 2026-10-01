@@ -20,6 +20,7 @@ describe('User activation', () => {
         email: 'activation@example.test',
         name: 'Activation Test',
         password: 'stored-hash',
+        avatarKey: 'pending/avatar/user/01960000-0000-7000-8000-000000000011',
     };
     const admin = { id: '01960000-0000-7000-8000-000000000012', type: PrincipalType.ADMIN, permissions: [] };
     let account: User;
@@ -40,16 +41,26 @@ describe('User activation', () => {
         };
     }
 
-    it('starts pending with a three-day fixed deadline and one delivery', () => {
+    it('starts pending with a three-day fixed deadline and activation and avatar deliveries', () => {
         expect(account.activationExpiresAt).toEqual(new Date('2026-09-27T10:00:00Z'));
         expect(account.password).toBe(initial.password);
-        expect(account.pullJobs()).toEqual([
+        const jobs = account.pullJobs();
+
+        expect(jobs).toEqual([
             {
                 aggregateId: account.id,
                 deliveryId: account.activationId,
                 queueName: UserJobQueue.ACTIVATION,
             },
+            {
+                aggregateId: account.id,
+                deliveryId: jobs[1]!.deliveryId,
+                queueName: UserJobQueue.AVATAR_MOVE,
+            },
         ]);
+        expect(jobs[1]!.deliveryId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        expect(jobs[1]!.deliveryId).not.toBe(account.id);
+        expect(jobs[1]!.deliveryId).not.toBe(account.activationId);
     });
 
     it('replaces valid proof and deadline on every resend with a distinct delivery', () => {

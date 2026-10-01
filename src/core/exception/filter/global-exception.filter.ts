@@ -30,6 +30,7 @@ const KIND_TO_STATUS = {
     [ExceptionKind.INVALID_INPUT]: HttpStatus.BAD_REQUEST,
     [ExceptionKind.DEPENDENCY_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
     [ExceptionKind.SYSTEM]: HttpStatus.INTERNAL_SERVER_ERROR,
+    [ExceptionKind.TERMINAL_JOB]: HttpStatus.INTERNAL_SERVER_ERROR,
 } as const satisfies Readonly<Record<ExceptionKind, HttpStatus>>;
 
 /**

@@ -37,6 +37,17 @@ export class ResponseUserDto {
     readonly name!: string;
 
     /**
+     * Current avatar object key; the client owns its delivery URL.
+     */
+    @Expose()
+    @ApiProperty({
+        type: String,
+        description: 'The attached avatar object key.',
+        example: 'avatar/user/019a3b7c-8d42-7e19-9a65-c3f821b6d047/019a3b81-2f96-74c8-bd30-e7a15942c6f3',
+    })
+    readonly avatarKey!: string;
+
+    /**
      * The permissions the user holds, so the back office can show and edit them.
      */
     @Expose()

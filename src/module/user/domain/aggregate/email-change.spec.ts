@@ -17,6 +17,7 @@ describe('User email change invariants', () => {
         name: 'Example',
         email: 'old@example.test',
         password: 'hash',
+        avatarKey: 'pending/avatar/user/01960000-0000-7000-8000-000000000001',
     };
     const notificationId = '01960000-0000-7000-8000-000000000002';
     const actor = { id: '01960000-0000-7000-8000-000000000003', type: PrincipalType.ADMIN, permissions: [] };

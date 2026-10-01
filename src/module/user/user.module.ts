@@ -14,12 +14,15 @@ import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
+import { StorageModule } from 'src/core/storage';
 import { ActivateUserCommandHandler } from 'src/module/user/application/command/activate-user/handler';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
 import { ChangeUserPermissionsCommandHandler } from 'src/module/user/application/command/change-user-permissions/handler';
 import { ConfirmUserEmailChangeCommandHandler } from 'src/module/user/application/command/confirm-user-email-change/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
+import { InitiateUserRegistrationCommandHandler } from 'src/module/user/application/command/initiate-user-registration/handler';
+import { MoveUserAvatarCommandHandler } from 'src/module/user/application/command/move-user-avatar/handler';
 import { TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/user/application/command/port/user-email-change-notification-writer.port';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
@@ -50,7 +53,9 @@ import { TOKEN_IS_USER_EMAIL_IN_USE_PORT } from 'src/module/user/application/que
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
+import { TOKEN_USER_EXISTS_PORT } from 'src/module/user/application/query/user-exists/port';
 import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
+import { UserAvatarQueue } from 'src/module/user/application/queue/user-avatar.queue';
 import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
 import { UserEmailChangeNotificationQueue } from 'src/module/user/application/queue/user-email-change-notification.queue';
 import { UserEmailConfirmationQueue } from 'src/module/user/application/queue/user-email-confirmation.queue';
@@ -79,11 +84,13 @@ import { UserFacade } from 'src/module/user/user.facade';
         HashingModule,
         SessionModule,
         TokenModule,
+        StorageModule,
         EmailModule,
         CqrsPipelineModule,
         JobQueueModule.forFeature(
             [
                 UserActivationQueue,
+                UserAvatarQueue,
                 UserEmailConfirmationQueue,
                 UserEmailChangeNotificationQueue,
                 UserCacheQueue,
@@ -100,6 +107,8 @@ import { UserFacade } from 'src/module/user/user.facade';
         UserFacade,
         ActivateUserCommandHandler,
         RegisterUserCommandHandler,
+        InitiateUserRegistrationCommandHandler,
+        MoveUserAvatarCommandHandler,
         ResendUserActivationCommandHandler,
         SendUserActivationCommandHandler,
         UpdateUserCommandHandler,
@@ -129,6 +138,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         { provide: TOKEN_GET_USER_REFRESH_STATE_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_IS_USER_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
+        { provide: TOKEN_USER_EXISTS_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         {
             provide: TOKEN_GET_USER_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT,

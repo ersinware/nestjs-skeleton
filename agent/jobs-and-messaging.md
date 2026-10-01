@@ -4,7 +4,8 @@
 - Development/test startup may migrate the pg-boss schema. Production startup sets `migrate: false` and rejects a missing or mismatched schema.
 - Commands own the outer `ITransactionPort.run`. Aggregate writers persist state and accumulated jobs; commands enqueue command-owned jobs directly. All enqueueing uses the primary Drizzle proxy, so jobs commit with surrounding writes and mutation audit ([Audit](observability.md#audit)). pg-boss owns its `pgboss` schema; exclude it from Drizzle discovery and schema filters.
 - Delivery attempts may repeat; retries and backoff are bounded.
-- Normal queues route terminal failures to the shared DLQ. Technical queues, including redrive orchestration, opt out with `disableDeadLetter: true`; the DLQ has no worker.
+- Non-transactional consumers use `TerminalJobException` only when automatic retries cannot recover; workers skip retries. Transactional consumers retain normal retries.
+- Normal queues route exhausted or explicitly terminal failures to the shared DLQ. Technical queues, including redrive orchestration, opt out with `disableDeadLetter: true`; the DLQ has no worker.
 - Routing changes do not backfill already queued jobs or historical source failures.
 - `job-queue-operations` reads require authorization but no audit; exact-ID discard and exclusive, retryable all-DLQ redrive require audit. Discard is atomic. Jobs without a source queue remain in the DLQ; pg-boss retention bounds operation status.
 - Job consumers declare `transactional: boolean`. Transactional consumers run only short PostgreSQL work: the ambient Drizzle executor and pg-boss completion share the pg-boss-owned transaction. Consumers that call Redis, email, or other network dependencies remain non-transactional and tolerate or deduplicate repeated effects.
