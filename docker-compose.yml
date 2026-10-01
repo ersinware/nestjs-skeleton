@@ -80,6 +80,7 @@ services:
 
     storage-init:
         image: amazon/aws-cli:2.34.0@sha256:97cc5f847898f54432492c128408c62e0df2153d9ad36573be8e5a03826123b0
+        container_name: storage-init
         depends_on:
             seaweedfs:
                 condition: service_healthy
@@ -92,6 +93,7 @@ services:
             - api-network
 
     api:
+        container_name: api
         environment:
             OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:?}
         # Build context is common for both envs

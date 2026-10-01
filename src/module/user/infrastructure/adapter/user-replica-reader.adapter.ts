@@ -51,6 +51,7 @@ export class UserReplicaReaderAdapter implements IListUsersPort {
                         id: user.id,
                         email: user.email,
                         name: user.name,
+                        avatarKey: user.avatarKey,
                         permissions: user.permissions,
                         isBanned: user.isBanned,
                     })

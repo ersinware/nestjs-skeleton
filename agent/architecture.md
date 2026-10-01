@@ -36,6 +36,9 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Use one S3 client with an endpoint reachable by backend and browser. Never rewrite presigned URLs; sign required upload headers and return them to the client.
 - Conditional writes prevent overwrites, not URL reuse after object deletion; never assume presigned URLs are single-use.
 - Persist/return object keys; frontend owns CDN URLs and configuration.
+- Permanent files are immutable: each replacement uses a new version key; retries retain that key and prevent overwrites. Public delivery uses long-lived immutable caching.
+- Storage and database changes are not atomic; reconcile retries and delete sources only after the destination key commits.
+- Cache metadata does not authorize reads; protected files require access control and caching compatible with access revocation.
 
 ## Dependency Injection
 
@@ -46,7 +49,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 ## CQRS
 
-- Commands extend `Command<R>`; return affected id/`void`, except auth token results and credential-login/password-change/email-confirmation/user-activation session outcomes ([Security & Sessions](security-and-sessions.md#session-versions--failure-semantics)). Mutate aggregates through their methods; pass whole aggregates to write ports ([Adapters](data-and-state.md#adapters)).
+- Commands extend `Command<R>`; return affected id/`void`, except auth token results, workflow-owned upload-initiation plans, and credential-login/password-change/email-confirmation/user-activation session outcomes ([Security & Sessions](security-and-sessions.md#session-versions--failure-semantics)). Mutate aggregates through their methods; pass whole aggregates to write ports ([Adapters](data-and-state.md#adapters)).
 - Dispatched queries extend `Query<T>`; queries never mutate business state. Infer dispatch results from queries; explicit return signatures use query-owned read-models, never domain types.
 - In `src/module/<context>/application/query/<name>/`, keep results in `query.ts`, outbound contracts in `port.ts`; add `handler.ts` for pipeline dispatch, omit it for direct port reads.
 - Outbound query handlers use one purpose-specific local port; compose sources behind it in adapters, even for forwarding/merging ([Adapters](data-and-state.md#adapters)). Static permission catalogs need no outbound port.

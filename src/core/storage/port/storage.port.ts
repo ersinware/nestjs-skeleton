@@ -295,12 +295,12 @@ export interface IStoragePort {
     abortMultipart(request: StorageAbortMultipartRequest): Promise<void>;
 
     /**
-     * Copies a small object without deleting its source; multipart copy is unsupported.
+     * Copies a small object only to an absent destination without deleting its source; multipart copy is unsupported.
      *
      * @param request Source, target, content type, and cache policy.
      * @throws {InvalidInputException} When the source exceeds single-copy limits.
      * @throws {ResourceNotFoundException} When the source object is missing.
-     * @throws {ResourceConflictException} When the source no longer matches.
+     * @throws {ResourceConflictException} When the source no longer matches or the destination is occupied.
      * @throws {DependencyUnavailableException} When storage is unavailable.
      * @throws {SystemException} When storage authorization fails.
      */

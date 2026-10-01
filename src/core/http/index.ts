@@ -12,7 +12,11 @@ export { QueryPaginationDto } from 'src/core/http/pagination/dto/query-paginatio
 export { ResponsePaginationDto } from 'src/core/http/pagination/dto/response-pagination.dto';
 export { ResponsePermissionCatalogDto } from 'src/core/http/permission/dto/response-permission-catalog.dto';
 export { QuerySearchDto } from 'src/core/http/search/dto/query-search.dto';
+export { ResponseSingleUploadInitiateDto } from 'src/core/http/storage/dto/response-single-upload-initiate.dto';
 export { IsEmailAddress } from 'src/core/http/validation/decorator/email-address.decorator';
+export { IsFileContentType } from 'src/core/http/validation/decorator/file-content-type.decorator';
+export { IsFileDescriptor } from 'src/core/http/validation/decorator/file-descriptor.decorator';
+export { IsFileSize } from 'src/core/http/validation/decorator/file-size.decorator';
 export { IsJwtToken, TOKEN_MAX_LENGTH } from 'src/core/http/validation/decorator/jwt-token.decorator';
 export { IsPermissionList } from 'src/core/http/validation/decorator/permission-list.decorator';
 export { IsPersonName } from 'src/core/http/validation/decorator/person-name.decorator';

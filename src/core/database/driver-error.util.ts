@@ -42,11 +42,16 @@ const CONNECTION_FAILURE_MESSAGES = ['timeout exceeded when trying to connect', 
  * `cause` chain because Drizzle wraps the driver error in its own query error before rethrowing.
  *
  * @param error The error caught around a database write
+ * @param constraint Optional owned constraint name to match
  * @returns True when a unique constraint was violated
  */
-export function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown, constraint?: string): boolean {
     for (let current = error; current instanceof Error; current = current.cause) {
-        if (current instanceof DatabaseError && current.code === '23505') {
+        if (
+            current instanceof DatabaseError &&
+            current.code === '23505' &&
+            (constraint === undefined || current.constraint === constraint)
+        ) {
             return true;
         }
     }

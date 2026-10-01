@@ -195,6 +195,7 @@ describe('S3StorageAdapter', () => {
             Key: 'avatar/user/id',
             CopySource: 'storage-test/pending/avatar/user/id%20with%20space',
             CopySourceIfMatch: '"source-etag"',
+            IfNoneMatch: '*',
             ContentType: 'image/webp',
             MetadataDirective: 'REPLACE',
             CacheControl: 'public, max-age=60, s-maxage=120, immutable',

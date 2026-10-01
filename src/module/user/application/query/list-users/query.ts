@@ -46,6 +46,11 @@ export type ListUsersResult = {
         readonly name: string;
 
         /**
+         * Current attached avatar object key.
+         */
+        readonly avatarKey: string;
+
+        /**
          * Permissions currently assigned to the account.
          */
         readonly permissions: readonly Permission[];

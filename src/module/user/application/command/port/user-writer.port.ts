@@ -42,4 +42,14 @@ export interface IUserWriterPort {
      * @throws {SystemException} When the queue does not accept every aggregate job
      */
     save(user: User): Promise<void>;
+
+    /**
+     * Inserts a new account and its jobs without updating an existing identity.
+     *
+     * @param user The new aggregate to insert
+     * @throws {ResourceConflictException} When the identity or email already exists
+     * @throws {DependencyUnavailableException} When the database is unreachable
+     * @throws {SystemException} When the queue does not accept every aggregate job
+     */
+    insert(user: User): Promise<void>;
 }

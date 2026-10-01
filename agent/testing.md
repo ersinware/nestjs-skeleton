@@ -4,6 +4,7 @@
 - Validate fields/constraints and HTTP status/error shape; assert exact validation text only when testing message generation.
 - Unit and E2E configs enable `restoreMocks` and `clearMocks`; do not duplicate automatic cleanup. Allow targeted resets/restoration where needed.
 - Unit-test domain/application behavior through ports; verify DB/Redis guarantees with real dependencies in integration tests.
+- Do not write unit tests for DTOs.
 - Test apps must use the same bootstrap configuration and wiring as production apps, including hooks, guards, pipes, interceptors, and filters.
 - Run E2E tests through the pipeline; use `act` locally. Provision dependencies in the workflow, never reuse development containers.
 - Storage integration tests use the production module/port; direct SDK access is limited to observation, fault injection, and cleanup.

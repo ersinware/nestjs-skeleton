@@ -26,6 +26,7 @@ import {
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
+import { SystemException, TerminalJobException } from 'src/shared/exception';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -97,6 +98,37 @@ class TransactionalProbeConsumer implements IJobConsumer {
     }
 }
 
+/**
+ * Non-transactional queue used to verify real retry and terminal settlement.
+ */
+const SETTLEMENT_QUEUE = 'test.consumer.settlement.queue.v1';
+
+/**
+ * Emits explicit failure kinds through the production worker boundary.
+ */
+@Injectable()
+class SettlementProbeConsumer implements IJobConsumer {
+    /**
+     * Queue owned by this test.
+     */
+    readonly name = SETTLEMENT_QUEUE;
+    /**
+     * Allows per-job terminal settlement.
+     */
+    readonly transactional = false;
+    /**
+     * Produces the failure requested by the test payload.
+     *
+     * @param job Delivery selecting retry or terminal disposition
+     */
+    consume(job: Job): Promise<void> {
+        if (job.aggregateId === 'terminal') {
+            return Promise.reject(new TerminalJobException('Intentional terminal failure.'));
+        }
+        return Promise.reject(new SystemException('Intentional retryable failure.'));
+    }
+}
+
 describe('Transactional pg-boss consumer', () => {
     let module: TestingModule;
     let boss: PgBoss;
@@ -124,7 +156,10 @@ describe('Transactional pg-boss consumer', () => {
                 }),
                 DatabaseModule,
                 JobQueueModule,
-                JobQueueModule.forFeature([TransactionalProbeConsumer], [DatabaseModule, JobQueueModule]),
+                JobQueueModule.forFeature(
+                    [TransactionalProbeConsumer, SettlementProbeConsumer],
+                    [DatabaseModule, JobQueueModule],
+                ),
             ],
         });
 
@@ -133,6 +168,7 @@ describe('Transactional pg-boss consumer', () => {
         boss = module.get<PgBoss>(TOKEN_JOB_QUEUE_CLIENT);
         database = module.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
 
+        await boss.deleteQueue(SETTLEMENT_QUEUE);
         await boss.deleteQueue(PROBE_QUEUE);
         await boss.deleteQueue(CHILD_QUEUE);
         await boss.createQueue(CHILD_QUEUE, { policy: 'standard' });
@@ -151,11 +187,59 @@ describe('Transactional pg-boss consumer', () => {
             return;
         }
 
+        await boss.offWork(SETTLEMENT_QUEUE);
+        await boss.deleteQueue(SETTLEMENT_QUEUE);
         await boss.offWork(PROBE_QUEUE);
         await boss.deleteQueue(PROBE_QUEUE);
         await boss.deleteQueue(CHILD_QUEUE);
         await database.execute(sql`DROP TABLE public.job_queue_transaction_probe`);
         await module.close();
+    });
+
+    it('bypasses configured retries only for terminal non-transactional failures', async () => {
+        const terminalId = await boss.send(SETTLEMENT_QUEUE, {
+            deliveryId: 'terminal-delivery',
+            aggregateId: 'terminal',
+        });
+        const retryId = await boss.send(SETTLEMENT_QUEUE, { deliveryId: 'retry-delivery', aggregateId: 'retry' });
+        expect(terminalId).not.toBeNull();
+        expect(retryId).not.toBeNull();
+        try {
+            await expect
+                .poll(async () => (await boss.findJobs(SETTLEMENT_QUEUE, { id: terminalId! }))[0]?.state, {
+                    timeout: 10_000,
+                    interval: 100,
+                })
+                .toBe('failed');
+            await expect
+                .poll(async () => (await boss.findJobs(SETTLEMENT_QUEUE, { id: retryId! }))[0]?.state, {
+                    timeout: 10_000,
+                    interval: 100,
+                })
+                .toBe('retry');
+            const copies = (await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).filter(
+                (job) => job.sourceId === terminalId,
+            );
+            expect(copies).toHaveLength(1);
+            expect(copies[0]).toMatchObject({
+                sourceName: SETTLEMENT_QUEUE,
+                sourceRetryCount: 0,
+                data: { aggregateId: 'terminal', deliveryId: 'terminal-delivery' },
+            });
+            expect((await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).some((job) => job.sourceId === retryId)).toBe(
+                false,
+            );
+        } finally {
+            const copies = (await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).filter(
+                (job) => job.sourceId === terminalId,
+            );
+            if (copies.length) {
+                await boss.deleteJob(
+                    JOB_QUEUE_DEAD_LETTER,
+                    copies.map((job) => job.id),
+                );
+            }
+        }
     });
 
     it('rolls application writes and child jobs back before retrying a failed job', async () => {

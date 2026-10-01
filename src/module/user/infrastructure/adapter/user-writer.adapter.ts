@@ -120,4 +120,27 @@ export class UserWriterAdapter implements IUserWriterPort {
 
         await this.jobQueueWriterPort.enqueue(user.pullJobs());
     }
+
+    /**
+     * Inserts the account and queues its jobs in the caller's transaction.
+     *
+     * @param user The new aggregate to insert
+     */
+    async insert(user: User) {
+        try {
+            await this.database.insert(userSchema).values(user.toSnapshot());
+        } catch (error) {
+            if (isUniqueViolation(error, 'user_email_unique')) {
+                throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE, { cause: error });
+            }
+
+            if (isUniqueViolation(error, 'user_pkey')) {
+                throw new ResourceConflictException(ResourceConflictMessage.DEFAULT, { cause: error });
+            }
+
+            throw translateConnectionFailure(error);
+        }
+
+        await this.jobQueueWriterPort.enqueue(user.pullJobs());
+    }
 }

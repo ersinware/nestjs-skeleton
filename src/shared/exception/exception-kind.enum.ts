@@ -42,4 +42,9 @@ export enum ExceptionKind {
      * An unexpected internal failure with no more specific category.
      */
     SYSTEM = 'SYSTEM',
+
+    /**
+     * A job failure that requires intervention instead of automatic retries.
+     */
+    TERMINAL_JOB = 'TERMINAL_JOB',
 }
