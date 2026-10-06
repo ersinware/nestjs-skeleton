@@ -13,7 +13,7 @@
 - Reject `Public` with any protection. `Authenticated` cannot accompany same-level restrictions or relax class restrictions; class-level `Authenticated` allows method restrictions.
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
 - Account activation and email confirmation receive verified claims for the target aggregate; a `sub` mismatch throws `SystemException`. Email confirmation handlers must reject session/token ownership mismatches before calling the aggregate.
-- Admin self-service mutations and password access require activation; a null password is a `SystemException`.
+- Admin self-service mutations require a password and avatar; missing either is a `SystemException`. Pending accounts remain administrable.
 - Both principal kinds share `login.util.ts`. Invalid credentials receive uniform `CREDENTIALS` refusals; each refused login performs one Argon2 verification. Unknown/banned/passwordless accounts use `simulateVerify` with a boot-generated, current-cost hash. Only a pending user with a correct password receives audited `session: activation_required`, without tokens or a session.
 
 ### Administration
@@ -57,7 +57,7 @@
 - Persist invitation metadata, never the JWT: UUID v4 `inviteId` (= job `deliveryId`), whole-second `inviteExpiresAt`, and `inviteRevocationVersion`. The aggregate owns the fixed three-day lifetime; no TTL configuration or handler-supplied timestamps. Metadata is all null or all populated for a passwordless account.
 - `inviteRevocationVersion` captures the account's `revocationVersion` at issuance; never substitute the current version on delivery. Re-invite calls `revokeAllSessions` before replacing the invitation; pending accounts need no Redis sync. Persist state, job, and audit atomically ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
-- Delivery checks do not authorize activation: an in-flight email can race with account changes. Activation must independently recheck account eligibility, exact invitation binding, and expiry; save under the loaded optimistic version without advancing session counters.
+- Delivery checks and upload proofs do not authorize activation: either can outlive account eligibility. Activation must independently recheck account eligibility, exact invitation binding, and expiry; save under the loaded optimistic version without advancing session counters. Cap upload URL/proof lifetimes at invitation expiry.
 - Audit only banned-account activation refusals; preserve refusal kinds instead of flattening them into one invalid-input response ([Exceptions](exceptions.md#exceptions)).
 
 ### Email Change State

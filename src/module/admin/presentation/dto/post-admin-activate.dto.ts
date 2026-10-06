@@ -4,11 +4,11 @@
  */
 
 import { ApiSchema } from '@nestjs/swagger';
-import { IsJwtToken, IsStrongPassword } from 'src/core/http';
+import { IsFileDescriptor, IsJwtToken, IsStrongPassword } from 'src/core/http';
+import { PostAdminAvatarDto } from 'src/module/admin/presentation/dto/post-admin-avatar.dto';
 
 /**
- * Activation payload: the invite token proves the invitation, the password becomes the account's
- * first credential.
+ * Final activation form; invitation proof and avatar upload proof have distinct purposes.
  */
 @ApiSchema({ name: 'PostAdminActivate', description: 'Input validation schema for admin account activation.' })
 export class PostAdminActivateDto {
@@ -23,4 +23,16 @@ export class PostAdminActivateDto {
      */
     @IsStrongPassword()
     readonly password!: string;
+
+    /**
+     * File details bound to the form during initiation and checked against the uploaded object.
+     */
+    @IsFileDescriptor(PostAdminAvatarDto, { sizeBytes: 1024, contentType: 'image/png' }, 'The avatar descriptor')
+    readonly avatar!: PostAdminAvatarDto;
+
+    /**
+     * Workflow-bound upload proof returned by initiation; never an invitation or session token.
+     */
+    @IsJwtToken('The upload token')
+    readonly uploadToken!: string;
 }

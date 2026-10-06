@@ -37,6 +37,18 @@ export class ResponseAdminDto {
     readonly name!: string;
 
     /**
+     * Avatar object key; the client owns its delivery URL.
+     */
+    @Expose()
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: 'The avatar object key, or null before activation.',
+        example: 'avatar/admin/019a0c31-21cd-7d42-8f63-0a9237288654/7928bcfc-8538-4c78-a4fe-66fb256828e2',
+    })
+    readonly avatarKey!: string | null;
+
+    /**
      * The permissions the admin holds, so the back office can show and edit their authority.
      */
     @Expose()

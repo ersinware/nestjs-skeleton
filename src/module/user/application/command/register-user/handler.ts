@@ -111,10 +111,10 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
         }
 
-        let object;
+        let avatar;
 
         try {
-            object = await this.storagePort.headObject(payload.fileKey);
+            avatar = await this.storagePort.headObject(payload.fileKey);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: error });
@@ -123,7 +123,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             throw error;
         }
 
-        if (object.sizeBytes !== command.avatar.sizeBytes || object.contentType !== command.avatar.contentType) {
+        if (avatar.sizeBytes !== command.avatar.sizeBytes || avatar.contentType !== command.avatar.contentType) {
             throw new InvalidInputException();
         }
 

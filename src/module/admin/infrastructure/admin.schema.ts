@@ -42,6 +42,11 @@ export const admin = adminSchema.table(
         password: text('password'),
 
         /**
+         * Uploaded avatar object key; invited accounts have none until activation.
+         */
+        avatarKey: text('avatar_key'),
+
+        /**
          * Identity shared by one invitation and its durable delivery attempts.
          */
         inviteId: uuid('invite_id'),

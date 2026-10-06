@@ -25,7 +25,10 @@ describe('Admin email change invariants', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-09-24T10:00:00.987Z'));
-        account = Admin.create(initial);
+        account = Admin.reconstitute({
+            ...Admin.create(initial).toSnapshot(),
+            avatarKey: `avatar/admin/${initial.id}/${randomUUID()}`,
+        });
     });
     afterEach(() => vi.useRealTimers());
 
@@ -203,6 +206,16 @@ describe('Admin email change invariants', () => {
         expect(() => account.requestEmailChange('new@example.test', true, false)).toThrow(SystemException);
         expect(account.pendingEmail).toBeNull();
         expect(account.pullJobs()).toEqual([]);
+    });
+
+    it('rejects self-service for an account whose password exists but avatar is missing', () => {
+        const broken = Admin.reconstitute({ ...account.toSnapshot(), avatarKey: null });
+        const before = broken.toSnapshot();
+        expect(() => broken.updateName('Changed')).toThrow(SystemException);
+        expect(() => broken.changePassword('new hash', true, false)).toThrow(SystemException);
+        expect(() => broken.requestEmailChange('new@example.test', true, false)).toThrow(SystemException);
+        expect(broken.toSnapshot()).toEqual(before);
+        expect(broken.pullJobs()).toEqual([]);
     });
 
     it('preserves proof across access-only version changes and revokes at the latest version', () => {

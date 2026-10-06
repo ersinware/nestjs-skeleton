@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 
 /**
  * Activates a pending admin account: verifies the invite token and sets the first password, which
@@ -15,10 +16,14 @@ export class ActivateAdminCommand extends Command<void> {
      *
      * @param token The invite token from the invitation email
      * @param password The plain-text initial password chosen by the owner
+     * @param avatar Required descriptor bound to the uploaded object
+     * @param uploadToken Form-bound upload proof returned by initiation
      */
     constructor(
         readonly token: string,
         readonly password: string,
+        readonly avatar: AvatarUploadDescriptor,
+        readonly uploadToken: string,
     ) {
         super();
     }

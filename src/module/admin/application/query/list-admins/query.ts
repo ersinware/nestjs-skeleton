@@ -46,6 +46,11 @@ export type ListAdminsResult = {
         readonly name: string;
 
         /**
+         * Avatar object key, or null before activation.
+         */
+        readonly avatarKey: string | null;
+
+        /**
          * Permissions currently assigned to the account.
          */
         readonly permissions: readonly Permission[];
