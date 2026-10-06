@@ -285,13 +285,16 @@ export class User extends PrincipalAggregateRoot {
      * @param avatarId Stable avatar identity belonging to the owner delivery
      * @returns Whether the avatar key changed
      * @throws {SystemException} When the account has been deleted
-     * @throws {InvalidInputException} When the destination does not match the account and avatar identity
+     * @throws {InvalidInputException} When the source does not match the account or the destination does not match the account and avatar identity
      * @throws {ResourceConflictException} When another avatar key is already attached
      */
     finalizeAvatar(expectedPendingKey: string, finalKey: string, avatarId: string): boolean {
         this.assertNotDeleted(this.finalizeAvatar.name);
 
-        if (finalKey !== buildUserPermanentAvatarKey(this.id, avatarId)) {
+        if (
+            expectedPendingKey !== buildUserPendingAvatarKey(this.id) ||
+            finalKey !== buildUserPermanentAvatarKey(this.id, avatarId)
+        ) {
             throw new InvalidInputException();
         }
 

@@ -34,6 +34,7 @@ import {
     RequestValidationMessage,
     ResponsePaginationDto,
     ResponsePermissionCatalogDto,
+    ResponseSingleUploadInitiateDto,
     ROUTE_PARAM_ID,
 } from 'src/core/http';
 import { AuditAction, Audited } from 'src/core/observability/audit';
@@ -46,6 +47,7 @@ import { ChangeAdminPermissionsCommand } from 'src/module/admin/application/comm
 import { ConfirmAdminEmailChangeCommand } from 'src/module/admin/application/command/confirm-admin-email-change/command';
 import { CreateAdminCommand } from 'src/module/admin/application/command/create-admin/command';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
+import { InitiateAdminActivationCommand } from 'src/module/admin/application/command/initiate-admin-activation/command';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
 import { RequestAdminEmailChangeCommand } from 'src/module/admin/application/command/request-admin-email-change/command';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
@@ -56,6 +58,7 @@ import { ListAdminPermissionCatalogQuery } from 'src/module/admin/application/qu
 import { ListAdminsQuery } from 'src/module/admin/application/query/list-admins/query';
 import { PatchAdminPasswordDto } from 'src/module/admin/presentation/dto/patch-admin-password.dto';
 import { PatchAdminDto } from 'src/module/admin/presentation/dto/patch-admin.dto';
+import { PostAdminActivateInitiateDto } from 'src/module/admin/presentation/dto/post-admin-activate-initiate.dto';
 import { PostAdminActivateDto } from 'src/module/admin/presentation/dto/post-admin-activate.dto';
 import { PostAdminEmailChangeDto } from 'src/module/admin/presentation/dto/post-admin-email-change.dto';
 import { PostAdminEmailConfirmDto } from 'src/module/admin/presentation/dto/post-admin-email-confirm.dto';
@@ -467,11 +470,49 @@ export class AdminController {
     }
 
     /**
+     * Prepares the invited admin's required avatar without consuming the invitation.
+     *
+     * @param body Validated invitation, initial password, and avatar descriptor
+     * @returns One signed PUT and a form-bound activation proof
+     * @throws {InvalidInputException} When the invitation is invalid, expired, or revoked
+     * @throws {ResourceNotFoundException} When the account is missing or deleted
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account is already active
+     * @throws {DependencyUnavailableException} When database or storage is unavailable
+     * @throws {SystemException} When invitation identity or the storage plan violates the contract
+     */
+    @Public()
+    @Post('activate/initiate')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Prepare admin activation',
+        description:
+            'Prepares one conditional avatar PUT valid for up to five minutes and a form-bound activation proof valid for up to thirty minutes. Both expire no later than the invitation. Activation requires the same password and avatar descriptor.',
+    })
+    @ApiOkResponse({
+        type: ResponseSingleUploadInitiateDto,
+        description: 'Avatar upload request and activation proof.',
+    })
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceConflictResponse()
+    async initiateActivation(@Body() body: PostAdminActivateInitiateDto): Promise<ResponseSingleUploadInitiateDto> {
+        return plainToInstance(
+            ResponseSingleUploadInitiateDto,
+            await this.commandPipeline.execute(
+                new InitiateAdminActivationCommand(body.token, body.password, body.avatar),
+            ),
+        );
+    }
+
+    /**
      * Activates a pending admin account with the invite token from the invitation email. Public: the
      * new admin has no credentials yet, the token is what proves the invitation.
      *
-     * @param postAdminActivateDto The payload carrying the invite token and the chosen password
-     * @throws {InvalidInputException} When the invitation is invalid, expired, or no longer applies
+     * @param postAdminActivateDto Invitation and upload proofs with the bound password and avatar descriptor
+     * @throws {InvalidInputException} When the invitation, form binding, or uploaded metadata does not match
+     * @throws {UnauthenticatedException} When the upload proof is invalid or expired
      * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceConflictException} When the account is already active or changed concurrently
@@ -483,16 +524,23 @@ export class AdminController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Activate admin account',
-        description: 'Activates a pending admin account by setting its first password via the invite token.',
+        description:
+            'Activates the invited account with its first password and verified uploaded avatar. Commits the pending key and avatar move job without opening a session.',
     })
-    @ApiNoContentResponse({ description: 'Account successfully activated.' })
+    @ApiNoContentResponse({ description: 'Account successfully activated; avatar finalization is queued.' })
+    @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async activate(@Body() postAdminActivateDto: PostAdminActivateDto) {
         await this.commandPipeline.execute(
-            new ActivateAdminCommand(postAdminActivateDto.token, postAdminActivateDto.password),
+            new ActivateAdminCommand(
+                postAdminActivateDto.token,
+                postAdminActivateDto.password,
+                postAdminActivateDto.avatar,
+                postAdminActivateDto.uploadToken,
+            ),
         );
     }
 

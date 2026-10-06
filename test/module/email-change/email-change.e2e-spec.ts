@@ -220,7 +220,7 @@ describe.each(CASES)('$route email change', (context) => {
             email,
             name: 'Phase Seven',
             password: hash,
-            ...(context.kind === PrincipalType.USER && { avatarKey: `avatar/user/${id}` }),
+            avatarKey: `avatar/${context.kind}/${id}/${uuidv7()}`,
         });
         const pair = await tokenPort.generateTokens({ id, type: context.kind, permissions: [] }, 0);
         expect(await sessionPort.openSession(id, pair.session)).toBe(true);

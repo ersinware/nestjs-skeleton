@@ -1,6 +1,6 @@
 # Data & State
 
-- Aggregates own business rules, including mutation eligibility, transitions, and no-op decisions. Handlers coordinate I/O, persistence, transactions, and audit; never duplicate rules or call assertion prechecks.
+- Aggregates own business rules, including mutation eligibility, transitions, and no-op decisions. Handlers coordinate I/O, persistence, transactions, and audit; never duplicate rules. Aggregate prechecks may gate external I/O; they never replace mutator validation.
 - Handlers pass external facts and password verification results into mutators; password hashing stays behind application ports. Keep database constraints for concurrency safety.
 - Share aggregate invariants through opt-in bases, never universal `AggregateRoot`. Valid idempotent requests for the existing state are no-ops without jobs; invalid transitions fail.
 - Admin and User use the canonical job-producing aggregate-root bases.

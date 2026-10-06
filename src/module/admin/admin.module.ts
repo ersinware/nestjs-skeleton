@@ -13,6 +13,7 @@ import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
+import { StorageModule } from 'src/core/storage';
 import { AdminFacade } from 'src/module/admin/admin.facade';
 import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin/handler';
@@ -21,6 +22,8 @@ import { ChangeAdminPermissionsCommandHandler } from 'src/module/admin/applicati
 import { ConfirmAdminEmailChangeCommandHandler } from 'src/module/admin/application/command/confirm-admin-email-change/handler';
 import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
+import { InitiateAdminActivationCommandHandler } from 'src/module/admin/application/command/initiate-admin-activation/handler';
+import { MoveAdminAvatarCommandHandler } from 'src/module/admin/application/command/move-admin-avatar/handler';
 import { TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/admin/application/command/port/admin-email-change-notification-writer.port';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReInviteAdminCommandHandler } from 'src/module/admin/application/command/re-invite-admin/handler';
@@ -50,6 +53,7 @@ import { TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT } from 'src/module/admin/application/q
 import { ListAdminPermissionCatalogQueryHandler } from 'src/module/admin/application/query/list-admin-permission-catalog/handler';
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
+import { AdminAvatarQueue } from 'src/module/admin/application/queue/admin-avatar.queue';
 import { AdminEmailChangeNotificationQueue } from 'src/module/admin/application/queue/admin-email-change-notification.queue';
 import { AdminEmailConfirmationQueue } from 'src/module/admin/application/queue/admin-email-confirmation.queue';
 import { AdminInviteQueue } from 'src/module/admin/application/queue/admin-invite.queue';
@@ -75,6 +79,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         HashingModule,
         SessionModule,
         TokenModule,
+        StorageModule,
         EmailModule,
         CqrsPipelineModule,
         JobQueueModule.forFeature(
@@ -82,6 +87,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
                 AdminEmailConfirmationQueue,
                 AdminEmailChangeNotificationQueue,
                 AdminInviteQueue,
+                AdminAvatarQueue,
                 AdminRefreshReuseNoticeQueue,
                 AdminSessionQueue,
                 AdminSessionRevocationLogoutAllQueue,
@@ -97,6 +103,8 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         SendAdminInviteCommandHandler,
         SendAdminRefreshReuseNoticeCommandHandler,
         ActivateAdminCommandHandler,
+        InitiateAdminActivationCommandHandler,
+        MoveAdminAvatarCommandHandler,
         ReInviteAdminCommandHandler,
         UpdateAdminCommandHandler,
         ChangeAdminPasswordCommandHandler,

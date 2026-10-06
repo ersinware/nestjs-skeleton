@@ -138,6 +138,11 @@ export enum AuditAction {
     ADMIN_ACTIVATED = 'ADMIN_ACTIVATED',
 
     /**
+     * The admin avatar moved from its pending key to an immutable permanent key.
+     */
+    ADMIN_AVATAR_FINALIZED = 'ADMIN_AVATAR_FINALIZED',
+
+    /**
      * A change to an admin's display name.
      */
     ADMIN_UPDATED = 'ADMIN_UPDATED',

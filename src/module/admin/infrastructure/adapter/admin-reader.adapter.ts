@@ -65,6 +65,7 @@ export class AdminReaderAdapter
                             id: admin.id,
                             email: admin.email,
                             name: admin.name,
+                            avatarKey: admin.avatarKey,
                             permissions: admin.permissions,
                             isBanned: admin.isBanned,
                             isActivated: sql<boolean>`${admin.password} is not null`,
