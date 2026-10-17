@@ -6,7 +6,7 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { isUUID } from 'src/core/http';
-import type { DeadLetterRedriveStatus } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/query';
+import type { DeadLetterRedriveStatus } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/query';
 
 /**
  * Sanitized redrive status without job payloads or speculative progress counts.

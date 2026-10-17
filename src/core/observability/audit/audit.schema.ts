@@ -5,9 +5,7 @@
  */
 
 import { index, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 import type { AuditDetail } from 'src/core/observability/audit/port/audit.port';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
 /**
@@ -18,7 +16,7 @@ export const auditSchema = pgSchema('audit');
 
 /**
  * The audit trail. Append-only, so no `updatedAt`/`deletedAt`. `action` is `text`, not a
- * PostgreSQL enum, so a new {@link AuditAction} member needs no migration.
+ * PostgreSQL enum, so new action values need no migration.
  */
 export const audit = auditSchema.table(
     'audit',
@@ -31,7 +29,7 @@ export const audit = auditSchema.table(
         /**
          * What happened; each action states its own outcome.
          */
-        action: text('action').$type<AuditAction | DomainFailureAuditAction>().notNull(),
+        action: text('action').notNull(),
 
         /**
          * Why a refusal happened; null on an action that cannot fail.

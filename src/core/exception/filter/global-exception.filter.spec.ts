@@ -14,7 +14,6 @@ import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
 import type { AuthenticatedRequest } from 'src/core/security/auth';
 import { AuthTokenType, type AccessTokenPayload } from 'src/core/security/token';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
@@ -320,7 +319,7 @@ describe('GlobalExceptionFilter', () => {
             it('does not treat audit metadata as proof that a record was written', async () => {
                 await filter.catch(
                     new AccessDeniedException('Banned', {
-                        audit: { action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED, reason: 'ACCOUNT_BANNED' },
+                        audit: { action: 'ADMIN_ACTIVATION_FAILED', reason: 'ACCOUNT_BANNED' },
                     }),
                     createHost(),
                 );

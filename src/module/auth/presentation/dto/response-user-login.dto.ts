@@ -5,15 +5,15 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
-import { IsJwtToken } from 'src/core/http';
 import { SessionOutcome } from 'src/core/security/session';
+import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
 
 /**
  * User login that opened a session and issued tokens.
  */
 @Exclude()
 @ApiSchema({ name: 'ResponseUserLoginSession', description: 'User authenticated and a session opened.' })
-export class ResponseUserLoginSessionDto {
+export class ResponseUserLoginSessionDto extends ResponseTokensDto {
     /**
      * Identifies the result carrying a token pair.
      */
@@ -25,20 +25,6 @@ export class ResponseUserLoginSessionDto {
         description: 'A new session was created.',
     })
     readonly session!: SessionOutcome.CREATED;
-
-    /**
-     * Access token issued for the new session.
-     */
-    @Expose()
-    @IsJwtToken('JWT Access Token')
-    readonly accessToken!: string;
-
-    /**
-     * Refresh token issued for the new session.
-     */
-    @Expose()
-    @IsJwtToken('The newly issued refresh token')
-    readonly refreshToken!: string;
 }
 
 /**

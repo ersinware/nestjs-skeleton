@@ -8,12 +8,12 @@
  */
 export enum DomainFailureAuditAction {
     /**
-     * A password change failed current-password verification.
+     * A password change was refused for a banned account or an incorrect current password.
      */
     PASSWORD_CHANGE_FAILED = 'PASSWORD_CHANGE_FAILED',
 
     /**
-     * An email change request failed current-password verification.
+     * An email change request was refused for a banned account or an incorrect current password.
      */
     EMAIL_CHANGE_REQUEST_FAILED = 'EMAIL_CHANGE_REQUEST_FAILED',
 
@@ -21,19 +21,4 @@ export enum DomainFailureAuditAction {
      * A verified confirmation proof was used by another principal, or a banned account attempted confirmation.
      */
     EMAIL_CHANGE_CONFIRMATION_FAILED = 'EMAIL_CHANGE_CONFIRMATION_FAILED',
-
-    /**
-     * Rejected admin activation; the record carries the reason the client never sees.
-     */
-    ADMIN_ACTIVATION_FAILED = 'ADMIN_ACTIVATION_FAILED',
-
-    /**
-     * Rejected user activation; the record carries the reason the client never sees.
-     */
-    USER_ACTIVATION_FAILED = 'USER_ACTIVATION_FAILED',
-
-    /**
-     * An administrative mutation was refused by admin hierarchy or self-target restrictions.
-     */
-    ADMIN_ADMINISTRATION_DENIED = 'ADMIN_ADMINISTRATION_DENIED',
 }

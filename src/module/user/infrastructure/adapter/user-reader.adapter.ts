@@ -26,8 +26,6 @@ import { type IGetUserSessionVersionPort } from 'src/module/user/application/que
 import { type GetUserSessionVersionResult } from 'src/module/user/application/query/get-user-session-version/query';
 import type { IIsUserEmailInUsePort } from 'src/module/user/application/query/is-user-email-in-use/port';
 import type { IsUserEmailInUseResult } from 'src/module/user/application/query/is-user-email-in-use/query';
-import type { IUserExistsPort } from 'src/module/user/application/query/user-exists/port';
-import type { UserExistsResult } from 'src/module/user/application/query/user-exists/query';
 import { emailChangeNotification, user } from 'src/module/user/infrastructure/user.schema';
 
 /**
@@ -41,7 +39,6 @@ import { emailChangeNotification, user } from 'src/module/user/infrastructure/us
 export class UserReaderAdapter
     implements
         IIsUserEmailInUsePort,
-        IUserExistsPort,
         IGetUserActivationRecipientPort,
         IGetUserEmailChangeNotificationRecipientPort,
         IGetUserEmailConfirmationRecipientPort,
@@ -319,23 +316,6 @@ export class UserReaderAdapter
                         .limit(1)
                 )[0] ?? null
             );
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
-
-    /**
-     * Checks account identity availability, including deleted accounts that retain their primary key.
-     *
-     * @param id Account identity to check
-     * @returns Whether an account already holds the identity
-     */
-    async existsById(id: string): Promise<UserExistsResult> {
-        try {
-            return {
-                exists:
-                    (await this.database.select({ id: user.id }).from(user).where(eq(user.id, id)).limit(1)).length > 0,
-            };
         } catch (error) {
             throw translateConnectionFailure(error);
         }

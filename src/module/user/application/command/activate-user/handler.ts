@@ -67,10 +67,10 @@ export class ActivateUserCommandHandler implements ICommandHandler<ActivateUserC
         let payload;
 
         try {
-            payload = await this.tokenPort.verifyUserActivationToken(command.token);
+            payload = await this.tokenPort.verifyActivationToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The activation link is invalid or has expired.');
+                throw new InvalidInputException('The activation link is invalid or has expired.', { cause: error });
             }
 
             throw error;

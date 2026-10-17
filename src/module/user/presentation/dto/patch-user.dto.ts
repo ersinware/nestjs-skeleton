@@ -4,10 +4,10 @@
  */
 
 import { ApiSchema, PickType } from '@nestjs/swagger';
-import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
+import { PostUserRegistrationDto } from 'src/module/user/presentation/dto/post-user-registration.dto';
 
 /**
  * Required display name for profile updates.
  */
 @ApiSchema({ name: 'PatchUser', description: 'Schema for updating the user display name' })
-export class PatchUserDto extends PickType(PostUserDto, ['name'] as const) {}
+export class PatchUserDto extends PickType(PostUserRegistrationDto, ['name'] as const) {}

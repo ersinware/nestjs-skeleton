@@ -36,7 +36,7 @@ import { Permissions } from 'src/core/security/auth';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
 import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
 import { GetDeadLetterJobQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
-import { GetDeadLetterRedriveQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/query';
+import { GetDeadLetterRedriveStatusQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/query';
 import { ListDeadLetterJobsQuery } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/query';
 import { ParamDeadLetterJobIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-job-id.dto';
 import { ParamDeadLetterRedriveOperationIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-redrive-operation-id.dto';
@@ -166,12 +166,12 @@ export class JobQueueOperationsController {
     @ApiOkResponse({ description: 'Redrive operation status retrieved.', type: ResponseDeadLetterRedriveStatusDto })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
     @ApiDefaultResourceNotFoundResponse()
-    async getRedrive(
+    async getRedriveStatus(
         @Param() params: ParamDeadLetterRedriveOperationIdDto,
     ): Promise<ResponseDeadLetterRedriveStatusDto> {
         return plainToInstance(
             ResponseDeadLetterRedriveStatusDto,
-            await this.queryPipeline.execute(new GetDeadLetterRedriveQuery(params.operationId)),
+            await this.queryPipeline.execute(new GetDeadLetterRedriveStatusQuery(params.operationId)),
         );
     }
 

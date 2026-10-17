@@ -487,12 +487,12 @@ export class EnvironmentVariables {
     readonly ADMIN_INVITE_URL!: string;
 
     /**
-     * Separate secret for signing user activation tokens.
+     * Separate secret for signing activation tokens.
      */
     @IsString()
     @Matches(/\S/)
     @IsByteLength(32)
-    readonly JWT_USER_ACTIVATION_SECRET!: string;
+    readonly JWT_ACTIVATION_SECRET!: string;
 
     /**
      * Frontend page receiving user activation links.

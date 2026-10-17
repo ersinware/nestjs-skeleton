@@ -3,9 +3,6 @@
  * @description Contract for writing audit records, kept separate from the logging contract on purpose.
  */
 
-import { AuditAction } from 'src/core/observability/audit/audit-action.enum';
-import type { DomainFailureAuditAction } from 'src/shared/domain/audit';
-
 /**
  * Dependency injection token representing the {@link IAuditPort} contract.
  */
@@ -20,13 +17,13 @@ export type AuditDetail = Readonly<Record<string, string | readonly string[]>>;
 /**
  * What the caller supplies — the meaning of the action and nothing else. IP, user agent and trace
  * are the adapter's to fill from the ambient context. No success/failure field: each
- * {@link AuditAction} states its own outcome.
+ * action states its own outcome.
  */
 export type AuditRecordInput = {
     /**
      * What happened, outcome included; the record's only required fact.
      */
-    readonly action: AuditAction | DomainFailureAuditAction;
+    readonly action: string;
 
     /**
      * Why a refusal happened; meaningless on an action that cannot fail.

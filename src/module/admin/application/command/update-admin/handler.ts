@@ -1,36 +1,87 @@
 /**
  * @file handler.ts
- * @description Handles UpdateAdminCommand. Applies display-name changes to the Admin aggregate root and persists it.
+ * @description Accepts optional name and uploaded avatar changes with atomic persistence, jobs, and audit.
  */
 
 import { Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
-import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
+import { assertAdminAvatarChangeFormHashMatches } from 'src/module/admin/domain/admin-avatar-change';
+import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
+import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
+import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
+import {
+    AccessDeniedException,
+    ExceptionKind,
+    InvalidInputException,
+    InvalidInputMessage,
+    ResourceNotFoundException,
+    SystemException,
+    isExceptionOfKind,
+    isExceptionWithAudit,
+} from 'src/shared/exception';
 
 /**
- * Updates the display name on an existing admin.
+ * Profile update refusals decided before aggregate validation.
+ */
+enum UpdateAdminFailureAuditAction {
+    /**
+     * A profile update was refused.
+     */
+    ADMIN_UPDATE_FAILED = 'ADMIN_UPDATE_FAILED',
+}
+
+/**
+ * Refusal reasons decided before aggregate validation.
+ */
+enum UpdateAdminRejectionReason {
+    /**
+     * Verified upload proof belongs to another account.
+     */
+    PRINCIPAL_MISMATCH = 'PRINCIPAL_MISMATCH',
+}
+
+/**
+ * Updates the profile from authoritative state after verifying any uploaded avatar.
  */
 @CommandHandler(UpdateAdminCommand)
 export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCommand, void> {
+    /**
+     * Server-only key used to verify profile form bindings.
+     */
+    private readonly uploadSecret: string;
+
     /**
      * Initializes the handler with the required ports.
      *
      * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
-     * @param auditPort The port used to record the profile change for the audit trail
+     * @param auditPort The port used to record profile changes and audited refusals
+     * @param tokenPort Verifies profile-owned upload proofs
+     * @param storagePort Checks uploaded metadata outside the database transaction
+     * @param configService Provides the validated upload secret
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-    ) {}
+        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
+        configService: ConfigService,
+    ) {
+        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
+    }
 
     /**
      * Executes the update admin command.
@@ -38,27 +89,126 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
      * @param command The command payload
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
-     * @throws {SystemException} When the loaded account is deleted or inactive
+     * @throws {ResourceConflictException} When the avatar proof is replayed or persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account is deleted or inactive, or verified upload keys violate invariants
+     * @throws {AccessDeniedException} When the avatar proof belongs to another account or the account is banned
+     * @throws {InvalidInputException} When no update is supplied, the avatar descriptor and proof are not supplied together, the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */
     async execute(command: UpdateAdminCommand) {
+        const { name, avatar, uploadToken } = command;
+
+        if (name === undefined && avatar === undefined && uploadToken === undefined) {
+            throw new InvalidInputException();
+        }
+
+        if ((avatar === undefined) !== (uploadToken === undefined)) {
+            throw new InvalidInputException();
+        }
+
         const admin = await this.adminWriterPort.load(command.id);
 
         if (!admin) {
             throw new ResourceNotFoundException();
         }
 
-        // An unchanged name requires no persistence or mutation audit.
-        try {
-            if (!admin.updateName(command.name)) {
-                return;
+        let avatarUpdate: Parameters<Admin['update']>[1];
+
+        if (avatar !== undefined && uploadToken !== undefined) {
+            let payload;
+
+            try {
+                payload = await this.tokenPort.verifyUploadToken(uploadToken, AdminUploadPurpose.PROFILE_AVATAR, true);
+            } catch (error) {
+                if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                    throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
+                }
+
+                throw error;
             }
+
+            if (payload.sub !== admin.id) {
+                const error = new AccessDeniedException();
+
+                await this.auditPort.record(
+                    {
+                        action: UpdateAdminFailureAuditAction.ADMIN_UPDATE_FAILED,
+                        reason: UpdateAdminRejectionReason.PRINCIPAL_MISMATCH,
+                        targetId: payload.sub,
+                    },
+                    { markExceptionAsAudited: error },
+                );
+
+                throw error;
+            }
+
+            if (payload.fileKey !== buildAdminPendingAvatarKey(admin.id, payload.jti)) {
+                throw new SystemException('Verified profile upload claims violate avatar key invariants.', {
+                    context: { class: UpdateAdminCommandHandler.name, method: this.execute.name },
+                });
+            }
+
+            if (admin.avatarKey === null) {
+                throw new SystemException('An admin without an avatar reached a self-service flow.', {
+                    context: { class: UpdateAdminCommandHandler.name, method: this.execute.name },
+                });
+            }
+
+            try {
+                admin.assertAvatarReplacementAllowed(payload.jti);
+            } catch (error) {
+                if (isExceptionWithAudit(error)) {
+                    await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                }
+
+                throw error;
+            }
+
+            assertAdminAvatarChangeFormHashMatches(
+                {
+                    id: admin.id,
+                    avatarId: payload.jti,
+                    ...(name !== undefined && { name }),
+                    avatar,
+                },
+                this.uploadSecret,
+                payload.formHash,
+            );
+
+            let uploaded;
+
+            try {
+                uploaded = await this.storagePort.headObject(payload.fileKey);
+            } catch (error) {
+                if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
+                    throw new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: error });
+                }
+
+                throw error;
+            }
+
+            assertAvatarUploadMatchesDescriptor(uploaded, avatar);
+
+            avatarUpdate = {
+                fileKey: payload.fileKey,
+                jti: payload.jti,
+                revocationVersion: payload.revocationVersion,
+            };
+        }
+
+        let changed: boolean;
+
+        try {
+            changed = admin.update(name, avatarUpdate);
         } catch (error) {
             if (isExceptionWithAudit(error)) {
                 await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
             }
 
             throw error;
+        }
+
+        if (!changed) {
+            return;
         }
 
         await this.transactionPort.run(async () => {

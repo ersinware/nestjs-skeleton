@@ -12,7 +12,6 @@ import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum'
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
-import { isUUIDV7 } from 'src/shared/domain/uuid';
 import {
     AccessDeniedException,
     AccessDeniedMessage,
@@ -141,14 +140,17 @@ type AdminInvitation = {
      * Invited account identity.
      */
     readonly sub: string;
+
     /**
      * Stored invitation identity.
      */
     readonly jti: string;
+
     /**
      * Revocation version captured at issuance.
      */
     readonly inviteRevocationVersion: number;
+
     /**
      * Fixed invitation deadline in Unix seconds.
      */
@@ -156,9 +158,59 @@ type AdminInvitation = {
 };
 
 /**
- * Account-owned administrative refusal reasons preserved in audit evidence.
+ * Verified upload facts used to accept a profile avatar change.
  */
-enum AdminAdministrationRejectionReason {
+type AdminAvatarChange = {
+    /**
+     * Pending object key belonging to this account and upload identity.
+     */
+    readonly fileKey: string;
+
+    /**
+     * Avatar identity shared with the update delivery.
+     */
+    readonly jti: string;
+
+    /**
+     * Account revocation version captured when the upload was initiated.
+     */
+    readonly revocationVersion: number;
+};
+
+/**
+ * Audit actions owned by the admin account workflows.
+ */
+enum AdminFailureAuditAction {
+    /**
+     * Rejected admin activation; the record carries the reason the client never sees.
+     */
+    ADMIN_ACTIVATION_FAILED = 'ADMIN_ACTIVATION_FAILED',
+
+    /**
+     * A banned admin attempted to prepare a profile avatar change.
+     */
+    ADMIN_AVATAR_CHANGE_FAILED = 'ADMIN_AVATAR_CHANGE_FAILED',
+
+    /**
+     * A banned admin attempted to update the profile.
+     */
+    ADMIN_UPDATE_FAILED = 'ADMIN_UPDATE_FAILED',
+
+    /**
+     * A banned admin could not receive a replacement invitation.
+     */
+    ADMIN_INVITATION_FAILED = 'ADMIN_INVITATION_FAILED',
+
+    /**
+     * An administrative mutation was refused by admin hierarchy or self-target restrictions.
+     */
+    ADMIN_ADMINISTRATION_DENIED = 'ADMIN_ADMINISTRATION_DENIED',
+}
+
+/**
+ * Refusal reasons preserved in admin account audit evidence.
+ */
+enum AdminAuditReason {
     /**
      * The actor attempted to administer their own account.
      */
@@ -183,14 +235,9 @@ enum AdminAdministrationRejectionReason {
      * The actor lacks root authority to appoint a permission manager.
      */
     MANAGER_APPOINTMENT_REQUIRES_ROOT = 'MANAGER_APPOINTMENT_REQUIRES_ROOT',
-}
 
-/**
- * Account-owned activation refusal reasons; only their string values leave the aggregate.
- */
-enum ActivateAdminRejectionReason {
     /**
-     * The account is banned from activation.
+     * The account is banned from the requested workflow.
      */
     ACCOUNT_BANNED = 'ACCOUNT_BANNED',
 }
@@ -199,16 +246,6 @@ enum ActivateAdminRejectionReason {
  * Pending admin invitations remain valid for three days from issuance.
  */
 const INVITATION_LIFETIME_MS = 3 * 24 * 60 * 60 * 1000;
-
-/**
- * Account-owned email confirmation refusals; handling boundaries consume their audit reasons.
- */
-enum ConfirmEmailChangeRejectionReason {
-    /**
-     * The account is banned from email changes.
-     */
-    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
-}
 
 /**
  * Pending email confirmations remain valid for thirty minutes from request creation.
@@ -253,7 +290,7 @@ export class Admin extends PrincipalAggregateRoot {
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(props: { readonly id: string } & Readonly<Pick<AdminProps, 'email' | 'name' | 'password'>>): Admin {
+    static create(props: Readonly<Pick<AdminSnapshot, 'id' | 'email' | 'name' | 'password'>>): Admin {
         const now = new Date(),
             admin = new Admin({
                 ...props,
@@ -277,6 +314,7 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (props.password === null) {
             admin.issueInvitation();
+            admin.addInvitationJob();
         }
 
         return admin;
@@ -321,17 +359,41 @@ export class Admin extends PrincipalAggregateRoot {
         this.assertNotDeleted(this.reInvite.name);
         this.assertAdministrableBy(actor);
 
+        if (this.props.isBanned) {
+            throw new ResourceConflictException('A banned account cannot be re-invited.', {
+                audit: {
+                    action: AdminFailureAuditAction.ADMIN_INVITATION_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
         if (this.props.password !== null) {
             throw new ResourceConflictException('The account has already been activated.');
         }
 
-        if (this.props.isBanned) {
-            throw new ResourceConflictException('A banned account cannot be re-invited.');
-        }
-
         this.revokeAllSessions();
-        this.props.updatedAt = new Date();
         this.issueInvitation();
+        this.props.updatedAt = new Date();
+        this.addInvitationJob();
+    }
+
+    /**
+     * Validates the live invitation and narrows its required metadata without changing state.
+     *
+     * @param payload Signature-verified invitation claims
+     * @throws {SystemException} When the account is deleted, differs from the verified subject, or is inactive with an attached avatar
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account is already active
+     * @throws {InvalidInputException} When the invitation is revoked, mismatched, or expired
+     */
+    assertActivationInvitationValid(payload: AdminInvitation): asserts this is this & {
+        readonly isBanned: false;
+        readonly inviteId: string;
+        readonly inviteExpiresAt: Date;
+        readonly inviteRevocationVersion: number;
+    } {
+        this.assertActivationEligibility(payload, this.assertActivationInvitationValid.name);
     }
 
     /**
@@ -359,31 +421,115 @@ export class Admin extends PrincipalAggregateRoot {
         this.props.inviteRevocationVersion = null;
         this.props.updatedAt = new Date();
 
-        this.addJob([{ deliveryId: payload.jti, aggregateId: this.id, queueName: AdminJobQueue.AVATAR_MOVE }]);
+        this.addAvatarFinalizeJob(payload.jti);
     }
 
     /**
-     * Validates the live invitation without changing state.
+     * Checks profile avatar eligibility and narrows the attached password and avatar without changing state.
      *
-     * @param payload Signature-verified invitation claims
-     * @throws {SystemException} When the account is deleted, differs from the verified subject, or is inactive with an attached avatar
+     * @throws {SystemException} When the account is deleted or lacks an activation password or avatar
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {ResourceConflictException} When the account is already active
-     * @throws {InvalidInputException} When the invitation is revoked, mismatched, or expired
      */
-    validateActivationInvitation(payload: AdminInvitation) {
-        this.assertActivationEligibility(payload, this.validateActivationInvitation.name);
+    assertAvatarChangeEligible(): asserts this is this & {
+        readonly isBanned: false;
+        readonly password: string;
+        readonly avatarKey: string;
+    } {
+        this.assertNotDeleted(this.assertAvatarChangeEligible.name);
+        this.assertActivated(this.assertAvatarChangeEligible.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: AdminFailureAuditAction.ADMIN_AVATAR_CHANGE_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
     }
 
     /**
-     * Attaches an immutable copy only for the expected invitation source.
+     * Rejects reuse of the currently selected pending or permanent avatar identity.
      *
-     * @param expectedPendingKey Source key selected for the invitation
+     * @param avatarId Identity of the proposed replacement avatar
+     * @throws {ResourceConflictException} When this avatar identity is already attached
+     */
+    assertAvatarReplacementAllowed(avatarId: string) {
+        if (
+            this.props.avatarKey === buildAdminPendingAvatarKey(this.id, avatarId) ||
+            this.props.avatarKey === buildAdminPermanentAvatarKey(this.id, avatarId)
+        ) {
+            throw new ResourceConflictException();
+        }
+    }
+
+    /**
+     * Updates supplied profile fields and queues accepted avatar replacements.
+     *
+     * @param name The new display name, omitted to preserve the current value
+     * @param payload Verified avatar upload facts, omitted to preserve the current selection
+     * @returns Whether the name or avatar key changed
+     * @throws {SystemException} When the account is deleted, lacks a password or avatar, or the pending key has an unexpected format
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the avatar proof's revocation version differs from the account's
+     * @throws {ResourceConflictException} When the proposed avatar identity is already attached
+     */
+    update(name?: string, payload?: AdminAvatarChange): boolean {
+        this.assertNotDeleted(this.update.name);
+        this.assertActivated(this.update.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: AdminFailureAuditAction.ADMIN_UPDATE_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        let changed = false;
+
+        if (payload !== undefined) {
+            if (payload.revocationVersion !== this.revocationVersion) {
+                throw new InvalidInputException();
+            }
+
+            if (payload.fileKey !== buildAdminPendingAvatarKey(this.id, payload.jti)) {
+                throw new SystemException('The pending avatar key is not in the expected format.', {
+                    context: { class: Admin.name, method: this.update.name, id: this.id },
+                });
+            }
+
+            this.assertAvatarReplacementAllowed(payload.jti);
+
+            this.addAvatarReplaceJob(payload.jti, this.avatarKey.slice(this.avatarKey.lastIndexOf('/') + 1));
+            this.props.avatarKey = payload.fileKey;
+
+            changed = true;
+        }
+
+        if (name !== undefined && this.props.name !== name) {
+            this.props.name = name;
+
+            changed = true;
+        }
+
+        if (changed) {
+            this.props.updatedAt = new Date();
+        }
+
+        return changed;
+    }
+
+    /**
+     * Attaches an immutable copy only for the expected avatar delivery source.
+     *
+     * @param expectedPendingKey Source key selected for the avatar delivery
      * @param finalKey Verified permanent destination
-     * @param avatarId Invitation identity retained across delivery attempts
+     * @param avatarId Stable avatar identity retained across delivery attempts
      * @returns Whether the avatar key changed
      * @throws {SystemException} When the account has been deleted
-     * @throws {InvalidInputException} When either key differs from the account and invitation identity
+     * @throws {InvalidInputException} When either key differs from the account and avatar identity
      * @throws {ResourceConflictException} When another avatar key is already attached
      */
     finalizeAvatar(expectedPendingKey: string, finalKey: string, avatarId: string): boolean {
@@ -411,27 +557,6 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Updates an activated admin's display name when it differs from the current state.
-     *
-     * @param name The new display name
-     * @returns Whether the name changed
-     * @throws {SystemException} When the account is deleted or lacks an activation password or avatar
-     */
-    updateName(name: string): boolean {
-        this.assertNotDeleted(this.updateName.name);
-        this.assertActivated(this.updateName.name);
-
-        if (name === this.props.name) {
-            return false;
-        }
-
-        this.props.name = name;
-        this.props.updatedAt = new Date();
-
-        return true;
-    }
-
-    /**
      * Changes the password and revokes existing sessions.
      *
      * @param password Replacement password hash
@@ -446,7 +571,12 @@ export class Admin extends PrincipalAggregateRoot {
         this.assertActivated(this.changePassword.name);
 
         if (this.props.isBanned) {
-            throw new AccessDeniedException();
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: DomainFailureAuditAction.PASSWORD_CHANGE_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
+                },
+            });
         }
 
         this.assertPasswordChange(
@@ -478,7 +608,12 @@ export class Admin extends PrincipalAggregateRoot {
         this.assertActivated(this.requestEmailChange.name);
 
         if (this.props.isBanned) {
-            throw new AccessDeniedException();
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
+                },
+            });
         }
 
         this.assertCurrentPassword(currentPasswordMatches, DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED);
@@ -513,7 +648,7 @@ export class Admin extends PrincipalAggregateRoot {
      *
      * @param payload Identity and expiry claims after signature, type, and principal verification
      * @param notificationId Identity shared with the immutable old-address notification record
-     * @throws {SystemException} When the account is deleted, lacks an activation password or avatar, differs from the token subject, or the notification ID is invalid
+     * @throws {SystemException} When the account is deleted, lacks an activation password or avatar, or differs from the token subject
      * @throws {AccessDeniedException} When the account is banned
      * @throws {InvalidInputException} When the request is revoked, mismatched, consumed, or expired
      */
@@ -521,19 +656,15 @@ export class Admin extends PrincipalAggregateRoot {
         payload: {
             readonly sub: string;
             readonly jti: string;
+
             readonly emailRevocationVersion: number;
+
             readonly exp: number;
         },
         notificationId: string,
     ) {
         this.assertNotDeleted(this.confirmEmailChange.name);
         this.assertActivated(this.confirmEmailChange.name);
-
-        if (!isUUIDV7(notificationId)) {
-            throw new SystemException('Invalid email change notification ID.', {
-                context: { class: Admin.name, method: this.confirmEmailChange.name, id: this.id },
-            });
-        }
 
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
@@ -545,7 +676,7 @@ export class Admin extends PrincipalAggregateRoot {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
                     action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-                    reason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
                 },
             });
         }
@@ -559,12 +690,9 @@ export class Admin extends PrincipalAggregateRoot {
             payload.emailRevocationVersion !== this.props.pendingEmailRevocationVersion ||
             this.props.pendingEmail === null ||
             this.props.pendingEmailExpiresAt === null ||
-            payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime()
+            payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime() ||
+            this.props.pendingEmailExpiresAt.getTime() <= Date.now()
         ) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
-        }
-
-        if (this.props.pendingEmailExpiresAt.getTime() <= Date.now()) {
             throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
@@ -587,6 +715,38 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
+     * Revokes all sessions and raises reason-specific follow-up jobs without banning the admin.
+     *
+     * @param reason Why every session is being revoked
+     * @throws {SystemException} When the account is deleted or the revocation reason is unhandled
+     */
+    revokeSessions(reason: SessionRevocationReason) {
+        this.assertNotDeleted(this.revokeSessions.name);
+
+        this.revokeAllSessions();
+        this.props.updatedAt = new Date();
+
+        this.addSessionReconciliationJob();
+
+        switch (reason) {
+            case SessionRevocationReason.REFRESH_REUSE:
+                this.addJob([
+                    {
+                        deliveryId: randomUUID(),
+                        aggregateId: this.id,
+                        queueName: AdminJobQueue.REFRESH_REUSE_NOTICE,
+                    },
+                ]);
+
+                break;
+            case SessionRevocationReason.LOGOUT_ALL:
+                break;
+            default:
+                assertSessionRevocationReasonExhausted(reason, this.revokeSessions.name);
+        }
+    }
+
+    /**
      * Replaces permissions and retires access tokens carrying the previous set.
      *
      * @param permissions The complete set the admin should hold afterwards
@@ -606,8 +766,8 @@ export class Admin extends PrincipalAggregateRoot {
                 'The root permission is held by exactly one account and is never granted.',
                 {
                     audit: {
-                        action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
-                        reason: AdminAdministrationRejectionReason.ROOT_PERMISSION_GRANT_FORBIDDEN,
+                        action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                        reason: AdminAuditReason.ROOT_PERMISSION_GRANT_FORBIDDEN,
                     },
                 },
             );
@@ -620,20 +780,20 @@ export class Admin extends PrincipalAggregateRoot {
         ) {
             throw new AccessDeniedException('Only root may appoint a permission manager.', {
                 audit: {
-                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
-                    reason: AdminAdministrationRejectionReason.MANAGER_APPOINTMENT_REQUIRES_ROOT,
+                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAuditReason.MANAGER_APPOINTMENT_REQUIRES_ROOT,
                 },
             });
         }
 
-        const change = this.applyPermissions(permissions);
+        const changed = this.applyPermissions(permissions);
 
-        if (change) {
+        if (changed) {
             this.props.updatedAt = new Date();
             this.addSessionReconciliationJob();
         }
 
-        return change;
+        return changed;
     }
 
     /**
@@ -684,39 +844,8 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Revokes all sessions and raises reason-specific follow-up jobs without banning the admin.
-     *
-     * @param reason Why every session is being revoked
-     * @throws {SystemException} When the account has been soft-deleted
-     */
-    revokeSessions(reason: SessionRevocationReason) {
-        this.assertNotDeleted(this.revokeSessions.name);
-        this.revokeAllSessions();
-
-        this.props.updatedAt = new Date();
-
-        this.addSessionReconciliationJob();
-
-        switch (reason) {
-            case SessionRevocationReason.REFRESH_REUSE:
-                this.addJob([
-                    {
-                        deliveryId: randomUUID(),
-                        aggregateId: this.id,
-                        queueName: AdminJobQueue.REFRESH_REUSE_NOTICE,
-                    },
-                ]);
-
-                break;
-            case SessionRevocationReason.LOGOUT_ALL:
-                break;
-            default:
-                assertSessionRevocationReasonExhausted(reason, this.revokeSessions.name);
-        }
-    }
-
-    /**
-     * Soft-deletes and bans the admin, then revokes existing sessions.
+     * Soft-deletes a pending or activated admin and queues session reconciliation.
+     * Repeated deletion still checks the actor but leaves state and jobs unchanged.
      *
      * @param actor The verified principal deleting the account
      * @throws {AccessDeniedException} When the actor cannot administer the target
@@ -732,7 +861,6 @@ export class Admin extends PrincipalAggregateRoot {
         const now = new Date();
 
         this.setDeletedAt(now);
-        this.props.isBanned = true;
         this.revokeAllSessions();
         this.props.updatedAt = now;
 
@@ -752,8 +880,8 @@ export class Admin extends PrincipalAggregateRoot {
         if (actor.id === this.id) {
             throw new AccessDeniedException('An admin cannot administer their own account.', {
                 audit: {
-                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
-                    reason: AdminAdministrationRejectionReason.SELF_TARGET,
+                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAuditReason.SELF_TARGET,
                 },
             });
         }
@@ -761,8 +889,8 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.permissions.includes(Permission.ADMIN_ROOT)) {
             throw new AccessDeniedException('The root account cannot be administered.', {
                 audit: {
-                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
-                    reason: AdminAdministrationRejectionReason.ROOT_TARGET,
+                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAuditReason.ROOT_TARGET,
                 },
             });
         }
@@ -773,35 +901,15 @@ export class Admin extends PrincipalAggregateRoot {
         ) {
             throw new AccessDeniedException('A permission manager is administered by root alone.', {
                 audit: {
-                    action: DomainFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
-                    reason: AdminAdministrationRejectionReason.MANAGER_REQUIRES_ROOT,
+                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    reason: AdminAuditReason.MANAGER_REQUIRES_ROOT,
                 },
             });
         }
     }
 
     /**
-     * Prevents self-service mutations until password and avatar are both attached.
-     *
-     * @param method Calling mutation for diagnostic context
-     * @throws {SystemException} When the account lacks a password or avatar
-     */
-    private assertActivated(method: string) {
-        if (this.props.password === null) {
-            throw new SystemException('An admin without a password reached a self-service flow.', {
-                context: { class: Admin.name, method, id: this.id },
-            });
-        }
-
-        if (this.props.avatarKey === null) {
-            throw new SystemException('An admin without an avatar reached a self-service flow.', {
-                context: { class: Admin.name, method, id: this.id },
-            });
-        }
-    }
-
-    /**
-     * Shares live invitation rules between preparation and consumption.
+     * Shares live invitation rules and metadata narrowing between preparation and consumption.
      *
      * @param payload Verified invitation identity and deadline
      * @param method Calling workflow for diagnostic context
@@ -810,7 +918,15 @@ export class Admin extends PrincipalAggregateRoot {
      * @throws {ResourceConflictException} When the account is already active
      * @throws {InvalidInputException} When the invitation is revoked, mismatched, or expired
      */
-    private assertActivationEligibility(payload: AdminInvitation, method: string) {
+    private assertActivationEligibility(
+        payload: AdminInvitation,
+        method: string,
+    ): asserts this is this & {
+        readonly isBanned: false;
+        readonly inviteId: string;
+        readonly inviteExpiresAt: Date;
+        readonly inviteRevocationVersion: number;
+    } {
         this.assertNotDeleted(method);
 
         if (payload.sub !== this.id) {
@@ -822,8 +938,8 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED,
-                    reason: ActivateAdminRejectionReason.ACCOUNT_BANNED,
+                    action: AdminFailureAuditAction.ADMIN_ACTIVATION_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
                 },
             });
         }
@@ -839,8 +955,8 @@ export class Admin extends PrincipalAggregateRoot {
         }
 
         if (
-            payload.inviteRevocationVersion !== this.revocationVersion ||
             payload.jti !== this.props.inviteId ||
+            payload.inviteRevocationVersion !== this.revocationVersion ||
             payload.inviteRevocationVersion !== this.props.inviteRevocationVersion ||
             this.props.inviteExpiresAt === null ||
             payload.exp * 1000 !== this.props.inviteExpiresAt.getTime() ||
@@ -851,18 +967,86 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
+     * Prevents self-service mutations until password and avatar are attached and narrows their public types.
+     *
+     * @param method Calling mutation for diagnostic context
+     * @throws {SystemException} When the account lacks a password or avatar
+     */
+    private assertActivated(method: string): asserts this is this & {
+        readonly password: string;
+        readonly avatarKey: string;
+    } {
+        if (this.props.password === null) {
+            throw new SystemException('An admin without a password reached a self-service flow.', {
+                context: { class: Admin.name, method, id: this.id },
+            });
+        }
+
+        if (this.props.avatarKey === null) {
+            throw new SystemException('An admin without an avatar reached a self-service flow.', {
+                context: { class: Admin.name, method, id: this.id },
+            });
+        }
+    }
+
+    /**
      * Fixes invitation identity and its three-day lifetime before queuing delivery.
      */
     private issueInvitation() {
         this.props.inviteId = randomUUID();
         this.props.inviteExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + INVITATION_LIFETIME_MS);
         this.props.inviteRevocationVersion = this.revocationVersion;
+    }
+
+    /**
+     * Queues delivery for the current pending invitation.
+     *
+     * @throws {SystemException} When no pending invitation exists
+     */
+    private addInvitationJob() {
+        if (this.props.inviteId === null) {
+            throw new SystemException('Cannot deliver invitation without a pending request.', {
+                context: { class: Admin.name, method: this.addInvitationJob.name, id: this.id },
+            });
+        }
 
         this.addJob([
             {
                 deliveryId: this.props.inviteId,
                 aggregateId: this.id,
                 queueName: AdminJobQueue.INVITE,
+            },
+        ]);
+    }
+
+    /**
+     * Queues initial avatar finalization after invitation acceptance.
+     *
+     * @param avatarId Avatar identity shared with the delivery
+     */
+    private addAvatarFinalizeJob(avatarId: string) {
+        this.addJob([
+            {
+                deliveryId: avatarId,
+                aggregateId: this.id,
+                queueName: AdminJobQueue.AVATAR_FINALIZE,
+            },
+        ]);
+    }
+
+    /**
+     * Queues completion of an accepted profile avatar replacement.
+     *
+     * @param avatarId Profile upload identity retained across retries
+     * @param previousAvatarId Previous avatar identity retained for post-commit cleanup
+     */
+    private addAvatarReplaceJob(avatarId: string, previousAvatarId: string) {
+        this.addJob([
+            {
+                deliveryId: avatarId,
+                aggregateId: this.id,
+                queueName: AdminJobQueue.AVATAR_REPLACE,
+                payload: { previousAvatarId },
             },
         ]);
     }
@@ -915,7 +1099,7 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Returns the object key selected during activation.
+     * Returns the currently selected activation or profile avatar object key.
      *
      * @returns Avatar key, or null before invitation completion
      */

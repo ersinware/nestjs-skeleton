@@ -36,6 +36,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      * Executes the update user command.
      *
      * @param command The command payload
+     * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When persistence rejects a concurrent modification

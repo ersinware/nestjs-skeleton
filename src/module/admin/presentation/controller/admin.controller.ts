@@ -43,13 +43,14 @@ import { SessionOutcome } from 'src/core/security/session';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import { ChangeAdminPasswordCommand } from 'src/module/admin/application/command/change-admin-password/command';
-import { ChangeAdminPermissionsCommand } from 'src/module/admin/application/command/change-admin-permissions/command';
 import { ConfirmAdminEmailChangeCommand } from 'src/module/admin/application/command/confirm-admin-email-change/command';
-import { CreateAdminCommand } from 'src/module/admin/application/command/create-admin/command';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
 import { InitiateAdminActivationCommand } from 'src/module/admin/application/command/initiate-admin-activation/command';
+import { InitiateAdminAvatarChangeCommand } from 'src/module/admin/application/command/initiate-admin-avatar-change/command';
+import { InitiateAdminEmailChangeCommand } from 'src/module/admin/application/command/initiate-admin-email-change/command';
+import { InviteAdminCommand } from 'src/module/admin/application/command/invite-admin/command';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
-import { RequestAdminEmailChangeCommand } from 'src/module/admin/application/command/request-admin-email-change/command';
+import { ReplaceAdminPermissionsCommand } from 'src/module/admin/application/command/replace-admin-permissions/command';
 import { UnbanAdminCommand } from 'src/module/admin/application/command/unban-admin/command';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { GetAdminByIdQuery } from 'src/module/admin/application/query/get-admin-by-id/query';
@@ -58,11 +59,12 @@ import { ListAdminPermissionCatalogQuery } from 'src/module/admin/application/qu
 import { ListAdminsQuery } from 'src/module/admin/application/query/list-admins/query';
 import { PatchAdminPasswordDto } from 'src/module/admin/presentation/dto/patch-admin-password.dto';
 import { PatchAdminDto } from 'src/module/admin/presentation/dto/patch-admin.dto';
-import { PostAdminActivateInitiateDto } from 'src/module/admin/presentation/dto/post-admin-activate-initiate.dto';
-import { PostAdminActivateDto } from 'src/module/admin/presentation/dto/post-admin-activate.dto';
-import { PostAdminEmailChangeDto } from 'src/module/admin/presentation/dto/post-admin-email-change.dto';
-import { PostAdminEmailConfirmDto } from 'src/module/admin/presentation/dto/post-admin-email-confirm.dto';
-import { PostAdminDto } from 'src/module/admin/presentation/dto/post-admin.dto';
+import { PostAdminActivationInitiateDto } from 'src/module/admin/presentation/dto/post-admin-activation-initiate.dto';
+import { PostAdminActivationDto } from 'src/module/admin/presentation/dto/post-admin-activation.dto';
+import { PostAdminAvatarChangeInitiateDto } from 'src/module/admin/presentation/dto/post-admin-avatar-change-initiate.dto';
+import { PostAdminEmailChangeConfirmDto } from 'src/module/admin/presentation/dto/post-admin-email-change-confirm.dto';
+import { PostAdminEmailChangeInitiateDto } from 'src/module/admin/presentation/dto/post-admin-email-change-initiate.dto';
+import { PostAdminInviteDto } from 'src/module/admin/presentation/dto/post-admin-invite.dto';
 import { PutAdminPermissionsDto } from 'src/module/admin/presentation/dto/put-admin-permissions.dto';
 import {
     ResponseAdminEmailChangeLoginRequiredDto,
@@ -221,7 +223,7 @@ export class AdminController {
      *
      * @returns The grantable admin catalog
      */
-    @Get('permission')
+    @Get('permissions')
     @Permissions(Permission.ADMIN_PERMISSION_MANAGE)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiBearerAuth()
@@ -240,35 +242,40 @@ export class AdminController {
     }
 
     /**
-     * Updates the currently authenticated admin's display name; the target id comes from the verified
+     * Updates the currently authenticated admin's name and/or avatar; the target id comes from the verified
      * token, never from the client.
      *
      * @param principal The verified principal of the current request
-     * @param patchAdminDto The required display name to update
+     * @param patchAdminDto Optional display name and/or uploaded avatar with its proof
      * @returns The updated, serialized profile of the current admin
      * @throws {ResourceNotFoundException} When no active admin exists with the given ID
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
-     * @throws {SystemException} When the loaded account is deleted or inactive
+     * @throws {ResourceConflictException} When the upload proof is replayed or persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account is deleted or inactive, or verified upload keys violate invariants
+     * @throws {AccessDeniedException} When the upload proof belongs to another account or the account is banned
+     * @throws {InvalidInputException} When the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */
     @Patch('me')
     @PrincipalOnly(PrincipalType.ADMIN)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Update current admin profile',
-        description: "Updates only the currently authenticated admin's display name.",
+        description:
+            'Updates the current admin name, avatar, or both. Avatar acceptance requires the same optional name and descriptor supplied at initiation. The response includes the selected pending key while its permanent copy is queued. Empty bodies are rejected.',
     })
     @ApiOkResponse({ description: 'Admin successfully updated.', type: ResponseAdminDto })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
+    @ApiDefaultResourceConflictResponse()
     async updateMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchAdminDto: PatchAdminDto,
     ): Promise<ResponseAdminDto> {
-        await this.commandPipeline.execute(new UpdateAdminCommand(principal.id, patchAdminDto.name));
+        await this.commandPipeline.execute(
+            new UpdateAdminCommand(principal.id, patchAdminDto.name, patchAdminDto.avatar, patchAdminDto.uploadToken),
+        );
 
         return plainToInstance(
             ResponseAdminDto,
@@ -277,10 +284,47 @@ export class AdminController {
     }
 
     /**
-     * Requests a confirmation link without changing the current address or sessions.
+     * Prepares a profile avatar upload without changing the authenticated account.
+     *
+     * @param principal Verified admin selecting their own avatar
+     * @param body Avatar descriptor and optional normalized name bound to the final PATCH
+     * @returns Signed PUT and profile upload proof
+     * @throws {ResourceNotFoundException} When the account is missing or deleted
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {DependencyUnavailableException} When database or storage is unavailable
+     * @throws {SystemException} When the account is inactive or the storage plan violates the contract
+     */
+    @Post('me/avatar/initiate')
+    @PrincipalOnly(PrincipalType.ADMIN)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Prepare current admin avatar change',
+        description:
+            'Prepares a conditional avatar PUT valid for up to five minutes and a profile proof valid for ten minutes. PATCH requires the same avatar descriptor and optional name. Initiation does not change the profile.',
+    })
+    @ApiOkResponse({ type: ResponseSingleUploadInitiateDto, description: 'Avatar upload request and profile proof.' })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    async initiateAvatarChange(
+        @CurrentPrincipal() principal: Principal,
+        @Body() body: PostAdminAvatarChangeInitiateDto,
+    ): Promise<ResponseSingleUploadInitiateDto> {
+        return plainToInstance(
+            ResponseSingleUploadInitiateDto,
+            await this.commandPipeline.execute(
+                new InitiateAdminAvatarChangeCommand(principal.id, body.avatar, body.name),
+            ),
+        );
+    }
+
+    /**
+     * Initiates email verification without changing the current address or sessions.
      *
      * @param principal The verified principal requesting the change
-     * @param postAdminEmailChangeDto The new address and current password proof
+     * @param postAdminEmailChangeInitiateDto The new address and current password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
      * @throws {SystemException} When a deleted or inactive account reaches this authenticated flow, or the queue does not accept every required job
      * @throws {InvalidInputException} When the password is wrong or the address is unchanged
@@ -288,12 +332,12 @@ export class AdminController {
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
-    @Post('me/email')
+    @Post('me/email/initiate')
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Request current admin email change',
+        summary: 'Initiate current admin email change',
         description:
             'Verifies the current password and queues a confirmation link to the new address. Each request replaces the previous link, even for the same address; the current email and sessions remain unchanged.',
     })
@@ -305,15 +349,15 @@ export class AdminController {
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
-    async requestEmailChangeMe(
+    async initiateEmailChangeMe(
         @CurrentPrincipal() principal: Principal,
-        @Body() postAdminEmailChangeDto: PostAdminEmailChangeDto,
+        @Body() postAdminEmailChangeInitiateDto: PostAdminEmailChangeInitiateDto,
     ) {
         await this.commandPipeline.execute(
-            new RequestAdminEmailChangeCommand(
+            new InitiateAdminEmailChangeCommand(
                 principal.id,
-                postAdminEmailChangeDto.newEmail,
-                postAdminEmailChangeDto.currentPassword,
+                postAdminEmailChangeInitiateDto.newEmail,
+                postAdminEmailChangeInitiateDto.currentPassword,
             ),
         );
     }
@@ -322,7 +366,7 @@ export class AdminController {
      * Consumes emailed proof for the authenticated account and replaces its sessions.
      *
      * @param principal The verified principal confirming the change
-     * @param postAdminEmailConfirmDto The token delivered to the pending address
+     * @param postAdminEmailChangeConfirmDto The token delivered to the pending address
      * @returns The committed email change with replacement tokens or a sign-in requirement
      * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
@@ -366,10 +410,10 @@ export class AdminController {
     @ApiDefaultResourceConflictResponse()
     async confirmEmailChangeMe(
         @CurrentPrincipal() principal: Principal,
-        @Body() postAdminEmailConfirmDto: PostAdminEmailConfirmDto,
+        @Body() postAdminEmailChangeConfirmDto: PostAdminEmailChangeConfirmDto,
     ): Promise<ResponseAdminEmailChangeSessionDto | ResponseAdminEmailChangeLoginRequiredDto> {
         const result = await this.commandPipeline.execute(
-            new ConfirmAdminEmailChangeCommand(principal.id, postAdminEmailConfirmDto.token),
+            new ConfirmAdminEmailChangeCommand(principal.id, postAdminEmailChangeConfirmDto.token),
         );
 
         return result.session === SessionOutcome.CREATED
@@ -444,29 +488,29 @@ export class AdminController {
     }
 
     /**
-     * Creates a new admin account pending activation and emails the invitation to its owner. The
+     * Invites a new admin by creating an account pending activation and emailing its owner. The
      * account starts with no permissions; they are granted separately once it exists.
      *
-     * @param postAdminDto The creation payload carrying the email and name
+     * @param postAdminInviteDto The invitation payload carrying the email and name
      * @throws {ResourceConflictException} When the email address is already in use
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the delivery queue does not accept every required job
      */
-    @Post()
+    @Post('invite')
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Create admin',
-        description: `Creates an admin account pending activation, with no permissions, and emails an invitation to its owner. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission.`,
+        summary: 'Invite admin',
+        description: `Invites a new admin by creating an account pending activation, with no permissions, and emailing its owner. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission.`,
     })
-    @ApiNoContentResponse({ description: 'Admin account successfully created; the invitation email is on its way.' })
+    @ApiNoContentResponse({ description: 'Admin invitation queued; the account is pending activation.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
-    async create(@Body() postAdminDto: PostAdminDto) {
-        await this.commandPipeline.execute(new CreateAdminCommand(postAdminDto.email, postAdminDto.name));
+    async invite(@Body() postAdminInviteDto: PostAdminInviteDto) {
+        await this.commandPipeline.execute(new InviteAdminCommand(postAdminInviteDto.email, postAdminInviteDto.name));
     }
 
     /**
@@ -482,12 +526,12 @@ export class AdminController {
      * @throws {SystemException} When invitation identity or the storage plan violates the contract
      */
     @Public()
-    @Post('activate/initiate')
+    @Post('activation/initiate')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Prepare admin activation',
         description:
-            'Prepares one conditional avatar PUT valid for up to five minutes and a form-bound activation proof valid for up to thirty minutes. Both expire no later than the invitation. Activation requires the same password and avatar descriptor.',
+            'Prepares one conditional avatar PUT valid for up to five minutes and a form-bound activation proof valid for up to ten minutes. Both expire no later than the invitation. Activation requires the same password and avatar descriptor.',
     })
     @ApiOkResponse({
         type: ResponseSingleUploadInitiateDto,
@@ -497,7 +541,7 @@ export class AdminController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceConflictResponse()
-    async initiateActivation(@Body() body: PostAdminActivateInitiateDto): Promise<ResponseSingleUploadInitiateDto> {
+    async initiateActivation(@Body() body: PostAdminActivationInitiateDto): Promise<ResponseSingleUploadInitiateDto> {
         return plainToInstance(
             ResponseSingleUploadInitiateDto,
             await this.commandPipeline.execute(
@@ -510,9 +554,8 @@ export class AdminController {
      * Activates a pending admin account with the invite token from the invitation email. Public: the
      * new admin has no credentials yet, the token is what proves the invitation.
      *
-     * @param postAdminActivateDto Invitation and upload proofs with the bound password and avatar descriptor
-     * @throws {InvalidInputException} When the invitation, form binding, or uploaded metadata does not match
-     * @throws {UnauthenticatedException} When the upload proof is invalid or expired
+     * @param postAdminActivationDto Invitation and upload proofs with the bound password and avatar descriptor
+     * @throws {InvalidInputException} When the invitation or upload proof is invalid or expired, or the form binding or uploaded metadata does not match
      * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceConflictException} When the account is already active or changed concurrently
@@ -520,7 +563,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Public()
-    @Post('activate')
+    @Post('activation/complete')
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Activate admin account',
@@ -528,18 +571,17 @@ export class AdminController {
             'Activates the invited account with its first password and verified uploaded avatar. Commits the pending key and avatar move job without opening a session.',
     })
     @ApiNoContentResponse({ description: 'Account successfully activated; avatar finalization is queued.' })
-    @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
-    async activate(@Body() postAdminActivateDto: PostAdminActivateDto) {
+    async activate(@Body() postAdminActivationDto: PostAdminActivationDto) {
         await this.commandPipeline.execute(
             new ActivateAdminCommand(
-                postAdminActivateDto.token,
-                postAdminActivateDto.password,
-                postAdminActivateDto.avatar,
-                postAdminActivateDto.uploadToken,
+                postAdminActivationDto.token,
+                postAdminActivationDto.password,
+                postAdminActivationDto.avatar,
+                postAdminActivationDto.uploadToken,
             ),
         );
     }
@@ -652,7 +694,7 @@ export class AdminController {
      * @throws {ResourceConflictException} When persistence rejects a concurrent modification
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
-    @Put(`${ROUTE_PARAM_ID}/permission`)
+    @Put(`${ROUTE_PARAM_ID}/permissions`)
     @Permissions(Permission.ADMIN_PERMISSION_MANAGE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -676,7 +718,7 @@ export class AdminController {
         @Body() putAdminPermissionsDto: PutAdminPermissionsDto,
     ) {
         await this.commandPipeline.execute(
-            new ChangeAdminPermissionsCommand(params.id, putAdminPermissionsDto.permissions, principal),
+            new ReplaceAdminPermissionsCommand(params.id, putAdminPermissionsDto.permissions, principal),
         );
     }
 }

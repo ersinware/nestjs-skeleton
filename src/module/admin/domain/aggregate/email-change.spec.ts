@@ -48,13 +48,27 @@ describe('Admin email change invariants', () => {
 
     it('updates only the name and leaves an identical name as a no-op', () => {
         const before = account.toSnapshot();
-        expect(account.updateName(account.name)).toBe(false);
+        expect(account.update(account.name)).toBe(false);
         expect(account.toSnapshot()).toEqual(before);
         expect(account.pullJobs()).toEqual([]);
-        expect(account.updateName('Changed')).toBe(true);
+        expect(account.update('Changed')).toBe(true);
         expect(account.email).toBe(initial.email);
         expect(account.sessionVersion).toBe(0);
         expect(account.revocationVersion).toBe(0);
+    });
+
+    it('retains the avatar and ban state on repeat-safe soft deletion', () => {
+        const key = account.avatarKey;
+        account.markAsDeleted(actor);
+        expect(account.avatarKey).toBe(key);
+        expect(account.isBanned).toBe(false);
+        expect(account.deletedAt).toBeInstanceOf(Date);
+        expect(account.sessionVersion).toBe(1);
+        account.pullJobs();
+        const before = account.toSnapshot();
+        account.markAsDeleted(actor);
+        expect(account.toSnapshot()).toEqual(before);
+        expect(account.pullJobs()).toEqual([]);
     });
 
     it('creates a fixed thirty-minute request without changing credentials or sessions', () => {
@@ -187,22 +201,38 @@ describe('Admin email change invariants', () => {
         expect(account.pullJobs()).toEqual([]);
     });
 
-    it('treats a misrouted subject or invalid notification identity as a programming error', () => {
+    it('treats a misrouted subject as a programming error', () => {
         account.requestEmailChange('new@example.test', true, false);
         account.pullJobs();
         const before = account.toSnapshot();
         expect(() => account.confirmEmailChange({ ...proof(), sub: actor.id }, notificationId)).toThrow(
             SystemException,
         );
-        expect(() => account.confirmEmailChange(proof(), randomUUID())).toThrow(SystemException);
         expect(account.toSnapshot()).toEqual(before);
         expect(account.pullJobs()).toEqual([]);
+    });
+
+    it('allows an authorized actor to delete a pending invitation without requiring activation', () => {
+        const pending = Admin.create({ ...initial, password: null });
+        pending.pullJobs();
+        pending.markAsDeleted(actor);
+        expect(pending.toSnapshot().password).toBeNull();
+        expect(pending.avatarKey).toBeNull();
+        expect(pending.deletedAt).toBeInstanceOf(Date);
+        expect(pending.isBanned).toBe(false);
+        expect(pending.pullJobs()).toEqual([
+            {
+                aggregateId: pending.id,
+                deliveryId: expect.any(String) as unknown,
+                queueName: AdminJobQueue.SESSION_RECONCILE,
+            },
+        ]);
     });
 
     it('rejects inactive self-service paths as programming errors', () => {
         const account = Admin.create({ ...initial, password: null });
         account.pullJobs();
-        expect(() => account.updateName('Changed')).toThrow(SystemException);
+        expect(() => account.update('Changed')).toThrow(SystemException);
         expect(() => account.requestEmailChange('new@example.test', true, false)).toThrow(SystemException);
         expect(account.pendingEmail).toBeNull();
         expect(account.pullJobs()).toEqual([]);
@@ -211,7 +241,7 @@ describe('Admin email change invariants', () => {
     it('rejects self-service for an account whose password exists but avatar is missing', () => {
         const broken = Admin.reconstitute({ ...account.toSnapshot(), avatarKey: null });
         const before = broken.toSnapshot();
-        expect(() => broken.updateName('Changed')).toThrow(SystemException);
+        expect(() => broken.update('Changed')).toThrow(SystemException);
         expect(() => broken.changePassword('new hash', true, false)).toThrow(SystemException);
         expect(() => broken.requestEmailChange('new@example.test', true, false)).toThrow(SystemException);
         expect(broken.toSnapshot()).toEqual(before);

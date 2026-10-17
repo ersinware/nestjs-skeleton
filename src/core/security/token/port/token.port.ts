@@ -5,11 +5,11 @@
 
 import type { SessionIdentity, SessionRegistration } from 'src/core/security/session';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+import type { ActivationTokenPayload } from 'src/core/security/token/activation-token-payload.type';
 import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
-import type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';
 import type { Principal } from 'src/shared/domain/principal';
 
 /**
@@ -66,6 +66,38 @@ export interface ITokenPort {
     ): Promise<TokenPairWithSession>;
 
     /**
+     * Signs persisted invitation claims without generating identity or timestamps.
+     *
+     * @param payload Fixed claims loaded from the persisted invitation.
+     * @returns The signed invite token.
+     */
+    generateInviteToken(payload: Omit<InviteTokenPayload, 'type'>): Promise<string>;
+
+    /**
+     * Signs persisted activation claims without generating identity or timestamps.
+     *
+     * @param payload Fixed claims loaded from the pending account.
+     * @returns The signed activation token.
+     */
+    generateActivationToken(payload: Omit<ActivationTokenPayload, 'type'>): Promise<string>;
+
+    /**
+     * Signs persisted email request claims without generating identity or timestamps.
+     *
+     * @param payload Fixed claims loaded from the pending request.
+     * @returns The signed email confirmation token.
+     */
+    generateEmailConfirmationToken(payload: Omit<EmailConfirmationTokenPayload, 'type'>): Promise<string>;
+
+    /**
+     * Signs workflow-supplied upload claims without generating identity or timestamps.
+     *
+     * @param payload Upload claims and expiry selected by the owning workflow.
+     * @returns The signed upload token.
+     */
+    generateUploadToken(payload: Omit<UploadTokenPayload, 'type'>): Promise<string>;
+
+    /**
      * Verifies an access token's signature, expiry, and type.
      *
      * @param token The JWT access token string.
@@ -94,14 +126,6 @@ export interface ITokenPort {
     verifyLogoutToken(token: string): Promise<RefreshTokenPayload>;
 
     /**
-     * Signs persisted invitation claims without generating identity or timestamps.
-     *
-     * @param payload Fixed claims loaded from the persisted invitation.
-     * @returns The signed invite token.
-     */
-    generateInviteToken(payload: Omit<InviteTokenPayload, 'type'>): Promise<string>;
-
-    /**
      * Verifies an invite token's signature, type, identifiers, fixed times, and revocation version.
      *
      * @param token The JWT invite token string.
@@ -111,37 +135,13 @@ export interface ITokenPort {
     verifyInviteToken(token: string): Promise<InviteTokenPayload>;
 
     /**
-     * Signs persisted user activation claims without generating identity or timestamps.
+     * Verifies activation claims; the owning workflow must independently authorize the state transition.
      *
-     * @param payload Fixed claims loaded from the pending account.
-     * @returns The signed user activation token.
-     */
-    generateUserActivationToken(payload: Omit<UserActivationTokenPayload, 'type'>): Promise<string>;
-
-    /**
-     * Signs workflow-supplied upload claims without generating identity or timestamps.
-     *
-     * @param payload Upload claims and expiry selected by the owning workflow.
-     * @returns The signed upload token.
-     */
-    generateUploadToken(payload: Omit<UploadTokenPayload, 'type'>): Promise<string>;
-
-    /**
-     * Verifies user activation claims; callers must still check current account state and password.
-     *
-     * @param token The JWT user activation token string.
-     * @returns Verified user activation claims.
+     * @param token The JWT activation token string.
+     * @returns Verified activation claims.
      * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid activation claims.
      */
-    verifyUserActivationToken(token: string): Promise<UserActivationTokenPayload>;
-
-    /**
-     * Signs persisted email request claims without generating identity or timestamps.
-     *
-     * @param payload Fixed claims loaded from the pending request.
-     * @returns The signed email confirmation token.
-     */
-    generateEmailConfirmationToken(payload: Omit<EmailConfirmationTokenPayload, 'type'>): Promise<string>;
+    verifyActivationToken(token: string): Promise<ActivationTokenPayload>;
 
     /**
      * Verifies email confirmation claims; callers must still check ownership and current request state.
@@ -153,12 +153,32 @@ export interface ITokenPort {
     verifyEmailConfirmationToken(token: string): Promise<EmailConfirmationTokenPayload>;
 
     /**
-     * Verifies an upload proof; callers must still check the form and workflow state.
+     * Verifies an upload proof with a required revocation snapshot; callers still check form and workflow state.
      *
      * @param token The JWT upload token string.
      * @param expectedPurpose Server-selected purpose from the owning workflow.
+     * @param requireRevocationVersion Requires a valid revocation snapshot
      * @returns Verified upload claims.
      * @throws {UnauthenticatedException} When the signature, expiry, type, purpose, or claims are invalid.
      */
-    verifyUploadToken(token: string, expectedPurpose: string): Promise<UploadTokenPayload>;
+    verifyUploadToken(
+        token: string,
+        expectedPurpose: string,
+        requireRevocationVersion: true,
+    ): Promise<UploadTokenPayload & Required<Pick<UploadTokenPayload, 'revocationVersion'>>>;
+
+    /**
+     * Verifies upload claims, optionally requiring a revocation snapshot.
+     *
+     * @param token The JWT upload token string
+     * @param expectedPurpose Server-selected upload purpose
+     * @param requireRevocationVersion Whether a valid revocation snapshot is required; defaults to false
+     * @returns Verified upload claims
+     * @throws {UnauthenticatedException} When the signature, expiry, type, purpose, or required claims are invalid
+     */
+    verifyUploadToken(
+        token: string,
+        expectedPurpose: string,
+        requireRevocationVersion?: boolean,
+    ): Promise<UploadTokenPayload>;
 }

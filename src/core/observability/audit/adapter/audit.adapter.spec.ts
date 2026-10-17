@@ -6,12 +6,11 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { AuditAdapter } from 'src/core/observability/audit/adapter/audit.adapter';
 import { getAuditContext, isExceptionAudited, runWithAuditContext } from 'src/core/observability/audit/audit-context';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { AccessDeniedException } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('AuditAdapter refusal completion', () => {
-    const input = { action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED, reason: 'ACCOUNT_BANNED' },
+    const input = { action: 'ADMIN_ACTIVATION_FAILED', reason: 'ACCOUNT_BANNED' },
         context = { remoteAddress: '127.0.0.1', route: '/admin/activate', method: 'POST' };
 
     it('marks only after acceptance and never persists the exception or tracking set', async () => {

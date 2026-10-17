@@ -37,7 +37,8 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Conditional writes prevent overwrites, not URL reuse after object deletion; never assume presigned URLs are single-use.
 - Persist/return object keys; frontend owns CDN URLs and configuration.
 - Permanent files are immutable: each replacement uses a new version key; retries retain that key and prevent overwrites. Public delivery uses long-lived immutable caching.
-- Storage and database changes are not atomic; reconcile retries and delete sources only after the destination key commits.
+- Storage and database changes are not atomic; reconcile retries and delete sources or previous objects only after the replacement key commits or the delivery is superseded. Persist cleanup identities with the mutation; retries must resume cleanup.
+- Soft deletion retains Admin/User avatars. A writer's missing result does not prove physical deletion; orphan reconciliation must protect avatar references on soft-deleted rows.
 - Cache metadata does not authorize reads; protected files require access control and caching compatible with access revocation.
 
 ## Dependency Injection

@@ -5,7 +5,7 @@
 
 import { applyDecorators } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsUUID, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsUUID, ValidateIf } from 'class-validator';
 
 /**
  * Bundles UUID validation and OpenAPI metadata; UUID v7 remains the default for entity IDs.
@@ -23,8 +23,10 @@ export function isUUID(
     const version = options.version ?? '7';
 
     return applyDecorators(
-        ...(options.optional ? [IsOptional()] : []),
-        ...(options.nullable && !options.optional ? [ValidateIf((_object, value: unknown) => value !== null)] : []),
+        ValidateIf(
+            (_object, value: unknown) =>
+                !(options.optional && value === undefined) && !(options.nullable && value === null),
+        ),
         IsNotEmpty({ message: `${descriptionPrefix} cannot be empty.` }),
         IsUUID(version, { message: `${descriptionPrefix} must be a valid UUID${version === '7' ? ' v7' : ''}.` }),
         ApiProperty({

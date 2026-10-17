@@ -34,8 +34,6 @@ describe('RegisterUserCommandHandler', () => {
         const hashing = { hash: vi.fn().mockResolvedValue('hash') };
         const transaction = { run: vi.fn(async (callback: () => Promise<void>) => callback()) };
         const audit = { record: vi.fn() };
-        const email = { isEmailInUse: vi.fn().mockResolvedValue({ isInUse: false }) };
-        const exists = { existsById: vi.fn().mockResolvedValue({ exists: false }) };
         const handler = new RegisterUserCommandHandler(
             transaction as never,
             writer as never,
@@ -44,13 +42,11 @@ describe('RegisterUserCommandHandler', () => {
             token as never,
             storage as never,
             new ConfigService({ JWT_UPLOAD_SECRET: secret }),
-            email,
-            exists,
         );
-        return { handler, claims, token, storage, writer, hashing, transaction, audit, email, exists };
+        return { handler, claims, token, storage, writer, hashing, transaction, audit };
     }
 
-    it.each(['identity', 'key', 'missing', 'size', 'type', 'replay', 'email', 'proof'] as const)(
+    it.each(['identity', 'key', 'missing', 'size', 'type', 'proof'] as const)(
         'rejects %s without hashing or writing',
         async (failure) => {
             const fixture = setup();
@@ -73,17 +69,9 @@ describe('RegisterUserCommandHandler', () => {
                 case 'type':
                     fixture.storage.headObject.mockResolvedValue({ sizeBytes: 4, contentType: 'image/jpeg' });
                     break;
-                case 'replay':
-                    fixture.exists.existsById.mockResolvedValue({ exists: true });
-                    kind = ExceptionKind.RESOURCE_CONFLICT;
-                    break;
-                case 'email':
-                    fixture.email.isEmailInUse.mockResolvedValue({ isInUse: true });
-                    kind = ExceptionKind.RESOURCE_CONFLICT;
-                    break;
                 case 'proof':
                     fixture.token.verifyUploadToken.mockRejectedValue(new UnauthenticatedException());
-                    kind = ExceptionKind.UNAUTHENTICATED;
+                    kind = ExceptionKind.INVALID_INPUT;
                     break;
             }
             await expect(fixture.handler.execute(command)).rejects.toMatchObject({ kind });

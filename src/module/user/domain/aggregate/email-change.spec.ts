@@ -60,6 +60,20 @@ describe('User email change invariants', () => {
         expect(account.revocationVersion).toBe(0);
     });
 
+    it('retains the avatar and ban state on repeat-safe soft deletion', () => {
+        const key = account.avatarKey;
+        account.markAsDeleted();
+        expect(account.avatarKey).toBe(key);
+        expect(account.isBanned).toBe(false);
+        expect(account.deletedAt).toBeInstanceOf(Date);
+        expect(account.sessionVersion).toBe(1);
+        account.pullJobs();
+        const before = account.toSnapshot();
+        account.markAsDeleted();
+        expect(account.toSnapshot()).toEqual(before);
+        expect(account.pullJobs()).toEqual([]);
+    });
+
     it('creates a fixed thirty-minute request without changing credentials or sessions', () => {
         account.requestEmailChange('new@example.test', true, false);
         expect(account.pendingEmailRequestId).toMatch(
@@ -194,14 +208,13 @@ describe('User email change invariants', () => {
         expect(account.pullJobs()).toEqual([]);
     });
 
-    it('treats a misrouted subject or invalid notification identity as a programming error', () => {
+    it('treats a misrouted subject as a programming error', () => {
         account.requestEmailChange('new@example.test', true, false);
         account.pullJobs();
         const before = account.toSnapshot();
         expect(() => account.confirmEmailChange({ ...proof(), sub: actor.id }, notificationId)).toThrow(
             SystemException,
         );
-        expect(() => account.confirmEmailChange(proof(), randomUUID())).toThrow(SystemException);
         expect(account.toSnapshot()).toEqual(before);
         expect(account.pullJobs()).toEqual([]);
     });

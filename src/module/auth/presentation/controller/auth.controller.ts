@@ -35,7 +35,7 @@ import {
     RefreshTokensRejectionMessage,
 } from 'src/module/auth/application/command/refresh-tokens/command';
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
-import { PostRefreshDto } from 'src/module/auth/presentation/dto/post-refresh.dto';
+import { PostRefreshTokenDto } from 'src/module/auth/presentation/dto/post-refresh-token.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
 import {
     ResponseUserLoginActivationRequiredDto,
@@ -155,7 +155,7 @@ export class AuthController {
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceConflictResponse(RefreshTokensRejectionMessage.CONCURRENT_REFRESH)
-    async refresh(@Body() dto: PostRefreshDto): Promise<ResponseTokensDto> {
+    async refresh(@Body() dto: PostRefreshTokenDto): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
             await this.commandPipeline.execute(new RefreshTokensCommand(dto.refreshToken)),
@@ -178,7 +178,7 @@ export class AuthController {
     })
     @ApiNoContentResponse({ description: 'Logout processed; discard local credentials.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
-    async logout(@Body() dto: PostRefreshDto) {
+    async logout(@Body() dto: PostRefreshTokenDto) {
         await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken));
     }
 

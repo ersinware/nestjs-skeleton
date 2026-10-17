@@ -7,7 +7,6 @@ import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { isUUID } from 'src/core/http';
 import { AuditAction, type AuditDetail } from 'src/core/observability/audit';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 
 /**
@@ -31,11 +30,10 @@ export class ResponseAuditTrailRecordDto {
     @Expose()
     @ApiProperty({
         type: String,
-        enum: { ...AuditAction, ...DomainFailureAuditAction },
         description: 'What happened.',
         example: AuditAction.LOGIN_FAILED,
     })
-    readonly action!: AuditAction | DomainFailureAuditAction;
+    readonly action!: string;
 
     /**
      * Why a refusal happened; null on an action that cannot fail.

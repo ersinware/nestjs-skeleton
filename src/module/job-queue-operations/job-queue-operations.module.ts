@@ -13,8 +13,8 @@ import { RedriveDeadLetterJobsCommandHandler } from 'src/module/job-queue-operat
 import { StartDeadLetterRedriveCommandHandler } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/handler';
 import { GetDeadLetterJobQueryHandler } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/handler';
 import { TOKEN_GET_DEAD_LETTER_JOB_PORT } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/port';
-import { GetDeadLetterRedriveQueryHandler } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/handler';
-import { TOKEN_GET_DEAD_LETTER_REDRIVE_PORT } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/port';
+import { GetDeadLetterRedriveStatusQueryHandler } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/handler';
+import { TOKEN_GET_DEAD_LETTER_REDRIVE_STATUS_PORT } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/port';
 import { ListDeadLetterJobsQueryHandler } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/handler';
 import { TOKEN_LIST_DEAD_LETTER_JOBS_PORT } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/port';
 import { DeadLetterRedriveQueue } from 'src/module/job-queue-operations/application/queue/dead-letter-redrive.queue';
@@ -40,10 +40,10 @@ import { JobQueueOperationsController } from 'src/module/job-queue-operations/pr
         RedriveDeadLetterJobsCommandHandler,
         ListDeadLetterJobsQueryHandler,
         GetDeadLetterJobQueryHandler,
-        GetDeadLetterRedriveQueryHandler,
+        GetDeadLetterRedriveStatusQueryHandler,
         { provide: TOKEN_LIST_DEAD_LETTER_JOBS_PORT, useExisting: JobQueueOperationsReaderAdapter },
         { provide: TOKEN_GET_DEAD_LETTER_JOB_PORT, useExisting: JobQueueOperationsReaderAdapter },
-        { provide: TOKEN_GET_DEAD_LETTER_REDRIVE_PORT, useExisting: JobQueueOperationsReaderAdapter },
+        { provide: TOKEN_GET_DEAD_LETTER_REDRIVE_STATUS_PORT, useExisting: JobQueueOperationsReaderAdapter },
     ],
 })
 export class JobQueueOperationsModule {}

@@ -147,24 +147,6 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     }
 
     /**
-     * Requires a matching current-password proof before sensitive work proceeds.
-     *
-     * @param currentPasswordMatches Hash verification result for this aggregate's current password
-     * @param auditAction Business action to record on password mismatch
-     * @throws {InvalidInputException} When the submitted password does not match; includes the audit reason when enabled
-     */
-    protected assertCurrentPassword(currentPasswordMatches: boolean, auditAction?: DomainFailureAuditAction) {
-        if (!currentPasswordMatches) {
-            throw new InvalidInputException(
-                'The current password provided is incorrect.',
-                auditAction
-                    ? { audit: { action: auditAction, reason: PasswordRejectionReason.CURRENT_PASSWORD_MISMATCH } }
-                    : undefined,
-            );
-        }
-    }
-
-    /**
      * Rejects an invalid current password or reuse before password mutation.
      *
      * @param currentPasswordMatches Whether the submitted current password matches the stored hash
@@ -181,6 +163,29 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
 
         if (newPasswordMatchesCurrent) {
             throw new InvalidInputException('New password cannot be the same as the current password.');
+        }
+    }
+
+    /**
+     * Requires a matching current-password proof before sensitive work proceeds.
+     *
+     * @param currentPasswordMatches Hash verification result for this aggregate's current password
+     * @param auditAction Business action to record on password mismatch
+     * @param message Refusal message, defaults to the current-password mismatch message
+     * @throws {InvalidInputException} When the submitted password does not match; includes the audit reason when enabled
+     */
+    protected assertCurrentPassword(
+        currentPasswordMatches: boolean,
+        auditAction?: string,
+        message: string = 'The current password provided is incorrect.',
+    ) {
+        if (!currentPasswordMatches) {
+            throw new InvalidInputException(
+                message,
+                auditAction
+                    ? { audit: { action: auditAction, reason: PasswordRejectionReason.CURRENT_PASSWORD_MISMATCH } }
+                    : undefined,
+            );
         }
     }
 

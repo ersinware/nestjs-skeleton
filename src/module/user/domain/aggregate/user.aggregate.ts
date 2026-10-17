@@ -9,7 +9,6 @@ import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/modu
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
-import { isUUIDV7 } from 'src/shared/domain/uuid';
 import {
     AccessDeniedException,
     AccessDeniedMessage,
@@ -133,26 +132,31 @@ type UserSnapshot = {
 } & Readonly<UserProps>;
 
 /**
- * Account-owned activation refusal reasons retained in audit evidence.
+ * Audit actions owned by the user account workflows.
  */
-enum ActivateUserRejectionReason {
+enum UserFailureAuditAction {
     /**
-     * The account is banned from activation.
+     * Rejected user activation; the record carries the reason the client never sees.
      */
-    ACCOUNT_BANNED = 'ACCOUNT_BANNED',
+    USER_ACTIVATION_FAILED = 'USER_ACTIVATION_FAILED',
 
     /**
-     * The supplied password does not match the account's current password.
+     * A banned user requested another activation email without revealing the refusal publicly.
      */
-    INVALID_PASSWORD = 'INVALID_PASSWORD',
+    USER_ACTIVATION_RESEND_FAILED = 'USER_ACTIVATION_RESEND_FAILED',
+
+    /**
+     * A banned user attempted to update the profile.
+     */
+    USER_UPDATE_FAILED = 'USER_UPDATE_FAILED',
 }
 
 /**
- * Account-owned email confirmation refusals; handling boundaries consume their audit reasons.
+ * Refusal reasons preserved in user account audit evidence.
  */
-enum ConfirmEmailChangeRejectionReason {
+enum UserAuditReason {
     /**
-     * The account is banned from email changes.
+     * The account is banned from the requested workflow.
      */
     ACCOUNT_BANNED = 'ACCOUNT_BANNED',
 }
@@ -239,13 +243,7 @@ export class User extends PrincipalAggregateRoot {
 
         user.issueActivation();
         user.addActivationJob();
-        user.addJob([
-            {
-                deliveryId: randomUUID(),
-                aggregateId: user.id,
-                queueName: UserJobQueue.AVATAR_MOVE,
-            },
-        ]);
+        user.addAvatarFinalizeJob(randomUUID());
 
         return user;
     }
@@ -275,6 +273,139 @@ export class User extends PrincipalAggregateRoot {
             revocationVersion: this.revocationVersion,
             ...this.props,
         };
+    }
+
+    /**
+     * Requests another activation email with a fresh proof, invalidating the previous link.
+     * Audits banned-account refusals through the caller; active accounts return false.
+     * The public caller preserves the same response as for an unknown address.
+     *
+     * @returns Whether an eligible pending account queued a delivery
+     * @throws {AccessDeniedException} When a banned account requests another activation email
+     * @throws {SystemException} When the account is deleted or pending metadata is incomplete
+     */
+    resendActivation(): boolean {
+        this.assertNotDeleted(this.resendActivation.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: UserFailureAuditAction.USER_ACTIVATION_RESEND_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        if (this.props.activationId === null) {
+            return false;
+        }
+
+        if (this.props.activationExpiresAt === null || this.props.activationRevocationVersion === null) {
+            throw new SystemException('Pending user activation metadata is incomplete.', {
+                context: { class: User.name, method: this.resendActivation.name, id: this.id },
+            });
+        }
+
+        this.issueActivation();
+        this.props.updatedAt = new Date();
+        this.addActivationJob();
+
+        return true;
+    }
+
+    /**
+     * Consumes activation proof after checking the account and existing password.
+     *
+     * @param payload Signature-verified activation claims
+     * @param currentPasswordMatches Whether the supplied password matches the loaded hash
+     * @throws {SystemException} When the account is deleted or differs from the verified subject
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {ResourceConflictException} When the account has already been activated
+     * @throws {InvalidInputException} When the proof or current password is invalid
+     */
+    activate(
+        payload: {
+            readonly sub: string;
+            readonly jti: string;
+            readonly activationRevocationVersion: number;
+            readonly exp: number;
+        },
+        currentPasswordMatches: boolean,
+    ) {
+        this.assertNotDeleted(this.activate.name);
+
+        if (payload.sub !== this.id) {
+            throw new SystemException('Verified token subject does not match the target account.', {
+                context: { class: User.name, method: this.activate.name, id: this.id, sub: payload.sub },
+            });
+        }
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: UserFailureAuditAction.USER_ACTIVATION_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        this.assertCurrentPassword(
+            currentPasswordMatches,
+            UserFailureAuditAction.USER_ACTIVATION_FAILED,
+            InvalidInputMessage.DEFAULT,
+        );
+
+        if (this.props.activationId === null) {
+            throw new ResourceConflictException(ResourceConflictMessage.DEFAULT);
+        }
+
+        if (
+            payload.jti !== this.props.activationId ||
+            payload.activationRevocationVersion !== this.revocationVersion ||
+            payload.activationRevocationVersion !== this.props.activationRevocationVersion ||
+            this.props.activationExpiresAt === null ||
+            payload.exp * 1000 !== this.props.activationExpiresAt.getTime() ||
+            this.props.activationExpiresAt.getTime() <= Date.now()
+        ) {
+            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
+        }
+
+        this.props.activationId = null;
+        this.props.activationExpiresAt = null;
+        this.props.activationRevocationVersion = null;
+        this.props.updatedAt = new Date();
+    }
+
+    /**
+     * Updates the display name when it differs from the current state.
+     *
+     * @param name The new display name
+     * @returns Whether the name changed
+     * @throws {SystemException} When the account has been soft-deleted or is pending activation
+     * @throws {AccessDeniedException} When the account is banned
+     */
+    updateName(name: string): boolean {
+        this.assertNotDeleted(this.updateName.name);
+        this.assertActivated(this.updateName.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: UserFailureAuditAction.USER_UPDATE_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        if (name === this.props.name) {
+            return false;
+        }
+
+        this.props.name = name;
+        this.props.updatedAt = new Date();
+        this.addCacheInvalidationJob();
+
+        return true;
     }
 
     /**
@@ -314,125 +445,6 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Consumes activation proof after checking the account and existing password.
-     *
-     * @param payload Signature-verified activation claims
-     * @param currentPasswordMatches Whether the supplied password matches the loaded hash
-     * @throws {SystemException} When the account is deleted or differs from the verified subject
-     * @throws {AccessDeniedException} When the account is banned
-     * @throws {ResourceConflictException} When the account has already been activated
-     * @throws {InvalidInputException} When the proof or current password is invalid
-     */
-    activate(
-        payload: {
-            readonly sub: string;
-            readonly jti: string;
-            readonly activationRevocationVersion: number;
-            readonly exp: number;
-        },
-        currentPasswordMatches: boolean,
-    ) {
-        this.assertNotDeleted(this.activate.name);
-
-        if (payload.sub !== this.id) {
-            throw new SystemException('Verified token subject does not match the target account.', {
-                context: { class: User.name, method: this.activate.name, id: this.id, sub: payload.sub },
-            });
-        }
-
-        if (this.props.isBanned) {
-            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
-                audit: {
-                    action: DomainFailureAuditAction.USER_ACTIVATION_FAILED,
-                    reason: ActivateUserRejectionReason.ACCOUNT_BANNED,
-                },
-            });
-        }
-
-        if (this.props.activationId === null) {
-            throw new ResourceConflictException(ResourceConflictMessage.DEFAULT);
-        }
-
-        if (
-            payload.jti !== this.props.activationId ||
-            payload.activationRevocationVersion !== this.revocationVersion ||
-            payload.activationRevocationVersion !== this.props.activationRevocationVersion ||
-            this.props.activationExpiresAt === null ||
-            payload.exp * 1000 !== this.props.activationExpiresAt.getTime()
-        ) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
-        }
-
-        if (this.props.activationExpiresAt.getTime() <= Date.now()) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
-        }
-
-        if (!currentPasswordMatches) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT, {
-                audit: {
-                    action: DomainFailureAuditAction.USER_ACTIVATION_FAILED,
-                    reason: ActivateUserRejectionReason.INVALID_PASSWORD,
-                },
-            });
-        }
-
-        this.props.activationId = null;
-        this.props.activationExpiresAt = null;
-        this.props.activationRevocationVersion = null;
-        this.props.updatedAt = new Date();
-    }
-
-    /**
-     * Requests another activation email with a fresh proof, invalidating the previous link.
-     * Returns false for banned or already active accounts so the public caller can give the same
-     * response as for an unknown address without creating a delivery.
-     *
-     * @returns Whether an eligible pending account queued a delivery
-     * @throws {SystemException} When the account is deleted or pending metadata is incomplete
-     */
-    resendActivation(): boolean {
-        this.assertNotDeleted(this.resendActivation.name);
-
-        if (this.props.isBanned || this.props.activationId === null) {
-            return false;
-        }
-
-        if (this.props.activationExpiresAt === null || this.props.activationRevocationVersion === null) {
-            throw new SystemException('Pending user activation metadata is incomplete.', {
-                context: { class: User.name, method: this.resendActivation.name, id: this.id },
-            });
-        }
-
-        this.issueActivation();
-        this.props.updatedAt = new Date();
-        this.addActivationJob();
-
-        return true;
-    }
-
-    /**
-     * Updates the display name when it differs from the current state.
-     *
-     * @param name The new display name
-     * @returns Whether the name changed
-     * @throws {SystemException} When the account has been soft-deleted or is pending activation
-     */
-    updateName(name: string): boolean {
-        this.assertNotDeleted(this.updateName.name);
-        this.assertActivated(this.updateName.name);
-
-        if (name === this.props.name) {
-            return false;
-        }
-
-        this.props.name = name;
-        this.props.updatedAt = new Date();
-        this.addCacheInvalidationJob();
-
-        return true;
-    }
-
-    /**
      * Changes the password after accepting the verification results and revokes existing sessions.
      *
      * @param password Replacement password hash
@@ -447,7 +459,12 @@ export class User extends PrincipalAggregateRoot {
         this.assertActivated(this.changePassword.name);
 
         if (this.props.isBanned) {
-            throw new AccessDeniedException();
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: DomainFailureAuditAction.PASSWORD_CHANGE_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
         }
 
         this.assertPasswordChange(
@@ -479,7 +496,12 @@ export class User extends PrincipalAggregateRoot {
         this.assertActivated(this.requestEmailChange.name);
 
         if (this.props.isBanned) {
-            throw new AccessDeniedException();
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
         }
 
         this.assertCurrentPassword(currentPasswordMatches, DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED);
@@ -514,8 +536,8 @@ export class User extends PrincipalAggregateRoot {
      *
      * @param payload Identity and expiry claims after signature, type, and principal verification
      * @param notificationId Identity shared with the immutable old-address notification record
-     * @throws {SystemException} When the account is deleted, pending activation, differs from the token subject, or the notification ID is invalid
-     * @throws {AccessDeniedException} When the account is ineligible for confirmation
+     * @throws {SystemException} When the account is deleted, pending activation, or differs from the token subject
+     * @throws {AccessDeniedException} When the account is banned
      * @throws {InvalidInputException} When the request is revoked, mismatched, consumed, or expired
      */
     confirmEmailChange(
@@ -530,12 +552,6 @@ export class User extends PrincipalAggregateRoot {
         this.assertNotDeleted(this.confirmEmailChange.name);
         this.assertActivated(this.confirmEmailChange.name);
 
-        if (!isUUIDV7(notificationId)) {
-            throw new SystemException('Invalid email change notification ID.', {
-                context: { class: User.name, method: this.confirmEmailChange.name, id: this.id },
-            });
-        }
-
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
                 context: { class: User.name, method: this.confirmEmailChange.name, id: this.id, sub: payload.sub },
@@ -546,7 +562,7 @@ export class User extends PrincipalAggregateRoot {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
                     action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-                    reason: ConfirmEmailChangeRejectionReason.ACCOUNT_BANNED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
                 },
             });
         }
@@ -560,12 +576,9 @@ export class User extends PrincipalAggregateRoot {
             payload.emailRevocationVersion !== this.props.pendingEmailRevocationVersion ||
             this.props.pendingEmail === null ||
             this.props.pendingEmailExpiresAt === null ||
-            payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime()
+            payload.exp * 1000 !== this.props.pendingEmailExpiresAt.getTime() ||
+            this.props.pendingEmailExpiresAt.getTime() <= Date.now()
         ) {
-            throw new InvalidInputException(InvalidInputMessage.DEFAULT);
-        }
-
-        if (this.props.pendingEmailExpiresAt.getTime() <= Date.now()) {
             throw new InvalidInputException(InvalidInputMessage.DEFAULT);
         }
 
@@ -589,6 +602,38 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
+     * Revokes every active session and raises reason-specific follow-up jobs without banning the user.
+     *
+     * @param reason Why every session is being revoked
+     * @throws {SystemException} When the account is deleted or the revocation reason is unhandled
+     */
+    revokeSessions(reason: SessionRevocationReason) {
+        this.assertNotDeleted(this.revokeSessions.name);
+
+        this.revokeAllSessions();
+        this.props.updatedAt = new Date();
+
+        this.addSessionReconciliationJob();
+
+        switch (reason) {
+            case SessionRevocationReason.REFRESH_REUSE:
+                this.addJob([
+                    {
+                        deliveryId: randomUUID(),
+                        aggregateId: this.id,
+                        queueName: UserJobQueue.REFRESH_REUSE_NOTICE,
+                    },
+                ]);
+
+                break;
+            case SessionRevocationReason.LOGOUT_ALL:
+                break;
+            default:
+                assertSessionRevocationReasonExhausted(reason, this.revokeSessions.name);
+        }
+    }
+
+    /**
      * Replaces the user's permission set and queues cache and session reconciliation when it changes.
      *
      * @param permissions The complete set the user should hold afterwards
@@ -602,15 +647,15 @@ export class User extends PrincipalAggregateRoot {
         this.assertNotDeleted(this.changePermissions.name);
         this.assertAdministrableBy(actor);
 
-        const change = this.applyPermissions(permissions);
+        const changed = this.applyPermissions(permissions);
 
-        if (change) {
+        if (changed) {
             this.props.updatedAt = new Date();
             this.addCacheInvalidationJob();
             this.addSessionReconciliationJob();
         }
 
-        return change;
+        return changed;
     }
 
     /**
@@ -664,40 +709,8 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Revokes every active session and raises reason-specific follow-up jobs without banning the user.
-     *
-     * @param reason Why every session is being revoked
-     * @throws {SystemException} When the account has been soft-deleted
-     */
-    revokeSessions(reason: SessionRevocationReason) {
-        this.assertNotDeleted(this.revokeSessions.name);
-
-        this.revokeAllSessions();
-        this.props.updatedAt = new Date();
-        this.addSessionReconciliationJob();
-
-        switch (reason) {
-            case SessionRevocationReason.REFRESH_REUSE:
-                this.addJob([
-                    {
-                        deliveryId: randomUUID(),
-                        aggregateId: this.id,
-                        queueName: UserJobQueue.REFRESH_REUSE_NOTICE,
-                    },
-                ]);
-
-                break;
-            case SessionRevocationReason.LOGOUT_ALL:
-                break;
-            default:
-                assertSessionRevocationReasonExhausted(reason, this.revokeSessions.name);
-        }
-    }
-
-    /**
-     * Soft deletes an activated user and bumps the session version for a permanent cut-off, since
-     * a deleted account must never be reachable by any previously minted token. Self-service, so
-     * it takes no actor: the owner is the only principal that deletes a user account.
+     * Soft-deletes the activated account and queues cache and session reconciliation.
+     * Repeated deletion leaves state and jobs unchanged.
      *
      * @throws {SystemException} When a pending account reaches authenticated self-service
      */
@@ -711,7 +724,6 @@ export class User extends PrincipalAggregateRoot {
         const now = new Date();
 
         this.setDeletedAt(now);
-        this.props.isBanned = true;
         this.revokeAllSessions();
         this.props.updatedAt = now;
 
@@ -720,12 +732,14 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Rejects self-service mutations before email activation has completed.
+     * Rejects self-service mutations before email activation and narrows the consumed request identity.
      *
      * @param method The attempted aggregate method
      * @throws {SystemException} When an inactive user reaches authenticated self-service
      */
-    private assertActivated(method: string) {
+    private assertActivated(method: string): asserts this is this & {
+        readonly activationId: null;
+    } {
         if (this.props.activationId !== null) {
             throw new SystemException('An inactive user reached an authenticated self-service flow.', {
                 context: { class: User.name, method, id: this.id },
@@ -744,6 +758,8 @@ export class User extends PrincipalAggregateRoot {
 
     /**
      * Queues delivery for the current pending activation request.
+     *
+     * @throws {SystemException} When no pending activation request exists
      */
     private addActivationJob() {
         if (this.props.activationId === null) {
@@ -757,6 +773,21 @@ export class User extends PrincipalAggregateRoot {
                 deliveryId: this.props.activationId,
                 aggregateId: this.id,
                 queueName: UserJobQueue.ACTIVATION,
+            },
+        ]);
+    }
+
+    /**
+     * Queues initial avatar finalization with a stable identity retained across retries.
+     *
+     * @param avatarId Avatar identity shared with the delivery
+     */
+    private addAvatarFinalizeJob(avatarId: string) {
+        this.addJob([
+            {
+                deliveryId: avatarId,
+                aggregateId: this.id,
+                queueName: UserJobQueue.AVATAR_FINALIZE,
             },
         ]);
     }

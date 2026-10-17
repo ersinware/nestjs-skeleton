@@ -28,6 +28,7 @@ import {
     ResourceConflictException,
     SystemException,
     UnauthenticatedException,
+    UnauthenticatedMessage,
     isExceptionOfKind,
 } from 'src/shared/exception';
 
@@ -84,7 +85,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         } catch (error) {
             // Hide token-type details from verification failures behind the generic refresh refusal.
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new UnauthenticatedException();
+                throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, { cause: error });
             }
 
             throw error;
@@ -97,7 +98,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             identity = await this.identityReaderPort.getRefreshState(principalType, sub, payload.sessionVersion);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
-                throw new UnauthenticatedException();
+                throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, { cause: error });
             }
 
             throw error;

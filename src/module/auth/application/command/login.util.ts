@@ -101,7 +101,7 @@ export async function login(
             // against enumeration until rate limiting lands.
             await ports.hashingPort.simulateVerify(password);
 
-            throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND);
+            throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND, undefined, error);
         }
 
         throw error;
@@ -177,6 +177,7 @@ export async function login(
  * @param auditPort The port the failed attempt is recorded on
  * @param reason Why the attempt was rejected — the audit record's own vocabulary
  * @param targetId The rejected account's id, absent when no account matched the email
+ * @param cause The underlying failure when the refusal translates a caught error
  * @returns The exception the caller throws
  * @throws {DependencyUnavailableException} When the refusal audit cannot reach its database
  */
@@ -184,8 +185,11 @@ async function denyLogin(
     auditPort: IAuditPort,
     reason: AuthRejectionReason,
     targetId?: string,
+    cause?: unknown,
 ): Promise<UnauthenticatedException> {
     await auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, ...(targetId && { targetId }) });
 
-    return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
+    return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
+        ...(cause !== undefined && { cause }),
+    });
 }

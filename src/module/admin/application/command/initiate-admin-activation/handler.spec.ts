@@ -61,7 +61,7 @@ describe('InitiateAdminActivationCommandHandler', () => {
         });
         expect(generateUploadToken).toHaveBeenCalledWith(
             expect.objectContaining({
-                exp: now + Math.min(1800, remaining),
+                exp: now + Math.min(600, remaining),
                 sub: admin.id,
                 fileKey: buildAdminPendingAvatarKey(admin.id, admin.inviteId!),
             }),

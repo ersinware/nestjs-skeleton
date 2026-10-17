@@ -22,7 +22,7 @@ describe('TokenAdapter upload tokens', () => {
         JWT_REFRESH_SECRET: 'r'.repeat(32),
         JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
-        JWT_USER_ACTIVATION_SECRET: 'u'.repeat(32),
+        JWT_ACTIVATION_SECRET: 'u'.repeat(32),
         JWT_UPLOAD_SECRET: 'p'.repeat(32),
         JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
     };
@@ -109,7 +109,7 @@ describe('TokenAdapter upload tokens', () => {
             AuthTokenType.ACCESS,
             AuthTokenType.REFRESH,
             AuthTokenType.INVITE,
-            AuthTokenType.USER_ACTIVATION,
+            AuthTokenType.ACTIVATION,
             AuthTokenType.EMAIL_CONFIRM,
         ]) {
             const token = await jwt.signAsync(
@@ -134,7 +134,7 @@ describe('TokenAdapter upload tokens', () => {
             adapter.verifyRefreshToken.bind(adapter),
             adapter.verifyLogoutToken.bind(adapter),
             adapter.verifyInviteToken.bind(adapter),
-            adapter.verifyUserActivationToken.bind(adapter),
+            adapter.verifyActivationToken.bind(adapter),
             adapter.verifyEmailConfirmationToken.bind(adapter),
         ]) {
             await expect(verify(uploadProof)).rejects.toBeInstanceOf(UnauthenticatedException);
@@ -177,4 +177,61 @@ describe('TokenAdapter upload tokens', () => {
         vi.spyOn(jwt, 'verifyAsync').mockRejectedValueOnce(failure);
         await expect(adapter.verifyUploadToken('token', userClaims.purpose)).rejects.toBe(failure);
     });
+});
+
+describe('Upload revocation snapshots', () => {
+    const config = {
+        SESSION_ABSOLUTE_TTL_ADMIN: '8h',
+        SESSION_ABSOLUTE_TTL_USER: '7d',
+        JWT_ACCESS_SECRET: 'a'.repeat(32),
+        JWT_ACCESS_TTL: '15m',
+        JWT_REFRESH_SECRET: 'r'.repeat(32),
+        JWT_REFRESH_TTL: '1d',
+        JWT_INVITE_SECRET: 'i'.repeat(32),
+        JWT_ACTIVATION_SECRET: 'u'.repeat(32),
+        JWT_UPLOAD_SECRET: 'p'.repeat(32),
+        JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
+    };
+    const claims = {
+        sub: 'owner',
+        jti: '12345678-1234-4234-8234-123456789abc',
+        purpose: 'profile',
+        fileKey: 'pending/profile',
+        formHash: 'binding',
+        exp: Math.floor(Date.now() / 1000) + 600,
+        type: AuthTokenType.UPLOAD,
+    };
+
+    it('requires a snapshot only when requested and preserves zero', async () => {
+        const adapter = new TokenAdapter(new JwtService(), new ConfigService(config));
+        const without = await adapter.generateUploadToken(claims);
+        await expect(adapter.verifyUploadToken(without, claims.purpose)).resolves.not.toHaveProperty(
+            'revocationVersion',
+        );
+        await expect(adapter.verifyUploadToken(without, claims.purpose, true)).rejects.toBeInstanceOf(
+            UnauthenticatedException,
+        );
+        const withVersion = await adapter.generateUploadToken({ ...claims, revocationVersion: 0 });
+        await expect(adapter.verifyUploadToken(withVersion, claims.purpose, true)).resolves.toMatchObject({
+            revocationVersion: 0,
+        });
+    });
+
+    it.each([null, -1, 0.5, '0', Number.MAX_SAFE_INTEGER + 1])(
+        'rejects malformed signed snapshot %s with either verification mode',
+        async (revocationVersion) => {
+            const jwt = new JwtService();
+            const adapter = new TokenAdapter(jwt, new ConfigService(config));
+            const token = await jwt.signAsync(
+                { ...claims, revocationVersion },
+                { secret: config.JWT_UPLOAD_SECRET, algorithm: 'HS256', noTimestamp: true },
+            );
+            await expect(adapter.verifyUploadToken(token, claims.purpose)).rejects.toBeInstanceOf(
+                UnauthenticatedException,
+            );
+            await expect(adapter.verifyUploadToken(token, claims.purpose, true)).rejects.toBeInstanceOf(
+                UnauthenticatedException,
+            );
+        },
+    );
 });

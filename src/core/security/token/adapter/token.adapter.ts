@@ -11,13 +11,13 @@ import { JsonWebTokenError } from 'jsonwebtoken';
 import { ENV, parseTtlToSeconds } from 'src/core/config';
 import type { SessionIdentity } from 'src/core/security/session';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+import type { ActivationTokenPayload } from 'src/core/security/token/activation-token-payload.type';
 import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { ITokenPort, TokenPairWithSession } from 'src/core/security/token/port/token.port';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
-import type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
@@ -73,9 +73,9 @@ export class TokenAdapter implements ITokenPort {
     private readonly inviteSecret: string;
 
     /**
-     * Separate signing secret for user activation proofs.
+     * Separate signing secret for activation proofs.
      */
-    private readonly userActivationSecret: string;
+    private readonly activationSecret: string;
 
     /**
      * Separate signing secret for email change proofs.
@@ -107,7 +107,7 @@ export class TokenAdapter implements ITokenPort {
         this.accessSecret = configService.getOrThrow<string>(ENV.JWT_ACCESS_SECRET);
         this.refreshSecret = configService.getOrThrow<string>(ENV.JWT_REFRESH_SECRET);
         this.inviteSecret = configService.getOrThrow<string>(ENV.JWT_INVITE_SECRET);
-        this.userActivationSecret = configService.getOrThrow<string>(ENV.JWT_USER_ACTIVATION_SECRET);
+        this.activationSecret = configService.getOrThrow<string>(ENV.JWT_ACTIVATION_SECRET);
         this.emailConfirmationSecret = configService.getOrThrow<string>(ENV.JWT_EMAIL_CONFIRM_SECRET);
         this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
     }
@@ -203,18 +203,18 @@ export class TokenAdapter implements ITokenPort {
      * Reproduces the persisted activation proof without extending its lifetime.
      *
      * @param payload Fixed claims loaded from the pending account
-     * @returns Signed user activation token
+     * @returns Signed activation token
      */
-    async generateUserActivationToken(payload: Omit<UserActivationTokenPayload, 'type'>): Promise<string> {
+    async generateActivationToken(payload: Omit<ActivationTokenPayload, 'type'>): Promise<string> {
         return this.jwtService.signAsync(
             {
                 sub: payload.sub,
                 jti: payload.jti,
                 activationRevocationVersion: payload.activationRevocationVersion,
                 exp: payload.exp,
-                type: AuthTokenType.USER_ACTIVATION,
+                type: AuthTokenType.ACTIVATION,
             },
-            { secret: this.userActivationSecret, algorithm: 'HS256', noTimestamp: true },
+            { secret: this.activationSecret, algorithm: 'HS256', noTimestamp: true },
         );
     }
 
@@ -252,6 +252,7 @@ export class TokenAdapter implements ITokenPort {
                 purpose: payload.purpose,
                 fileKey: payload.fileKey,
                 formHash: payload.formHash,
+                ...(payload.revocationVersion !== undefined && { revocationVersion: payload.revocationVersion }),
                 exp: payload.exp,
                 type: AuthTokenType.UPLOAD,
             },
@@ -340,16 +341,16 @@ export class TokenAdapter implements ITokenPort {
     }
 
     /**
-     * Verifies a user activation token's signature, expiry, type, and revocation version.
+     * Verifies an activation token's signature, expiry, type, and revocation version.
      *
-     * @param token The JWT user activation token string
-     * @returns The decoded user activation token payload
+     * @param token The JWT activation token string
+     * @returns The decoded activation token payload
      */
-    async verifyUserActivationToken(token: string): Promise<UserActivationTokenPayload> {
-        const payload = await this.verifyToken<UserActivationTokenPayload>(
+    async verifyActivationToken(token: string): Promise<ActivationTokenPayload> {
+        const payload = await this.verifyToken<ActivationTokenPayload>(
             token,
-            this.userActivationSecret,
-            AuthTokenType.USER_ACTIVATION,
+            this.activationSecret,
+            AuthTokenType.ACTIVATION,
         );
 
         if (
@@ -403,9 +404,42 @@ export class TokenAdapter implements ITokenPort {
      *
      * @param token The JWT upload token string.
      * @param expectedPurpose Server-selected purpose from the owning workflow.
+     * @param requireRevocationVersion Requires a valid revocation snapshot
      * @returns Verified upload claims.
      */
-    async verifyUploadToken(token: string, expectedPurpose: string): Promise<UploadTokenPayload> {
+    async verifyUploadToken(
+        token: string,
+        expectedPurpose: string,
+        requireRevocationVersion: true,
+    ): Promise<UploadTokenPayload & Required<Pick<UploadTokenPayload, 'revocationVersion'>>>;
+
+    /**
+     * Verifies upload claims with an optional revocation requirement.
+     *
+     * @param token The JWT upload token string
+     * @param expectedPurpose Server-selected upload purpose
+     * @param requireRevocationVersion Whether a valid revocation snapshot is required
+     * @returns Verified upload claims
+     */
+    async verifyUploadToken(
+        token: string,
+        expectedPurpose: string,
+        requireRevocationVersion?: boolean,
+    ): Promise<UploadTokenPayload>;
+
+    /**
+     * Checks signed claim structure; current account state remains the caller's responsibility.
+     *
+     * @param token The JWT upload token string
+     * @param expectedPurpose Server-selected upload purpose
+     * @param requireRevocationVersion Whether a valid revocation snapshot is required; defaults to false
+     * @returns Verified upload claims
+     */
+    async verifyUploadToken(
+        token: string,
+        expectedPurpose: string,
+        requireRevocationVersion = false,
+    ): Promise<UploadTokenPayload> {
         const payload = await this.verifyToken<UploadTokenPayload>(token, this.uploadSecret, AuthTokenType.UPLOAD);
 
         if (
@@ -418,6 +452,9 @@ export class TokenAdapter implements ITokenPort {
             payload.purpose !== expectedPurpose ||
             typeof payload.fileKey !== 'string' ||
             payload.fileKey.length === 0 ||
+            (requireRevocationVersion && payload.revocationVersion === undefined) ||
+            (payload.revocationVersion !== undefined &&
+                (!Number.isSafeInteger(payload.revocationVersion) || payload.revocationVersion < 0)) ||
             typeof payload.formHash !== 'string' ||
             payload.formHash.length === 0 ||
             !Number.isSafeInteger(payload.exp) ||
@@ -477,7 +514,7 @@ export class TokenAdapter implements ITokenPort {
      */
     private assertTokenType(actual: AuthTokenType, expected: AuthTokenType) {
         if (actual !== expected) {
-            throw new UnauthenticatedException(`Token type mismatch: expected '${expected}'.`);
+            throw new UnauthenticatedException();
         }
     }
 
