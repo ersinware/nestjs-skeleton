@@ -16,7 +16,7 @@ export const ADMIN_ACTIVATION_UPLOAD_URL_TTL_SECONDS = 300;
 /**
  * Time allowed to complete activation with the uploaded avatar, in seconds.
  */
-export const ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS = 1800;
+export const ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS = 600;
 
 /**
  * Normalized activation fields bound to one upload proof.
@@ -25,7 +25,7 @@ type AdminActivationForm = {
     /**
      * Account identified by the verified invitation.
      */
-    readonly adminId: string;
+    readonly id: string;
 
     /**
      * Persisted invitation identity.
@@ -56,7 +56,7 @@ export function createAdminActivationFormHash(form: AdminActivationForm, uploadS
         .update(
             JSON.stringify([
                 AdminUploadPurpose.ACTIVATION,
-                form.adminId,
+                form.id,
                 form.inviteId,
                 form.password,
                 form.avatar.sizeBytes,

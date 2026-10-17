@@ -7,8 +7,9 @@ import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
     IsDate,
-    IsEnum,
+    IsNotEmpty,
     IsOptional,
+    IsString,
     Validate,
     ValidatorConstraint,
     type ValidationArguments,
@@ -16,7 +17,6 @@ import {
 } from 'class-validator';
 import { isUUID, QueryPaginationDto } from 'src/core/http';
 import { AuditAction } from 'src/core/observability/audit';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 
 /**
  * Rejects a `from`/`to` pair whose lower bound lies after the upper bound. No single-field rule can
@@ -63,15 +63,16 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
      * The action to restrict the listing to.
      */
     @IsOptional()
-    @IsEnum({ ...AuditAction, ...DomainFailureAuditAction }, { message: 'The action must be a known audit action.' })
+    @IsString({ message: 'The action must be a string.' })
+    @IsNotEmpty({ message: 'The action cannot be empty.' })
     @ApiProperty({
         type: String,
-        enum: { ...AuditAction, ...DomainFailureAuditAction },
         required: false,
+        minLength: 1,
         description: 'The audit action to restrict the listing to.',
         example: AuditAction.LOGIN_FAILED,
     })
-    readonly action?: AuditAction | DomainFailureAuditAction;
+    readonly action?: string;
 
     /**
      * The actor whose records to list.

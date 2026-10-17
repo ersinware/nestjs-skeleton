@@ -26,6 +26,8 @@ import {
 } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
+import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     InvalidInputException,
@@ -86,20 +88,17 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
             payload = await this.tokenPort.verifyInviteToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The invitation is invalid or has expired.');
+                throw new InvalidInputException('The invitation is invalid or has expired.', { cause: error });
             }
 
             throw error;
         }
 
-        const admin = await this.adminWriterPort.load(payload.sub);
-
-        if (!admin) {
-            throw new ResourceNotFoundException();
-        }
+        const { sub, jti, exp } = payload,
+            admin: Admin = await this.loadAdmin(sub);
 
         try {
-            admin.validateActivationInvitation(payload);
+            admin.assertActivationInvitationValid(payload);
         } catch (error) {
             if (isExceptionWithAudit(error)) {
                 await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
@@ -108,14 +107,14 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
             throw error;
         }
 
-        const fileKey = buildAdminPendingAvatarKey(payload.sub, payload.jti),
+        const fileKey = buildAdminPendingAvatarKey(sub, jti),
             now = Math.floor(Date.now() / 1000),
             plan = await this.storagePort.initiateUpload({
                 key: fileKey,
                 sizeBytes: command.avatar.sizeBytes,
                 contentType: command.avatar.contentType,
-                cache: { visibility: 'no-store' },
-                deadline: new Date(Math.min(now + ADMIN_ACTIVATION_UPLOAD_URL_TTL_SECONDS, payload.exp) * 1000),
+                cache: AVATAR_PENDING_CACHE_POLICY,
+                deadline: new Date(Math.min(now + ADMIN_ACTIVATION_UPLOAD_URL_TTL_SECONDS, exp) * 1000),
             });
 
         if (plan.mode !== 'single') {
@@ -128,21 +127,39 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
             mode: plan.mode,
             request: plan.request,
             uploadToken: await this.tokenPort.generateUploadToken({
-                sub: payload.sub,
+                sub,
                 jti: randomUUID(),
                 purpose: AdminUploadPurpose.ACTIVATION,
                 fileKey,
                 formHash: createAdminActivationFormHash(
                     {
-                        adminId: payload.sub,
-                        inviteId: payload.jti,
+                        id: sub,
+                        inviteId: jti,
                         password: command.password,
                         avatar: command.avatar,
                     },
                     this.uploadSecret,
                 ),
-                exp: Math.min(now + ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS, payload.exp),
+                exp: Math.min(now + ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS, exp),
             }),
         };
+    }
+
+    /**
+     * Loads an existing admin so invitation assertions receive a non-null account.
+     *
+     * @param id Account identity from the verified invitation
+     * @returns The existing admin aggregate
+     * @throws {ResourceNotFoundException} When the account is missing or deleted
+     * @throws {DependencyUnavailableException} When the database is unavailable
+     */
+    private async loadAdmin(id: string): Promise<Admin> {
+        const admin = await this.adminWriterPort.load(id);
+
+        if (!admin) {
+            throw new ResourceNotFoundException();
+        }
+
+        return admin;
     }
 }

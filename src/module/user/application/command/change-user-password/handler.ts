@@ -66,14 +66,15 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     async execute(command: ChangeUserPasswordCommand): Promise<ChangeUserPasswordResult> {
-        const { id, newPassword } = command,
+        const { id } = command,
             user = await this.userWriterPort.load(id);
 
         if (!user) {
             throw new ResourceNotFoundException();
         }
 
-        const hashedPassword = user.password;
+        const { newPassword } = command,
+            hashedPassword = user.password;
 
         try {
             user.changePassword(

@@ -43,12 +43,12 @@ import { SessionOutcome } from 'src/core/security/session';
 import { ActivateUserCommand } from 'src/module/user/application/command/activate-user/command';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
-import { ChangeUserPermissionsCommand } from 'src/module/user/application/command/change-user-permissions/command';
 import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/command/confirm-user-email-change/command';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
+import { InitiateUserEmailChangeCommand } from 'src/module/user/application/command/initiate-user-email-change/command';
 import { InitiateUserRegistrationCommand } from 'src/module/user/application/command/initiate-user-registration/command';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
-import { RequestUserEmailChangeCommand } from 'src/module/user/application/command/request-user-email-change/command';
+import { ReplaceUserPermissionsCommand } from 'src/module/user/application/command/replace-user-permissions/command';
 import { ResendUserActivationCommand } from 'src/module/user/application/command/resend-user-activation/command';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
@@ -58,12 +58,12 @@ import { ListUserPermissionCatalogQuery } from 'src/module/user/application/quer
 import { ListUsersQuery } from 'src/module/user/application/query/list-users/query';
 import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-user-password.dto';
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
-import { PostUserActivateDto } from 'src/module/user/presentation/dto/post-user-activate.dto';
 import { PostUserActivationResendDto } from 'src/module/user/presentation/dto/post-user-activation-resend.dto';
-import { PostUserEmailChangeDto } from 'src/module/user/presentation/dto/post-user-email-change.dto';
-import { PostUserEmailConfirmDto } from 'src/module/user/presentation/dto/post-user-email-confirm.dto';
-import { PostUserInitiateDto } from 'src/module/user/presentation/dto/post-user-initiate.dto';
-import { PostUserDto } from 'src/module/user/presentation/dto/post-user.dto';
+import { PostUserActivationDto } from 'src/module/user/presentation/dto/post-user-activation.dto';
+import { PostUserEmailChangeConfirmDto } from 'src/module/user/presentation/dto/post-user-email-change-confirm.dto';
+import { PostUserEmailChangeInitiateDto } from 'src/module/user/presentation/dto/post-user-email-change-initiate.dto';
+import { PostUserRegistrationInitiateDto } from 'src/module/user/presentation/dto/post-user-registration-initiate.dto';
+import { PostUserRegistrationDto } from 'src/module/user/presentation/dto/post-user-registration.dto';
 import { PutUserPermissionsDto } from 'src/module/user/presentation/dto/put-user-permissions.dto';
 import {
     ResponseUserActivationLoginRequiredDto,
@@ -220,7 +220,7 @@ export class UserController {
      *
      * @returns The grantable user catalog
      */
-    @Get('permission')
+    @Get('permissions')
     @Permissions(Permission.USER_PERMISSION_MANAGE)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiBearerAuth()
@@ -244,6 +244,7 @@ export class UserController {
      * @param principal The verified principal of the current request
      * @param patchUserDto The required display name to update
      * @returns The updated, serialized profile of the current user
+     * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When persistence rejects a concurrent modification
@@ -275,10 +276,10 @@ export class UserController {
     }
 
     /**
-     * Requests a confirmation link without changing the current address or sessions.
+     * Initiates email verification without changing the current address or sessions.
      *
      * @param principal The verified principal requesting the change
-     * @param postUserEmailChangeDto The new address and current password proof
+     * @param postUserEmailChangeInitiateDto The new address and current password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
      * @throws {SystemException} When a deleted account reaches this authenticated flow, or the queue does not accept every required job
      * @throws {InvalidInputException} When the password is wrong or the address is unchanged
@@ -286,12 +287,12 @@ export class UserController {
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
-    @Post('me/email')
+    @Post('me/email/initiate')
     @PrincipalOnly(PrincipalType.USER)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'Request current user email change',
+        summary: 'Initiate current user email change',
         description:
             'Verifies the current password and queues a confirmation link to the new address. Each request replaces the previous link, even for the same address; the current email and sessions remain unchanged.',
     })
@@ -303,15 +304,15 @@ export class UserController {
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
-    async requestEmailChangeMe(
+    async initiateEmailChangeMe(
         @CurrentPrincipal() principal: Principal,
-        @Body() postUserEmailChangeDto: PostUserEmailChangeDto,
+        @Body() postUserEmailChangeInitiateDto: PostUserEmailChangeInitiateDto,
     ) {
         await this.commandPipeline.execute(
-            new RequestUserEmailChangeCommand(
+            new InitiateUserEmailChangeCommand(
                 principal.id,
-                postUserEmailChangeDto.newEmail,
-                postUserEmailChangeDto.currentPassword,
+                postUserEmailChangeInitiateDto.newEmail,
+                postUserEmailChangeInitiateDto.currentPassword,
             ),
         );
     }
@@ -320,7 +321,7 @@ export class UserController {
      * Consumes emailed proof for the authenticated account and replaces its sessions.
      *
      * @param principal The verified principal confirming the change
-     * @param postUserEmailConfirmDto The token delivered to the pending address
+     * @param postUserEmailChangeConfirmDto The token delivered to the pending address
      * @returns The committed email change with replacement tokens or a sign-in requirement
      * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
@@ -364,10 +365,10 @@ export class UserController {
     @ApiDefaultResourceConflictResponse()
     async confirmEmailChangeMe(
         @CurrentPrincipal() principal: Principal,
-        @Body() postUserEmailConfirmDto: PostUserEmailConfirmDto,
+        @Body() postUserEmailChangeConfirmDto: PostUserEmailChangeConfirmDto,
     ): Promise<ResponseUserEmailChangeSessionDto | ResponseUserEmailChangeLoginRequiredDto> {
         const result = await this.commandPipeline.execute(
-            new ConfirmUserEmailChangeCommand(principal.id, postUserEmailConfirmDto.token),
+            new ConfirmUserEmailChangeCommand(principal.id, postUserEmailChangeConfirmDto.token),
         );
 
         return result.session === SessionOutcome.CREATED
@@ -444,14 +445,14 @@ export class UserController {
     /**
      * Prepares the required avatar upload without persisting account state.
      *
-     * @param postUserInitiateDto Normalized registration form and avatar descriptor
+     * @param postUserRegistrationInitiateDto Normalized registration form and avatar descriptor
      * @returns One signed PUT request and the proof accepted by registration
      * @throws {ResourceConflictException} When the email address is already in use
      * @throws {DependencyUnavailableException} When the primary database or storage is unavailable
      * @throws {SystemException} When storage authorization fails or the plan violates the avatar contract
      */
     @Public()
-    @Post('initiate')
+    @Post('registration/initiate')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Prepare user registration',
@@ -464,15 +465,17 @@ export class UserController {
     })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
-    async initiate(@Body() postUserInitiateDto: PostUserInitiateDto): Promise<ResponseSingleUploadInitiateDto> {
+    async initiateRegistration(
+        @Body() postUserRegistrationInitiateDto: PostUserRegistrationInitiateDto,
+    ): Promise<ResponseSingleUploadInitiateDto> {
         return plainToInstance(
             ResponseSingleUploadInitiateDto,
             await this.commandPipeline.execute(
                 new InitiateUserRegistrationCommand(
-                    postUserInitiateDto.email,
-                    postUserInitiateDto.name,
-                    postUserInitiateDto.password,
-                    postUserInitiateDto.avatar,
+                    postUserRegistrationInitiateDto.email,
+                    postUserRegistrationInitiateDto.name,
+                    postUserRegistrationInitiateDto.password,
+                    postUserRegistrationInitiateDto.avatar,
                 ),
             ),
         );
@@ -482,33 +485,31 @@ export class UserController {
      * Registers a pending user account with its uploaded avatar and queues activation. The 204 response confirms
      * the request was committed, not that the email was delivered; sign-in requires activation.
      *
-     * @param postUserDto The registration payload
-     * @throws {UnauthenticatedException} When the upload proof is invalid or expired
-     * @throws {InvalidInputException} When the form or uploaded avatar differs from the proof
+     * @param postUserRegistrationDto The registration payload
+     * @throws {InvalidInputException} When the upload proof is invalid or expired, or the form or uploaded avatar differs from the proof
      * @throws {ResourceConflictException} When the identity or email already exists
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
      * @throws {SystemException} When storage authorization fails or the queue does not accept every job
      */
     @Public()
-    @Post()
+    @Post('registration/complete')
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Register user',
         description:
-            'Verifies the registration proof, matching form, and uploaded avatar, then commits a pending account with activation and avatar move jobs. Sign-in requires email activation. An existing identity or email returns 409.',
+            'Verifies the registration proof, matching form, and uploaded avatar, then commits a pending account with activation and avatar finalization jobs. Sign-in requires email activation. An existing identity or email returns 409.',
     })
     @ApiNoContentResponse({ description: 'Pending account created, avatar attached, and delivery requests queued.' })
     @ApiDefaultInvalidRequestResponse()
-    @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceConflictResponse()
-    async register(@Body() postUserDto: PostUserDto) {
+    async register(@Body() postUserRegistrationDto: PostUserRegistrationDto) {
         await this.commandPipeline.execute(
             new RegisterUserCommand(
-                postUserDto.email,
-                postUserDto.name,
-                postUserDto.password,
-                postUserDto.avatar,
-                postUserDto.uploadToken,
+                postUserRegistrationDto.email,
+                postUserRegistrationDto.name,
+                postUserRegistrationDto.password,
+                postUserRegistrationDto.avatar,
+                postUserRegistrationDto.uploadToken,
             ),
         );
     }
@@ -516,7 +517,7 @@ export class UserController {
     /**
      * Consumes emailed proof and the current password to activate a pending account.
      *
-     * @param postUserActivateDto The activation token and existing password
+     * @param postUserActivationDto The activation token and existing password
      * @returns Session credentials or an instruction to sign in after activation
      * @throws {InvalidInputException} When the proof or password is invalid or expired
      * @throws {AccessDeniedException} When the account is banned
@@ -526,7 +527,7 @@ export class UserController {
      * @throws {DependencyUnavailableException} When required database or audit persistence is unavailable
      */
     @Public()
-    @Post('activate')
+    @Post('activation/complete')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Activate user account',
@@ -557,10 +558,10 @@ export class UserController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async activate(
-        @Body() postUserActivateDto: PostUserActivateDto,
+        @Body() postUserActivationDto: PostUserActivationDto,
     ): Promise<ResponseUserActivationSessionDto | ResponseUserActivationLoginRequiredDto> {
         const result = await this.commandPipeline.execute(
-            new ActivateUserCommand(postUserActivateDto.token, postUserActivateDto.password),
+            new ActivateUserCommand(postUserActivationDto.token, postUserActivationDto.password),
         );
 
         return result.session === SessionOutcome.CREATED
@@ -661,7 +662,7 @@ export class UserController {
      * @throws {ResourceConflictException} When persistence rejects a concurrent modification
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
-    @Put(`${ROUTE_PARAM_ID}/permission`)
+    @Put(`${ROUTE_PARAM_ID}/permissions`)
     @Permissions(Permission.USER_PERMISSION_MANAGE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -683,7 +684,7 @@ export class UserController {
         @Body() putUserPermissionsDto: PutUserPermissionsDto,
     ) {
         await this.commandPipeline.execute(
-            new ChangeUserPermissionsCommand(params.id, putUserPermissionsDto.permissions, principal),
+            new ReplaceUserPermissionsCommand(params.id, putUserPermissionsDto.permissions, principal),
         );
     }
 }

@@ -112,10 +112,10 @@ export class AdminReaderAdapter
      * Reads the current details required to invite an eligible pending admin.
      *
      * @param id The unique identifier of the target admin
-     * @param deliveryId The original invitation delivery identity
+     * @param inviteId The original invitation identity
      * @returns The invitation details, or null when delivery is no longer allowed
      */
-    async getInviteRecipient(id: string, deliveryId: string): Promise<GetAdminInviteRecipientResult | null> {
+    async getInviteRecipient(id: string, inviteId: string): Promise<GetAdminInviteRecipientResult | null> {
         try {
             return ((
                 await this.database
@@ -136,7 +136,7 @@ export class AdminReaderAdapter
                             isNotNull(admin.inviteId),
                             isNotNull(admin.inviteExpiresAt),
                             isNotNull(admin.inviteRevocationVersion),
-                            eq(admin.inviteId, deliveryId),
+                            eq(admin.inviteId, inviteId),
                             gt(admin.inviteExpiresAt, new Date()),
                             eq(admin.inviteRevocationVersion, admin.revocationVersion),
                         ),

@@ -143,7 +143,7 @@ export enum AuditAction {
     ADMIN_AVATAR_FINALIZED = 'ADMIN_AVATAR_FINALIZED',
 
     /**
-     * A change to an admin's display name.
+     * A change to an admin's profile name or avatar.
      */
     ADMIN_UPDATED = 'ADMIN_UPDATED',
 

@@ -35,6 +35,11 @@ export type UploadTokenPayload = {
     readonly formHash: string;
 
     /**
+     * Account revocation snapshot, supplied when the workflow invalidates proofs on revocation.
+     */
+    readonly revocationVersion?: number;
+
+    /**
      * Fixed proof expiry in Unix seconds.
      */
     readonly exp: number;

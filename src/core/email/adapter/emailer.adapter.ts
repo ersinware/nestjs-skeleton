@@ -16,7 +16,14 @@ import { SystemException } from 'src/shared/exception';
  */
 @Injectable()
 export class EmailerAdapter implements IEmailerPort {
+    /**
+     * Provider client used to deliver transactional emails.
+     */
     private readonly resend: Resend;
+
+    /**
+     * Configured sender address used for delivery and idempotency keys.
+     */
     private readonly from: string;
 
     /**

@@ -11,8 +11,8 @@ import {
 } from 'src/core/job-queue';
 import type { IGetDeadLetterJobPort } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/port';
 import type { GetDeadLetterJobResult } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
-import type { IGetDeadLetterRedrivePort } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/port';
-import type { GetDeadLetterRedriveResult } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive/query';
+import type { IGetDeadLetterRedriveStatusPort } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/port';
+import type { GetDeadLetterRedriveStatusResult } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/query';
 import type { IListDeadLetterJobsPort } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/port';
 import type { ListDeadLetterJobsResult } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/query';
 import type { PaginationParams } from 'src/shared/pagination';
@@ -27,14 +27,14 @@ const STATUS_BY_STATE = {
     completed: 'COMPLETED',
     failed: 'FAILED',
     cancelled: 'CANCELLED',
-} as const satisfies Record<DeadLetterRedriveOperation['state'], GetDeadLetterRedriveResult['status']>;
+} as const satisfies Record<DeadLetterRedriveOperation['state'], GetDeadLetterRedriveStatusResult['status']>;
 
 /**
  * Keeps pg-boss access behind the core port while separating the module's query contracts.
  */
 @Injectable()
 export class JobQueueOperationsReaderAdapter
-    implements IListDeadLetterJobsPort, IGetDeadLetterJobPort, IGetDeadLetterRedrivePort
+    implements IListDeadLetterJobsPort, IGetDeadLetterJobPort, IGetDeadLetterRedriveStatusPort
 {
     /**
      * Initializes the reader with the shared dead-letter read port.
@@ -71,7 +71,7 @@ export class JobQueueOperationsReaderAdapter
      * @param operationId Redrive operation identifier
      * @returns Sanitized operation status or null when absent
      */
-    async getRedrive(operationId: string): Promise<GetDeadLetterRedriveResult | null> {
+    async getRedriveStatus(operationId: string): Promise<GetDeadLetterRedriveStatusResult | null> {
         const operation = await this.port.getDeadLetterRedrive(operationId);
 
         if (!operation) {

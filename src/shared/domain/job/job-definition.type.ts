@@ -4,6 +4,17 @@
  */
 
 /**
+ * JSON-compatible values preserved across durable job serialization.
+ */
+type JobPayloadValue =
+    | string
+    | number
+    | boolean
+    | null
+    | readonly JobPayloadValue[]
+    | { readonly [key: string]: JobPayloadValue };
+
+/**
  * Durable work routed to a named queue.
  */
 export type JobDefinition = {
@@ -21,4 +32,9 @@ export type JobDefinition = {
      * Stable destination queue.
      */
     readonly queueName: string;
+
+    /**
+     * Optional delivery facts that cannot be recovered from authoritative state.
+     */
+    readonly payload?: Readonly<Record<string, JobPayloadValue>>;
 };

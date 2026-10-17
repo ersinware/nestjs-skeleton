@@ -3,7 +3,9 @@
 ### Authentication & Authorization
 
 - JWT signing disables automatic `iat`; signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
+- Invalid access/refresh credentials remain unauthenticated; handlers translate invalid invitation, activation, email-confirmation, and upload proofs to invalid input, preserving `cause`. Catch only `UNAUTHENTICATED`; propagate other failures. Logout keeps its no-op semantics below.
 - Upload tokens reuse the token port/adapter; domains own `formHash` computation/verification and expiry. Credential-containing bindings use a server-held key; never embed raw forms, credentials, or unkeyed password digests.
+- Aggregates enforce revocation by comparing the signed proof snapshot with current account state; keep this rule out of form hashes and never substitute the current version for the snapshot.
 - Each bounded context owns its upload-purpose enum with context-distinct values; use the same value for signing and verification. Core accepts strings; never take `expectedPurpose` from clients.
 - Global guards run authentication before authorization; authentication verifies access JWTs, stable session liveness, and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal.
 - Authorize by permissions, never roles. `src/shared/domain/principal/` owns static `Permission` values and exhaustive `PERMISSION_HOLDER`; holder mismatches throw `InvalidInputException`. Use `<context>:<resource>:<action>` ([Administration](security-and-sessions.md#administration) exceptions); changing persisted values requires migration.
@@ -18,11 +20,12 @@
 
 ### Administration
 
+- User account deletion is owner-only; admins cannot delete user accounts.
 - Administrative mutators enforce `assertAdministrableBy` before changes/no-op returns. The shared principal guard requires an ADMIN actor (`SystemException` otherwise), naming no concrete permission; `Admin` extends it with `super` first. `User` adds no administrative hierarchy; users may hold USER-assigned permissions ([Authentication & Authorization](security-and-sessions.md#authentication--authorization)).
 - Operation permissions remain required ([Authentication & Authorization](security-and-sessions.md#authentication--authorization)); tiers never grant them implicitly. Admin administrative mutations forbid self/root targets; manager targets require root. Self/root/tier refusals throw `AccessDeniedException` with domain audit action/reason ([Exceptions](exceptions.md#exceptions)). Ordinary targets require no actor tier beyond operation permissions. Self-service profile/password changes are separate.
 - ROOT = `admin:root`; MANAGER = `admin:permission:manage`; others are ordinary. Only root may appoint/dismiss managers; root is never API-granted. The partial unique index permits at most one root.
 - Bootstrap is unimplemented: provision the first root via SQL with admin-holdable permissions. Transfer root only through an atomic SQL operation preserving permission/session/audit rules; the root marker alone grants no operation permissions.
-- `PUT …/:id/permission` replaces the full permission set. Unchanged sets cause no writes/jobs/audit/session updates; real changes audit `granted`/`revoked` ([Audit](observability.md#audit)) and retire access tokens only ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)).
+- `PUT …/:id/permissions` replaces the full permission set. Unchanged sets cause no writes/jobs/audit/session updates; real changes audit `granted`/`revoked` ([Audit](observability.md#audit)) and retire access tokens only ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)).
 
 ### Session Versions & Failure Semantics
 
@@ -42,8 +45,9 @@
 - Public user registration must commit a pending account, its first activation job, and `USER_REGISTERED` audit atomically; never expose an unverified active-account creation path.
 - User activation verifies the existing password without replacing it. The aggregate rechecks eligibility, expiry, and exact proof binding to the stored request identity, deadline, and revocation snapshot; the snapshot must match current revocation. Consume proof and audit in one optimistic-lock commit without advancing session counters; replay must never open another session.
 - Only after user activation commits, attempt session creation. Rejected session registration or recognized session unavailability returns `login_required` without tokens; unexpected errors propagate. Neither undoes activation; clients recover through login, never proof replay.
-- Audit user activation refusals for banned accounts or incorrect current passwords; invalid/expired proofs alone require no refusal audit. Preserve refusal kinds ([Exceptions](exceptions.md#exceptions)).
-- Public user-activation resend returns 204 for eligible, missing, deleted, banned, and active accounts to prevent enumeration; audit only committed requests. A three-day expiry leaves the account pending. Each accepted resend replaces the proof, invalidates earlier links, starts a new three-day deadline, and enqueues delivery; propagate concurrency and dependency failures.
+- Audit user activation refusals for incorrect current passwords; invalid/expired proofs alone require no refusal audit. Preserve refusal kinds ([Exceptions](exceptions.md#exceptions)).
+- Public user-activation resend returns 204 for eligible, missing, deleted, banned, and active accounts to prevent enumeration; audit committed requests. A three-day expiry leaves the account pending. Each accepted resend replaces the proof, invalidates earlier links, starts a new three-day deadline, and enqueues delivery; propagate concurrency and dependency failures.
+- Audit workflow refusals caused by bans; keep public anti-enumeration responses and delivery/no-op skips unchanged.
 - Password-change and email-change-request refusals audit incorrect current-password proof; unchanged proposed passwords are ordinary invalid input without audit.
 - Banned accounts cannot change passwords (403). A stale guard mirror must not permit fresh token issuance. Persist the password before issuing replacement tokens at the committed version; await atomic Redis version synchronization/session opening before returning them.
 - Password-change and email-confirmation outcomes return 200: `session: created` includes fresh tokens; recognized session unavailability or a newer Redis version yields `session: login_required` without tokens, instructing clients to discard old tokens and sign in again. Session failure does not undo the committed change; unexpected errors propagate.
@@ -58,7 +62,7 @@
 - `inviteRevocationVersion` captures the account's `revocationVersion` at issuance; never substitute the current version on delivery. Re-invite calls `revokeAllSessions` before replacing the invitation; pending accounts need no Redis sync. Persist state, job, and audit atomically ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Senders re-read primary state and skip mismatched jobs, expired invitations, ineligible accounts, or changed revocation versions. Sign fixed `sub`, `jti`, `inviteRevocationVersion`, `exp`, and `type` in stable order. Repeated emails must carry the same JWT and deadline; keep the HS256 key and serialization identical across workers. Key rotation invalidates links and requires re-invitation.
 - Delivery checks and upload proofs do not authorize activation: either can outlive account eligibility. Activation must independently recheck account eligibility, exact invitation binding, and expiry; save under the loaded optimistic version without advancing session counters. Cap upload URL/proof lifetimes at invitation expiry.
-- Audit only banned-account activation refusals; preserve refusal kinds instead of flattening them into one invalid-input response ([Exceptions](exceptions.md#exceptions)).
+- Invalid invitation proofs alone require no refusal audit; preserve refusal kinds instead of flattening them into one invalid-input response ([Exceptions](exceptions.md#exceptions)).
 
 ### Email Change State
 
@@ -66,7 +70,7 @@
 - Confirmation pages must not mutate on GET or expose tokens to third-party scripts/analytics. Use `Referrer-Policy: no-referrer` and remove the token from the address bar after capture.
 - Aggregates own pending request identity, target, expiry, and revocation snapshot; persist no JWT or issuance time. New requests replace prior requests, even for the same target; pending addresses are not reserved.
 - Email confirmation requires an authenticated session whose account ID and principal kind match the proof; never make the endpoint public. Delivery retries must preserve the JWT and deadline; signing-key rotation requires a new request.
-- Audit confirmation refusals for verified-proof ownership mismatches and banned accounts; invalid/expired proofs or pending requests alone require no refusal audit. Ownership-mismatch evidence identifies the proof owner with `targetId` and `detail.targetPrincipalType`; equal IDs across principal kinds are distinct accounts. Preserve refusal kinds ([Exceptions](exceptions.md#exceptions)).
+- Audit confirmation refusals for verified-proof ownership mismatches; invalid/expired proofs or pending requests alone require no refusal audit. Ownership-mismatch evidence identifies the proof owner with `targetId` and `detail.targetPrincipalType`; equal IDs across principal kinds are distinct accounts. Preserve refusal kinds ([Exceptions](exceptions.md#exceptions)).
 - Ineligible confirmation deliveries complete without sending or refusal audits; confirmation must independently recheck current account and request state.
 - Keep the current email and sessions until confirmation. Confirmation consumes the matching, unexpired request at the current revocation version and revokes sessions; the email unique constraint resolves address conflicts.
 - Old-address notifications use immutable `email_change_notification` records, never the account's current email. Preserve recipients across later changes/deletion.

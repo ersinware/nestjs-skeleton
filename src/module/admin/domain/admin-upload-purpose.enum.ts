@@ -11,4 +11,9 @@ export enum AdminUploadPurpose {
      * Avatar uploaded while completing an invitation.
      */
     ACTIVATION = 'admin_activation',
+
+    /**
+     * Avatar selected by an activated admin for their own profile.
+     */
+    PROFILE_AVATAR = 'admin_profile_avatar',
 }

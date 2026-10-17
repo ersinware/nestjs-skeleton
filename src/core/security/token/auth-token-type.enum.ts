@@ -23,9 +23,9 @@ export enum AuthTokenType {
     INVITE = 'invite',
 
     /**
-     * Activates a pending user after the current password is verified.
+     * Carries an activation proof without granting session access.
      */
-    USER_ACTIVATION = 'user_activation',
+    ACTIVATION = 'activation',
 
     /**
      * Confirms a persisted email change request; it grants no session access.

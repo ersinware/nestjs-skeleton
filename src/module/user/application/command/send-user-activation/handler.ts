@@ -53,7 +53,7 @@ export class SendUserActivationCommandHandler implements ICommandHandler<SendUse
             this.buildActivationEmail(
                 recipient.email,
                 recipient.name,
-                await this.tokenPort.generateUserActivationToken({
+                await this.tokenPort.generateActivationToken({
                     sub: command.id,
                     jti: recipient.activationId,
                     exp: Math.floor(recipient.activationExpiresAt.getTime() / 1000),

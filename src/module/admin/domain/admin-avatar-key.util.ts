@@ -4,14 +4,14 @@
  */
 
 /**
- * Selects the pending key reserved for an invitation identity.
+ * Selects the pending key reserved for an activation or profile avatar identity.
  *
- * @param adminId Invited account identity
- * @param inviteId Persisted invitation identity
+ * @param adminId Account identity
+ * @param avatarId Invitation identity during activation, or profile avatar identity
  * @returns Pending avatar object key
  */
-export function buildAdminPendingAvatarKey(adminId: string, inviteId: string): string {
-    return `pending/avatar/admin/${adminId}/${inviteId}`;
+export function buildAdminPendingAvatarKey(adminId: string, avatarId: string): string {
+    return `pending/avatar/admin/${adminId}/${avatarId}`;
 }
 
 /**

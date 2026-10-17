@@ -20,6 +20,7 @@ import {
 import { assertAdminActivationFormHashMatches } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
+import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     InvalidInputException,
@@ -68,8 +69,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * Executes the activate admin command.
      *
      * @param command The command payload
-     * @throws {InvalidInputException} When invitation, form binding, or uploaded metadata does not match
-     * @throws {UnauthenticatedException} When the upload proof is invalid or expired
+     * @throws {InvalidInputException} When the invitation or upload proof is invalid or expired, or the form binding or uploaded metadata does not match
      * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceConflictException} When the account is already active or changed concurrently
@@ -83,7 +83,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             payload = await this.tokenPort.verifyInviteToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The invitation is invalid or has expired.');
+                throw new InvalidInputException('The invitation is invalid or has expired.', { cause: error });
             }
 
             throw error;
@@ -95,20 +95,17 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             throw new ResourceNotFoundException();
         }
 
+        let payloadUpload;
+
         try {
-            admin.validateActivationInvitation(payload);
+            payloadUpload = await this.tokenPort.verifyUploadToken(command.uploadToken, AdminUploadPurpose.ACTIVATION);
         } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
             }
 
             throw error;
         }
-
-        const payloadUpload = await this.tokenPort.verifyUploadToken(
-            command.uploadToken,
-            AdminUploadPurpose.ACTIVATION,
-        );
 
         if (
             payloadUpload.sub !== payload.sub ||
@@ -119,7 +116,12 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         }
 
         assertAdminActivationFormHashMatches(
-            { adminId: payload.sub, inviteId: payload.jti, password: command.password, avatar: command.avatar },
+            {
+                id: payload.sub,
+                inviteId: payload.jti,
+                password: command.password,
+                avatar: command.avatar,
+            },
             this.uploadSecret,
             payloadUpload.formHash,
         );
@@ -136,9 +138,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             throw error;
         }
 
-        if (avatar.sizeBytes !== command.avatar.sizeBytes || avatar.contentType !== command.avatar.contentType) {
-            throw new InvalidInputException();
-        }
+        assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
 
         try {
             admin.activate(await this.hashingPort.hash(command.password), payload, payloadUpload.fileKey);

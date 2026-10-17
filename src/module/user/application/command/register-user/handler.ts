@@ -17,22 +17,15 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
-import {
-    TOKEN_IS_USER_EMAIL_IN_USE_PORT,
-    type IIsUserEmailInUsePort,
-} from 'src/module/user/application/query/is-user-email-in-use/port';
-import { TOKEN_USER_EXISTS_PORT, type IUserExistsPort } from 'src/module/user/application/query/user-exists/port';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { assertUserRegistrationFormHashMatches } from 'src/module/user/domain/user-registration';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
-import { isUUIDV7 } from 'src/shared/domain/uuid';
+import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     InvalidInputException,
     InvalidInputMessage,
-    ResourceConflictException,
-    ResourceConflictMessage,
     SystemException,
     isExceptionOfKind,
     isExceptionWithAudit,
@@ -58,8 +51,6 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      * @param tokenPort Verifies the workflow-owned upload proof
      * @param storagePort Checks the actual uploaded object before opening a transaction
      * @param configService Provides the validated form binding secret
-     * @param emailInUsePort Rejects already consumed registrations before checking a cleaned-up source
-     * @param userExistsPort Checks whether the registration identity is already persisted
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -69,8 +60,6 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         configService: ConfigService,
-        @Inject(TOKEN_IS_USER_EMAIL_IN_USE_PORT) private readonly emailInUsePort: IIsUserEmailInUsePort,
-        @Inject(TOKEN_USER_EXISTS_PORT) private readonly userExistsPort: IUserExistsPort,
     ) {
         this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
     }
@@ -79,21 +68,22 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      * Verifies the uploaded avatar and commits the pending account, delivery jobs, and audit together.
      *
      * @param command The command payload
-     * @throws {UnauthenticatedException} When the upload proof is invalid or expired
-     * @throws {InvalidInputException} When the form or uploaded object differs from the proof
+     * @throws {InvalidInputException} When the upload proof is invalid or expired, or the form or uploaded object differs from the proof
      * @throws {ResourceConflictException} When the identity or email address already exists
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
      * @throws {SystemException} When verified upload claims violate registration invariants, storage authorization fails, or the queue does not accept every job
      */
     async execute(command: RegisterUserCommand) {
-        const payload = await this.tokenPort.verifyUploadToken(command.uploadToken, UserUploadPurpose.REGISTRATION);
+        let payload;
 
-        assertUserRegistrationFormHashMatches(command, this.uploadSecret, payload.formHash);
+        try {
+            payload = await this.tokenPort.verifyUploadToken(command.uploadToken, UserUploadPurpose.REGISTRATION);
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
+            }
 
-        if (!isUUIDV7(payload.sub)) {
-            throw new SystemException('Verified upload subject is not a UUID v7 registration identity.', {
-                context: { class: RegisterUserCommandHandler.name, method: this.execute.name },
-            });
+            throw error;
         }
 
         if (payload.fileKey !== buildUserPendingAvatarKey(payload.sub)) {
@@ -102,14 +92,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             });
         }
 
-        // These reads improve replay responses; the plain INSERT still protects concurrent requests.
-        if ((await this.userExistsPort.existsById(payload.sub)).exists) {
-            throw new ResourceConflictException();
-        }
-
-        if ((await this.emailInUsePort.isEmailInUse(command.email)).isInUse) {
-            throw new ResourceConflictException(ResourceConflictMessage.EMAIL_IN_USE);
-        }
+        assertUserRegistrationFormHashMatches(command, this.uploadSecret, payload.formHash);
 
         let avatar;
 
@@ -123,9 +106,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             throw error;
         }
 
-        if (avatar.sizeBytes !== command.avatar.sizeBytes || avatar.contentType !== command.avatar.contentType) {
-            throw new InvalidInputException();
-        }
+        assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
 
         let user;
 

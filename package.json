@@ -141,6 +141,7 @@
         "@nestjs/platform-fastify": {
             "fastify": "$fastify"
         },
-        "js-yaml": "^4.3.2"
+        "js-yaml": "^4.3.2",
+        "handlebars": "^4.7.10"
     }
 }

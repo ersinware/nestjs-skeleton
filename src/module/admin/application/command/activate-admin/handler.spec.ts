@@ -17,7 +17,6 @@ import { createAdminActivationFormHash } from 'src/module/admin/domain/admin-act
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import {
     AccessDeniedException,
     InvalidInputException,
@@ -65,7 +64,7 @@ describe('ActivateAdminCommandHandler', () => {
                 exp: admin.inviteExpiresAt!.getTime() / 1000,
                 formHash: createAdminActivationFormHash(
                     {
-                        adminId: admin.id,
+                        id: admin.id,
                         inviteId: admin.inviteId!,
                         password: command.password,
                         avatar: command.avatar,
@@ -116,7 +115,7 @@ describe('ActivateAdminCommandHandler', () => {
         if (audited) {
             expect(record).toHaveBeenCalledExactlyOnceWith(
                 {
-                    action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED,
+                    action: 'ADMIN_ACTIVATION_FAILED',
                     reason: 'ACCOUNT_BANNED',
                     targetId: admin.id,
                 },
@@ -130,7 +129,7 @@ describe('ActivateAdminCommandHandler', () => {
 
     it('rethrows the exact aggregate error after audit acceptance', async () => {
         const failure = new AccessDeniedException('Banned', {
-            audit: { action: DomainFailureAuditAction.ADMIN_ACTIVATION_FAILED, reason: 'ACCOUNT_BANNED' },
+            audit: { action: 'ADMIN_ACTIVATION_FAILED', reason: 'ACCOUNT_BANNED' },
         });
         vi.spyOn(admin, 'activate').mockImplementationOnce(() => {
             throw failure;

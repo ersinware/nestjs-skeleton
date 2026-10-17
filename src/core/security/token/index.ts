@@ -4,6 +4,7 @@
  */
 
 export type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
+export type { ActivationTokenPayload } from 'src/core/security/token/activation-token-payload.type';
 export { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
 export type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 export type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
@@ -11,4 +12,3 @@ export { TokenModule } from 'src/core/security/token/module';
 export { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token/port/token.port';
 export type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 export type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
-export type { UserActivationTokenPayload } from 'src/core/security/token/user-activation-token-payload.type';

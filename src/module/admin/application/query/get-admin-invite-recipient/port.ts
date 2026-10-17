@@ -18,9 +18,9 @@ export interface IGetAdminInviteRecipientPort {
      * Reads a current, eligible invitation for the requested delivery.
      *
      * @param id The unique identifier of the target admin
-     * @param deliveryId The original invitation delivery identity
+     * @param inviteId The original invitation identity
      * @returns The invitation details, or null when delivery is no longer allowed
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
-    getInviteRecipient(id: string, deliveryId: string): Promise<GetAdminInviteRecipientResult | null>;
+    getInviteRecipient(id: string, inviteId: string): Promise<GetAdminInviteRecipientResult | null>;
 }

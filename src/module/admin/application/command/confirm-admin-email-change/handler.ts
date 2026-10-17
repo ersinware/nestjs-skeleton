@@ -90,7 +90,7 @@ export class ConfirmAdminEmailChangeCommandHandler implements ICommandHandler<
             payload = await this.tokenPort.verifyEmailConfirmationToken(command.token);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The email confirmation is invalid or has expired.');
+                throw new InvalidInputException('The email confirmation is invalid or has expired.', { cause: error });
             }
 
             throw error;

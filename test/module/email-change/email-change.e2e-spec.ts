@@ -280,7 +280,9 @@ describe.each(CASES)('$route email change', (context) => {
          */
         readonly email: string;
     }> {
-        expect((await http('POST', '/email', { newEmail: email, currentPassword: password })).statusCode).toBe(204);
+        expect((await http('POST', '/email/initiate', { newEmail: email, currentPassword: password })).statusCode).toBe(
+            204,
+        );
         const row = await state();
         const claims: Omit<EmailConfirmationTokenPayload, 'type'> = {
             sub: account.id,
@@ -396,7 +398,7 @@ describe.each(CASES)('$route email change', (context) => {
     it('requires authentication and rejects unknown fields in both email endpoints', async () => {
         const before = await state();
         expect(
-            (await http('POST', '/email', { newEmail: 'new@example.test', currentPassword: password }, null))
+            (await http('POST', '/email/initiate', { newEmail: 'new@example.test', currentPassword: password }, null))
                 .statusCode,
         ).toBe(401);
         const proof = await pending();
@@ -404,8 +406,13 @@ describe.each(CASES)('$route email change', (context) => {
         expect((await http('POST', '/email/confirm', {})).statusCode).toBe(400);
         expect((await http('POST', '/email/confirm', { token: proof.token, id: uuidv7() })).statusCode).toBe(400);
         expect(
-            (await http('POST', '/email', { newEmail: 'new@example.test', currentPassword: password, id: uuidv7() }))
-                .statusCode,
+            (
+                await http('POST', '/email/initiate', {
+                    newEmail: 'new@example.test',
+                    currentPassword: password,
+                    id: uuidv7(),
+                })
+            ).statusCode,
         ).toBe(400);
         expect((await state()).email).toBe(before.email);
         expect(await notices()).toEqual([]);
@@ -417,7 +424,7 @@ describe.each(CASES)('$route email change', (context) => {
         await sessionPort.openSession(account.id, pair.session);
         const proof = await pending();
         for (const [path, body] of [
-            ['/email', { newEmail: proof.email, currentPassword: password }],
+            ['/email/initiate', { newEmail: proof.email, currentPassword: password }],
             ['/email/confirm', { token: proof.token }],
         ] as const) {
             expect((await http('POST', path, body, pair.accessToken)).statusCode).toBe(403);
@@ -427,7 +434,7 @@ describe.each(CASES)('$route email change', (context) => {
 
     it('audits incorrect current-password proof without changing state or queuing delivery', async () => {
         const before = await state();
-        const response = await http('POST', '/email', {
+        const response = await http('POST', '/email/initiate', {
             newEmail: account.email,
             currentPassword: 'Wrong-password123!',
         });
@@ -440,13 +447,13 @@ describe.each(CASES)('$route email change', (context) => {
     });
 
     it('starts without changing credentials or sessions and rejects same/taken addresses', async () => {
-        expect((await http('POST', '/email', { newEmail: account.email, currentPassword: password })).statusCode).toBe(
-            400,
-        );
+        expect(
+            (await http('POST', '/email/initiate', { newEmail: account.email, currentPassword: password })).statusCode,
+        ).toBe(400);
         const other = await createAccount();
-        expect((await http('POST', '/email', { newEmail: other.email, currentPassword: password })).statusCode).toBe(
-            409,
-        );
+        expect(
+            (await http('POST', '/email/initiate', { newEmail: other.email, currentPassword: password })).statusCode,
+        ).toBe(409);
         const proof = await pending();
         expect(await state()).toMatchObject({
             email: account.email,
@@ -715,7 +722,7 @@ describe.each(CASES)('$route email change', (context) => {
 
     it('does not leak passwords, addresses or tokens into durable audit facts', async () => {
         const proof = await pending();
-        await http('POST', '/email', { newEmail: proof.email, currentPassword: 'Wrong-password123!' });
+        await http('POST', '/email/initiate', { newEmail: proof.email, currentPassword: 'Wrong-password123!' });
         await http('POST', '/email/confirm', { token: proof.token });
         const rows = await database.select().from(audit).where(eq(audit.actorId, account.id));
         expect(rows.length).toBeGreaterThanOrEqual(3);
@@ -751,7 +758,8 @@ describe.each(CASES)('$route email change', (context) => {
                 return result;
             });
             expect(
-                (await http('POST', '/email', { newEmail: 'race@example.test', currentPassword: password })).statusCode,
+                (await http('POST', '/email/initiate', { newEmail: 'race@example.test', currentPassword: password }))
+                    .statusCode,
             ).toBe(409);
             expect(await state()).toMatchObject({
                 version: 1,
@@ -779,14 +787,14 @@ describe.each(CASES)('$route email change', (context) => {
         const replacement = { newEmail: 'replacement@example.test', currentPassword: password };
         const losingRequest =
             loser === 'request'
-                ? http('POST', '/email', replacement)
+                ? http('POST', '/email/initiate', replacement)
                 : http('POST', '/email/confirm', { token: proof.token });
         try {
             await loaded.promise;
             const winner =
                 loser === 'request'
                     ? await http('POST', '/email/confirm', { token: proof.token })
-                    : await http('POST', '/email', replacement);
+                    : await http('POST', '/email/initiate', replacement);
             expect(winner.statusCode).toBe(loser === 'request' ? 200 : 204);
         } finally {
             resume.resolve();
@@ -1029,7 +1037,8 @@ describe.each(CASES)('$route email change', (context) => {
             });
         }
         expect(
-            (await http('POST', '/email', { newEmail: 'rollback@example.test', currentPassword: password })).statusCode,
+            (await http('POST', '/email/initiate', { newEmail: 'rollback@example.test', currentPassword: password }))
+                .statusCode,
         ).toBe(500);
         expect(await state()).toEqual(before);
         expect(await jobs(context.queues.EMAIL_CONFIRMATION)).toEqual([]);

@@ -55,7 +55,7 @@ describe('User activation', () => {
             {
                 aggregateId: account.id,
                 deliveryId: jobs[1]!.deliveryId,
-                queueName: UserJobQueue.AVATAR_MOVE,
+                queueName: UserJobQueue.AVATAR_FINALIZE,
             },
         ]);
         expect(jobs[1]!.deliveryId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -133,11 +133,11 @@ describe('User activation', () => {
         expect(account.activationId).not.toBe(old.jti);
     });
 
-    it('refuses banned activation and silently declines resend', () => {
+    it('refuses banned activation and resend', () => {
         const valid = proof();
         account.ban(admin);
         expect(() => account.activate(valid, true)).toThrow(AccessDeniedException);
-        expect(account.resendActivation()).toBe(false);
+        expect(() => account.resendActivation()).toThrow(AccessDeniedException);
         account.unban(admin);
         expect(() => account.activate(valid, true)).toThrow(InvalidInputException);
     });

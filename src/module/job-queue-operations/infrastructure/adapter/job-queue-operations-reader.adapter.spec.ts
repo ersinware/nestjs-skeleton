@@ -29,7 +29,7 @@ describe('JobQueueOperationsReaderAdapter', () => {
             getDeadLetterRedrive,
         } as unknown as IJobQueueDeadLetterReaderPort);
 
-        await expect(reader.getRedrive(operation.id)).resolves.toStrictEqual({
+        await expect(reader.getRedriveStatus(operation.id)).resolves.toStrictEqual({
             operationId: operation.id,
             status,
             createdOn,
@@ -43,6 +43,6 @@ describe('JobQueueOperationsReaderAdapter', () => {
             getDeadLetterRedrive,
         } as unknown as IJobQueueDeadLetterReaderPort);
 
-        await expect(reader.getRedrive('b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f')).resolves.toBeNull();
+        await expect(reader.getRedriveStatus('b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f')).resolves.toBeNull();
     });
 });

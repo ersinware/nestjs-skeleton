@@ -18,16 +18,16 @@ import { StorageModule } from 'src/core/storage';
 import { ActivateUserCommandHandler } from 'src/module/user/application/command/activate-user/handler';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
 import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/command/change-user-password/handler';
-import { ChangeUserPermissionsCommandHandler } from 'src/module/user/application/command/change-user-permissions/handler';
 import { ConfirmUserEmailChangeCommandHandler } from 'src/module/user/application/command/confirm-user-email-change/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
+import { FinalizeUserAvatarCommandHandler } from 'src/module/user/application/command/finalize-user-avatar/handler';
+import { InitiateUserEmailChangeCommandHandler } from 'src/module/user/application/command/initiate-user-email-change/handler';
 import { InitiateUserRegistrationCommandHandler } from 'src/module/user/application/command/initiate-user-registration/handler';
-import { MoveUserAvatarCommandHandler } from 'src/module/user/application/command/move-user-avatar/handler';
 import { TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/user/application/command/port/user-email-change-notification-writer.port';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
-import { RequestUserEmailChangeCommandHandler } from 'src/module/user/application/command/request-user-email-change/handler';
+import { ReplaceUserPermissionsCommandHandler } from 'src/module/user/application/command/replace-user-permissions/handler';
 import { ResendUserActivationCommandHandler } from 'src/module/user/application/command/resend-user-activation/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
 import { SendUserActivationCommandHandler } from 'src/module/user/application/command/send-user-activation/handler';
@@ -53,9 +53,8 @@ import { TOKEN_IS_USER_EMAIL_IN_USE_PORT } from 'src/module/user/application/que
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
-import { TOKEN_USER_EXISTS_PORT } from 'src/module/user/application/query/user-exists/port';
 import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
-import { UserAvatarQueue } from 'src/module/user/application/queue/user-avatar.queue';
+import { UserAvatarFinalizeQueue } from 'src/module/user/application/queue/user-avatar-finalize.queue';
 import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
 import { UserEmailChangeNotificationQueue } from 'src/module/user/application/queue/user-email-change-notification.queue';
 import { UserEmailConfirmationQueue } from 'src/module/user/application/queue/user-email-confirmation.queue';
@@ -90,7 +89,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         JobQueueModule.forFeature(
             [
                 UserActivationQueue,
-                UserAvatarQueue,
+                UserAvatarFinalizeQueue,
                 UserEmailConfirmationQueue,
                 UserEmailChangeNotificationQueue,
                 UserCacheQueue,
@@ -108,19 +107,19 @@ import { UserFacade } from 'src/module/user/user.facade';
         ActivateUserCommandHandler,
         RegisterUserCommandHandler,
         InitiateUserRegistrationCommandHandler,
-        MoveUserAvatarCommandHandler,
+        FinalizeUserAvatarCommandHandler,
         ResendUserActivationCommandHandler,
         SendUserActivationCommandHandler,
         UpdateUserCommandHandler,
         ChangeUserPasswordCommandHandler,
         ConfirmUserEmailChangeCommandHandler,
-        RequestUserEmailChangeCommandHandler,
+        InitiateUserEmailChangeCommandHandler,
         SendUserEmailConfirmationCommandHandler,
         SendUserEmailChangeNotificationCommandHandler,
         DeleteUserCommandHandler,
         BanUserCommandHandler,
         UnbanUserCommandHandler,
-        ChangeUserPermissionsCommandHandler,
+        ReplaceUserPermissionsCommandHandler,
         RevokeUserSessionsCommandHandler,
         SendUserRefreshReuseNoticeCommandHandler,
         ReconcileUserSessionCommandHandler,
@@ -138,7 +137,6 @@ import { UserFacade } from 'src/module/user/user.facade';
         { provide: TOKEN_GET_USER_REFRESH_STATE_PORT, useClass: UserReaderAdapter },
         { provide: TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_IS_USER_EMAIL_IN_USE_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
-        { provide: TOKEN_USER_EXISTS_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         {
             provide: TOKEN_GET_USER_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT,

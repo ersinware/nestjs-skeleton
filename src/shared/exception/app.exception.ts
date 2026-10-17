@@ -3,7 +3,6 @@
  * @description Abstract base of the exception taxonomy, optional diagnostic and audit metadata, and predicates classifying caught errors.
  */
 
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
 
 /**
@@ -35,7 +34,7 @@ type ExceptionAudit = {
     /**
      * Business action whose refusal must be recorded.
      */
-    readonly action: DomainFailureAuditAction;
+    readonly action: string;
 
     /**
      * Internal reason for the refusal; never rendered to clients.
@@ -126,7 +125,7 @@ export function isExceptionOfKind(
  * Identifies a taxonomy exception carrying a complete business audit instruction.
  *
  * @param error The caught value
- * @returns True when the kind, action, and refusal reason are recognized
+ * @returns True when the kind is recognized and audit metadata has a non-empty action and string reason
  */
 export function isExceptionWithAudit(
     error: unknown,
@@ -145,7 +144,8 @@ export function isExceptionWithAudit(
 
     return (
         Object.values(ExceptionKind).some((kind) => kind === candidate.kind) &&
-        Object.values(DomainFailureAuditAction).some((action) => action === audit.action) &&
+        typeof audit.action === 'string' &&
+        audit.action.length > 0 &&
         typeof audit.reason === 'string'
     );
 }

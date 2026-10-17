@@ -21,7 +21,7 @@ describe('Email confirmation tokens', () => {
         JWT_REFRESH_SECRET: 'r'.repeat(32),
         JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
-        JWT_USER_ACTIVATION_SECRET: 'u'.repeat(32),
+        JWT_ACTIVATION_SECRET: 'u'.repeat(32),
         JWT_UPLOAD_SECRET: 'p'.repeat(32),
         JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
     };
@@ -90,7 +90,7 @@ describe('Email confirmation tokens', () => {
         AuthTokenType.ACCESS,
         AuthTokenType.REFRESH,
         AuthTokenType.INVITE,
-        AuthTokenType.USER_ACTIVATION,
+        AuthTokenType.ACTIVATION,
         AuthTokenType.UPLOAD,
     ])('rejects the %s discriminator even with the email signing key', async (type) => {
         const token = await jwt.signAsync(

@@ -3,6 +3,8 @@
  * @description Shared file contract for account-owned avatar uploads.
  */
 
+import { InvalidInputException } from 'src/shared/exception';
+
 /**
  * Maximum avatar size accepted by account workflows, in bytes.
  */
@@ -32,3 +34,22 @@ export type AvatarUploadDescriptor = {
      */
     readonly contentType: AvatarContentType;
 };
+
+/**
+ * Rejects uploaded metadata that differs from the descriptor bound to the account form.
+ *
+ * @param actual Metadata read from the uploaded object
+ * @param expected Descriptor accepted when the upload was prepared
+ * @throws {InvalidInputException} When the size or media type differs, including a missing media type
+ */
+export function assertAvatarUploadMatchesDescriptor(
+    actual: {
+        readonly sizeBytes: number;
+        readonly contentType?: string;
+    },
+    expected: AvatarUploadDescriptor,
+) {
+    if (actual.sizeBytes !== expected.sizeBytes || actual.contentType !== expected.contentType) {
+        throw new InvalidInputException();
+    }
+}

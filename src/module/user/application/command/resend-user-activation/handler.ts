@@ -12,7 +12,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { ResendUserActivationCommand } from 'src/module/user/application/command/resend-user-activation/command';
-import { isExceptionWithAudit } from 'src/shared/exception';
+import { ExceptionKind, isExceptionOfKind, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Persists an eligible activation request, its delivery job, and audit together.
@@ -24,7 +24,7 @@ export class ResendUserActivationCommandHandler implements ICommandHandler<Resen
      *
      * @param transactionPort Commits state, delivery, and audit together
      * @param userWriterPort Loads and persists the authoritative account
-     * @param auditPort Records accepted activation requests
+     * @param auditPort Records accepted requests and banned-account refusals
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -56,6 +56,11 @@ export class ResendUserActivationCommandHandler implements ICommandHandler<Resen
         } catch (error) {
             if (isExceptionWithAudit(error)) {
                 await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            // Preserve the public anti-enumeration response after recording the banned-account refusal.
+            if (isExceptionOfKind(error, ExceptionKind.ACCESS_DENIED)) {
+                return;
             }
 
             throw error;

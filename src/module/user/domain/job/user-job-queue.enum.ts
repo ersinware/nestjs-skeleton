@@ -8,9 +8,9 @@
  */
 export enum UserJobQueue {
     /**
-     * Copies an attached pending avatar and cleans up its source after commit.
+     * Finalizes the initial immutable avatar after user registration.
      */
-    AVATAR_MOVE = 'user.avatar-move.queue.v1',
+    AVATAR_FINALIZE = 'user.avatar-finalize.queue.v1',
 
     /**
      * Sends the activation link for a pending user account.

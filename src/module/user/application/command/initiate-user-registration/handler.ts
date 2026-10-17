@@ -25,6 +25,7 @@ import {
     createUserRegistrationFormHash,
 } from 'src/module/user/domain/user-registration';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
+import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
 import { ResourceConflictException, ResourceConflictMessage, SystemException } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
@@ -79,7 +80,7 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
                 key: fileKey,
                 sizeBytes: command.avatar.sizeBytes,
                 contentType: command.avatar.contentType,
-                cache: { visibility: 'no-store' },
+                cache: AVATAR_PENDING_CACHE_POLICY,
                 deadline: new Date((now + USER_REGISTRATION_UPLOAD_URL_TTL_SECONDS) * 1000),
             });
 

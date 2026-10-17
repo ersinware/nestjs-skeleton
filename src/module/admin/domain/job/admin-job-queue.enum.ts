@@ -8,9 +8,14 @@
  */
 export enum AdminJobQueue {
     /**
-     * Copies and attaches an activated admin's immutable avatar.
+     * Finalizes the initial immutable avatar after invitation acceptance.
      */
-    AVATAR_MOVE = 'admin.avatar-move.queue.v1',
+    AVATAR_FINALIZE = 'admin.avatar-finalize.queue.v1',
+
+    /**
+     * Completes an immutable profile avatar replacement.
+     */
+    AVATAR_REPLACE = 'admin.avatar-replace.queue.v1',
 
     /**
      * Notifies the previous address after a confirmed email change.

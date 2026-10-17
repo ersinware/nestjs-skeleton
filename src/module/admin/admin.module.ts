@@ -18,17 +18,19 @@ import { AdminFacade } from 'src/module/admin/admin.facade';
 import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin/handler';
 import { ChangeAdminPasswordCommandHandler } from 'src/module/admin/application/command/change-admin-password/handler';
-import { ChangeAdminPermissionsCommandHandler } from 'src/module/admin/application/command/change-admin-permissions/handler';
 import { ConfirmAdminEmailChangeCommandHandler } from 'src/module/admin/application/command/confirm-admin-email-change/handler';
-import { CreateAdminCommandHandler } from 'src/module/admin/application/command/create-admin/handler';
 import { DeleteAdminCommandHandler } from 'src/module/admin/application/command/delete-admin/handler';
+import { FinalizeAdminAvatarCommandHandler } from 'src/module/admin/application/command/finalize-admin-avatar/handler';
 import { InitiateAdminActivationCommandHandler } from 'src/module/admin/application/command/initiate-admin-activation/handler';
-import { MoveAdminAvatarCommandHandler } from 'src/module/admin/application/command/move-admin-avatar/handler';
+import { InitiateAdminAvatarChangeCommandHandler } from 'src/module/admin/application/command/initiate-admin-avatar-change/handler';
+import { InitiateAdminEmailChangeCommandHandler } from 'src/module/admin/application/command/initiate-admin-email-change/handler';
+import { InviteAdminCommandHandler } from 'src/module/admin/application/command/invite-admin/handler';
 import { TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/admin/application/command/port/admin-email-change-notification-writer.port';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReInviteAdminCommandHandler } from 'src/module/admin/application/command/re-invite-admin/handler';
 import { ReconcileAdminSessionCommandHandler } from 'src/module/admin/application/command/reconcile-admin-session/handler';
-import { RequestAdminEmailChangeCommandHandler } from 'src/module/admin/application/command/request-admin-email-change/handler';
+import { ReplaceAdminAvatarCommandHandler } from 'src/module/admin/application/command/replace-admin-avatar/handler';
+import { ReplaceAdminPermissionsCommandHandler } from 'src/module/admin/application/command/replace-admin-permissions/handler';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
 import { SendAdminEmailChangeNotificationCommandHandler } from 'src/module/admin/application/command/send-admin-email-change-notification/handler';
 import { SendAdminEmailConfirmationCommandHandler } from 'src/module/admin/application/command/send-admin-email-confirmation/handler';
@@ -53,7 +55,8 @@ import { TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT } from 'src/module/admin/application/q
 import { ListAdminPermissionCatalogQueryHandler } from 'src/module/admin/application/query/list-admin-permission-catalog/handler';
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
-import { AdminAvatarQueue } from 'src/module/admin/application/queue/admin-avatar.queue';
+import { AdminAvatarFinalizeQueue } from 'src/module/admin/application/queue/admin-avatar-finalize.queue';
+import { AdminAvatarReplaceQueue } from 'src/module/admin/application/queue/admin-avatar-replace.queue';
 import { AdminEmailChangeNotificationQueue } from 'src/module/admin/application/queue/admin-email-change-notification.queue';
 import { AdminEmailConfirmationQueue } from 'src/module/admin/application/queue/admin-email-confirmation.queue';
 import { AdminInviteQueue } from 'src/module/admin/application/queue/admin-invite.queue';
@@ -87,7 +90,8 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
                 AdminEmailConfirmationQueue,
                 AdminEmailChangeNotificationQueue,
                 AdminInviteQueue,
-                AdminAvatarQueue,
+                AdminAvatarFinalizeQueue,
+                AdminAvatarReplaceQueue,
                 AdminRefreshReuseNoticeQueue,
                 AdminSessionQueue,
                 AdminSessionRevocationLogoutAllQueue,
@@ -99,23 +103,25 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
     controllers: [AdminController],
     providers: [
         AdminFacade,
-        CreateAdminCommandHandler,
+        InviteAdminCommandHandler,
         SendAdminInviteCommandHandler,
         SendAdminRefreshReuseNoticeCommandHandler,
         ActivateAdminCommandHandler,
         InitiateAdminActivationCommandHandler,
-        MoveAdminAvatarCommandHandler,
+        InitiateAdminAvatarChangeCommandHandler,
+        FinalizeAdminAvatarCommandHandler,
         ReInviteAdminCommandHandler,
         UpdateAdminCommandHandler,
+        ReplaceAdminAvatarCommandHandler,
         ChangeAdminPasswordCommandHandler,
         ConfirmAdminEmailChangeCommandHandler,
-        RequestAdminEmailChangeCommandHandler,
+        InitiateAdminEmailChangeCommandHandler,
         SendAdminEmailConfirmationCommandHandler,
         SendAdminEmailChangeNotificationCommandHandler,
         DeleteAdminCommandHandler,
         BanAdminCommandHandler,
         UnbanAdminCommandHandler,
-        ChangeAdminPermissionsCommandHandler,
+        ReplaceAdminPermissionsCommandHandler,
         RevokeAdminSessionsCommandHandler,
         ReconcileAdminSessionCommandHandler,
         ListAdminsQueryHandler,

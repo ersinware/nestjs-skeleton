@@ -61,7 +61,7 @@ async function bootstrap() {
         await app.close();
         process.exit(0);
     } catch (error) {
-        const _error = error instanceof Error ? error : new Error(String(error));
+        const _error = error instanceof Error ? error : new Error(String(error), { cause: error });
 
         new NestLogger('BuildSwagger').error(createLogPayload({ message: _error.message, error: _error }));
 

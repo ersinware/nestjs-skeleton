@@ -21,7 +21,7 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT } from 'src/core/storage';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
-import { MoveUserAvatarCommand } from 'src/module/user/application/command/move-user-avatar/command';
+import { FinalizeUserAvatarCommand } from 'src/module/user/application/command/finalize-user-avatar/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
@@ -31,7 +31,6 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { user } from 'src/module/user/infrastructure/user.schema';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException } from 'src/shared/exception';
 import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
@@ -130,7 +129,7 @@ describe('User registration and activation', () => {
 
     async function prepareRegistration(email = `${uuidv7()}@example.test`, upload = true, body = 'test') {
         const form = { email, name: 'Activation Test', password, avatar: { sizeBytes: 4, contentType: 'image/png' } };
-        const response = await app.inject({ method: 'POST', url: '/api/v1/user/initiate', payload: form });
+        const response = await app.inject({ method: 'POST', url: '/api/v1/user/registration/initiate', payload: form });
         expect(response.statusCode).toBe(200);
         const plan = data(response) as {
             uploadToken: string;
@@ -152,7 +151,7 @@ describe('User registration and activation', () => {
 
     async function register() {
         const payload = await prepareRegistration();
-        const response = await app.inject({ method: 'POST', url: '/api/v1/user', payload });
+        const response = await app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload });
         expect(response.statusCode).toBe(204);
         expect(response.body).toBe('');
         const [row] = await database.select().from(user).where(eq(user.email, payload.email));
@@ -161,7 +160,7 @@ describe('User registration and activation', () => {
     }
 
     async function proof(row: typeof user.$inferSelect) {
-        return tokenPort.generateUserActivationToken({
+        return tokenPort.generateActivationToken({
             sub: row.id,
             jti: row.activationId!,
             exp: Math.floor(row.activationExpiresAt!.getTime() / 1000),
@@ -180,19 +179,22 @@ describe('User registration and activation', () => {
     it('validates public registration, resend, and activation bodies before mutation', async () => {
         const email = `${uuidv7()}@example.test`;
         const invalid = [
-            { url: '/api/v1/user', payload: { email, name: 'Activation Test' } },
-            { url: '/api/v1/user', payload: { email, name: 'Activation Test', password, extra: true } },
+            { url: '/api/v1/user/registration/complete', payload: { email, name: 'Activation Test' } },
+            {
+                url: '/api/v1/user/registration/complete',
+                payload: { email, name: 'Activation Test', password, extra: true },
+            },
             ...[
                 { sizeBytes: 0, contentType: 'image/png' },
                 { sizeBytes: 5 * 1024 * 1024 + 1, contentType: 'image/png' },
                 { sizeBytes: 4, contentType: 'image/svg+xml' },
                 { sizeBytes: 4, contentType: 'image/png', extra: true },
             ].map((avatar) => ({
-                url: '/api/v1/user/initiate',
+                url: '/api/v1/user/registration/initiate',
                 payload: { email, name: 'Activation Test', password, avatar },
             })),
             { url: '/api/v1/user/activation/resend', payload: { email: 'invalid' } },
-            { url: '/api/v1/user/activate', payload: { token: 'not-a-jwt', password } },
+            { url: '/api/v1/user/activation/complete', payload: { token: 'not-a-jwt', password } },
         ];
         for (const request of invalid) {
             const response = await app.inject({ method: 'POST', ...request });
@@ -226,7 +228,7 @@ describe('User registration and activation', () => {
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user',
+            url: '/api/v1/user/registration/complete',
             payload,
         });
         expect(response.statusCode).toBe(503);
@@ -239,7 +241,7 @@ describe('User registration and activation', () => {
         vi.spyOn(jobWriterPort, 'enqueue').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user',
+            url: '/api/v1/user/registration/complete',
             payload,
         });
         expect(response.statusCode).toBe(503);
@@ -262,11 +264,13 @@ describe('User registration and activation', () => {
         const row = await register();
         expect(row.activationExpiresAt!.getTime() - Date.now()).toBeGreaterThan(3 * 24 * 60 * 60 * 1000 - 5_000);
         expect(await jobs(row.id)).toHaveLength(1);
-        expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_REGISTERED)).toHaveLength(1);
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_REGISTERED)),
+        ).toHaveLength(1);
 
         const duplicate = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/initiate',
+            url: '/api/v1/user/registration/initiate',
             payload: { email: row.email, name: 'Other', password, avatar: { sizeBytes: 4, contentType: 'image/png' } },
         });
         expect(duplicate.statusCode).toBe(409);
@@ -279,8 +283,8 @@ describe('User registration and activation', () => {
         const payload = await prepareRegistration(email);
         const otherPayload = await prepareRegistration(email);
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user', payload }),
-            app.inject({ method: 'POST', url: '/api/v1/user', payload: otherPayload }),
+            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload }),
+            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload: otherPayload }),
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         const rows = await database.select().from(user).where(eq(user.email, email));
@@ -288,14 +292,18 @@ describe('User registration and activation', () => {
         ids.push(rows[0]!.id);
         expect(await jobs(rows[0]!.id)).toHaveLength(1);
         expect(
-            (await actions(rows[0]!.id)).filter((entry) => entry.action === AuditAction.USER_REGISTERED),
+            (await actions(rows[0]!.id)).filter((entry) => entry.action === String(AuditAction.USER_REGISTERED)),
         ).toHaveLength(1);
     });
 
     it('rejects missing uploads and changed form bindings without creating accounts', async () => {
         const payload = await prepareRegistration(undefined, false);
         for (const candidate of [payload, { ...payload, name: 'Changed' }]) {
-            const response = await app.inject({ method: 'POST', url: '/api/v1/user', payload: candidate });
+            const response = await app.inject({
+                method: 'POST',
+                url: '/api/v1/user/registration/complete',
+                payload: candidate,
+            });
             expect(response.statusCode).toBe(400);
         }
         expect(await database.select().from(user).where(eq(user.email, payload.email))).toEqual([]);
@@ -320,7 +328,7 @@ describe('User registration and activation', () => {
         });
         expect(put.ok).toBe(true);
         for (const payload of [wrongSize, wrongType]) {
-            const response = await app.inject({ method: 'POST', url: '/api/v1/user', payload });
+            const response = await app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload });
             expect(response.statusCode).toBe(400);
             expect(await database.select().from(user).where(eq(user.email, payload.email))).toEqual([]);
         }
@@ -329,26 +337,28 @@ describe('User registration and activation', () => {
     it('preserves a committed account and its jobs on upload token replay', async () => {
         const payload = await prepareRegistration();
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user', payload }),
-            app.inject({ method: 'POST', url: '/api/v1/user', payload }),
+            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload }),
+            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload }),
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         const [row] = await database.select().from(user).where(eq(user.email, payload.email));
-        const replay = await app.inject({ method: 'POST', url: '/api/v1/user', payload });
+        const replay = await app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload });
         expect(replay.statusCode).toBe(409);
         expect((await database.select().from(user).where(eq(user.id, row!.id)))[0]).toEqual(row);
         expect(await jobs(row!.id)).toHaveLength(1);
-        expect(await boss.findJobs<Job>(UserJobQueue.AVATAR_MOVE, { data: { aggregateId: row!.id } })).toHaveLength(1);
+        expect(await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, { data: { aggregateId: row!.id } })).toHaveLength(
+            1,
+        );
     });
 
     it('recovers a copied avatar after transaction rollback and repeats cleanup without recopying', async () => {
         const row = await register();
-        const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_MOVE, { data: { aggregateId: row.id } });
+        const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, { data: { aggregateId: row.id } });
         const destination = buildUserPermanentAvatarKey(row.id, job!.data.deliveryId);
         const source = buildUserPendingAvatarKey(row.id);
         objectKeys.add(destination);
         const pipeline = app.get(CommandPipeline);
-        const command = new MoveUserAvatarCommand(row.id, job!.data.deliveryId);
+        const command = new FinalizeUserAvatarCommand(row.id, job!.data.deliveryId);
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new DependencyUnavailableException());
         await expect(pipeline.execute(command)).rejects.toBeInstanceOf(DependencyUnavailableException);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.avatarKey).toBe(source);
@@ -366,17 +376,17 @@ describe('User registration and activation', () => {
             'public, max-age=31536000, s-maxage=31536000, immutable',
         );
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_AVATAR_FINALIZED),
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_AVATAR_FINALIZED)),
         ).toHaveLength(1);
         await expect(storageFixture.storage.headObject(source)).rejects.toMatchObject({ kind: 'RESOURCE_NOT_FOUND' });
     });
 
     it('retries cleanup after the permanent key commits without duplicating its audit', async () => {
         const row = await register();
-        const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_MOVE, { data: { aggregateId: row.id } });
+        const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, { data: { aggregateId: row.id } });
         const destination = buildUserPermanentAvatarKey(row.id, job!.data.deliveryId);
         objectKeys.add(destination);
-        const command = new MoveUserAvatarCommand(row.id, job!.data.deliveryId);
+        const command = new FinalizeUserAvatarCommand(row.id, job!.data.deliveryId);
         const pipeline = app.get(CommandPipeline);
         vi.spyOn(storageFixture.storage, 'deleteObject').mockRejectedValueOnce(new DependencyUnavailableException());
         await expect(pipeline.execute(command)).rejects.toMatchObject({ kind: 'DEPENDENCY_UNAVAILABLE' });
@@ -385,7 +395,7 @@ describe('User registration and activation', () => {
         await pipeline.execute(command);
         expect(copy).not.toHaveBeenCalled();
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_AVATAR_FINALIZED),
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_AVATAR_FINALIZED)),
         ).toHaveLength(1);
         await expect(storageFixture.storage.headObject(buildUserPendingAvatarKey(row.id))).rejects.toMatchObject({
             kind: 'RESOURCE_NOT_FOUND',
@@ -427,18 +437,16 @@ describe('User registration and activation', () => {
         const token = await proof(row);
         const wrongPassword = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token, password: 'WrongPass-12345!' },
         });
         expect(wrongPassword.statusCode).toBe(400);
-        expect(
-            (await actions(row.id)).filter((entry) => entry.action === DomainFailureAuditAction.USER_ACTIVATION_FAILED),
-        ).toHaveLength(1);
+        expect((await actions(row.id)).filter((entry) => entry.action === 'USER_ACTIVATION_FAILED')).toHaveLength(1);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
 
         const activated = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token, password },
         });
         expect(activated.statusCode).toBe(200);
@@ -448,11 +456,18 @@ describe('User registration and activation', () => {
         expect(typeof data(activated)['refreshToken']).toBe('string');
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
         expect(
-            (await app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token, password } }))
-                .statusCode,
+            (
+                await app.inject({
+                    method: 'POST',
+                    url: '/api/v1/user/activation/complete',
+                    payload: { token, password },
+                })
+            ).statusCode,
         ).toBe(409);
         expect(data(await login(password))['session']).toBe('created');
-        expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATED)).toHaveLength(1);
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+        ).toHaveLength(1);
     });
 
     it('rejects validly signed proof with another request identity or revocation snapshot', async () => {
@@ -469,16 +484,18 @@ describe('User registration and activation', () => {
             { ...valid, activationRevocationVersion: valid.activationRevocationVersion + 1 },
         ];
         for (const claims of invalid) {
-            const token = await tokenPort.generateUserActivationToken(claims);
+            const token = await tokenPort.generateActivationToken(claims);
             const response = await app.inject({
                 method: 'POST',
-                url: '/api/v1/user/activate',
+                url: '/api/v1/user/activation/complete',
                 payload: { token, password },
             });
             expect(response.statusCode).toBe(400);
         }
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
-        expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATED)).toHaveLength(0);
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+        ).toHaveLength(0);
     });
 
     it('replaces valid and expired proofs, invalidating prior links and deliveries', async () => {
@@ -503,8 +520,13 @@ describe('User registration and activation', () => {
             deliveryId: replaced!.activationId,
         });
         expect(
-            (await app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token: oldToken, password } }))
-                .statusCode,
+            (
+                await app.inject({
+                    method: 'POST',
+                    url: '/api/v1/user/activation/complete',
+                    payload: { token: oldToken, password },
+                })
+            ).statusCode,
         ).toBe(400);
 
         await database
@@ -517,13 +539,13 @@ describe('User registration and activation', () => {
         expect(renewed!.activationExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 60 * 60 * 1000 - 5_000);
         expect(await jobs(row.id)).toHaveLength(3);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATION_REQUESTED),
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATION_REQUESTED)),
         ).toHaveLength(2);
         expect(
             (
                 await app.inject({
                     method: 'POST',
-                    url: '/api/v1/user/activate',
+                    url: '/api/v1/user/activation/complete',
                     payload: { token: await proof(row), password },
                 })
             ).statusCode,
@@ -559,7 +581,7 @@ describe('User registration and activation', () => {
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         expect(await jobs(row.id)).toHaveLength(2);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATION_REQUESTED),
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATION_REQUESTED)),
         ).toHaveLength(1);
     });
 
@@ -570,7 +592,7 @@ describe('User registration and activation', () => {
         expect((await request(`${uuidv7()}@example.test`)).statusCode).toBe(204);
         await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token: await proof(row), password },
         });
         expect((await request(row.email)).statusCode).toBe(204);
@@ -581,11 +603,13 @@ describe('User registration and activation', () => {
         const row = await register();
         const token = await proof(row);
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token, password } }),
-            app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token, password } }),
+            app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
+            app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
-        expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATED)).toHaveLength(1);
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+        ).toHaveLength(1);
     });
 
     it('allows only one of activation and resend loaded from the same version to commit', async () => {
@@ -616,14 +640,15 @@ describe('User registration and activation', () => {
             return aggregate;
         });
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token, password } }),
+            app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
             app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } }),
         ]);
         expect(responses.filter((response) => response.statusCode === 409)).toHaveLength(1);
         expect(responses.some((response) => response.statusCode === 200 || response.statusCode === 204)).toBe(true);
         const committed = (await actions(row.id)).filter(
             (entry) =>
-                entry.action === AuditAction.USER_ACTIVATED || entry.action === AuditAction.USER_ACTIVATION_REQUESTED,
+                entry.action === String(AuditAction.USER_ACTIVATED) ||
+                entry.action === String(AuditAction.USER_ACTIVATION_REQUESTED),
         );
         expect(committed).toHaveLength(1);
     });
@@ -680,7 +705,11 @@ describe('User registration and activation', () => {
             await gate;
             return originalVerify(hash, candidate);
         });
-        const request = app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token, password } });
+        const request = app.inject({
+            method: 'POST',
+            url: '/api/v1/user/activation/complete',
+            payload: { token, password },
+        });
         await entered;
         try {
             await database
@@ -702,7 +731,9 @@ describe('User registration and activation', () => {
         } else {
             expect(after!.deletedAt).not.toBeNull();
         }
-        expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATED)).toHaveLength(0);
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+        ).toHaveLength(0);
     });
 
     it('rolls back activation when its success audit cannot be persisted', async () => {
@@ -711,12 +742,14 @@ describe('User registration and activation', () => {
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token, password },
         });
         expect(response.statusCode).toBe(503);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
-        expect((await actions(row.id)).filter((entry) => entry.action === AuditAction.USER_ACTIVATED)).toHaveLength(0);
+        expect(
+            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+        ).toHaveLength(0);
     });
 
     it('keeps activation committed when token generation fails after commit', async () => {
@@ -725,14 +758,19 @@ describe('User registration and activation', () => {
         vi.spyOn(tokenPort, 'generateTokens').mockRejectedValueOnce(new Error('unexpected signing failure'));
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token, password },
         });
         expect(response.statusCode).toBe(500);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
         expect(
-            (await app.inject({ method: 'POST', url: '/api/v1/user/activate', payload: { token, password } }))
-                .statusCode,
+            (
+                await app.inject({
+                    method: 'POST',
+                    url: '/api/v1/user/activation/complete',
+                    payload: { token, password },
+                })
+            ).statusCode,
         ).toBe(409);
     });
 
@@ -741,7 +779,7 @@ describe('User registration and activation', () => {
         vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token: await proof(row), password },
         });
         expect(response.statusCode).toBe(200);
@@ -754,7 +792,7 @@ describe('User registration and activation', () => {
         vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new Error('unexpected session failure'));
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token: await proof(row), password },
         });
         expect(response.statusCode).toBe(500);
@@ -766,7 +804,7 @@ describe('User registration and activation', () => {
         vi.spyOn(sessionPort, 'openSession').mockResolvedValueOnce(false);
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/user/activate',
+            url: '/api/v1/user/activation/complete',
             payload: { token: await proof(row), password },
         });
         expect(response.statusCode).toBe(200);
