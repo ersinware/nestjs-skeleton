@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_STORAGE_PORT, type IStoragePort, type StorageObject } from 'src/core/storage';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -17,6 +17,7 @@ import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
@@ -161,7 +162,7 @@ export class ReplaceAdminAvatarCommandHandler implements ICommandHandler<Replace
             await this.transactionPort.run(async () => {
                 await this.adminWriterPort.save(admin);
                 await this.auditPort.record({
-                    action: AuditAction.ADMIN_AVATAR_FINALIZED,
+                    action: AdminAuditAction.ADMIN_AVATAR_FINALIZED,
                     targetId: admin.id,
                     detail: { deliveryId },
                 });

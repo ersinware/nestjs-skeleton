@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { DeleteAdminCommand } from 'src/module/admin/application/command/delete-admin/command';
@@ -14,6 +14,7 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import {
     ExceptionKind,
     ResourceNotFoundException,
@@ -72,7 +73,7 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
         }
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AuditAction.ADMIN_DELETED, targetId: admin.id });
+            await this.auditPort.record({ action: AdminAuditAction.ADMIN_DELETED, targetId: admin.id });
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next

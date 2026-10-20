@@ -5,9 +5,10 @@
 
 import type { ITransactionPort } from 'src/core/database';
 import type { IJobQueueWriterPort } from 'src/core/job-queue';
-import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
+import { type IAuditPort } from 'src/core/observability/audit';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 import { LogoutAllCommandHandler } from 'src/module/auth/application/command/logout-all/handler';
+import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
@@ -37,7 +38,7 @@ describe('LogoutAllCommandHandler', () => {
         expect(job?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
         expect(job).toMatchObject({ aggregateId: 'principal-1', queueName });
         expect(record).toHaveBeenCalledWith({
-            action: AuditAction.LOGOUT_ALL,
+            action: AuthAuditAction.LOGOUT_ALL,
             detail: { deliveryId: job?.deliveryId },
         });
     });

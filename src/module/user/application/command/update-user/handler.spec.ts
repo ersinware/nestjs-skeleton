@@ -6,7 +6,7 @@
 import { ConfigService } from '@nestjs/config';
 import { ENV } from 'src/core/config';
 import type { ITransactionPort } from 'src/core/database';
-import { AuditAction } from 'src/core/observability/audit';
+
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
@@ -16,6 +16,7 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { createUserAvatarChangeFormHash } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { ExceptionKind, ResourceNotFoundException, UnauthenticatedException } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -191,7 +192,7 @@ describe('UpdateUserCommandHandler', () => {
         }
         expect(audit.record).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);
         if (scenario !== 'unchanged-name') {
-            expect(audit.record).toHaveBeenCalledWith({ action: AuditAction.USER_UPDATED });
+            expect(audit.record).toHaveBeenCalledWith({ action: UserAuditAction.USER_UPDATED });
         }
     });
 });

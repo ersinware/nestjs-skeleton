@@ -13,7 +13,7 @@ import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
-import { audit, AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
@@ -32,6 +32,7 @@ import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import type { PostAdminActivationDto } from 'src/module/admin/presentation/dto/post-admin-activation.dto';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
@@ -280,7 +281,7 @@ describe('Admin invitation with avatar', () => {
         });
         expect(deliveries).toHaveLength(1);
         expect(deliveries[0]!.data).toMatchObject({ deliveryId: prepared.deliveryId, aggregateId: prepared.id });
-        expect(await evidence(prepared.id, AuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
         expect(
             (await app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload: prepared.payload }))
                 .statusCode,
@@ -297,7 +298,7 @@ describe('Admin invitation with avatar', () => {
         });
         await app.get(AdminAvatarFinalizeQueue).consume(deliveries[0]!.data);
         expect(await state(prepared.id)).toEqual(finalized);
-        expect(await evidence(prepared.id, AuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
         const login = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/admin/login',
@@ -344,7 +345,7 @@ describe('Admin invitation with avatar', () => {
             expect(hash).not.toHaveBeenCalled();
             expect(await state(prepared.id)).toEqual(before);
             expect(await jobs(prepared.id)).toEqual([]);
-            expect(await evidence(prepared.id, AuditAction.ADMIN_ACTIVATED)).toEqual([]);
+            expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toEqual([]);
         },
     );
 
@@ -369,7 +370,7 @@ describe('Admin invitation with avatar', () => {
         expect(response.statusCode).toBe(change === 'ban' ? 403 : change === 'delete' ? 404 : 400);
         expect(await state(prepared.id)).toEqual(before);
         expect(await jobs(prepared.id)).toEqual([]);
-        expect(await evidence(prepared.id, AuditAction.ADMIN_ACTIVATED)).toEqual([]);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toEqual([]);
         expect(await evidence(prepared.id, 'ADMIN_ACTIVATION_FAILED')).toHaveLength(change === 'ban' ? 1 : 0);
     });
 
@@ -391,7 +392,7 @@ describe('Admin invitation with avatar', () => {
         ).toBe(503);
         expect(await state(prepared.id)).toEqual(before);
         expect(await jobs(prepared.id)).toEqual([]);
-        expect(await evidence(prepared.id, AuditAction.ADMIN_ACTIVATED)).toEqual([]);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toEqual([]);
         expect(await fixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
     });
 
@@ -404,7 +405,7 @@ describe('Admin invitation with avatar', () => {
         );
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         expect(await jobs(prepared.id)).toHaveLength(1);
-        expect(await evidence(prepared.id, AuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
     });
 
     it('reuses a copied object after audit rollback and retries source cleanup after commit', async () => {
@@ -424,7 +425,7 @@ describe('Admin invitation with avatar', () => {
             kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
         });
         expect(await state(prepared.id)).toEqual(before);
-        expect(await evidence(prepared.id, AuditAction.ADMIN_AVATAR_FINALIZED)).toEqual([]);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toEqual([]);
         expect(await fixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
         expect(await fixture.storage.headObject(prepared.destinationKey)).toMatchObject({ sizeBytes: 4 });
         auditSpy.mockRestore();
@@ -438,7 +439,7 @@ describe('Admin invitation with avatar', () => {
         await app.get(AdminAvatarFinalizeQueue).consume(job);
         expect(copy).not.toHaveBeenCalled();
         expect(await state(prepared.id)).toEqual(committed);
-        expect(await evidence(prepared.id, AuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
         await expect(fixture.storage.headObject(prepared.sourceKey)).rejects.toMatchObject({
             kind: ExceptionKind.RESOURCE_NOT_FOUND,
         });
@@ -591,7 +592,7 @@ describe('Admin invitation with avatar', () => {
                 const updated = await state(owner.id);
                 expect(updated.sessionVersion).toBe(before.sessionVersion);
                 expect(updated.revocationVersion).toBe(before.revocationVersion);
-                expect(await evidence(owner.id, AuditAction.ADMIN_UPDATED)).toHaveLength(1);
+                expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toHaveLength(1);
                 expect(await jobs(owner.id, AdminJobQueue.AVATAR_REPLACE)).toHaveLength(
                     beforeJobs.length + (upload ? 1 : 0),
                 );
@@ -642,7 +643,7 @@ describe('Admin invitation with avatar', () => {
             }
             expect(await state(owner.id)).toEqual(before);
             expect(await jobs(owner.id, AdminJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
-            expect(await evidence(owner.id, AuditAction.ADMIN_UPDATED)).toEqual([]);
+            expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toEqual([]);
         });
 
         it.each(['expired', 'purpose', 'ownership', 'name-binding', 'missing-object'] as const)(
@@ -675,7 +676,7 @@ describe('Admin invitation with avatar', () => {
                 expect(response.statusCode).toBe(scenario === 'ownership' ? 403 : 400);
                 expect(await state(owner.id)).toEqual(before);
                 expect(await jobs(owner.id, AdminJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
-                expect(await evidence(owner.id, AuditAction.ADMIN_UPDATED)).toEqual([]);
+                expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toEqual([]);
             },
         );
 
@@ -690,7 +691,7 @@ describe('Admin invitation with avatar', () => {
                     const record = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
                     const original = record.record.bind(record);
                     vi.spyOn(record, 'record').mockImplementation((entry, options) => {
-                        if (entry.action === String(AuditAction.ADMIN_UPDATED)) {
+                        if (entry.action === String(AdminAuditAction.ADMIN_UPDATED)) {
                             return Promise.reject(new DependencyUnavailableException());
                         }
                         return original(entry, options);
@@ -710,7 +711,7 @@ describe('Admin invitation with avatar', () => {
                 expect(response.statusCode).toBe(503);
                 expect(await state(owner.id)).toEqual(before);
                 expect(await jobs(owner.id, AdminJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
-                expect(await evidence(owner.id, AuditAction.ADMIN_UPDATED)).toEqual([]);
+                expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toEqual([]);
                 expect(await fixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
             },
         );
@@ -732,7 +733,7 @@ describe('Admin invitation with avatar', () => {
                 })
             )[0]!.data;
             const before = await state(owner.id);
-            const auditBefore = await evidence(owner.id, AuditAction.ADMIN_AVATAR_FINALIZED);
+            const auditBefore = await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED);
             const auditSpy = vi
                 .spyOn(app.get<IAuditPort>(TOKEN_AUDIT_PORT), 'record')
                 .mockRejectedValueOnce(new DependencyUnavailableException());
@@ -740,7 +741,7 @@ describe('Admin invitation with avatar', () => {
                 kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
             });
             expect(await state(owner.id)).toEqual(before);
-            expect(await evidence(owner.id, AuditAction.ADMIN_AVATAR_FINALIZED)).toEqual(auditBefore);
+            expect(await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toEqual(auditBefore);
             expect(await fixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
             expect(await fixture.storage.headObject(prepared.destinationKey)).toMatchObject({ sizeBytes: 4 });
             auditSpy.mockRestore();
@@ -752,7 +753,9 @@ describe('Admin invitation with avatar', () => {
             expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
             await app.get(AdminAvatarReplaceQueue).consume(delivery);
             expect(copy).not.toHaveBeenCalled();
-            expect(await evidence(owner.id, AuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(auditBefore.length + 1);
+            expect(await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(
+                auditBefore.length + 1,
+            );
             for (const key of [previous, prepared.sourceKey]) {
                 await expect(fixture.storage.headObject(key)).rejects.toMatchObject({
                     kind: ExceptionKind.RESOURCE_NOT_FOUND,
@@ -794,7 +797,7 @@ describe('Admin invitation with avatar', () => {
             expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
             expect((await state(owner.id)).version).toBe(before.version + 1);
             expect(await jobs(owner.id, AdminJobQueue.AVATAR_REPLACE)).toHaveLength(1);
-            expect(await evidence(owner.id, AuditAction.ADMIN_UPDATED)).toHaveLength(1);
+            expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toHaveLength(1);
         });
 
         it('retains pending and previous avatars after soft deletion', async () => {
@@ -851,7 +854,7 @@ describe('Admin invitation with avatar', () => {
             expect((await state(owner.id)).avatarKey).toBe(second.destinationKey);
             expect((await patch(second.uploadToken)).statusCode).toBe(409);
             expect((await patch(first.uploadToken)).statusCode).toBe(400);
-            expect(await evidence(owner.id, AuditAction.ADMIN_UPDATED)).toHaveLength(2);
+            expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toHaveLength(2);
         });
     });
 });

@@ -37,7 +37,7 @@ import {
     ResponseSingleUploadInitiateDto,
     ROUTE_PARAM_ID,
 } from 'src/core/http';
-import { AuditAction, Audited } from 'src/core/observability/audit';
+import { Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
 import { SessionOutcome } from 'src/core/security/session';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
@@ -75,7 +75,7 @@ import {
     ResponseAdminPasswordSessionDto,
 } from 'src/module/admin/presentation/dto/response-admin-password.dto';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
-import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
+import { Permission, PrincipalAuditAction, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { ResourceConflictMessage } from 'src/shared/exception';
 
 /**
@@ -145,7 +145,7 @@ export class AdminController {
     @Get(ROUTE_PARAM_ID)
     @Permissions(Permission.ADMIN_ACCOUNT_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
-    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
+    @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get admin by ID',
@@ -170,7 +170,7 @@ export class AdminController {
     @Get()
     @Permissions(Permission.ADMIN_ACCOUNT_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
-    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
+    @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'List all admins',

@@ -8,8 +8,9 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT, type IJobQueueDeadLetterOperatorPort } from 'src/core/job-queue';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
+import { JobQueueOperationsAuditAction } from 'src/module/job-queue-operations/shared/job-queue-operations-audit';
 import { ResourceConflictException } from 'src/shared/exception';
 
 /**
@@ -50,7 +51,7 @@ export class StartDeadLetterRedriveCommandHandler implements ICommandHandler<Sta
             }
 
             await this.auditPort.record({
-                action: AuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED,
+                action: JobQueueOperationsAuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED,
                 detail: { operationId },
             });
         });

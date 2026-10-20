@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import {
@@ -14,6 +14,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { ReplaceUserPermissionsCommand } from 'src/module/user/application/command/replace-user-permissions/command';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import {
     ExceptionKind,
     ResourceNotFoundException,
@@ -81,7 +82,7 @@ export class ReplaceUserPermissionsCommandHandler implements ICommandHandler<Rep
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({
-                action: AuditAction.USER_PERMISSIONS_CHANGED,
+                action: UserAuditAction.USER_PERMISSIONS_CHANGED,
                 targetId: user.id,
                 detail: { granted: change.granted, revoked: change.revoked },
             });

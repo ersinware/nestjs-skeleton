@@ -5,6 +5,7 @@
 
 export { PERMISSION_HOLDER, getHoldablePermissions } from 'src/shared/domain/principal/permission-catalog';
 export { Permission } from 'src/shared/domain/principal/permission.enum';
+export { PrincipalAuditAction } from 'src/shared/domain/principal/principal-audit';
 export { PrincipalType } from 'src/shared/domain/principal/principal-type.enum';
 export type { Principal } from 'src/shared/domain/principal/principal.type';
 export { SessionRevocationReason } from 'src/shared/domain/principal/session-revocation-reason.enum';

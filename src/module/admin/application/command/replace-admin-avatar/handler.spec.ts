@@ -4,7 +4,7 @@
  */
 
 import type { ITransactionPort } from 'src/core/database';
-import { AuditAction } from 'src/core/observability/audit';
+
 import { ReplaceAdminAvatarCommand } from 'src/module/admin/application/command/replace-admin-avatar/command';
 import { ReplaceAdminAvatarCommandHandler } from 'src/module/admin/application/command/replace-admin-avatar/handler';
 import {
@@ -12,6 +12,7 @@ import {
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
 import {
     DependencyUnavailableException,
@@ -73,7 +74,7 @@ describe('ReplaceAdminAvatarCommandHandler', () => {
             expect(f.admin.avatarKey).toBe(destination);
             expect(f.writer.save).toHaveBeenCalledOnce();
             expect(f.audit.record).toHaveBeenCalledWith({
-                action: AuditAction.ADMIN_AVATAR_FINALIZED,
+                action: AdminAuditAction.ADMIN_AVATAR_FINALIZED,
                 targetId: id,
                 detail: { deliveryId },
             });

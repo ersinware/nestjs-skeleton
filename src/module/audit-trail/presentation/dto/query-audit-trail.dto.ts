@@ -16,7 +16,7 @@ import {
     type ValidatorConstraintInterface,
 } from 'class-validator';
 import { isUUID, QueryPaginationDto } from 'src/core/http';
-import { AuditAction } from 'src/core/observability/audit';
+import { AuditTrailAuditAction } from 'src/module/audit-trail/shared/audit-trail-audit';
 
 /**
  * Rejects a `from`/`to` pair whose lower bound lies after the upper bound. No single-field rule can
@@ -70,7 +70,7 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
         required: false,
         minLength: 1,
         description: 'The audit action to restrict the listing to.',
-        example: AuditAction.LOGIN_FAILED,
+        example: AuditTrailAuditAction.AUDIT_TRAIL_ACCESSED,
     })
     readonly action?: string;
 

@@ -5,6 +5,7 @@
 
 /// <reference types="vitest/globals" />
 
+import { defineAuditAction } from 'src/shared/domain/audit';
 import { AccessDeniedException } from 'src/shared/exception/access-denied.exception';
 import { isExceptionWithAudit } from 'src/shared/exception/app.exception';
 import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
@@ -15,7 +16,7 @@ describe('Exception metadata', () => {
         expect(
             isExceptionWithAudit(
                 new AccessDeniedException('Denied', {
-                    audit: { action: 'MODULE_UPDATE_FAILED', reason: 'ACCOUNT_BANNED' },
+                    audit: { action: defineAuditAction('MODULE_UPDATE_FAILED'), reason: 'ACCOUNT_BANNED' },
                 }),
             ),
         ).toBe(true);

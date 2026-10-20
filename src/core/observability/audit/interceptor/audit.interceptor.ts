@@ -7,9 +7,9 @@ import { Inject, Injectable, type CallHandler, type ExecutionContext, type NestI
 import { Reflector } from '@nestjs/core';
 import { Observable, concatMap } from 'rxjs';
 import { PARAM_ID } from 'src/core/http';
-import type { AuditAction } from 'src/core/observability/audit/audit-action.enum';
 import { KEY_DECORATOR_AUDITED } from 'src/core/observability/audit/decorator/audited.decorator';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit/port/audit.port';
+import type { AuditAction } from 'src/shared/domain/audit';
 
 /**
  * Records an audit entry for handlers annotated with {@link Audited}; does nothing for the rest.

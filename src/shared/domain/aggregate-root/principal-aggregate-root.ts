@@ -4,7 +4,7 @@
  */
 
 import { SoftDeletableAggregateRoot } from 'src/shared/domain/aggregate-root/soft-deletable-aggregate-root';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
+import type { AuditAction } from 'src/shared/domain/audit';
 import { PERMISSION_HOLDER, PrincipalType, type Permission, type Principal } from 'src/shared/domain/principal';
 import { InvalidInputException, SystemException } from 'src/shared/exception';
 
@@ -157,7 +157,7 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
     protected assertPasswordChange(
         currentPasswordMatches: boolean,
         newPasswordMatchesCurrent: boolean,
-        auditAction?: DomainFailureAuditAction,
+        auditAction?: AuditAction,
     ) {
         this.assertCurrentPassword(currentPasswordMatches, auditAction);
 
@@ -176,7 +176,7 @@ export abstract class PrincipalAggregateRoot extends SoftDeletableAggregateRoot 
      */
     protected assertCurrentPassword(
         currentPasswordMatches: boolean,
-        auditAction?: string,
+        auditAction?: AuditAction,
         message: string = 'The current password provided is incorrect.',
     ) {
         if (!currentPasswordMatches) {

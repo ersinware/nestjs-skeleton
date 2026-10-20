@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { SessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -18,7 +18,7 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { PrincipalType } from 'src/shared/domain/principal';
+import { PrincipalAuditAction, PrincipalType } from 'src/shared/domain/principal';
 import {
     ExceptionKind,
     ResourceNotFoundException,
@@ -92,7 +92,7 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: AuditAction.PASSWORD_CHANGED });
+            await this.auditPort.record({ action: PrincipalAuditAction.PASSWORD_CHANGED });
         });
 
         const tokenPairWithSession = await this.tokenPort.generateTokens(

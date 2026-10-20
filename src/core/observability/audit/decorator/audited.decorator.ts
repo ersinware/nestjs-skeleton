@@ -4,7 +4,7 @@
  */
 
 import { SetMetadata } from '@nestjs/common';
-import { AuditAction } from 'src/core/observability/audit/audit-action.enum';
+import type { AuditAction } from 'src/shared/domain/audit';
 
 /**
  * Metadata key under which the audited action is stored for the interceptor to read.

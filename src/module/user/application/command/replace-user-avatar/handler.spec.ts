@@ -4,11 +4,12 @@
  */
 
 import type { ITransactionPort } from 'src/core/database';
-import { AuditAction } from 'src/core/observability/audit';
+
 import { ReplaceUserAvatarCommand } from 'src/module/user/application/command/replace-user-avatar/command';
 import { ReplaceUserAvatarCommandHandler } from 'src/module/user/application/command/replace-user-avatar/handler';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
 import {
     DependencyUnavailableException,
@@ -79,7 +80,7 @@ describe('ReplaceUserAvatarCommandHandler', () => {
             expect(f.user.avatarKey).toBe(destination);
             expect(f.writer.save).toHaveBeenCalledOnce();
             expect(f.audit.record).toHaveBeenCalledWith({
-                action: AuditAction.USER_AVATAR_FINALIZED,
+                action: UserAuditAction.USER_AVATAR_FINALIZED,
                 targetId: id,
                 detail: { deliveryId },
             });

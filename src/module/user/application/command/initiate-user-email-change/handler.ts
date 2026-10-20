@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { InitiateUserEmailChangeCommand } from 'src/module/user/application/command/initiate-user-email-change/command';
 import {
@@ -17,6 +17,7 @@ import {
     TOKEN_IS_USER_EMAIL_IN_USE_PORT,
     type IIsUserEmailInUsePort,
 } from 'src/module/user/application/query/is-user-email-in-use/port';
+import { PrincipalAuditAction } from 'src/shared/domain/principal';
 import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
@@ -75,7 +76,7 @@ export class InitiateUserEmailChangeCommandHandler implements ICommandHandler<In
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: AuditAction.EMAIL_CHANGE_REQUESTED });
+            await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
         });
     }
 }

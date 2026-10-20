@@ -16,10 +16,11 @@ import {
     type IJobQueueDeadLetterOperatorPort,
 } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
-import { AuditAction, TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { JobQueueOperationsAuditAction } from 'src/module/job-queue-operations/shared/job-queue-operations-audit';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { UnauthenticatedException } from 'src/shared/exception';
 import request from 'supertest';
@@ -158,7 +159,7 @@ describe('Dead-letter redrive', () => {
             .from(audit)
             .where(
                 and(
-                    eq(audit.action, AuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED),
+                    eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED),
                     sql`${audit.detail} ->> 'operationId' = ${operationId}`,
                 ),
             );
@@ -275,7 +276,10 @@ describe('Dead-letter redrive', () => {
                 .select()
                 .from(audit)
                 .where(
-                    and(eq(audit.actorId, ACTOR_ID), eq(audit.action, AuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED)),
+                    and(
+                        eq(audit.actorId, ACTOR_ID),
+                        eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED),
+                    ),
                 );
             expect(records).toHaveLength(1);
         } finally {
@@ -303,7 +307,12 @@ describe('Dead-letter redrive', () => {
         const records = await database
             .select()
             .from(audit)
-            .where(and(eq(audit.actorId, ACTOR_ID), eq(audit.action, AuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED)));
+            .where(
+                and(
+                    eq(audit.actorId, ACTOR_ID),
+                    eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED),
+                ),
+            );
         expect(records).toHaveLength(0);
     });
 

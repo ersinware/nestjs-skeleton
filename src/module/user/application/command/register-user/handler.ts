@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
@@ -21,6 +21,7 @@ import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { assertUserRegistrationFormHashMatches } from 'src/module/user/domain/user-registration';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
@@ -128,7 +129,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.insert(user);
-            await this.auditPort.record({ action: AuditAction.USER_REGISTERED, targetId: user.id });
+            await this.auditPort.record({ action: UserAuditAction.USER_REGISTERED, targetId: user.id });
         });
     }
 }
