@@ -20,8 +20,8 @@ describe('FinalizeUserAvatarCommandHandler', () => {
         'reconciles %s before deleting the source',
         async (scenario) => {
             const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
-            const deliveryId = 'b603fdc2-5c63-4912-b40e-f0bf3b96f156';
-            const sourceKey = buildUserPendingAvatarKey(id);
+            const deliveryId = id;
+            const sourceKey = buildUserPendingAvatarKey(id, id);
             const destinationKey = buildUserPermanentAvatarKey(id, deliveryId);
             const user = User.create({
                 id,
@@ -81,8 +81,8 @@ describe('FinalizeUserAvatarCommandHandler', () => {
         'preserves failure disposition for an attached avatar: %s',
         async (error) => {
             const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
-            const deliveryId = 'b603fdc2-5c63-4912-b40e-f0bf3b96f156';
-            const sourceKey = buildUserPendingAvatarKey(id);
+            const deliveryId = id;
+            const sourceKey = buildUserPendingAvatarKey(id, id);
             const finalKey = buildUserPermanentAvatarKey(id, deliveryId);
             const user = User.create({
                 id,

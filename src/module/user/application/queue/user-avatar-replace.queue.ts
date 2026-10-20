@@ -1,0 +1,52 @@
+/**
+ * @file user-avatar-replace.queue.ts
+ * @description Dispatches user profile avatar replacement through the owning command pipeline.
+ */
+
+import { Injectable } from '@nestjs/common';
+import { CommandPipeline } from 'src/core/cqrs';
+import { type IJobConsumer, type Job } from 'src/core/job-queue';
+import { ReplaceUserAvatarCommand } from 'src/module/user/application/command/replace-user-avatar/command';
+import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
+import { TerminalJobException } from 'src/shared/exception';
+
+/**
+ * Uses the existing retry defaults and shared DLQ for storage reconciliation.
+ */
+@Injectable()
+export class UserAvatarReplaceQueue implements IJobConsumer {
+    /**
+     * Queue owned by the user's profile avatar workflow.
+     */
+    readonly name = UserJobQueue.AVATAR_REPLACE;
+
+    /**
+     * Storage network calls cannot share the pg-boss transaction.
+     */
+    readonly transactional = false;
+
+    /**
+     * Initializes the owner command dispatcher.
+     *
+     * @param commandPipeline Dispatches the reconciliation command with normal behaviors
+     */
+    constructor(private readonly commandPipeline: CommandPipeline) {}
+
+    /**
+     * Validates the cleanup fact before dispatching the replacement delivery.
+     *
+     * @param job Profile avatar replacement delivery
+     * @throws {TerminalJobException} When the previous avatar identity is missing or invalid
+     */
+    async consume(job: Job) {
+        const previousAvatarId = job.payload?.['previousAvatarId'];
+
+        if (typeof previousAvatarId !== 'string' || previousAvatarId.length === 0) {
+            throw new TerminalJobException('The avatar replacement job is missing its previous avatar identity.');
+        }
+
+        await this.commandPipeline.execute(
+            new ReplaceUserAvatarCommand(job.aggregateId, job.deliveryId, previousAvatarId),
+        );
+    }
+}

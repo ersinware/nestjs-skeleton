@@ -75,7 +75,7 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
 
         const id = uuidv7(),
             now = Math.floor(Date.now() / 1000),
-            fileKey = buildUserPendingAvatarKey(id),
+            fileKey = buildUserPendingAvatarKey(id, id),
             plan = await this.storagePort.initiateUpload({
                 key: fileKey,
                 sizeBytes: command.avatar.sizeBytes,

@@ -13,6 +13,11 @@ export enum UserJobQueue {
     AVATAR_FINALIZE = 'user.avatar-finalize.queue.v1',
 
     /**
+     * Replaces a profile avatar and cleans up its previous version.
+     */
+    AVATAR_REPLACE = 'user.avatar-replace.queue.v1',
+
+    /**
      * Sends the activation link for a pending user account.
      */
     ACTIVATION = 'user.activation.queue.v1',

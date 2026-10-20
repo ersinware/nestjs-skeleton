@@ -20,7 +20,7 @@ describe('User activation', () => {
         email: 'activation@example.test',
         name: 'Activation Test',
         password: 'stored-hash',
-        avatarKey: 'pending/avatar/user/01960000-0000-7000-8000-000000000011',
+        avatarKey: 'pending/avatar/user/01960000-0000-7000-8000-000000000011/01960000-0000-7000-8000-000000000011',
     };
     const admin = { id: '01960000-0000-7000-8000-000000000012', type: PrincipalType.ADMIN, permissions: [] };
     let account: User;
@@ -58,8 +58,7 @@ describe('User activation', () => {
                 queueName: UserJobQueue.AVATAR_FINALIZE,
             },
         ]);
-        expect(jobs[1]!.deliveryId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-        expect(jobs[1]!.deliveryId).not.toBe(account.id);
+        expect(jobs[1]!.deliveryId).toBe(account.id);
         expect(jobs[1]!.deliveryId).not.toBe(account.activationId);
     });
 
@@ -143,7 +142,7 @@ describe('User activation', () => {
     });
 
     it('rejects authenticated self-service while activation is pending', () => {
-        expect(() => account.updateName('Changed')).toThrow(SystemException);
+        expect(() => account.update('Changed')).toThrow(SystemException);
     });
 
     it('treats a verified proof routed to another account as a programming fault', () => {

@@ -11,4 +11,9 @@ export enum UserUploadPurpose {
      * Initial avatar upload for a pending user account.
      */
     REGISTRATION = 'user_signup',
+
+    /**
+     * Avatar replacement for an authenticated user's profile.
+     */
+    PROFILE_AVATAR = 'user_profile_avatar',
 }

@@ -4,13 +4,14 @@
  */
 
 /**
- * Selects the pending key reserved for a registration identity.
+ * Selects the pending key for an immutable avatar version; registration uses the account identity.
  *
- * @param userId Handler-generated registration identity
+ * @param userId Account identity
+ * @param avatarId Avatar version identity; registration explicitly supplies the account identity
  * @returns Pending avatar object key
  */
-export function buildUserPendingAvatarKey(userId: string): string {
-    return `pending/avatar/user/${userId}`;
+export function buildUserPendingAvatarKey(userId: string, avatarId: string): string {
+    return `pending/avatar/user/${userId}/${avatarId}`;
 }
 
 /**

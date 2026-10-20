@@ -62,7 +62,7 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
         }
 
         const { deliveryId } = command,
-            sourceKey = buildUserPendingAvatarKey(user.id),
+            sourceKey = buildUserPendingAvatarKey(user.id, deliveryId),
             destinationKey = buildUserPermanentAvatarKey(user.id, deliveryId);
 
         // An initial delivery may retry after a profile replacement; never reattach the initial avatar.

@@ -25,7 +25,7 @@ describe('RegisterUserCommandHandler', () => {
     function setup() {
         const claims = {
             sub: id,
-            fileKey: buildUserPendingAvatarKey(id),
+            fileKey: buildUserPendingAvatarKey(id, id),
             formHash: createUserRegistrationFormHash(command, secret),
         };
         const token = { verifyUploadToken: vi.fn().mockResolvedValue(claims) };

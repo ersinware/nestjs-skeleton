@@ -17,7 +17,7 @@ describe('User email change invariants', () => {
         name: 'Example',
         email: 'old@example.test',
         password: 'hash',
-        avatarKey: 'pending/avatar/user/01960000-0000-7000-8000-000000000001',
+        avatarKey: 'pending/avatar/user/01960000-0000-7000-8000-000000000001/01960000-0000-7000-8000-000000000001',
     };
     const notificationId = '01960000-0000-7000-8000-000000000002';
     const actor = { id: '01960000-0000-7000-8000-000000000003', type: PrincipalType.ADMIN, permissions: [] };
@@ -51,10 +51,10 @@ describe('User email change invariants', () => {
 
     it('updates only the name and leaves an identical name as a no-op', () => {
         const before = account.toSnapshot();
-        expect(account.updateName(account.name)).toBe(false);
+        expect(account.update(account.name)).toBe(false);
         expect(account.toSnapshot()).toEqual(before);
         expect(account.pullJobs()).toEqual([]);
-        expect(account.updateName('Changed')).toBe(true);
+        expect(account.update('Changed')).toBe(true);
         expect(account.email).toBe(initial.email);
         expect(account.sessionVersion).toBe(0);
         expect(account.revocationVersion).toBe(0);

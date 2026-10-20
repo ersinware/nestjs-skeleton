@@ -9,6 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { LightMyRequestResponse } from 'fastify';
 import type Redis from 'ioredis';
 import { PgBoss } from 'pg-boss';
+import { TOKEN_CACHE_PORT, type ICachePort } from 'src/core/cache';
 import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
@@ -27,12 +28,17 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
+import { UserAvatarFinalizeQueue } from 'src/module/user/application/queue/user-avatar-finalize.queue';
+import { UserAvatarReplaceQueue } from 'src/module/user/application/queue/user-avatar-replace.queue';
+import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
+import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { user } from 'src/module/user/infrastructure/user.schema';
+import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
-import { DependencyUnavailableException } from 'src/shared/exception';
+import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
 import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
@@ -53,6 +59,7 @@ describe('User registration and activation', () => {
     const ids: string[] = [];
     const sendEmail = vi.fn<IEmailerPort['sendEmail']>();
     const password = 'Activation-Phase8!123';
+    const avatar: AvatarUploadDescriptor = { sizeBytes: 4, contentType: 'image/png' };
 
     beforeAll(async () => {
         storageFixture = await createStorageTestFixture();
@@ -116,6 +123,9 @@ describe('User registration and activation', () => {
                 }
             } while (cursor !== '0');
         }
+        for (const id of ids) {
+            await app.get<ICachePort>(TOKEN_CACHE_PORT).delete(CacheKeys.userById(id));
+        }
         await app.close();
         for (const key of objectKeys) {
             await storageFixture.storage.deleteObject(key);
@@ -168,8 +178,8 @@ describe('User registration and activation', () => {
         });
     }
 
-    async function jobs(id: string) {
-        return boss.findJobs<Job>(UserJobQueue.ACTIVATION, { data: { aggregateId: id } });
+    async function jobs(id: string, queue = UserJobQueue.ACTIVATION) {
+        return boss.findJobs<Job>(queue, { data: { aggregateId: id } });
     }
 
     async function actions(id: string) {
@@ -355,7 +365,7 @@ describe('User registration and activation', () => {
         const row = await register();
         const [job] = await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, { data: { aggregateId: row.id } });
         const destination = buildUserPermanentAvatarKey(row.id, job!.data.deliveryId);
-        const source = buildUserPendingAvatarKey(row.id);
+        const source = buildUserPendingAvatarKey(row.id, row.id);
         objectKeys.add(destination);
         const pipeline = app.get(CommandPipeline);
         const command = new FinalizeUserAvatarCommand(row.id, job!.data.deliveryId);
@@ -397,7 +407,9 @@ describe('User registration and activation', () => {
         expect(
             (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_AVATAR_FINALIZED)),
         ).toHaveLength(1);
-        await expect(storageFixture.storage.headObject(buildUserPendingAvatarKey(row.id))).rejects.toMatchObject({
+        await expect(
+            storageFixture.storage.headObject(buildUserPendingAvatarKey(row.id, row.id)),
+        ).rejects.toMatchObject({
             kind: 'RESOURCE_NOT_FOUND',
         });
     });
@@ -810,5 +822,530 @@ describe('User registration and activation', () => {
         expect(response.statusCode).toBe(200);
         expect(data(response)).toEqual({ session: 'login_required' });
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
+    });
+    /**
+     * Reads current persisted user state independently of projection caching.
+     *
+     * @param id Run-owned account identity
+     * @returns Persisted account state
+     */
+    async function state(id: string): Promise<typeof user.$inferSelect> {
+        return (await database.select().from(user).where(eq(user.id, id)))[0]!;
+    }
+
+    /**
+     * Observes committed self-service and delivery evidence.
+     *
+     * @param id Run-owned account identity
+     * @param action Expected audit action
+     * @returns Matching durable audit records
+     */
+    async function evidence(id: string, action: string): Promise<(typeof audit.$inferSelect)[]> {
+        return (
+            await database
+                .select()
+                .from(audit)
+                .where(or(eq(audit.actorId, id), eq(audit.targetId, id)))
+        ).filter((entry) => entry.action === action);
+    }
+    describe('User profile avatar updates', () => {
+        /**
+         * Run-owned authenticated account used by the profile endpoints.
+         */
+        type ProfileAccount = {
+            /**
+             * Account created and activated through production commands.
+             */
+            readonly id: string;
+            /**
+             * Session verified by the production global guards.
+             */
+            readonly headers: { readonly authorization: string };
+        };
+
+        /**
+         * Profile upload tracked for observation and cleanup.
+         */
+        type ProfileUpload = {
+            /**
+             * Workflow proof returned by the HTTP endpoint.
+             */
+            readonly uploadToken: string;
+            /**
+             * Source selected by the verified upload proof.
+             */
+            readonly sourceKey: string;
+            /**
+             * Immutable destination selected by the delivery identity.
+             */
+            readonly destinationKey: string;
+            /**
+             * Avatar identity reused by every delivery attempt.
+             */
+            readonly deliveryId: string;
+        };
+
+        /**
+         * Registers and activates a fresh account without bypassing session guards.
+         *
+         * @param finalizeInitial Whether to finish the initial avatar before profile updates
+         * @returns Authenticated account scoped to this test run
+         */
+        async function account(finalizeInitial = true): Promise<ProfileAccount> {
+            const initial = await register();
+            const activated = await app.inject({
+                method: 'POST',
+                url: '/api/v1/user/activation/complete',
+                payload: { token: await proof(initial), password },
+            });
+            expect(activated.statusCode).toBe(200);
+            const initialJob = (
+                await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, { data: { aggregateId: initial.id } })
+            )[0]!;
+            objectKeys.add(buildUserPermanentAvatarKey(initial.id, initialJob.data.deliveryId));
+            if (finalizeInitial) {
+                await app.get(UserAvatarFinalizeQueue).consume(initialJob.data);
+            }
+            return {
+                id: initial.id,
+                headers: {
+                    authorization: `Bearer ${activated.json<{ data: { accessToken: string } }>().data.accessToken}`,
+                },
+            };
+        }
+
+        /**
+         * Initiates a profile upload and performs its signed PUT through the production storage port.
+         *
+         * @param owner Authenticated run-owned account
+         * @param name Optional combined-update name
+         * @param upload Whether to create the expected source object
+         * @returns Proof and deterministic delivery keys
+         */
+        async function profileUpload(owner: ProfileAccount, name?: string, upload = true): Promise<ProfileUpload> {
+            const before = await state(owner.id);
+            const response = await app.inject({
+                method: 'POST',
+                url: '/api/v1/user/me/avatar/initiate',
+                headers: owner.headers,
+                payload: { avatar, ...(name !== undefined && { name }) },
+            });
+            expect(response.statusCode).toBe(200);
+            const plan = response.json<{
+                data: { uploadToken: string; request: { url: string; headers: Record<string, string> } };
+            }>().data;
+            const claims = await tokenPort.verifyUploadToken(plan.uploadToken, UserUploadPurpose.PROFILE_AVATAR);
+            const destinationKey = buildUserPermanentAvatarKey(owner.id, claims.jti);
+            objectKeys.add(claims.fileKey);
+            objectKeys.add(destinationKey);
+            expect(await state(owner.id)).toEqual(before);
+            if (upload) {
+                expect(
+                    (await fetch(plan.request.url, { method: 'PUT', headers: plan.request.headers, body: 'test' }))
+                        .status,
+                ).toBe(200);
+            }
+            return { uploadToken: plan.uploadToken, sourceKey: claims.fileKey, destinationKey, deliveryId: claims.jti };
+        }
+
+        it.each(['name-only', 'avatar-only', 'combined'] as const)(
+            'commits %s and returns the selected profile',
+            async (scenario) => {
+                const owner = await account();
+                const before = await state(owner.id);
+                const beforeJobs = await jobs(owner.id, UserJobQueue.AVATAR_REPLACE);
+                const name = scenario === 'avatar-only' ? undefined : 'Updated User';
+                const upload = scenario === 'name-only' ? undefined : await profileUpload(owner, name);
+                const response = await app.inject({
+                    method: 'PATCH',
+                    url: '/api/v1/user/me',
+                    headers: owner.headers,
+                    payload: {
+                        ...(name !== undefined && { name }),
+                        ...(upload && { avatar, uploadToken: upload.uploadToken }),
+                    },
+                });
+                expect(response.statusCode).toBe(200);
+                expect(response.json<unknown>()).toMatchObject({
+                    data: { name: name ?? before.name, avatarKey: upload?.sourceKey ?? before.avatarKey },
+                });
+                const updated = await state(owner.id);
+                expect(updated.sessionVersion).toBe(before.sessionVersion);
+                expect(updated.revocationVersion).toBe(before.revocationVersion);
+                expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toHaveLength(1);
+                expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(
+                    beforeJobs.length + (upload ? 1 : 0),
+                );
+                if (upload) {
+                    const delivery = (
+                        await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, { data: { aggregateId: owner.id } })
+                    ).find((job) => job.data.deliveryId === upload.deliveryId)!;
+                    await app.get(UserAvatarReplaceQueue).consume(delivery.data);
+                    await expect(storageFixture.storage.headObject(before.avatarKey)).rejects.toMatchObject({
+                        kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                    });
+                    expect((await state(owner.id)).avatarKey).toBe(upload.destinationKey);
+                    expect(await storageFixture.readCacheControl(upload.destinationKey)).toBe(
+                        'public, max-age=31536000, s-maxage=31536000, immutable',
+                    );
+                    await expect(storageFixture.storage.headObject(upload.sourceKey)).rejects.toMatchObject({
+                        kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                    });
+                }
+            },
+        );
+
+        it('rejects empty, null, invalid, and unknown profile fields without writes', async () => {
+            const owner = await account();
+            const before = await state(owner.id);
+            const beforeJobs = await jobs(owner.id, UserJobQueue.AVATAR_REPLACE);
+            for (const payload of [
+                {},
+                { name: null },
+                { name: '' },
+                { avatar: null },
+                { avatar: {} },
+                { avatar },
+                { uploadToken: 'a.b.c' },
+                { avatar, uploadToken: null },
+                { name: 'Valid Name', avatar },
+                { unknown: true },
+                { avatar: { ...avatar, unknown: true }, uploadToken: 'invalid' },
+            ]) {
+                const response = await app.inject({
+                    method: 'PATCH',
+                    url: '/api/v1/user/me',
+                    headers: owner.headers,
+                    payload,
+                });
+                expect(response.statusCode).toBe(400);
+                expect(response.json<unknown>()).toMatchObject({ error: { statusCode: 400 } });
+            }
+            expect(await state(owner.id)).toEqual(before);
+            expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
+            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+        });
+
+        it.each(['expired', 'purpose', 'ownership', 'name-binding', 'missing-object'] as const)(
+            'rejects %s before accepting a profile change',
+            async (scenario) => {
+                const owner = await account();
+                const prepared = await profileUpload(owner, undefined, scenario !== 'missing-object');
+                const before = await state(owner.id);
+                const beforeJobs = await jobs(owner.id, UserJobQueue.AVATAR_REPLACE);
+                let uploadToken = prepared.uploadToken;
+                if (scenario === 'expired' || scenario === 'purpose' || scenario === 'ownership') {
+                    const claims = await tokenPort.verifyUploadToken(uploadToken, UserUploadPurpose.PROFILE_AVATAR);
+                    uploadToken = await tokenPort.generateUploadToken({
+                        ...claims,
+                        ...(scenario === 'expired' && { exp: Math.floor(Date.now() / 1000) - 1 }),
+                        ...(scenario === 'purpose' && { purpose: UserUploadPurpose.REGISTRATION }),
+                        ...(scenario === 'ownership' && { sub: uuidv7() }),
+                    });
+                }
+                const response = await app.inject({
+                    method: 'PATCH',
+                    url: '/api/v1/user/me',
+                    headers: owner.headers,
+                    payload: {
+                        ...(scenario === 'name-binding' && { name: 'Changed User' }),
+                        avatar,
+                        uploadToken,
+                    },
+                });
+                expect(response.statusCode).toBe(scenario === 'ownership' ? 403 : 400);
+                expect(await state(owner.id)).toEqual(before);
+                expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
+                expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+            },
+        );
+
+        it.each(['audit', 'enqueue'] as const)(
+            'rolls back the combined profile and move job when %s fails',
+            async (failure) => {
+                const owner = await account();
+                const prepared = await profileUpload(owner, 'Updated User');
+                const before = await state(owner.id);
+                const beforeJobs = await jobs(owner.id, UserJobQueue.AVATAR_REPLACE);
+                if (failure === 'audit') {
+                    const record = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
+                    const original = record.record.bind(record);
+                    vi.spyOn(record, 'record').mockImplementation((entry, options) => {
+                        if (entry.action === String(AuditAction.USER_UPDATED)) {
+                            return Promise.reject(new DependencyUnavailableException());
+                        }
+                        return original(entry, options);
+                    });
+                } else {
+                    vi.spyOn(
+                        app.get<IJobQueueWriterPort>(TOKEN_JOB_QUEUE_WRITER_PORT),
+                        'enqueue',
+                    ).mockRejectedValueOnce(new DependencyUnavailableException());
+                }
+                const response = await app.inject({
+                    method: 'PATCH',
+                    url: '/api/v1/user/me',
+                    headers: owner.headers,
+                    payload: { name: 'Updated User', avatar, uploadToken: prepared.uploadToken },
+                });
+                expect(response.statusCode).toBe(503);
+                expect(await state(owner.id)).toEqual(before);
+                expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
+                expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+                expect(await storageFixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
+            },
+        );
+
+        it('reuses a copied replacement after rollback and resumes cleanup after commit', async () => {
+            const owner = await account();
+            const previous = (await state(owner.id)).avatarKey;
+            const prepared = await profileUpload(owner);
+            const response = await app.inject({
+                method: 'PATCH',
+                url: '/api/v1/user/me',
+                headers: owner.headers,
+                payload: { avatar, uploadToken: prepared.uploadToken },
+            });
+            expect(response.statusCode).toBe(200);
+            const delivery = (
+                await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, {
+                    data: { aggregateId: owner.id },
+                })
+            )[0]!.data;
+            const before = await state(owner.id);
+            const auditBefore = await evidence(owner.id, AuditAction.USER_AVATAR_FINALIZED);
+            const auditSpy = vi
+                .spyOn(app.get<IAuditPort>(TOKEN_AUDIT_PORT), 'record')
+                .mockRejectedValueOnce(new DependencyUnavailableException());
+            await expect(app.get(UserAvatarReplaceQueue).consume(delivery)).rejects.toMatchObject({
+                kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
+            });
+            expect(await state(owner.id)).toEqual(before);
+            expect(await evidence(owner.id, AuditAction.USER_AVATAR_FINALIZED)).toEqual(auditBefore);
+            expect(await storageFixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
+            expect(await storageFixture.storage.headObject(prepared.destinationKey)).toMatchObject({ sizeBytes: 4 });
+            auditSpy.mockRestore();
+            const copy = vi.spyOn(storageFixture.storage, 'copyObject');
+            vi.spyOn(storageFixture.storage, 'deleteObject').mockRejectedValueOnce(
+                new DependencyUnavailableException(),
+            );
+            await expect(app.get(UserAvatarReplaceQueue).consume(delivery)).rejects.toMatchObject({
+                kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
+            });
+            expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
+            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            expect(copy).not.toHaveBeenCalled();
+            expect(await evidence(owner.id, AuditAction.USER_AVATAR_FINALIZED)).toHaveLength(auditBefore.length + 1);
+            for (const key of [previous, prepared.sourceKey]) {
+                await expect(storageFixture.storage.headObject(key)).rejects.toMatchObject({
+                    kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                });
+            }
+        });
+
+        it('commits one concurrent replacement from the same account version', async () => {
+            const owner = await account();
+            const first = await profileUpload(owner);
+            const second = await profileUpload(owner);
+            const before = await state(owner.id);
+            const headObject = storageFixture.storage.headObject.bind(storageFixture.storage);
+            let arrivals = 0;
+            let release: () => void = () => {};
+            const ready = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            vi.spyOn(storageFixture.storage, 'headObject').mockImplementation(async (key) => {
+                const object = await headObject(key);
+                if (key === first.sourceKey || key === second.sourceKey) {
+                    if (++arrivals === 2) {
+                        release();
+                    }
+                    await ready;
+                }
+                return object;
+            });
+            const responses = await Promise.all(
+                [first, second].map((prepared) =>
+                    app.inject({
+                        method: 'PATCH',
+                        url: '/api/v1/user/me',
+                        headers: owner.headers,
+                        payload: { avatar, uploadToken: prepared.uploadToken },
+                    }),
+                ),
+            );
+            expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+            expect((await state(owner.id)).version).toBe(before.version + 1);
+            expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(1);
+            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toHaveLength(1);
+        });
+
+        it('retains pending and previous avatars after soft deletion', async () => {
+            const owner = await account();
+            const previous = (await state(owner.id)).avatarKey;
+            const prepared = await profileUpload(owner);
+            const response = await app.inject({
+                method: 'PATCH',
+                url: '/api/v1/user/me',
+                headers: owner.headers,
+                payload: { avatar, uploadToken: prepared.uploadToken },
+            });
+            expect(response.statusCode).toBe(200);
+            const delivery = (
+                await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, {
+                    data: { aggregateId: owner.id },
+                })
+            )[0]!.data;
+            await database.update(user).set({ deletedAt: new Date() }).where(eq(user.id, owner.id));
+            const before = await state(owner.id);
+            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            expect(await state(owner.id)).toEqual(before);
+            expect(await storageFixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
+            expect(await storageFixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
+        });
+
+        it('preserves a newer pending selection across stale delivery and rejects proof replay', async () => {
+            const owner = await account();
+            const first = await profileUpload(owner);
+            const patch = (uploadToken: string) =>
+                app.inject({
+                    method: 'PATCH',
+                    url: '/api/v1/user/me',
+                    headers: owner.headers,
+                    payload: { avatar, uploadToken },
+                });
+            expect((await patch(first.uploadToken)).statusCode).toBe(200);
+            expect((await patch(first.uploadToken)).statusCode).toBe(409);
+            const second = await profileUpload(owner);
+            expect((await patch(second.uploadToken)).statusCode).toBe(200);
+            const deliveries = await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, {
+                data: { aggregateId: owner.id },
+            });
+            const firstJob = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
+            const secondJob = deliveries.find((job) => job.data.deliveryId === second.deliveryId)!;
+            const before = await state(owner.id);
+            await app.get(UserAvatarReplaceQueue).consume(firstJob.data);
+            expect(await state(owner.id)).toEqual(before);
+            expect(await storageFixture.storage.headObject(second.sourceKey)).toMatchObject({ sizeBytes: 4 });
+            await expect(storageFixture.storage.headObject(first.sourceKey)).rejects.toMatchObject({
+                kind: ExceptionKind.RESOURCE_NOT_FOUND,
+            });
+            await app.get(UserAvatarReplaceQueue).consume(secondJob.data);
+            expect((await state(owner.id)).avatarKey).toBe(second.destinationKey);
+            expect((await patch(second.uploadToken)).statusCode).toBe(409);
+            expect((await patch(first.uploadToken)).statusCode).toBe(400);
+            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toHaveLength(2);
+        });
+
+        it('replaces an initial pending avatar and keeps a stale initial delivery from reattaching it', async () => {
+            const owner = await account(false);
+            const initial = await state(owner.id);
+            const initialJob = (
+                await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, {
+                    data: { aggregateId: owner.id },
+                })
+            )[0]!.data;
+            expect(initialJob.deliveryId).toBe(owner.id);
+            const prepared = await profileUpload(owner);
+            const response = await app.inject({
+                method: 'PATCH',
+                url: '/api/v1/user/me',
+                headers: owner.headers,
+                payload: { avatar, uploadToken: prepared.uploadToken },
+            });
+            expect(response.statusCode).toBe(200);
+            const delivery = (
+                await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, {
+                    data: { aggregateId: owner.id },
+                })
+            )[0]!.data;
+            expect(delivery.payload).toEqual({ previousAvatarId: owner.id });
+            await app.get(UserAvatarFinalizeQueue).consume(initialJob);
+            expect((await state(owner.id)).avatarKey).toBe(prepared.sourceKey);
+            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
+            await expect(storageFixture.storage.headObject(initial.avatarKey)).rejects.toMatchObject({
+                kind: ExceptionKind.RESOURCE_NOT_FOUND,
+            });
+            await app.get(UserAvatarFinalizeQueue).consume(initialJob);
+            expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
+        });
+
+        it('evicts the profile after both transitions and persists retryable cache jobs', async () => {
+            const owner = await account();
+            const cache = app.get<ICachePort>(TOKEN_CACHE_PORT);
+            const key = CacheKeys.userById(owner.id);
+            const before = await state(owner.id);
+            const beforeJobs = await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE);
+            await cache.set(key, { avatarKey: before.avatarKey }, 60);
+            const prepared = await profileUpload(owner);
+            const patched = await app.inject({
+                method: 'PATCH',
+                url: '/api/v1/user/me',
+                headers: owner.headers,
+                payload: { avatar, uploadToken: prepared.uploadToken },
+            });
+            expect(patched.statusCode).toBe(200);
+            expect(await cache.get(key)).toBeNull();
+            expect(await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE)).toHaveLength(beforeJobs.length + 1);
+            await cache.set(key, { avatarKey: prepared.sourceKey }, 60);
+            const delivery = (
+                await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, {
+                    data: { aggregateId: owner.id },
+                })
+            )[0]!.data;
+            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            expect(await cache.get(key)).toBeNull();
+            const cacheJobs = await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE);
+            expect(cacheJobs).toHaveLength(beforeJobs.length + 2);
+            await cache.set(key, { avatarKey: before.avatarKey }, 60);
+            await app.get(UserCacheQueue).consume(cacheJobs.at(-1)!.data);
+            expect(await cache.get(key)).toBeNull();
+            const fresh = await app.inject({ method: 'GET', url: '/api/v1/user/me', headers: owner.headers });
+            expect(fresh.statusCode).toBe(200);
+            expect(fresh.json<unknown>()).toMatchObject({ data: { avatarKey: prepared.destinationKey } });
+        });
+
+        it('keeps unchanged names free of writes, delivery jobs, and mutation audit', async () => {
+            const owner = await account();
+            const before = await state(owner.id);
+            const cacheJobs = await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE);
+            const response = await app.inject({
+                method: 'PATCH',
+                url: '/api/v1/user/me',
+                headers: owner.headers,
+                payload: { name: before.name },
+            });
+            expect(response.statusCode).toBe(200);
+            expect(await state(owner.id)).toEqual(before);
+            expect(await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE)).toHaveLength(cacheJobs.length);
+            expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toEqual([]);
+            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+        });
+
+        it('validates upload initiation without changing the account or enqueueing replacement work', async () => {
+            const owner = await account();
+            const before = await state(owner.id);
+            for (const payload of [
+                {},
+                { name: 'Changed User' },
+                { avatar: null },
+                { avatar, name: null },
+                { avatar: { ...avatar, sizeBytes: 0 } },
+                { avatar: { ...avatar, contentType: 'image/svg+xml' } },
+                { avatar: { ...avatar, extra: true } },
+                { avatar, extra: true },
+            ]) {
+                const response = await app.inject({
+                    method: 'POST',
+                    url: '/api/v1/user/me/avatar/initiate',
+                    headers: owner.headers,
+                    payload,
+                });
+                expect(response.statusCode).toBe(400);
+            }
+            expect(await state(owner.id)).toEqual(before);
+            expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toEqual([]);
+        });
     });
 });
