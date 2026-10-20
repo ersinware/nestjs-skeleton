@@ -6,12 +6,13 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
@@ -61,7 +62,7 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
         }
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AuditAction.ADMIN_INVITED, targetId: admin.id });
+            await this.auditPort.record({ action: AdminAuditAction.ADMIN_INVITED, targetId: admin.id });
         });
     }
 }

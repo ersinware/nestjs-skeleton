@@ -8,8 +8,9 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
+import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
@@ -62,7 +63,7 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
                 },
             ]);
             // The verified principal already identifies the actor in the audit context.
-            await this.auditPort.record({ action: AuditAction.LOGOUT_ALL, detail: { deliveryId } });
+            await this.auditPort.record({ action: AuthAuditAction.LOGOUT_ALL, detail: { deliveryId } });
         });
     }
 }

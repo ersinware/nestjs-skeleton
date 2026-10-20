@@ -8,7 +8,7 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
@@ -20,6 +20,7 @@ import {
     RefreshTokensRejectionMessage,
     type RefreshTokensResult,
 } from 'src/module/auth/application/command/refresh-tokens/command';
+import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
@@ -126,7 +127,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         if (outcome === RotateOutcome.CONCURRENT_REPLAY) {
             // Timing cannot prove a replay is benign; preserve evidence without revoking sessions.
             await this.auditPort.record({
-                action: AuditAction.REFRESH_CONCURRENT_REPLAY,
+                action: AuthAuditAction.REFRESH_CONCURRENT_REPLAY,
                 targetId: sub,
             });
 
@@ -149,7 +150,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
                 },
             ]);
             await this.auditPort.record({
-                action: AuditAction.REFRESH_REUSE_DETECTED,
+                action: AuthAuditAction.REFRESH_REUSE_DETECTED,
                 targetId: sub,
                 detail: { deliveryId },
             });

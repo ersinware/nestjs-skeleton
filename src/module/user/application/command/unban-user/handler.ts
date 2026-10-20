@@ -6,12 +6,13 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UnbanUserCommand } from 'src/module/user/application/command/unban-user/command';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
@@ -66,7 +67,7 @@ export class UnbanUserCommandHandler implements ICommandHandler<UnbanUserCommand
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: AuditAction.USER_UNBANNED, targetId: user.id });
+            await this.auditPort.record({ action: UserAuditAction.USER_UNBANNED, targetId: user.id });
         });
     }
 }

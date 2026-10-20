@@ -3,7 +3,7 @@
  * @description Public entry point of the audit concern. Nothing outside may import past this barrel.
  */
 
-export { AuditAction } from 'src/core/observability/audit/audit-action.enum';
+export { AuditAction } from 'src/core/observability/audit/audit-action';
 export { isExceptionAudited, publishAuditActor } from 'src/core/observability/audit/audit-context';
 export type { AuditContext } from 'src/core/observability/audit/audit-context';
 export { audit } from 'src/core/observability/audit/audit.schema';

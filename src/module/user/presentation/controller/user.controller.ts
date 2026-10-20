@@ -37,7 +37,7 @@ import {
     ResponseSingleUploadInitiateDto,
     ROUTE_PARAM_ID,
 } from 'src/core/http';
-import { AuditAction, Audited } from 'src/core/observability/audit';
+import { Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
 import { SessionOutcome } from 'src/core/security/session';
 import { ActivateUserCommand } from 'src/module/user/application/command/activate-user/command';
@@ -80,7 +80,7 @@ import {
     ResponseUserPasswordSessionDto,
 } from 'src/module/user/presentation/dto/response-user-password.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
-import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
+import { Permission, PrincipalAuditAction, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { ResourceConflictMessage } from 'src/shared/exception';
 
 /**
@@ -169,7 +169,7 @@ export class UserController {
     @Get(ROUTE_PARAM_ID)
     @Permissions(Permission.USER_ACCOUNT_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
-    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
+    @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Get user by ID',
@@ -194,7 +194,7 @@ export class UserController {
     @Get()
     @Permissions(Permission.USER_ACCOUNT_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
-    @Audited(AuditAction.PERSONAL_DATA_ACCESSED)
+    @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'List all users',

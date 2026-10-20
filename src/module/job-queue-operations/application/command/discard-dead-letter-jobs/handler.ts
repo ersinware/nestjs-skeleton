@@ -7,8 +7,9 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT, type IJobQueueDeadLetterOperatorPort } from 'src/core/job-queue';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
+import { JobQueueOperationsAuditAction } from 'src/module/job-queue-operations/shared/job-queue-operations-audit';
 import { ResourceNotFoundException } from 'src/shared/exception';
 
 /**
@@ -47,7 +48,7 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
             }
 
             await this.auditPort.record({
-                action: AuditAction.JOB_DEAD_LETTER_DISCARDED,
+                action: JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED,
                 detail: { jobIds: command.jobIds, count: String(affected) },
             });
         });

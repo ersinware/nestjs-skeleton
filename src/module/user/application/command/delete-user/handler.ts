@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
@@ -14,6 +14,7 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import {
     ExceptionKind,
     ResourceNotFoundException,
@@ -70,7 +71,7 @@ export class DeleteUserCommandHandler implements ICommandHandler<DeleteUserComma
         }
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: AuditAction.USER_DELETED });
+            await this.auditPort.record({ action: UserAuditAction.USER_DELETED });
         });
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next

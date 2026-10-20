@@ -5,12 +5,13 @@
 
 import type { ITransactionPort } from 'src/core/database';
 import type { IJobQueueWriterPort } from 'src/core/job-queue';
-import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
+import { type IAuditPort } from 'src/core/observability/audit';
 import { RotateOutcome, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, type ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
 import { RefreshTokensCommand } from 'src/module/auth/application/command/refresh-tokens/command';
 import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
+import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
@@ -119,7 +120,7 @@ describe('RefreshTokensCommandHandler', () => {
             ResourceConflictException,
         );
         expect(record).toHaveBeenCalledWith({
-            action: AuditAction.REFRESH_CONCURRENT_REPLAY,
+            action: AuthAuditAction.REFRESH_CONCURRENT_REPLAY,
             targetId: 'user-1',
         });
         expect(enqueue).not.toHaveBeenCalled();
@@ -147,7 +148,7 @@ describe('RefreshTokensCommandHandler', () => {
         expect(job?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
         expect(job).toMatchObject({ aggregateId: 'principal-1', queueName });
         expect(record).toHaveBeenCalledWith({
-            action: AuditAction.REFRESH_REUSE_DETECTED,
+            action: AuthAuditAction.REFRESH_REUSE_DETECTED,
             targetId: 'principal-1',
             detail: { deliveryId: job?.deliveryId },
         });

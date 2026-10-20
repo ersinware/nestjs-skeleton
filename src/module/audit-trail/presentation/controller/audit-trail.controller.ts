@@ -25,13 +25,14 @@ import {
     ResponsePaginationDto,
     ROUTE_PARAM_ID,
 } from 'src/core/http';
-import { AuditAction, Audited } from 'src/core/observability/audit';
+import { Audited } from 'src/core/observability/audit';
 import { Permissions } from 'src/core/security/auth';
 import { GetAuditTrailRecordByIdQuery } from 'src/module/audit-trail/application/query/get-audit-trail-record-by-id/query';
 import { ListAuditTrailRecordsQuery } from 'src/module/audit-trail/application/query/list-audit-trail-records/query';
 import { QueryAuditTrailDto } from 'src/module/audit-trail/presentation/dto/query-audit-trail.dto';
 import { ResponseAuditTrailRecordSummaryDto } from 'src/module/audit-trail/presentation/dto/response-audit-trail-record-summary.dto';
 import { ResponseAuditTrailRecordDto } from 'src/module/audit-trail/presentation/dto/response-audit-trail-record.dto';
+import { AuditTrailAuditAction } from 'src/module/audit-trail/shared/audit-trail-audit';
 import { Permission } from 'src/shared/domain/principal';
 
 /**
@@ -43,7 +44,7 @@ import { Permission } from 'src/shared/domain/principal';
     version: VERSION_1,
 })
 @Permissions(Permission.AUDIT_TRAIL_RECORD_READ)
-@Audited(AuditAction.AUDIT_TRAIL_ACCESSED)
+@Audited(AuditTrailAuditAction.AUDIT_TRAIL_ACCESSED)
 @ApiTags('audit-trail')
 @ApiBearerAuth()
 @ApiDefaultUnauthenticatedResponse()

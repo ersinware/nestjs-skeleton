@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_STORAGE_PORT, type IStoragePort, type StorageObject } from 'src/core/storage';
 import {
     TOKEN_USER_WRITER_PORT,
@@ -14,6 +14,7 @@ import {
 } from 'src/module/user/application/command/port/user-writer.port';
 import { ReplaceUserAvatarCommand } from 'src/module/user/application/command/replace-user-avatar/command';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
@@ -154,7 +155,7 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
             await this.transactionPort.run(async () => {
                 await this.userWriterPort.save(user);
                 await this.auditPort.record({
-                    action: AuditAction.USER_AVATAR_FINALIZED,
+                    action: UserAuditAction.USER_AVATAR_FINALIZED,
                     targetId: user.id,
                     detail: { deliveryId },
                 });

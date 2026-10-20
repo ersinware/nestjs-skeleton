@@ -15,7 +15,7 @@ import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
-import { audit, AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
@@ -36,6 +36,7 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { user } from 'src/module/user/infrastructure/user.schema';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
@@ -275,7 +276,7 @@ describe('User registration and activation', () => {
         expect(row.activationExpiresAt!.getTime() - Date.now()).toBeGreaterThan(3 * 24 * 60 * 60 * 1000 - 5_000);
         expect(await jobs(row.id)).toHaveLength(1);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_REGISTERED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_REGISTERED)),
         ).toHaveLength(1);
 
         const duplicate = await app.inject({
@@ -302,7 +303,7 @@ describe('User registration and activation', () => {
         ids.push(rows[0]!.id);
         expect(await jobs(rows[0]!.id)).toHaveLength(1);
         expect(
-            (await actions(rows[0]!.id)).filter((entry) => entry.action === String(AuditAction.USER_REGISTERED)),
+            (await actions(rows[0]!.id)).filter((entry) => entry.action === String(UserAuditAction.USER_REGISTERED)),
         ).toHaveLength(1);
     });
 
@@ -386,7 +387,7 @@ describe('User registration and activation', () => {
             'public, max-age=31536000, s-maxage=31536000, immutable',
         );
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_AVATAR_FINALIZED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_AVATAR_FINALIZED)),
         ).toHaveLength(1);
         await expect(storageFixture.storage.headObject(source)).rejects.toMatchObject({ kind: 'RESOURCE_NOT_FOUND' });
     });
@@ -405,7 +406,7 @@ describe('User registration and activation', () => {
         await pipeline.execute(command);
         expect(copy).not.toHaveBeenCalled();
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_AVATAR_FINALIZED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_AVATAR_FINALIZED)),
         ).toHaveLength(1);
         await expect(
             storageFixture.storage.headObject(buildUserPendingAvatarKey(row.id, row.id)),
@@ -478,7 +479,7 @@ describe('User registration and activation', () => {
         ).toBe(409);
         expect(data(await login(password))['session']).toBe('created');
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATED)),
         ).toHaveLength(1);
     });
 
@@ -506,7 +507,7 @@ describe('User registration and activation', () => {
         }
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATED)),
         ).toHaveLength(0);
     });
 
@@ -551,7 +552,9 @@ describe('User registration and activation', () => {
         expect(renewed!.activationExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 60 * 60 * 1000 - 5_000);
         expect(await jobs(row.id)).toHaveLength(3);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATION_REQUESTED)),
+            (await actions(row.id)).filter(
+                (entry) => entry.action === String(UserAuditAction.USER_ACTIVATION_REQUESTED),
+            ),
         ).toHaveLength(2);
         expect(
             (
@@ -593,7 +596,9 @@ describe('User registration and activation', () => {
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         expect(await jobs(row.id)).toHaveLength(2);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATION_REQUESTED)),
+            (await actions(row.id)).filter(
+                (entry) => entry.action === String(UserAuditAction.USER_ACTIVATION_REQUESTED),
+            ),
         ).toHaveLength(1);
     });
 
@@ -620,7 +625,7 @@ describe('User registration and activation', () => {
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATED)),
         ).toHaveLength(1);
     });
 
@@ -659,8 +664,8 @@ describe('User registration and activation', () => {
         expect(responses.some((response) => response.statusCode === 200 || response.statusCode === 204)).toBe(true);
         const committed = (await actions(row.id)).filter(
             (entry) =>
-                entry.action === String(AuditAction.USER_ACTIVATED) ||
-                entry.action === String(AuditAction.USER_ACTIVATION_REQUESTED),
+                entry.action === String(UserAuditAction.USER_ACTIVATED) ||
+                entry.action === String(UserAuditAction.USER_ACTIVATION_REQUESTED),
         );
         expect(committed).toHaveLength(1);
     });
@@ -744,7 +749,7 @@ describe('User registration and activation', () => {
             expect(after!.deletedAt).not.toBeNull();
         }
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATED)),
         ).toHaveLength(0);
     });
 
@@ -760,7 +765,7 @@ describe('User registration and activation', () => {
         expect(response.statusCode).toBe(503);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
         expect(
-            (await actions(row.id)).filter((entry) => entry.action === String(AuditAction.USER_ACTIVATED)),
+            (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATED)),
         ).toHaveLength(0);
     });
 
@@ -972,7 +977,7 @@ describe('User registration and activation', () => {
                 const updated = await state(owner.id);
                 expect(updated.sessionVersion).toBe(before.sessionVersion);
                 expect(updated.revocationVersion).toBe(before.revocationVersion);
-                expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toHaveLength(1);
+                expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toHaveLength(1);
                 expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(
                     beforeJobs.length + (upload ? 1 : 0),
                 );
@@ -1023,7 +1028,7 @@ describe('User registration and activation', () => {
             }
             expect(await state(owner.id)).toEqual(before);
             expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
-            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+            expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toEqual([]);
         });
 
         it.each(['expired', 'purpose', 'ownership', 'name-binding', 'missing-object'] as const)(
@@ -1056,7 +1061,7 @@ describe('User registration and activation', () => {
                 expect(response.statusCode).toBe(scenario === 'ownership' ? 403 : 400);
                 expect(await state(owner.id)).toEqual(before);
                 expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
-                expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+                expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toEqual([]);
             },
         );
 
@@ -1071,7 +1076,7 @@ describe('User registration and activation', () => {
                     const record = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
                     const original = record.record.bind(record);
                     vi.spyOn(record, 'record').mockImplementation((entry, options) => {
-                        if (entry.action === String(AuditAction.USER_UPDATED)) {
+                        if (entry.action === String(UserAuditAction.USER_UPDATED)) {
                             return Promise.reject(new DependencyUnavailableException());
                         }
                         return original(entry, options);
@@ -1091,7 +1096,7 @@ describe('User registration and activation', () => {
                 expect(response.statusCode).toBe(503);
                 expect(await state(owner.id)).toEqual(before);
                 expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(beforeJobs.length);
-                expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+                expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toEqual([]);
                 expect(await storageFixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
             },
         );
@@ -1113,7 +1118,7 @@ describe('User registration and activation', () => {
                 })
             )[0]!.data;
             const before = await state(owner.id);
-            const auditBefore = await evidence(owner.id, AuditAction.USER_AVATAR_FINALIZED);
+            const auditBefore = await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED);
             const auditSpy = vi
                 .spyOn(app.get<IAuditPort>(TOKEN_AUDIT_PORT), 'record')
                 .mockRejectedValueOnce(new DependencyUnavailableException());
@@ -1121,7 +1126,7 @@ describe('User registration and activation', () => {
                 kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
             });
             expect(await state(owner.id)).toEqual(before);
-            expect(await evidence(owner.id, AuditAction.USER_AVATAR_FINALIZED)).toEqual(auditBefore);
+            expect(await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED)).toEqual(auditBefore);
             expect(await storageFixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
             expect(await storageFixture.storage.headObject(prepared.destinationKey)).toMatchObject({ sizeBytes: 4 });
             auditSpy.mockRestore();
@@ -1135,7 +1140,9 @@ describe('User registration and activation', () => {
             expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
             await app.get(UserAvatarReplaceQueue).consume(delivery);
             expect(copy).not.toHaveBeenCalled();
-            expect(await evidence(owner.id, AuditAction.USER_AVATAR_FINALIZED)).toHaveLength(auditBefore.length + 1);
+            expect(await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED)).toHaveLength(
+                auditBefore.length + 1,
+            );
             for (const key of [previous, prepared.sourceKey]) {
                 await expect(storageFixture.storage.headObject(key)).rejects.toMatchObject({
                     kind: ExceptionKind.RESOURCE_NOT_FOUND,
@@ -1177,7 +1184,7 @@ describe('User registration and activation', () => {
             expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
             expect((await state(owner.id)).version).toBe(before.version + 1);
             expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toHaveLength(1);
-            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toHaveLength(1);
+            expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toHaveLength(1);
         });
 
         it('retains pending and previous avatars after soft deletion', async () => {
@@ -1234,7 +1241,7 @@ describe('User registration and activation', () => {
             expect((await state(owner.id)).avatarKey).toBe(second.destinationKey);
             expect((await patch(second.uploadToken)).statusCode).toBe(409);
             expect((await patch(first.uploadToken)).statusCode).toBe(400);
-            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toHaveLength(2);
+            expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toHaveLength(2);
         });
 
         it('replaces an initial pending avatar and keeps a stale initial delivery from reattaching it', async () => {
@@ -1320,7 +1327,7 @@ describe('User registration and activation', () => {
             expect(await state(owner.id)).toEqual(before);
             expect(await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE)).toHaveLength(cacheJobs.length);
             expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toEqual([]);
-            expect(await evidence(owner.id, AuditAction.USER_UPDATED)).toEqual([]);
+            expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toEqual([]);
         });
 
         it('validates upload initiation without changing the account or enqueueing replacement work', async () => {

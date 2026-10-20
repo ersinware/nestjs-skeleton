@@ -3,11 +3,12 @@
  * @description The single credential-login flow shared by the user and admin login commands: identity lookup, ban check, password verification, session opening, and the audit records of the decision.
  */
 
-import { AuditAction, type IAuditPort } from 'src/core/observability/audit';
+import { type IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
 import { SessionOutcome, type ISessionPort } from 'src/core/security/session';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
+import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import type { PrincipalType } from 'src/shared/domain/principal';
 import {
     ExceptionKind,
@@ -134,7 +135,7 @@ export async function login(
      */
     if (identity.requiresActivation) {
         await ports.auditPort.record({
-            action: AuditAction.LOGIN_FAILED,
+            action: AuthAuditAction.LOGIN_FAILED,
             reason: AuthRejectionReason.PENDING_ACCOUNT,
             targetId: id,
         });
@@ -153,7 +154,7 @@ export async function login(
         throw await denyLogin(ports.auditPort, AuthRejectionReason.SESSION_SUPERSEDED, id);
     }
 
-    await ports.auditPort.record({ action: AuditAction.LOGIN_SUCCESS, targetId: id });
+    await ports.auditPort.record({ action: AuthAuditAction.LOGIN_SUCCESS, targetId: id });
 
     return {
         session: SessionOutcome.CREATED,
@@ -187,7 +188,7 @@ async function denyLogin(
     targetId?: string,
     cause?: unknown,
 ): Promise<UnauthenticatedException> {
-    await auditPort.record({ action: AuditAction.LOGIN_FAILED, reason, ...(targetId && { targetId }) });
+    await auditPort.record({ action: AuthAuditAction.LOGIN_FAILED, reason, ...(targetId && { targetId }) });
 
     return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
         ...(cause !== undefined && { cause }),

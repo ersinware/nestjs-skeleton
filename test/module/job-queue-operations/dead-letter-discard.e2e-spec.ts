@@ -11,10 +11,11 @@ import type { PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
-import { AuditAction, TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { JobQueueOperationsAuditAction } from 'src/module/job-queue-operations/shared/job-queue-operations-audit';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { UnauthenticatedException } from 'src/shared/exception';
 import request from 'supertest';
@@ -79,7 +80,7 @@ describe('Dead-letter discard', () => {
             .from(audit)
             .where(
                 and(
-                    eq(audit.action, AuditAction.JOB_DEAD_LETTER_DISCARDED),
+                    eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED),
                     sql`${audit.detail} -> 'jobIds' @> ${JSON.stringify([jobId])}::jsonb`,
                 ),
             );
@@ -154,7 +155,7 @@ describe('Dead-letter discard', () => {
         const records = await discardAudit(id);
         expect(records).toHaveLength(1);
         expect(records[0]).toMatchObject({
-            action: AuditAction.JOB_DEAD_LETTER_DISCARDED,
+            action: JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED,
             actorId: ACTOR_ID,
             actorType: PrincipalType.ADMIN,
             detail: { jobIds: [id], count: '1' },

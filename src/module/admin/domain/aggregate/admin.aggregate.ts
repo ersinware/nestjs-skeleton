@@ -9,7 +9,7 @@ import {
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
-import { AdminFailureAuditAction } from 'src/module/admin/shared/admin-audit';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
@@ -333,7 +333,7 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new ResourceConflictException('A banned account cannot be re-invited.', {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_INVITATION_FAILED,
+                    action: AdminAuditAction.ADMIN_INVITATION_FAILED,
                     reason: AdminAuditReason.ACCOUNT_BANNED,
                 },
             });
@@ -412,7 +412,7 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_AVATAR_CHANGE_FAILED,
+                    action: AdminAuditAction.ADMIN_AVATAR_CHANGE_FAILED,
                     reason: AdminAuditReason.ACCOUNT_BANNED,
                 },
             });
@@ -452,7 +452,7 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_UPDATE_FAILED,
+                    action: AdminAuditAction.ADMIN_UPDATE_FAILED,
                     reason: AdminAuditReason.ACCOUNT_BANNED,
                 },
             });
@@ -737,7 +737,7 @@ export class Admin extends PrincipalAggregateRoot {
                 'The root permission is held by exactly one account and is never granted.',
                 {
                     audit: {
-                        action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                        action: AdminAuditAction.ADMIN_ADMINISTRATION_DENIED,
                         reason: AdminAuditReason.ROOT_PERMISSION_GRANT_FORBIDDEN,
                     },
                 },
@@ -751,7 +751,7 @@ export class Admin extends PrincipalAggregateRoot {
         ) {
             throw new AccessDeniedException('Only root may appoint a permission manager.', {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    action: AdminAuditAction.ADMIN_ADMINISTRATION_DENIED,
                     reason: AdminAuditReason.MANAGER_APPOINTMENT_REQUIRES_ROOT,
                 },
             });
@@ -851,7 +851,7 @@ export class Admin extends PrincipalAggregateRoot {
         if (actor.id === this.id) {
             throw new AccessDeniedException('An admin cannot administer their own account.', {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    action: AdminAuditAction.ADMIN_ADMINISTRATION_DENIED,
                     reason: AdminAuditReason.SELF_TARGET,
                 },
             });
@@ -860,7 +860,7 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.permissions.includes(Permission.ADMIN_ROOT)) {
             throw new AccessDeniedException('The root account cannot be administered.', {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    action: AdminAuditAction.ADMIN_ADMINISTRATION_DENIED,
                     reason: AdminAuditReason.ROOT_TARGET,
                 },
             });
@@ -872,7 +872,7 @@ export class Admin extends PrincipalAggregateRoot {
         ) {
             throw new AccessDeniedException('A permission manager is administered by root alone.', {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_ADMINISTRATION_DENIED,
+                    action: AdminAuditAction.ADMIN_ADMINISTRATION_DENIED,
                     reason: AdminAuditReason.MANAGER_REQUIRES_ROOT,
                 },
             });
@@ -909,7 +909,7 @@ export class Admin extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: AdminFailureAuditAction.ADMIN_ACTIVATION_FAILED,
+                    action: AdminAuditAction.ADMIN_ACTIVATION_FAILED,
                     reason: AdminAuditReason.ACCOUNT_BANNED,
                 },
             });

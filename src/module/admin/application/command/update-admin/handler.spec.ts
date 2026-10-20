@@ -6,7 +6,7 @@
 import { ConfigService } from '@nestjs/config';
 import { ENV } from 'src/core/config';
 import type { ITransactionPort } from 'src/core/database';
-import { AuditAction } from 'src/core/observability/audit';
+
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
@@ -19,6 +19,7 @@ import {
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { ExceptionKind, ResourceNotFoundException, UnauthenticatedException } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -180,7 +181,7 @@ describe('UpdateAdminCommandHandler', () => {
         }
         expect(audit.record).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);
         if (scenario !== 'unchanged-name') {
-            expect(audit.record).toHaveBeenCalledWith({ action: AuditAction.ADMIN_UPDATED });
+            expect(audit.record).toHaveBeenCalledWith({ action: AdminAuditAction.ADMIN_UPDATED });
         }
     });
 });

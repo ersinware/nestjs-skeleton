@@ -6,12 +6,13 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { isExceptionWithAudit } from 'src/shared/exception';
 
 /**
@@ -57,7 +58,7 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({
-                action: AuditAction.USER_SESSIONS_REVOKED,
+                action: UserAuditAction.USER_SESSIONS_REVOKED,
                 targetId: user.id,
                 detail: {
                     deliveryId: command.deliveryId,

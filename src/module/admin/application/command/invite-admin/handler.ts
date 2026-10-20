@@ -6,13 +6,14 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { InviteAdminCommand } from 'src/module/admin/application/command/invite-admin/command';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { isExceptionWithAudit } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
 
@@ -64,7 +65,7 @@ export class InviteAdminCommandHandler implements ICommandHandler<InviteAdminCom
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AuditAction.ADMIN_CREATED, targetId: admin.id });
+            await this.auditPort.record({ action: AdminAuditAction.ADMIN_CREATED, targetId: admin.id });
         });
     }
 }

@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { UserFailureAuditAction } from 'src/module/user/shared/user-audit';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
@@ -292,7 +292,7 @@ export class User extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: UserFailureAuditAction.USER_ACTIVATION_RESEND_FAILED,
+                    action: UserAuditAction.USER_ACTIVATION_RESEND_FAILED,
                     reason: UserAuditReason.ACCOUNT_BANNED,
                 },
             });
@@ -345,7 +345,7 @@ export class User extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: UserFailureAuditAction.USER_ACTIVATION_FAILED,
+                    action: UserAuditAction.USER_ACTIVATION_FAILED,
                     reason: UserAuditReason.ACCOUNT_BANNED,
                 },
             });
@@ -353,7 +353,7 @@ export class User extends PrincipalAggregateRoot {
 
         this.assertCurrentPassword(
             currentPasswordMatches,
-            UserFailureAuditAction.USER_ACTIVATION_FAILED,
+            UserAuditAction.USER_ACTIVATION_FAILED,
             InvalidInputMessage.DEFAULT,
         );
 
@@ -394,7 +394,7 @@ export class User extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: UserFailureAuditAction.USER_AVATAR_CHANGE_FAILED,
+                    action: UserAuditAction.USER_AVATAR_CHANGE_FAILED,
                     reason: UserAuditReason.ACCOUNT_BANNED,
                 },
             });
@@ -434,7 +434,7 @@ export class User extends PrincipalAggregateRoot {
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
                 audit: {
-                    action: UserFailureAuditAction.USER_UPDATE_FAILED,
+                    action: UserAuditAction.USER_UPDATE_FAILED,
                     reason: UserAuditReason.ACCOUNT_BANNED,
                 },
             });

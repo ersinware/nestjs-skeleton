@@ -3,6 +3,8 @@
  * @description Contract for writing audit records, kept separate from the logging contract on purpose.
  */
 
+import type { AuditAction } from 'src/shared/domain/audit';
+
 /**
  * Dependency injection token representing the {@link IAuditPort} contract.
  */
@@ -23,7 +25,7 @@ export type AuditRecordInput = {
     /**
      * What happened, outcome included; the record's only required fact.
      */
-    readonly action: string;
+    readonly action: AuditAction;
 
     /**
      * Why a refusal happened; meaningless on an action that cannot fail.

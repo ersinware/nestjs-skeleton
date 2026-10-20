@@ -14,7 +14,7 @@ import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule, TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { JobQueueModule, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
-import { AuditAction, AuditModule, audit } from 'src/core/observability/audit';
+import { AuditModule, audit } from 'src/core/observability/audit';
 import { runWithAuditContext } from 'src/core/observability/audit/audit-context';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -26,6 +26,7 @@ import { AdminSessionRevocationRefreshReuseQueue } from 'src/module/admin/applic
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { AdminWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-writer.adapter';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 import { LogoutAllCommandHandler } from 'src/module/auth/application/command/logout-all/handler';
 import {
@@ -34,6 +35,7 @@ import {
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import { RefreshTokensCommand } from 'src/module/auth/application/command/refresh-tokens/command';
 import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
+import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
 import { UserSessionRevocationLogoutAllQueue } from 'src/module/user/application/queue/user-session-revocation-logout-all.queue';
@@ -41,6 +43,7 @@ import { UserSessionRevocationRefreshReuseQueue } from 'src/module/user/applicat
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { UserWriterAdapter } from 'src/module/user/infrastructure/adapter/user-writer.adapter';
 import { user } from 'src/module/user/infrastructure/user.schema';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
@@ -317,7 +320,7 @@ describe('Auth session-revocation jobs', () => {
                 sessionJobs = await findJobs(sessionQueue, aggregateId),
                 noticeJobs = await findJobs(noticeQueue, aggregateId),
                 expectedProducerAudit =
-                    cause === 'logout-all' ? AuditAction.LOGOUT_ALL : AuditAction.REFRESH_REUSE_DETECTED;
+                    cause === 'logout-all' ? AuthAuditAction.LOGOUT_ALL : AuthAuditAction.REFRESH_REUSE_DETECTED;
 
             expect(sourceJobs).toHaveLength(1);
             expect(sourceJobs[0]?.data.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
@@ -336,8 +339,8 @@ describe('Auth session-revocation jobs', () => {
                     {
                         action:
                             principalType === PrincipalType.ADMIN
-                                ? AuditAction.ADMIN_SESSIONS_REVOKED
-                                : AuditAction.USER_SESSIONS_REVOKED,
+                                ? AdminAuditAction.ADMIN_SESSIONS_REVOKED
+                                : UserAuditAction.USER_SESSIONS_REVOKED,
                         actorId: null,
                         targetId: aggregateId,
                         detail: {

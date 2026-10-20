@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { SessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
@@ -22,7 +22,7 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { AuditReason, DomainFailureAuditAction } from 'src/shared/domain/audit';
-import { PrincipalType } from 'src/shared/domain/principal';
+import { PrincipalAuditAction, PrincipalType } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
     ExceptionKind,
@@ -139,7 +139,7 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
             await this.notificationWriterPort.save(notification);
-            await this.auditPort.record({ action: AuditAction.EMAIL_CHANGED });
+            await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGED });
         });
 
         const tokenPairWithSession = await this.tokenPort.generateTokens(

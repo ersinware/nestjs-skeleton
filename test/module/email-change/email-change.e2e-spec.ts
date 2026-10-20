@@ -50,7 +50,7 @@ import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { user, emailChangeNotification as userNotification } from 'src/module/user/infrastructure/user.schema';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
-import { PrincipalType } from 'src/shared/domain/principal';
+import { PrincipalAuditAction, PrincipalType } from 'src/shared/domain/principal';
 import { AccessDeniedException, DependencyUnavailableException } from 'src/shared/exception';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
@@ -319,7 +319,7 @@ describe.each(CASES)('$route email change', (context) => {
      * @param action Expected event category
      * @returns Matching audit rows
      */
-    async function evidence(action: DomainFailureAuditAction | AuditAction): Promise<(typeof audit.$inferSelect)[]> {
+    async function evidence(action: string): Promise<(typeof audit.$inferSelect)[]> {
         return database
             .select()
             .from(audit)
@@ -465,7 +465,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect(await jobs(context.queues.EMAIL_CONFIRMATION)).toMatchObject([
             { data: { deliveryId: proof.claims.jti, aggregateId: account.id } },
         ]);
-        expect(await evidence(AuditAction.EMAIL_CHANGE_REQUESTED)).toHaveLength(1);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGE_REQUESTED)).toHaveLength(1);
         expect((await http('GET', '')).statusCode).toBe(200);
     });
 
@@ -539,7 +539,7 @@ describe.each(CASES)('$route email change', (context) => {
             expect(await state()).toEqual(before);
             expect(await notices()).toEqual([]);
             expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toEqual([]);
-            expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
+            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toEqual([]);
             const failures = await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED);
             if (expectedStatus === 403) {
                 expect(failures).toHaveLength(1);
@@ -561,7 +561,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect(response.statusCode).toBe(404);
         expect(await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED)).toEqual([]);
         expect(await notices()).toEqual([]);
-        expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toEqual([]);
     });
 
     it('commits the change, rejects all old sessions and accepts only registered replacement tokens', async () => {
@@ -607,7 +607,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect(await notices()).toMatchObject([
             { previousEmail: account.email, aggregateId: account.id, createdAt: expect.any(Date) as unknown },
         ]);
-        expect(await evidence(AuditAction.EMAIL_CHANGED)).toHaveLength(1);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
         const mirrorJob = (await jobs(context.queues.SESSION_RECONCILE))[0]!;
         if (context.kind === PrincipalType.ADMIN) {
             await app.get(AdminSessionQueue).consume(mirrorJob.data);
@@ -644,7 +644,7 @@ describe.each(CASES)('$route email change', (context) => {
             expect(response.json()).toEqual({ data: { session: 'login_required' } });
             expect((await state()).email).toBe(proof.email);
             expect(await notices()).toHaveLength(1);
-            expect(await evidence(AuditAction.EMAIL_CHANGED)).toHaveLength(1);
+            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
             expect(await jobs(context.queues.SESSION_RECONCILE)).toHaveLength(1);
         },
     );
@@ -676,7 +676,7 @@ describe.each(CASES)('$route email change', (context) => {
             expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(500);
             expect(await state()).toEqual(before);
             expect(await notices()).toEqual([]);
-            expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
+            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toEqual([]);
             expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toEqual([]);
             expect(await jobs(context.queues.SESSION_RECONCILE)).toEqual([]);
             expect(open).not.toHaveBeenCalled();
@@ -690,7 +690,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(409);
         expect(await state()).toEqual(before);
         expect(await notices()).toEqual([]);
-        expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toEqual([]);
         expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toEqual([]);
     });
 
@@ -715,7 +715,7 @@ describe.each(CASES)('$route email change', (context) => {
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
         expect(await notices()).toHaveLength(1);
-        expect(await evidence(AuditAction.EMAIL_CHANGED)).toHaveLength(1);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
         expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toHaveLength(1);
         expect((await state()).sessionVersion).toBe(1);
     });
@@ -768,7 +768,7 @@ describe.each(CASES)('$route email change', (context) => {
                 pendingEmail: null,
             });
             expect(await jobs(context.queues.EMAIL_CONFIRMATION)).toEqual([]);
-            expect(await evidence(AuditAction.EMAIL_CHANGE_REQUESTED)).toEqual([]);
+            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGE_REQUESTED)).toEqual([]);
         },
     );
 
@@ -801,7 +801,7 @@ describe.each(CASES)('$route email change', (context) => {
         }
         expect((await losingRequest).statusCode).toBe(409);
         expect(await notices()).toHaveLength(loser === 'request' ? 1 : 0);
-        expect(await evidence(AuditAction.EMAIL_CHANGED)).toHaveLength(loser === 'request' ? 1 : 0);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(loser === 'request' ? 1 : 0);
         expect(await state()).toMatchObject(
             loser === 'request'
                 ? { email: proof.email, pendingEmail: null }
@@ -893,7 +893,7 @@ describe.each(CASES)('$route email change', (context) => {
         expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(500);
         expect((await state()).email).toBe(proof.email);
         expect(await notices()).toHaveLength(1);
-        expect(await evidence(AuditAction.EMAIL_CHANGED)).toHaveLength(1);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
         const reconcile = (await jobs(context.queues.SESSION_RECONCILE))[0]!;
         if (context.kind === PrincipalType.ADMIN) {
             await app.get(AdminSessionQueue).consume(reconcile.data);
@@ -999,7 +999,7 @@ describe.each(CASES)('$route email change', (context) => {
                     .update(context.table)
                     .set({ name: 'Rolled back mutation' })
                     .where(eq(context.table.id, account.id));
-                await auditPort.record({ action: AuditAction.EMAIL_CHANGE_REQUESTED, targetId: account.id });
+                await auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED, targetId: account.id });
                 await auditPort.record(
                     {
                         action: DomainFailureAuditAction.EMAIL_CHANGE_REQUEST_FAILED,
@@ -1042,7 +1042,7 @@ describe.each(CASES)('$route email change', (context) => {
         ).toBe(500);
         expect(await state()).toEqual(before);
         expect(await jobs(context.queues.EMAIL_CONFIRMATION)).toEqual([]);
-        expect(await evidence(AuditAction.EMAIL_CHANGE_REQUESTED)).toEqual([]);
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGE_REQUESTED)).toEqual([]);
     });
 
     it('enforces all-or-none pending metadata and nonnegative revocation in PostgreSQL', async () => {
@@ -1126,7 +1126,7 @@ describe.each(CASES)('$route email change', (context) => {
                 pendingEmail: proof.email,
             });
             expect(await notices()).toEqual([]);
-            expect(await evidence(AuditAction.EMAIL_CHANGED)).toEqual([]);
+            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toEqual([]);
             expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toEqual([]);
         },
     );

@@ -3,6 +3,7 @@
  * @description Abstract base of the exception taxonomy, optional diagnostic and audit metadata, and predicates classifying caught errors.
  */
 
+import type { AuditAction } from 'src/shared/domain/audit';
 import { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
 
 /**
@@ -34,7 +35,7 @@ type ExceptionAudit = {
     /**
      * Business action whose refusal must be recorded.
      */
-    readonly action: string;
+    readonly action: AuditAction;
 
     /**
      * Internal reason for the refusal; never rendered to clients.

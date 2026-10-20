@@ -6,7 +6,8 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { isUUID } from 'src/core/http';
-import { AuditAction, type AuditDetail } from 'src/core/observability/audit';
+import type { AuditDetail } from 'src/core/observability/audit';
+import { AuditTrailAuditAction } from 'src/module/audit-trail/shared/audit-trail-audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 
 /**
@@ -31,7 +32,7 @@ export class ResponseAuditTrailRecordDto {
     @ApiProperty({
         type: String,
         description: 'What happened.',
-        example: AuditAction.LOGIN_FAILED,
+        example: AuditTrailAuditAction.AUDIT_TRAIL_ACCESSED,
     })
     readonly action!: string;
 
@@ -42,7 +43,7 @@ export class ResponseAuditTrailRecordDto {
     @ApiProperty({
         type: String,
         description: 'Why a refusal happened; null on an action that cannot fail.',
-        example: 'INVALID_CREDENTIALS',
+        example: null,
         nullable: true,
     })
     readonly reason!: string | null;
@@ -56,7 +57,7 @@ export class ResponseAuditTrailRecordDto {
         type: 'object',
         additionalProperties: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
         description: 'What the action changed, when the ids alone do not say; null otherwise.',
-        example: { granted: ['user:account:read'], revoked: [] },
+        example: null,
         nullable: true,
     })
     readonly detail!: AuditDetail | null;

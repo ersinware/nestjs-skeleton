@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -20,7 +20,7 @@ import { assertAdminAvatarChangeFormHashMatches } from 'src/module/admin/domain/
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
-import { AdminFailureAuditAction } from 'src/module/admin/shared/admin-audit';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { AuditReason } from 'src/shared/domain/audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
@@ -113,7 +113,7 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
 
                 await this.auditPort.record(
                     {
-                        action: AdminFailureAuditAction.ADMIN_UPDATE_FAILED,
+                        action: AdminAuditAction.ADMIN_UPDATE_FAILED,
                         reason: AuditReason.PRINCIPAL_MISMATCH,
                         targetId: payload.sub,
                     },
@@ -195,7 +195,7 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AuditAction.ADMIN_UPDATED });
+            await this.auditPort.record({ action: AdminAuditAction.ADMIN_UPDATED });
         });
     }
 }

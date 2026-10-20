@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -20,7 +20,7 @@ import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { assertUserAvatarChangeFormHashMatches } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
-import { UserFailureAuditAction } from 'src/module/user/shared/user-audit';
+import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AuditReason } from 'src/shared/domain/audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
@@ -113,7 +113,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
 
                 await this.auditPort.record(
                     {
-                        action: UserFailureAuditAction.USER_UPDATE_FAILED,
+                        action: UserAuditAction.USER_UPDATE_FAILED,
                         reason: AuditReason.PRINCIPAL_MISMATCH,
                         targetId: payload.sub,
                     },
@@ -189,7 +189,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
 
         await this.transactionPort.run(async () => {
             await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: AuditAction.USER_UPDATED });
+            await this.auditPort.record({ action: UserAuditAction.USER_UPDATED });
         });
     }
 }

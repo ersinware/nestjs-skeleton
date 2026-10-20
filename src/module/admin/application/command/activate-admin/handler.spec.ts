@@ -17,6 +17,7 @@ import { createAdminActivationFormHash } from 'src/module/admin/domain/admin-act
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import {
     AccessDeniedException,
     InvalidInputException,
@@ -129,7 +130,7 @@ describe('ActivateAdminCommandHandler', () => {
 
     it('rethrows the exact aggregate error after audit acceptance', async () => {
         const failure = new AccessDeniedException('Banned', {
-            audit: { action: 'ADMIN_ACTIVATION_FAILED', reason: 'ACCOUNT_BANNED' },
+            audit: { action: AdminAuditAction.ADMIN_ACTIVATION_FAILED, reason: 'ACCOUNT_BANNED' },
         });
         vi.spyOn(admin, 'activate').mockImplementationOnce(() => {
             throw failure;

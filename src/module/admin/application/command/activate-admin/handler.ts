@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
-import { AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
@@ -20,6 +20,7 @@ import {
 import { assertAdminActivationFormHashMatches } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
+import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
@@ -152,7 +153,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
 
         await this.transactionPort.run(async () => {
             await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AuditAction.ADMIN_ACTIVATED, targetId: admin.id });
+            await this.auditPort.record({ action: AdminAuditAction.ADMIN_ACTIVATED, targetId: admin.id });
         });
     }
 }
