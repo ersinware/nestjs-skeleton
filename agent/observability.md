@@ -17,7 +17,7 @@
 
 ### Audit
 
-- Module-specific refusal actions stay with the deciding aggregate or handler; shared refusal actions stay in `DomainFailureAuditAction`. Audit contracts carry strings without importing module vocabularies. Reuse an action for the same event; distinct events require distinct values. Core `AuditAction` owns other actions.
+- Module-specific refusal vocabulary stays with its deciding aggregate or handler; vocabulary shared by module layers belongs in module `shared/`. Cross-context refusal actions stay in `DomainFailureAuditAction`, reasons in `AuditReason`. Audit contracts carry strings without importing module vocabularies. Reuse an action for the same event; distinct events require distinct values. Core `AuditAction` owns other actions.
 - `IAuditPort` records evidence, not diagnostics: append-only primary `audit.audit` ([Data & State](data-and-state.md#data--state)), independent of log level/sampling and active in tests. Durability requires outer commit in a transaction, insert completion otherwise. Audit loss is unacceptable.
 - Refusal records using `markExceptionAsAudited` must survive mutation rollback: commit independently, then mark the exact exception in the current request. Never persist exception tracking or mark before commit; ordinary records retain transaction participation.
 - Fact owners persist mutation audit with the mutation and delivery records in one DB transaction; failure rolls them back together. Capture facts, time, trace, and verified context at mutation time. Never defer a producer fact to a consumer or reconstruct history from current state.

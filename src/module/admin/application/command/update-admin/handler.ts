@@ -20,6 +20,8 @@ import { assertAdminAvatarChangeFormHashMatches } from 'src/module/admin/domain/
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
+import { AdminFailureAuditAction } from 'src/module/admin/shared/admin-audit';
+import { AuditReason } from 'src/shared/domain/audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
     AccessDeniedException,
@@ -31,26 +33,6 @@ import {
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
-
-/**
- * Profile update refusals decided before aggregate validation.
- */
-enum UpdateAdminFailureAuditAction {
-    /**
-     * A profile update was refused.
-     */
-    ADMIN_UPDATE_FAILED = 'ADMIN_UPDATE_FAILED',
-}
-
-/**
- * Refusal reasons decided before aggregate validation.
- */
-enum UpdateAdminRejectionReason {
-    /**
-     * Verified upload proof belongs to another account.
-     */
-    PRINCIPAL_MISMATCH = 'PRINCIPAL_MISMATCH',
-}
 
 /**
  * Updates the profile from authoritative state after verifying any uploaded avatar.
@@ -131,8 +113,8 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
 
                 await this.auditPort.record(
                     {
-                        action: UpdateAdminFailureAuditAction.ADMIN_UPDATE_FAILED,
-                        reason: UpdateAdminRejectionReason.PRINCIPAL_MISMATCH,
+                        action: AdminFailureAuditAction.ADMIN_UPDATE_FAILED,
+                        reason: AuditReason.PRINCIPAL_MISMATCH,
                         targetId: payload.sub,
                     },
                     { markExceptionAsAudited: error },

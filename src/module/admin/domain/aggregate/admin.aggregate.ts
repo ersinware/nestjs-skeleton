@@ -9,6 +9,7 @@ import {
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
+import { AdminFailureAuditAction } from 'src/module/admin/shared/admin-audit';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
@@ -176,36 +177,6 @@ type AdminAvatarChange = {
      */
     readonly revocationVersion: number;
 };
-
-/**
- * Audit actions owned by the admin account workflows.
- */
-enum AdminFailureAuditAction {
-    /**
-     * Rejected admin activation; the record carries the reason the client never sees.
-     */
-    ADMIN_ACTIVATION_FAILED = 'ADMIN_ACTIVATION_FAILED',
-
-    /**
-     * A banned admin attempted to prepare a profile avatar change.
-     */
-    ADMIN_AVATAR_CHANGE_FAILED = 'ADMIN_AVATAR_CHANGE_FAILED',
-
-    /**
-     * A banned admin attempted to update the profile.
-     */
-    ADMIN_UPDATE_FAILED = 'ADMIN_UPDATE_FAILED',
-
-    /**
-     * A banned admin could not receive a replacement invitation.
-     */
-    ADMIN_INVITATION_FAILED = 'ADMIN_INVITATION_FAILED',
-
-    /**
-     * An administrative mutation was refused by admin hierarchy or self-target restrictions.
-     */
-    ADMIN_ADMINISTRATION_DENIED = 'ADMIN_ADMINISTRATION_DENIED',
-}
 
 /**
  * Refusal reasons preserved in admin account audit evidence.
