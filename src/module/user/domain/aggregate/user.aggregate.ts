@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
+import { UserFailureAuditAction } from 'src/module/user/shared/user-audit';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
@@ -150,31 +151,6 @@ type UserAvatarChange = {
      */
     readonly revocationVersion: number;
 };
-
-/**
- * Audit actions owned by the user account workflows.
- */
-enum UserFailureAuditAction {
-    /**
-     * Rejected user activation; the record carries the reason the client never sees.
-     */
-    USER_ACTIVATION_FAILED = 'USER_ACTIVATION_FAILED',
-
-    /**
-     * A banned user requested another activation email without revealing the refusal publicly.
-     */
-    USER_ACTIVATION_RESEND_FAILED = 'USER_ACTIVATION_RESEND_FAILED',
-
-    /**
-     * A banned user attempted to update the profile.
-     */
-    USER_UPDATE_FAILED = 'USER_UPDATE_FAILED',
-
-    /**
-     * A banned user attempted to prepare a profile avatar upload.
-     */
-    USER_AVATAR_CHANGE_FAILED = 'USER_AVATAR_CHANGE_FAILED',
-}
 
 /**
  * Refusal reasons preserved in user account audit evidence.

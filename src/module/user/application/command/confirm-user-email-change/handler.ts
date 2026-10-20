@@ -21,7 +21,7 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { DomainFailureAuditAction } from 'src/shared/domain/audit';
+import { AuditReason, DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
@@ -32,16 +32,6 @@ import {
     isExceptionWithAudit,
 } from 'src/shared/exception';
 import { uuidv7 } from 'uuidv7';
-
-/**
- * Refusal reasons decided before aggregate validation.
- */
-enum ConfirmUserEmailChangeRejectionReason {
-    /**
-     * Verified proof does not belong to the authenticated principal.
-     */
-    PRINCIPAL_MISMATCH = 'PRINCIPAL_MISMATCH',
-}
 
 /**
  * Confirms against current primary state; account mutation, delivery, and audit share a commit.
@@ -102,7 +92,7 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<
             await this.auditPort.record(
                 {
                     action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-                    reason: ConfirmUserEmailChangeRejectionReason.PRINCIPAL_MISMATCH,
+                    reason: AuditReason.PRINCIPAL_MISMATCH,
                     targetId: payload.sub,
                     detail: { targetPrincipalType: payload.principalType },
                 },
@@ -118,7 +108,7 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<
             await this.auditPort.record(
                 {
                     action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-                    reason: ConfirmUserEmailChangeRejectionReason.PRINCIPAL_MISMATCH,
+                    reason: AuditReason.PRINCIPAL_MISMATCH,
                     targetId: payload.sub,
                     detail: { targetPrincipalType: payload.principalType },
                 },

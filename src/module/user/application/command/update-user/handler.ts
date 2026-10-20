@@ -20,6 +20,8 @@ import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { assertUserAvatarChangeFormHashMatches } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
+import { UserFailureAuditAction } from 'src/module/user/shared/user-audit';
+import { AuditReason } from 'src/shared/domain/audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
     AccessDeniedException,
@@ -31,26 +33,6 @@ import {
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
-
-/**
- * Profile update refusals decided before aggregate validation.
- */
-enum UpdateUserFailureAuditAction {
-    /**
-     * A profile update was refused.
-     */
-    USER_UPDATE_FAILED = 'USER_UPDATE_FAILED',
-}
-
-/**
- * Refusal reasons decided before aggregate validation.
- */
-enum UpdateUserRejectionReason {
-    /**
-     * Verified upload proof belongs to another account.
-     */
-    PRINCIPAL_MISMATCH = 'PRINCIPAL_MISMATCH',
-}
 
 /**
  * Updates the profile from authoritative state after verifying any uploaded avatar.
@@ -131,8 +113,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
 
                 await this.auditPort.record(
                     {
-                        action: UpdateUserFailureAuditAction.USER_UPDATE_FAILED,
-                        reason: UpdateUserRejectionReason.PRINCIPAL_MISMATCH,
+                        action: UserFailureAuditAction.USER_UPDATE_FAILED,
+                        reason: AuditReason.PRINCIPAL_MISMATCH,
                         targetId: payload.sub,
                     },
                     { markExceptionAsAudited: error },
