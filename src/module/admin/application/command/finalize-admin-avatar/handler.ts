@@ -141,7 +141,7 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
                 await this.auditPort.record({
                     action: AuditAction.ADMIN_AVATAR_FINALIZED,
                     targetId: admin.id,
-                    detail: { deliveryId: deliveryId },
+                    detail: { deliveryId },
                 });
             });
         }

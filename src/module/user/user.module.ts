@@ -21,12 +21,14 @@ import { ChangeUserPasswordCommandHandler } from 'src/module/user/application/co
 import { ConfirmUserEmailChangeCommandHandler } from 'src/module/user/application/command/confirm-user-email-change/handler';
 import { DeleteUserCommandHandler } from 'src/module/user/application/command/delete-user/handler';
 import { FinalizeUserAvatarCommandHandler } from 'src/module/user/application/command/finalize-user-avatar/handler';
+import { InitiateUserAvatarChangeCommandHandler } from 'src/module/user/application/command/initiate-user-avatar-change/handler';
 import { InitiateUserEmailChangeCommandHandler } from 'src/module/user/application/command/initiate-user-email-change/handler';
 import { InitiateUserRegistrationCommandHandler } from 'src/module/user/application/command/initiate-user-registration/handler';
 import { TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/user/application/command/port/user-email-change-notification-writer.port';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { ReconcileUserSessionCommandHandler } from 'src/module/user/application/command/reconcile-user-session/handler';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
+import { ReplaceUserAvatarCommandHandler } from 'src/module/user/application/command/replace-user-avatar/handler';
 import { ReplaceUserPermissionsCommandHandler } from 'src/module/user/application/command/replace-user-permissions/handler';
 import { ResendUserActivationCommandHandler } from 'src/module/user/application/command/resend-user-activation/handler';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
@@ -55,6 +57,7 @@ import { ListUsersQueryHandler } from 'src/module/user/application/query/list-us
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
 import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
 import { UserAvatarFinalizeQueue } from 'src/module/user/application/queue/user-avatar-finalize.queue';
+import { UserAvatarReplaceQueue } from 'src/module/user/application/queue/user-avatar-replace.queue';
 import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
 import { UserEmailChangeNotificationQueue } from 'src/module/user/application/queue/user-email-change-notification.queue';
 import { UserEmailConfirmationQueue } from 'src/module/user/application/queue/user-email-confirmation.queue';
@@ -90,6 +93,7 @@ import { UserFacade } from 'src/module/user/user.facade';
             [
                 UserActivationQueue,
                 UserAvatarFinalizeQueue,
+                UserAvatarReplaceQueue,
                 UserEmailConfirmationQueue,
                 UserEmailChangeNotificationQueue,
                 UserCacheQueue,
@@ -108,6 +112,8 @@ import { UserFacade } from 'src/module/user/user.facade';
         RegisterUserCommandHandler,
         InitiateUserRegistrationCommandHandler,
         FinalizeUserAvatarCommandHandler,
+        InitiateUserAvatarChangeCommandHandler,
+        ReplaceUserAvatarCommandHandler,
         ResendUserActivationCommandHandler,
         SendUserActivationCommandHandler,
         UpdateUserCommandHandler,

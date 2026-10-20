@@ -38,14 +38,14 @@ describe('InitiateUserRegistrationCommandHandler', () => {
         expect(token.generateUploadToken).toHaveBeenCalledWith(
             expect.objectContaining({
                 purpose: UserUploadPurpose.REGISTRATION,
-                fileKey: buildUserPendingAvatarKey(claims.sub),
+                fileKey: buildUserPendingAvatarKey(claims.sub, claims.sub),
                 exp: Math.floor(now / 1000) + 600,
                 formHash: createUserRegistrationFormHash(command, 'secret'),
             }),
         );
         expect(storage.initiateUpload).toHaveBeenCalledWith(
             expect.objectContaining({
-                key: buildUserPendingAvatarKey(claims.sub),
+                key: buildUserPendingAvatarKey(claims.sub, claims.sub),
                 deadline: new Date((Math.floor(now / 1000) + 300) * 1000),
                 cache: { visibility: 'no-store' },
             }),

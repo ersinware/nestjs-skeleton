@@ -132,6 +132,26 @@ type UserSnapshot = {
 } & Readonly<UserProps>;
 
 /**
+ * Verified upload facts used to accept a profile avatar change.
+ */
+type UserAvatarChange = {
+    /**
+     * Pending object key belonging to this account and upload identity.
+     */
+    readonly fileKey: string;
+
+    /**
+     * Avatar identity shared with the update delivery.
+     */
+    readonly jti: string;
+
+    /**
+     * Account revocation version captured when the upload was initiated.
+     */
+    readonly revocationVersion: number;
+};
+
+/**
  * Audit actions owned by the user account workflows.
  */
 enum UserFailureAuditAction {
@@ -149,6 +169,11 @@ enum UserFailureAuditAction {
      * A banned user attempted to update the profile.
      */
     USER_UPDATE_FAILED = 'USER_UPDATE_FAILED',
+
+    /**
+     * A banned user attempted to prepare a profile avatar upload.
+     */
+    USER_AVATAR_CHANGE_FAILED = 'USER_AVATAR_CHANGE_FAILED',
 }
 
 /**
@@ -217,7 +242,7 @@ export class User extends PrincipalAggregateRoot {
      * @throws {InvalidInputException} When the avatar key is not the registration's pending key
      */
     static create(props: Readonly<Pick<UserSnapshot, 'id' | 'email' | 'name' | 'password' | 'avatarKey'>>): User {
-        if (props.avatarKey !== buildUserPendingAvatarKey(props.id)) {
+        if (props.avatarKey !== buildUserPendingAvatarKey(props.id, props.id)) {
             throw new InvalidInputException();
         }
 
@@ -243,7 +268,8 @@ export class User extends PrincipalAggregateRoot {
 
         user.issueActivation();
         user.addActivationJob();
-        user.addAvatarFinalizeJob(randomUUID());
+        // Registration uses the account identity as its first avatar version, including before finalization.
+        user.addAvatarFinalizeJob(user.id);
 
         return user;
     }
@@ -377,16 +403,57 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Updates the display name when it differs from the current state.
+     * Checks profile avatar eligibility and narrows activation and ban state without changing state.
      *
-     * @param name The new display name
-     * @returns Whether the name changed
-     * @throws {SystemException} When the account has been soft-deleted or is pending activation
+     * @throws {SystemException} When the account is deleted or pending activation
      * @throws {AccessDeniedException} When the account is banned
      */
-    updateName(name: string): boolean {
-        this.assertNotDeleted(this.updateName.name);
-        this.assertActivated(this.updateName.name);
+    assertAvatarChangeEligible(): asserts this is this & {
+        readonly isBanned: false;
+        readonly activationId: null;
+    } {
+        this.assertNotDeleted(this.assertAvatarChangeEligible.name);
+        this.assertActivated(this.assertAvatarChangeEligible.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: UserFailureAuditAction.USER_AVATAR_CHANGE_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+    }
+
+    /**
+     * Rejects reuse of the currently selected pending or permanent avatar identity.
+     *
+     * @param avatarId Identity of the proposed replacement avatar
+     * @throws {ResourceConflictException} When this avatar identity is already attached
+     */
+    assertAvatarReplacementAllowed(avatarId: string) {
+        if (
+            this.props.avatarKey === buildUserPendingAvatarKey(this.id, avatarId) ||
+            this.props.avatarKey === buildUserPermanentAvatarKey(this.id, avatarId)
+        ) {
+            throw new ResourceConflictException();
+        }
+    }
+
+    /**
+     * Updates supplied profile fields and queues accepted avatar replacements.
+     *
+     * @param name The new display name, omitted to preserve the current value
+     * @param payload Verified avatar upload facts, omitted to preserve the current selection
+     * @returns Whether the name or avatar key changed
+     * @throws {SystemException} When the account is deleted, pending activation, or the pending key has an unexpected format
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the avatar proof's revocation version differs from the account's
+     * @throws {ResourceConflictException} When the proposed avatar identity is already attached
+     */
+    update(name?: string, payload?: UserAvatarChange): boolean {
+        this.assertNotDeleted(this.update.name);
+        this.assertActivated(this.update.name);
 
         if (this.props.isBanned) {
             throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
@@ -397,15 +464,39 @@ export class User extends PrincipalAggregateRoot {
             });
         }
 
-        if (name === this.props.name) {
-            return false;
+        let changed = false;
+
+        if (payload !== undefined) {
+            if (payload.revocationVersion !== this.revocationVersion) {
+                throw new InvalidInputException();
+            }
+
+            if (payload.fileKey !== buildUserPendingAvatarKey(this.id, payload.jti)) {
+                throw new SystemException('The pending avatar key is not in the expected format.', {
+                    context: { class: User.name, method: this.update.name, id: this.id },
+                });
+            }
+
+            this.assertAvatarReplacementAllowed(payload.jti);
+
+            this.addAvatarReplaceJob(payload.jti, this.avatarKey.slice(this.avatarKey.lastIndexOf('/') + 1));
+            this.props.avatarKey = payload.fileKey;
+
+            changed = true;
         }
 
-        this.props.name = name;
-        this.props.updatedAt = new Date();
-        this.addCacheInvalidationJob();
+        if (name !== undefined && this.props.name !== name) {
+            this.props.name = name;
 
-        return true;
+            changed = true;
+        }
+
+        if (changed) {
+            this.props.updatedAt = new Date();
+            this.addCacheInvalidationJob();
+        }
+
+        return changed;
     }
 
     /**
@@ -416,14 +507,14 @@ export class User extends PrincipalAggregateRoot {
      * @param avatarId Stable avatar identity belonging to the owner delivery
      * @returns Whether the avatar key changed
      * @throws {SystemException} When the account has been deleted
-     * @throws {InvalidInputException} When the source does not match the account or the destination does not match the account and avatar identity
+     * @throws {InvalidInputException} When either key does not match the account and avatar identity
      * @throws {ResourceConflictException} When another avatar key is already attached
      */
     finalizeAvatar(expectedPendingKey: string, finalKey: string, avatarId: string): boolean {
         this.assertNotDeleted(this.finalizeAvatar.name);
 
         if (
-            expectedPendingKey !== buildUserPendingAvatarKey(this.id) ||
+            expectedPendingKey !== buildUserPendingAvatarKey(this.id, avatarId) ||
             finalKey !== buildUserPermanentAvatarKey(this.id, avatarId)
         ) {
             throw new InvalidInputException();
@@ -788,6 +879,23 @@ export class User extends PrincipalAggregateRoot {
                 deliveryId: avatarId,
                 aggregateId: this.id,
                 queueName: UserJobQueue.AVATAR_FINALIZE,
+            },
+        ]);
+    }
+
+    /**
+     * Queues completion of an accepted profile avatar replacement.
+     *
+     * @param avatarId Profile upload identity retained across retries
+     * @param previousAvatarId Previous avatar identity retained for post-commit cleanup
+     */
+    private addAvatarReplaceJob(avatarId: string, previousAvatarId: string) {
+        this.addJob([
+            {
+                deliveryId: avatarId,
+                aggregateId: this.id,
+                queueName: UserJobQueue.AVATAR_REPLACE,
+                payload: { previousAvatarId },
             },
         ]);
     }

@@ -45,6 +45,7 @@ import { BanUserCommand } from 'src/module/user/application/command/ban-user/com
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
 import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/command/confirm-user-email-change/command';
 import { DeleteUserCommand } from 'src/module/user/application/command/delete-user/command';
+import { InitiateUserAvatarChangeCommand } from 'src/module/user/application/command/initiate-user-avatar-change/command';
 import { InitiateUserEmailChangeCommand } from 'src/module/user/application/command/initiate-user-email-change/command';
 import { InitiateUserRegistrationCommand } from 'src/module/user/application/command/initiate-user-registration/command';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
@@ -60,6 +61,7 @@ import { PatchUserPasswordDto } from 'src/module/user/presentation/dto/patch-use
 import { PatchUserDto } from 'src/module/user/presentation/dto/patch-user.dto';
 import { PostUserActivationResendDto } from 'src/module/user/presentation/dto/post-user-activation-resend.dto';
 import { PostUserActivationDto } from 'src/module/user/presentation/dto/post-user-activation.dto';
+import { PostUserAvatarChangeInitiateDto } from 'src/module/user/presentation/dto/post-user-avatar-change-initiate.dto';
 import { PostUserEmailChangeConfirmDto } from 'src/module/user/presentation/dto/post-user-email-change-confirm.dto';
 import { PostUserEmailChangeInitiateDto } from 'src/module/user/presentation/dto/post-user-email-change-initiate.dto';
 import { PostUserRegistrationInitiateDto } from 'src/module/user/presentation/dto/post-user-registration-initiate.dto';
@@ -239,39 +241,81 @@ export class UserController {
     }
 
     /**
-     * Updates the currently authenticated user's display name.
+     * Updates the currently authenticated user's name and/or avatar; the target id comes from the verified
+     * token, never from the client.
      *
      * @param principal The verified principal of the current request
-     * @param patchUserDto The required display name to update
+     * @param patchUserDto Optional display name and/or uploaded avatar with its proof
      * @returns The updated, serialized profile of the current user
-     * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceNotFoundException} When no active user exists with the given ID
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
-     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
+     * @throws {ResourceConflictException} When the upload proof is replayed or persistence rejects a concurrent modification
+     * @throws {SystemException} When the loaded account is deleted or pending activation, or verified upload keys violate invariants
+     * @throws {AccessDeniedException} When the upload proof belongs to another account or the account is banned
+     * @throws {InvalidInputException} When the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */
     @Patch('me')
     @PrincipalOnly(PrincipalType.USER)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Update current user profile',
-        description: "Updates only the currently authenticated user's display name.",
+        description:
+            'Updates the current user name, avatar, or both. Avatar acceptance requires the same optional name and descriptor supplied at initiation. The response includes the selected pending key while its permanent copy is queued. Empty bodies are rejected.',
     })
     @ApiOkResponse({ description: 'User successfully updated.', type: ResponseUserDto })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
+    @ApiDefaultResourceConflictResponse()
     async updateMe(
         @CurrentPrincipal() principal: Principal,
         @Body() patchUserDto: PatchUserDto,
     ): Promise<ResponseUserDto> {
-        await this.commandPipeline.execute(new UpdateUserCommand(principal.id, patchUserDto.name));
+        await this.commandPipeline.execute(
+            new UpdateUserCommand(principal.id, patchUserDto.name, patchUserDto.avatar, patchUserDto.uploadToken),
+        );
 
         return plainToInstance(
             ResponseUserDto,
             await this.queryPipeline.execute(new GetFreshUserByIdQuery(principal.id)),
+        );
+    }
+
+    /**
+     * Prepares a profile avatar upload without changing the authenticated account.
+     *
+     * @param principal Verified user selecting their own avatar
+     * @param body Avatar descriptor and optional normalized name bound to the final PATCH
+     * @returns Signed PUT and profile upload proof
+     * @throws {ResourceNotFoundException} When the account is missing or deleted
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {DependencyUnavailableException} When database or storage is unavailable
+     * @throws {SystemException} When the account is inactive or the storage plan violates the contract
+     */
+    @Post('me/avatar/initiate')
+    @PrincipalOnly(PrincipalType.USER)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Prepare current user avatar change',
+        description:
+            'Prepares a conditional avatar PUT valid for up to five minutes and a profile proof valid for ten minutes. PATCH requires the same avatar descriptor and optional name. Initiation does not change the profile.',
+    })
+    @ApiOkResponse({ type: ResponseSingleUploadInitiateDto, description: 'Avatar upload request and profile proof.' })
+    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    async initiateAvatarChange(
+        @CurrentPrincipal() principal: Principal,
+        @Body() body: PostUserAvatarChangeInitiateDto,
+    ): Promise<ResponseSingleUploadInitiateDto> {
+        return plainToInstance(
+            ResponseSingleUploadInitiateDto,
+            await this.commandPipeline.execute(
+                new InitiateUserAvatarChangeCommand(principal.id, body.avatar, body.name),
+            ),
         );
     }
 
