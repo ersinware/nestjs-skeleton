@@ -61,7 +61,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Pipelines wrap Nest buses, never override their tokens. `CqrsPipelineModule` re-exports `CqrsModule` for handler registration; behavior order belongs in `src/core/cqrs/module.ts`.
 - `TracingBehavior`: outermost on both pipelines; one named span per dispatch, recording errors and rethrowing unchanged ([Exceptions](exceptions.md#exceptions)).
 - `QueryCachingBehavior`: query-owned opt-in cache-aside via `ICacheableQuery` (`cacheKey()`, `cacheTtlSeconds`). Cache writes are fire-and-forget; catch unexpected rejections, error-log and capture via observability ports without rethrowing.
-- `CacheInvalidationBehavior`: `ICacheInvalidatingCommand` opts into awaited best-effort eviction of `invalidatedKeys()` after handler success ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
+- `CacheInvalidationBehavior`: `ICacheInvalidatingCommand` opts into awaited best-effort eviction after handler success. Report unexpected eviction failures via `IErrorReporterPort` without failing the command. Opting-in commands must commit aggregate invalidation jobs with cache-affecting mutations ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 
 ## Project Structure
 

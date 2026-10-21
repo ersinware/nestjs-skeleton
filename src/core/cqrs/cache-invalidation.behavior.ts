@@ -9,12 +9,13 @@ import type { ICommand } from '@nestjs/cqrs';
 import type { ICachePort } from 'src/core/cache';
 import { TOKEN_CACHE_PORT } from 'src/core/cache';
 import type { ICommandBehavior } from 'src/core/cqrs/command.pipeline';
+import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 
 /**
  * A command that dirties one or more cache keys. Eviction is coarser than durable-job invalidation
  * — it fires whenever the command succeeds, even if the handler no-op'd — but same-module, immediate,
  * and independent of durable job delivery. Redis outages and concurrent fills can leave stale entries.
- * Durable cache reactions belong on aggregate jobs.
+ * Every cache-affecting state transition must also produce a durable aggregate invalidation job.
  */
 export interface ICacheInvalidatingCommand {
     /**
@@ -38,16 +39,21 @@ function isCacheInvalidatingCommand(command: ICommand): command is ICommand & IC
 /**
  * Evicts a command's declared keys after it succeeds. Eviction runs only once the handler resolves,
  * so a failed command (e.g. not-found) leaves the cache untouched. Non-invalidating commands pass
- * straight through.
+ * straight through. Eviction failures are reported without replacing the successful result;
+ * durable aggregate jobs provide retryable invalidation.
  */
 @Injectable()
 export class CacheInvalidationBehavior implements ICommandBehavior {
     /**
-     * Connects post-command eviction to the shared cache port.
+     * Connects post-command eviction and best-effort failure reporting.
      *
      * @param cachePort The cache the behavior evicts through
+     * @param errorReporterPort Reports unexpected eviction failures
      */
-    constructor(@Inject(TOKEN_CACHE_PORT) private readonly cachePort: ICachePort) {}
+    constructor(
+        @Inject(TOKEN_CACHE_PORT) private readonly cachePort: ICachePort,
+        @Inject(TOKEN_ERROR_REPORTER_PORT) private readonly errorReporterPort: IErrorReporterPort,
+    ) {}
 
     /**
      * Runs the command, then evicts its declared keys on success.
@@ -60,7 +66,15 @@ export class CacheInvalidationBehavior implements ICommandBehavior {
         const result = await next();
 
         if (isCacheInvalidatingCommand(command)) {
-            await Promise.all(command.invalidatedKeys().map((key) => this.cachePort.delete(key)));
+            try {
+                await Promise.all(command.invalidatedKeys().map((key) => this.cachePort.delete(key)));
+            } catch (error) {
+                this.errorReporterPort.report(error, {
+                    class: this.constructor.name,
+                    method: this.execute.name,
+                    message: 'Best-effort cache invalidation failed.',
+                });
+            }
         }
 
         return result;
