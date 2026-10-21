@@ -1,7 +1,7 @@
 # Exceptions
 
 - Project-thrown failures use the transport-neutral taxonomy in `src/shared/exception`, never Nest HTTP exceptions. Framework-raised HTTP errors remain supported; health passthrough: [Health Probes](http.md#health-probes).
-- Catch only contract-defined cases; rethrow others unchanged. Translation/fail-open: [Adapters](data-and-state.md#adapters); detached failures: [CQRS](architecture.md#cqrs); delivery failures: [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
+- Catch only contract-defined cases; rethrow others unchanged. Translation/fail-open: [Adapters](data-and-state.md#adapters); best-effort cache failures: [CQRS](architecture.md#cqrs); delivery failures: [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
 - Classify taxonomy exceptions with `isExceptionOfKind`; recognize the taxonomy with `isAppException`, never `instanceof`. Native/framework/driver errors without `kind` may use `instanceof`.
 - Dependency classifiers inspect `cause` chains and recognize only known availability failures; authentication, configuration, protocol, programming, and unknown failures must not become dependency outages.
 - Keep generic message enums beside their exception classes; never add module-specific vocabulary there. Inline single-use messages; shared use-case messages belong in `command.ts`/`query.ts`, other messages follow [Placement & Naming](architecture.md#placement--naming).
