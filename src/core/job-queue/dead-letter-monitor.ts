@@ -13,7 +13,7 @@ import {
 } from 'src/core/job-queue/port/job-queue-dead-letter-metrics.port';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
-import { DependencyUnavailableException } from 'src/shared/exception';
+import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Last fully successful business sample; failures never replace it with partial results.
@@ -224,7 +224,7 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
         }
 
         try {
-            if (error instanceof DependencyUnavailableException) {
+            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                 this.loggerPort.warn({
                     class: this.constructor.name,
                     method: this.refresh.name,
