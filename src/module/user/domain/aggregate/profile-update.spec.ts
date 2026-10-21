@@ -18,7 +18,7 @@ describe('User profile updates', () => {
     it.each(['registration', 'pending', 'permanent'] as const)(
         'captures the previous %s identity before accepting the next avatar',
         (kind) => {
-            const user = User.reconstitute({
+            const user: User = User.reconstitute({
                 ...User.create({
                     id,
                     email: 'profile@example.test',
@@ -36,6 +36,17 @@ describe('User profile updates', () => {
                           ? buildUserPendingAvatarKey(id, previous)
                           : buildUserPermanentAvatarKey(id, previous),
             });
+            const before = user.toSnapshot();
+            expect(user.assertProfileUpdateAllowed()).toBeUndefined();
+            expect(
+                user.assertProfileUpdateAllowed({
+                    fileKey: buildUserPendingAvatarKey(id, next),
+                    jti: next,
+                    revocationVersion: 0,
+                }),
+            ).toBeUndefined();
+            expect(user.toSnapshot()).toEqual(before);
+            expect(user.pullJobs()).toEqual([]);
             expect(
                 user.update(undefined, {
                     fileKey: buildUserPendingAvatarKey(id, next),
@@ -65,7 +76,7 @@ describe('User profile updates', () => {
     it.each(['revoked', 'invalid-key', 'replay', 'banned'] as const)(
         'rejects %s without partial name mutation or jobs',
         (scenario) => {
-            const user = User.reconstitute({
+            const user: User = User.reconstitute({
                 ...User.create({
                     id,
                     email: 'profile@example.test',
@@ -80,6 +91,15 @@ describe('User profile updates', () => {
                 isBanned: scenario === 'banned',
             });
             const before = user.toSnapshot();
+            expect(() =>
+                user.assertProfileUpdateAllowed({
+                    fileKey: scenario === 'invalid-key' ? 'wrong' : buildUserPendingAvatarKey(id, next),
+                    jti: next,
+                    revocationVersion: scenario === 'revoked' ? 1 : 0,
+                }),
+            ).toThrow();
+            expect(user.toSnapshot()).toEqual(before);
+            expect(user.pullJobs()).toEqual([]);
             expect(() =>
                 user.update('Changed', {
                     fileKey: scenario === 'invalid-key' ? 'wrong' : buildUserPendingAvatarKey(id, next),
@@ -103,7 +123,7 @@ describe('User profile updates', () => {
         },
     );
     it('evicts the permanent transition once and makes repeated finalization a no-op', () => {
-        const user = User.reconstitute({
+        const user: User = User.reconstitute({
             ...User.create({
                 id,
                 email: 'profile@example.test',

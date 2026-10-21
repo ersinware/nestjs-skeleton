@@ -33,7 +33,7 @@ import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum'
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import type { PostAdminActivationDto } from 'src/module/admin/presentation/dto/post-admin-activation.dto';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
-import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
+import { AVATAR_PERMANENT_CACHE_POLICY, type AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
 import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
@@ -823,6 +823,68 @@ describe('Admin invitation with avatar', () => {
             expect(await fixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
             expect(await fixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
         });
+
+        it.each(['pending', 'permanent'] as const)(
+            'protects a reselected %s avatar from a superseded replacement',
+            async (selection) => {
+                const owner = await account();
+                const first = await profileUpload(owner);
+                const second = await profileUpload(owner);
+                const patch = (uploadToken: string) =>
+                    app.inject({
+                        method: 'PATCH',
+                        url: '/api/v1/admin/me',
+                        headers: owner.headers,
+                        payload: { avatar, uploadToken },
+                    });
+
+                expect((await patch(first.uploadToken)).statusCode).toBe(200);
+                expect((await patch(second.uploadToken)).statusCode).toBe(200);
+                // A proof can select its avatar again after another version supersedes it.
+                expect((await patch(first.uploadToken)).statusCode).toBe(200);
+
+                const deliveries = await boss.findJobs<Job>(AdminJobQueue.AVATAR_REPLACE, {
+                    data: { aggregateId: owner.id },
+                });
+                const stale = deliveries.find((job) => job.data.deliveryId === second.deliveryId)!;
+                expect(stale.data.payload).toEqual({ previousAvatarId: first.deliveryId });
+
+                const source = await fixture.storage.headObject(first.sourceKey);
+                // Simulate a copy completed before its database transition commits.
+                await fixture.storage.copyObject({
+                    sourceKey: first.sourceKey,
+                    destinationKey: first.destinationKey,
+                    sourceEtag: source.etag,
+                    contentType: source.contentType!,
+                    cache: AVATAR_PERMANENT_CACHE_POLICY,
+                });
+
+                if (selection === 'permanent') {
+                    const current = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
+                    await app.get(AdminAvatarReplaceQueue).consume(current.data);
+                }
+
+                const before = await state(owner.id);
+                const auditBefore = await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED);
+                await app.get(AdminAvatarReplaceQueue).consume(stale.data);
+
+                expect(await state(owner.id)).toEqual(before);
+                expect(await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toEqual(auditBefore);
+                expect(await fixture.storage.headObject(first.destinationKey)).toMatchObject({ sizeBytes: 4 });
+                if (selection === 'pending') {
+                    expect(await fixture.storage.headObject(first.sourceKey)).toMatchObject({ sizeBytes: 4 });
+                } else {
+                    await expect(fixture.storage.headObject(first.sourceKey)).rejects.toMatchObject({
+                        kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                    });
+                }
+                for (const key of [second.sourceKey, second.destinationKey]) {
+                    await expect(fixture.storage.headObject(key)).rejects.toMatchObject({
+                        kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                    });
+                }
+            },
+        );
 
         it('preserves a newer pending selection across stale delivery and rejects proof replay', async () => {
             const owner = await account();

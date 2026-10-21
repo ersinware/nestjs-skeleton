@@ -17,7 +17,6 @@ import {
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { assertAdminAvatarChangeFormHashMatches } from 'src/module/admin/domain/admin-avatar-change';
-import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
@@ -29,7 +28,6 @@ import {
     InvalidInputException,
     InvalidInputMessage,
     ResourceNotFoundException,
-    SystemException,
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
@@ -87,11 +85,7 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
             throw new InvalidInputException();
         }
 
-        const admin = await this.adminWriterPort.load(command.id);
-
-        if (!admin) {
-            throw new ResourceNotFoundException();
-        }
+        const admin: Admin = await this.loadAdmin(command.id);
 
         let avatarUpdate: Parameters<Admin['update']>[1];
 
@@ -123,20 +117,14 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
                 throw error;
             }
 
-            if (payload.fileKey !== buildAdminPendingAvatarKey(admin.id, payload.jti)) {
-                throw new SystemException('Verified profile upload claims violate avatar key invariants.', {
-                    context: { class: UpdateAdminCommandHandler.name, method: this.execute.name },
-                });
-            }
-
-            if (admin.avatarKey === null) {
-                throw new SystemException('An admin without an avatar reached a self-service flow.', {
-                    context: { class: UpdateAdminCommandHandler.name, method: this.execute.name },
-                });
-            }
+            avatarUpdate = {
+                fileKey: payload.fileKey,
+                jti: payload.jti,
+                revocationVersion: payload.revocationVersion,
+            };
 
             try {
-                admin.assertAvatarReplacementAllowed(payload.jti);
+                admin.assertProfileUpdateAllowed(avatarUpdate);
             } catch (error) {
                 if (isExceptionWithAudit(error)) {
                     await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
@@ -169,12 +157,6 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
             }
 
             assertAvatarUploadMatchesDescriptor(uploaded, avatar);
-
-            avatarUpdate = {
-                fileKey: payload.fileKey,
-                jti: payload.jti,
-                revocationVersion: payload.revocationVersion,
-            };
         }
 
         let changed: boolean;
@@ -197,5 +179,23 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AdminAuditAction.ADMIN_UPDATED });
         });
+    }
+
+    /**
+     * Loads the profile owner or rejects an unavailable account.
+     *
+     * @param id Account identity
+     * @returns The non-deleted account aggregate
+     * @throws {ResourceNotFoundException} When no non-deleted account exists with the given ID
+     * @throws {DependencyUnavailableException} When the database is unavailable
+     */
+    private async loadAdmin(id: string): Promise<Admin> {
+        const admin = await this.adminWriterPort.load(id);
+
+        if (!admin) {
+            throw new ResourceNotFoundException();
+        }
+
+        return admin;
     }
 }

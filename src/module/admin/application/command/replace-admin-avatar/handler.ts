@@ -18,10 +18,11 @@ import {
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
-import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
+import { AVATAR_PERMANENT_CACHE_POLICY, AvatarDeliveryState } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     ResourceNotFoundException,
+    SystemException,
     TerminalJobException,
     isExceptionOfKind,
     isExceptionWithAudit,
@@ -62,8 +63,6 @@ export class ReplaceAdminAvatarCommandHandler implements ICommandHandler<Replace
         const { id, deliveryId, previousAvatarId } = command,
             sourceKey = buildAdminPendingAvatarKey(id, deliveryId),
             destinationKey = buildAdminPermanentAvatarKey(id, deliveryId),
-            previousPendingKey = buildAdminPendingAvatarKey(id, previousAvatarId),
-            previousPermanentKey = buildAdminPermanentAvatarKey(id, previousAvatarId),
             admin = await this.adminWriterPort.load(id);
 
         if (!admin) {
@@ -71,47 +70,48 @@ export class ReplaceAdminAvatarCommandHandler implements ICommandHandler<Replace
             return;
         }
 
-        if (admin.avatarKey === null) {
-            throw new TerminalJobException('The admin has no attached avatar.');
-        }
+        let deliveryState: AvatarDeliveryState, obsoleteKeys: readonly string[];
 
-        // A later profile update can supersede this delivery before it runs or retries.
-        if (admin.avatarKey !== sourceKey && admin.avatarKey !== destinationKey) {
-            const promises = [this.storagePort.deleteObject(sourceKey), this.storagePort.deleteObject(destinationKey)];
-
-            // A still-valid upload proof can reselect the previous avatar if its pending object still exists
-            // or is recreated through a still-valid PUT URL. While pending is selected, preserve its in-flight copy too.
-            if (admin.avatarKey !== previousPendingKey) {
-                promises.push(this.storagePort.deleteObject(previousPendingKey));
-
-                // A selected permanent avatar no longer needs its pending source, but must keep its destination.
-                if (admin.avatarKey !== previousPermanentKey) {
-                    promises.push(this.storagePort.deleteObject(previousPermanentKey));
-                }
+        try {
+            deliveryState = admin.getAvatarDeliveryState(deliveryId);
+            obsoleteKeys = admin.getObsoleteAvatarKeys(previousAvatarId);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
             }
 
-            await Promise.all(promises);
+            throw error;
+        }
 
-            return;
+        switch (deliveryState) {
+            case AvatarDeliveryState.MISSING:
+                throw new TerminalJobException('The admin has no attached avatar.');
+
+            case AvatarDeliveryState.SUPERSEDED:
+                await Promise.all(
+                    [sourceKey, destinationKey, ...obsoleteKeys].map((key) => this.storagePort.deleteObject(key)),
+                );
+
+                return;
+
+            case AvatarDeliveryState.FINALIZED:
+                // Never recopy a source recreated through a still-valid PUT URL after cleanup.
+                if ((await this.findObject(destinationKey)) === null) {
+                    throw new TerminalJobException('The attached permanent admin avatar object is missing.');
+                }
+
+                await Promise.all([...obsoleteKeys, sourceKey].map((key) => this.storagePort.deleteObject(key)));
+
+                return;
+
+            case AvatarDeliveryState.PENDING:
+                break;
+
+            default:
+                this.assertNeverDeliveryState(deliveryState);
         }
 
         const destinationObject = await this.findObject(destinationKey);
-
-        if (admin.avatarKey === destinationKey) {
-            // Never recopy a source recreated through a still-valid PUT URL after the first cleanup.
-            if (destinationObject === null) {
-                throw new TerminalJobException('The attached permanent admin avatar object is missing.');
-            }
-
-            // Resume cleanup after an earlier attempt committed the permanent key.
-            await Promise.all([
-                this.storagePort.deleteObject(previousPendingKey),
-                this.storagePort.deleteObject(previousPermanentKey),
-                this.storagePort.deleteObject(sourceKey),
-            ]);
-
-            return;
-        }
 
         // Reuse a copy left by an earlier attempt before reading or copying its source again.
         if (destinationObject === null) {
@@ -170,11 +170,19 @@ export class ReplaceAdminAvatarCommandHandler implements ICommandHandler<Replace
         }
 
         // The replacement is committed. An earlier attempt may have left both forms of its predecessor.
-        await Promise.all([
-            this.storagePort.deleteObject(previousPendingKey),
-            this.storagePort.deleteObject(previousPermanentKey),
-            this.storagePort.deleteObject(sourceKey),
-        ]);
+        await Promise.all([...obsoleteKeys, sourceKey].map((key) => this.storagePort.deleteObject(key)));
+    }
+
+    /**
+     * Rejects unhandled delivery states when the domain vocabulary changes.
+     *
+     * @param state Exhausted delivery state
+     * @throws {SystemException} When an unsupported delivery state reaches the handler
+     */
+    private assertNeverDeliveryState(state: never): never {
+        throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
+            context: { class: ReplaceAdminAvatarCommandHandler.name, method: this.execute.name },
+        });
     }
 
     /**

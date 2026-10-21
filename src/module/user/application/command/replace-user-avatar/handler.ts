@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Replaces a user avatar and resumes obsolete-object cleanup across retries.
+ * @description Replaces an user avatar and resumes obsolete-object cleanup across retries.
  */
 
 import { Inject } from '@nestjs/common';
@@ -15,10 +15,11 @@ import {
 import { ReplaceUserAvatarCommand } from 'src/module/user/application/command/replace-user-avatar/command';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
-import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
+import { AVATAR_PERMANENT_CACHE_POLICY, AvatarDeliveryState } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     ResourceNotFoundException,
+    SystemException,
     TerminalJobException,
     isExceptionOfKind,
     isExceptionWithAudit,
@@ -49,7 +50,7 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
      *
      * @param command Account and immutable new/previous avatar identities retained for cleanup
      * @throws {ResourceConflictException} When concurrent state prevents attachment or the copy cannot be reconciled
-     * @throws {TerminalJobException} When the attached permanent object is missing
+     * @throws {TerminalJobException} When no avatar is attached or the attached permanent object is missing
      * @throws {ResourceNotFoundException} When the expected source is missing or the failed copy cannot be reconciled
      * @throws {InvalidInputException} When delivery keys violate aggregate identity invariants
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
@@ -59,8 +60,6 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
         const { id, deliveryId, previousAvatarId } = command,
             sourceKey = buildUserPendingAvatarKey(id, deliveryId),
             destinationKey = buildUserPermanentAvatarKey(id, deliveryId),
-            previousPendingKey = buildUserPendingAvatarKey(id, previousAvatarId),
-            previousPermanentKey = buildUserPermanentAvatarKey(id, previousAvatarId),
             user = await this.userWriterPort.load(id);
 
         if (!user) {
@@ -68,43 +67,48 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
             return;
         }
 
-        // A later profile update can supersede this delivery before it runs or retries.
-        if (user.avatarKey !== sourceKey && user.avatarKey !== destinationKey) {
-            const promises = [this.storagePort.deleteObject(sourceKey), this.storagePort.deleteObject(destinationKey)];
+        let deliveryState: AvatarDeliveryState, obsoleteKeys: readonly string[];
 
-            // A still-valid upload proof can reselect the previous avatar if its pending object still exists
-            // or is recreated through a still-valid PUT URL. While pending is selected, preserve its in-flight copy too.
-            if (user.avatarKey !== previousPendingKey) {
-                promises.push(this.storagePort.deleteObject(previousPendingKey));
-
-                // A selected permanent avatar no longer needs its pending source, but must keep its destination.
-                if (user.avatarKey !== previousPermanentKey) {
-                    promises.push(this.storagePort.deleteObject(previousPermanentKey));
-                }
+        try {
+            deliveryState = user.getAvatarDeliveryState(deliveryId);
+            obsoleteKeys = user.getObsoleteAvatarKeys(previousAvatarId);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
             }
 
-            await Promise.all(promises);
+            throw error;
+        }
 
-            return;
+        switch (deliveryState) {
+            case AvatarDeliveryState.MISSING:
+                throw new TerminalJobException('The user has no attached avatar.');
+
+            case AvatarDeliveryState.SUPERSEDED:
+                await Promise.all(
+                    [sourceKey, destinationKey, ...obsoleteKeys].map((key) => this.storagePort.deleteObject(key)),
+                );
+
+                return;
+
+            case AvatarDeliveryState.FINALIZED:
+                // Never recopy a source recreated through a still-valid PUT URL after cleanup.
+                if ((await this.findObject(destinationKey)) === null) {
+                    throw new TerminalJobException('The attached permanent user avatar object is missing.');
+                }
+
+                await Promise.all([...obsoleteKeys, sourceKey].map((key) => this.storagePort.deleteObject(key)));
+
+                return;
+
+            case AvatarDeliveryState.PENDING:
+                break;
+
+            default:
+                this.assertNeverDeliveryState(deliveryState);
         }
 
         const destinationObject = await this.findObject(destinationKey);
-
-        if (user.avatarKey === destinationKey) {
-            // Never recopy a source recreated through a still-valid PUT URL after the first cleanup.
-            if (destinationObject === null) {
-                throw new TerminalJobException('The attached permanent user avatar object is missing.');
-            }
-
-            // Resume cleanup after an earlier attempt committed the permanent key.
-            await Promise.all([
-                this.storagePort.deleteObject(previousPendingKey),
-                this.storagePort.deleteObject(previousPermanentKey),
-                this.storagePort.deleteObject(sourceKey),
-            ]);
-
-            return;
-        }
 
         // Reuse a copy left by an earlier attempt before reading or copying its source again.
         if (destinationObject === null) {
@@ -163,11 +167,19 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
         }
 
         // The replacement is committed. An earlier attempt may have left both forms of its predecessor.
-        await Promise.all([
-            this.storagePort.deleteObject(previousPendingKey),
-            this.storagePort.deleteObject(previousPermanentKey),
-            this.storagePort.deleteObject(sourceKey),
-        ]);
+        await Promise.all([...obsoleteKeys, sourceKey].map((key) => this.storagePort.deleteObject(key)));
+    }
+
+    /**
+     * Rejects unhandled delivery states when the domain vocabulary changes.
+     *
+     * @param state Exhausted delivery state
+     * @throws {SystemException} When an unsupported delivery state reaches the handler
+     */
+    private assertNeverDeliveryState(state: never): never {
+        throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
+            context: { class: ReplaceUserAvatarCommandHandler.name, method: this.execute.name },
+        });
     }
 
     /**

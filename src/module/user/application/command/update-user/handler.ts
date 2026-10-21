@@ -18,7 +18,6 @@ import {
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { assertUserAvatarChangeFormHashMatches } from 'src/module/user/domain/user-avatar-change';
-import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AuditReason } from 'src/shared/domain/audit';
@@ -29,7 +28,6 @@ import {
     InvalidInputException,
     InvalidInputMessage,
     ResourceNotFoundException,
-    SystemException,
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
@@ -87,11 +85,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             throw new InvalidInputException();
         }
 
-        const user = await this.userWriterPort.load(command.id);
-
-        if (!user) {
-            throw new ResourceNotFoundException();
-        }
+        const user: User = await this.loadUser(command.id);
 
         let avatarUpdate: Parameters<User['update']>[1];
 
@@ -123,14 +117,14 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
                 throw error;
             }
 
-            if (payload.fileKey !== buildUserPendingAvatarKey(user.id, payload.jti)) {
-                throw new SystemException('Verified profile upload claims violate avatar key invariants.', {
-                    context: { class: UpdateUserCommandHandler.name, method: this.execute.name },
-                });
-            }
+            avatarUpdate = {
+                fileKey: payload.fileKey,
+                jti: payload.jti,
+                revocationVersion: payload.revocationVersion,
+            };
 
             try {
-                user.assertAvatarReplacementAllowed(payload.jti);
+                user.assertProfileUpdateAllowed(avatarUpdate);
             } catch (error) {
                 if (isExceptionWithAudit(error)) {
                     await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
@@ -163,12 +157,6 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             }
 
             assertAvatarUploadMatchesDescriptor(uploaded, avatar);
-
-            avatarUpdate = {
-                fileKey: payload.fileKey,
-                jti: payload.jti,
-                revocationVersion: payload.revocationVersion,
-            };
         }
 
         let changed: boolean;
@@ -191,5 +179,23 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             await this.userWriterPort.save(user);
             await this.auditPort.record({ action: UserAuditAction.USER_UPDATED });
         });
+    }
+
+    /**
+     * Loads the profile owner or rejects an unavailable account.
+     *
+     * @param id Account identity
+     * @returns The non-deleted account aggregate
+     * @throws {ResourceNotFoundException} When no non-deleted account exists with the given ID
+     * @throws {DependencyUnavailableException} When the database is unavailable
+     */
+    private async loadUser(id: string): Promise<User> {
+        const user = await this.userWriterPort.load(id);
+
+        if (!user) {
+            throw new ResourceNotFoundException();
+        }
+
+        return user;
     }
 }

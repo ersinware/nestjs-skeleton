@@ -1,10 +1,11 @@
 # Data & State
 
-- Aggregates own business rules, including mutation eligibility, transitions, and no-op decisions. Handlers coordinate I/O, persistence, transactions, and audit; never duplicate rules. Aggregate prechecks may gate external I/O; they never replace mutator validation.
+- Aggregates own business rules, including mutation eligibility, transitions, no-ops, and state-dependent delivery/cleanup decisions. Handlers coordinate I/O, persistence, transactions, and audit; never duplicate rules.
+- Aggregate prechecks and decision queries never mutate state or enqueue jobs. Prechecks may gate external I/O but never replace mutator validation; assertion methods reject by throwing, never by returning data.
 - Handlers pass external facts and password verification results into mutators; password hashing stays behind application ports. Keep database constraints for concurrency safety.
 - Share aggregate invariants through opt-in bases, never universal `AggregateRoot`. Valid idempotent requests for the existing state are no-ops without jobs; invalid transitions fail.
 - Admin and User use the canonical job-producing aggregate-root bases.
-- Admin/User aggregate order: state; construction/snapshot; mutations grouped by workflow; protected/private helpers; getters in state-field order.
+- Admin/User aggregate order: state; construction/snapshot; workflow methods in lifecycle/call order; protected/private helpers in corresponding workflow order; getters in state-field order. Keep corresponding workflows aligned across both aggregates.
 - `SoftDeletableAggregateRoot`: concrete mutators call `assertNotDeleted`, except repeat-safe `markAsDeleted`. Writers load only non-deleted aggregates; attempted mutation of a deleted aggregate is `SystemException`.
 - Modules own their tables/Drizzle definitions in same-named PostgreSQL schemas; no central table registry. Exception: core owns/writes `audit.audit`; `audit-trail` reads its barrel-exported table via replica. Keep `drizzle.config.ts` discovery and `schemaFilter` aligned with application-owned schemas.
 - No cross-module JOINs or synchronous transactions. Cross-context references are soft UUID links without foreign keys; compose reads in memory via facades ([Module Isolation](architecture.md#module-isolation)), reconcile mutations via durable jobs ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
