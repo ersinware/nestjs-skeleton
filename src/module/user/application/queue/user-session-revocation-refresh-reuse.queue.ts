@@ -26,6 +26,11 @@ export class UserSessionRevocationRefreshReuseQueue implements IJobConsumer {
     readonly transactional = true;
 
     /**
+     * Keeps reuse revocation polling prompt without grouping transactional effects.
+     */
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 } as const;
+
+    /**
      * Initializes the consumer with the required pipeline.
      *
      * @param commandPipeline Pipeline used to dispatch revocation commands

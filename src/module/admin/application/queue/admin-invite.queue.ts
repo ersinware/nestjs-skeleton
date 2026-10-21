@@ -25,9 +25,9 @@ export class AdminInviteQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
-     * Bounds email concurrency per process; provider quotas also depend on replica count.
+     * Polls infrequent invitations less often while accepting small delivery batches.
      */
-    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2 } as const;
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 15, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

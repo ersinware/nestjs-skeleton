@@ -70,7 +70,12 @@ describe('JobQueueFeatureModule', () => {
     ])('settles $status with $reports reports for $error', async ({ error, status, reports }) => {
         const consume = error === null ? vi.fn().mockResolvedValue(undefined) : vi.fn().mockRejectedValue(error);
         const { module, feature, boss, report } = await setup([
-            { name: 'avatar-source', transactional: false, consume },
+            {
+                name: 'avatar-source',
+                transactional: false,
+                consume,
+                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 },
+            },
         ]);
         try {
             await feature.onApplicationBootstrap();
@@ -104,10 +109,20 @@ describe('JobQueueFeatureModule', () => {
         }
     });
 
-    it('routes source failures to the shared DLQ and retains single-job transactional and Redis defaults', async () => {
+    it('routes source failures to the shared DLQ and applies explicit transactional and Redis worker options', async () => {
         const { module, feature, boss } = await setup([
-            { name: 'transactional-source', transactional: true, consume: vi.fn() },
-            { name: 'redis-source', transactional: false, consume: vi.fn() },
+            {
+                name: 'transactional-source',
+                transactional: true,
+                consume: vi.fn(),
+                workerOptions: { localConcurrency: 3, pollingIntervalSeconds: 1, batchSize: 1 },
+            },
+            {
+                name: 'redis-source',
+                transactional: false,
+                consume: vi.fn(),
+                workerOptions: { localConcurrency: 5, pollingIntervalSeconds: 1, batchSize: 1 },
+            },
         ]);
         try {
             await feature.onApplicationBootstrap();
@@ -152,20 +167,20 @@ describe('JobQueueFeatureModule', () => {
         }
     });
 
-    it('honors worker overrides and preserves explicit null dead-letter routing for redrive', async () => {
+    it('honors worker options and preserves explicit null dead-letter routing for redrive', async () => {
         const { module, feature, boss } = await setup([
             {
                 name: 'email-source',
                 transactional: false,
                 consume: vi.fn(),
-                workerOptions: { localConcurrency: 2, pollingIntervalSeconds: 2 },
+                workerOptions: { localConcurrency: 2, pollingIntervalSeconds: 2, batchSize: 5 },
             },
             {
                 name: JOB_QUEUE_DEAD_LETTER_REDRIVE,
                 transactional: false,
                 consume: vi.fn(),
                 queueOptions: JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS,
-                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 2 },
+                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 2, batchSize: 1 },
             },
         ]);
         boss.getQueue.mockImplementation((name: string) =>
@@ -184,7 +199,7 @@ describe('JobQueueFeatureModule', () => {
             expect(boss.work).toHaveBeenCalledWith(
                 'email-source',
                 {
-                    batchSize: 1,
+                    batchSize: 5,
                     pollingIntervalSeconds: 2,
                     localConcurrency: 2,
                     perJobResults: true,
@@ -229,7 +244,12 @@ describe('JobQueueFeatureModule', () => {
 
     it('rejects a worker for the shared dead-letter storage queue', async () => {
         const { module, feature, boss } = await setup([
-            { name: JOB_QUEUE_DEAD_LETTER, transactional: false, consume: vi.fn() },
+            {
+                name: JOB_QUEUE_DEAD_LETTER,
+                transactional: false,
+                consume: vi.fn(),
+                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 },
+            },
         ]);
         try {
             await expect(feature.onApplicationBootstrap()).rejects.toThrow('cannot register a worker');

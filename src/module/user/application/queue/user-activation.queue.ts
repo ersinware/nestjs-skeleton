@@ -25,9 +25,9 @@ export class UserActivationQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
-     * Bounds email concurrency per process; provider quotas also depend on replica count.
+     * Keeps activation delivery responsive with bounded sequential email batches.
      */
-    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2 } as const;
+    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

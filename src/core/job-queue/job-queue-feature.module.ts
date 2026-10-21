@@ -70,9 +70,9 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
             }
 
             const options = {
-                batchSize: 1,
-                pollingIntervalSeconds: consumer.workerOptions?.pollingIntervalSeconds ?? 1,
-                localConcurrency: consumer.workerOptions?.localConcurrency ?? (consumer.transactional ? 3 : 5),
+                batchSize: consumer.workerOptions.batchSize,
+                pollingIntervalSeconds: consumer.workerOptions.pollingIntervalSeconds,
+                localConcurrency: consumer.workerOptions.localConcurrency,
             } as const;
 
             if (consumer.transactional) {

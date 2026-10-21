@@ -26,6 +26,11 @@ export class UserAvatarReplaceQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
+     * Limits storage concurrency without claiming work behind a slow delivery.
+     */
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 5, batchSize: 1 } as const;
+
+    /**
      * Initializes the owner command dispatcher.
      *
      * @param commandPipeline Dispatches the reconciliation command with normal behaviors

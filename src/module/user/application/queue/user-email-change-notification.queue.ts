@@ -25,9 +25,9 @@ export class UserEmailChangeNotificationQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
-     * Limits concurrent email attempts per process.
+     * Allows delayed old-address notices and amortizes polling across deliveries.
      */
-    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2 } as const;
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 30, batchSize: 10 } as const;
 
     /**
      * Initializes the command pipeline.

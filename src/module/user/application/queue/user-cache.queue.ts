@@ -25,6 +25,11 @@ export class UserCacheQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
+     * Amortizes polling across short evictions while tolerating delayed cache repair.
+     */
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 5, batchSize: 20 } as const;
+
+    /**
      * Initializes the consumer with the cache eviction port.
      *
      * @param cacheEvictionPort Cache eviction contract whose failures trigger job retry
