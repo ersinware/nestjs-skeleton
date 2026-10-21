@@ -1,6 +1,6 @@
 /**
  * @file handler.ts
- * @description Reconciles a user avatar copy, atomic key transition, and post-commit source cleanup.
+ * @description Finalizes the initial user avatar with an atomic key transition and post-commit source cleanup.
  */
 
 import { Inject } from '@nestjs/common';
@@ -15,17 +15,18 @@ import {
 } from 'src/module/user/application/command/port/user-writer.port';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
-import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
+import { AVATAR_PERMANENT_CACHE_POLICY, AvatarDeliveryState } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     ResourceNotFoundException,
+    SystemException,
     TerminalJobException,
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
 
 /**
- * Keeps the pending object available until the permanent key commits with audit and cache eviction.
+ * Finalizes the initial avatar while preserving completed copies across retries.
  */
 @CommandHandler(FinalizeUserAvatarCommand)
 export class FinalizeUserAvatarCommandHandler implements ICommandHandler<FinalizeUserAvatarCommand, void> {
@@ -34,7 +35,7 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
      *
      * @param userWriterPort Loads and saves non-deleted accounts on the primary
      * @param storagePort Copies and deletes objects outside the database transaction
-     * @param transactionPort Commits the key transition and its durable follow-up work
+     * @param transactionPort Commits the key transition and its audit together
      * @param auditPort Records one committed attachment transition
      */
     constructor(
@@ -45,11 +46,11 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
     ) {}
 
     /**
-     * Reconciles repeated delivery; failures propagate to the existing queue retry boundary.
+     * Copies the selected avatar, commits its permanent key with audit, and cleans up its source.
      *
      * @param command Account and immutable avatar delivery identities
      * @throws {ResourceConflictException} When concurrent state prevents attachment or the copy cannot be reconciled
-     * @throws {TerminalJobException} When the attached permanent object is missing
+     * @throws {TerminalJobException} When no avatar is attached or the attached permanent object is missing
      * @throws {ResourceNotFoundException} When the expected source is missing; retries re-read account state
      * @throws {InvalidInputException} When delivery keys violate aggregate identity invariants
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
@@ -66,23 +67,43 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
             sourceKey = buildUserPendingAvatarKey(user.id, deliveryId),
             destinationKey = buildUserPermanentAvatarKey(user.id, deliveryId);
 
-        // An initial delivery may retry after a profile replacement; never reattach the initial avatar.
-        if (user.avatarKey !== sourceKey && user.avatarKey !== destinationKey) {
-            return;
+        let deliveryState: AvatarDeliveryState;
+
+        try {
+            deliveryState = user.getAvatarDeliveryState(deliveryId);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
+        }
+
+        switch (deliveryState) {
+            case AvatarDeliveryState.MISSING:
+                throw new TerminalJobException('The user has no attached avatar.');
+
+            case AvatarDeliveryState.SUPERSEDED:
+                return;
+
+            case AvatarDeliveryState.FINALIZED:
+                // Never recopy a source recreated through a still-valid PUT URL after cleanup.
+                if ((await this.findObject(destinationKey)) === null) {
+                    throw new TerminalJobException('The attached permanent user avatar object is missing.');
+                }
+
+                await this.storagePort.deleteObject(sourceKey);
+
+                return;
+
+            case AvatarDeliveryState.PENDING:
+                break;
+
+            default:
+                this.assertNeverDeliveryState(deliveryState);
         }
 
         const destinationObject = await this.findObject(destinationKey);
-
-        if (user.avatarKey === destinationKey) {
-            // Never recopy a source recreated through a still-valid PUT URL after the first cleanup.
-            if (destinationObject === null) {
-                throw new TerminalJobException('The attached permanent user avatar object is missing.');
-            }
-
-            await this.storagePort.deleteObject(sourceKey);
-
-            return;
-        }
 
         // Reuse a copy left by an earlier attempt before reading or copying its source again.
         if (destinationObject === null) {
@@ -135,7 +156,7 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
                 await this.auditPort.record({
                     action: UserAuditAction.USER_AVATAR_FINALIZED,
                     targetId: user.id,
-                    detail: { deliveryId: deliveryId },
+                    detail: { deliveryId },
                 });
             });
         }
@@ -144,12 +165,24 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
     }
 
     /**
-     * Treats missing objects as a reconciliation case without swallowing dependency failures.
+     * Rejects unhandled delivery states when the domain vocabulary changes.
+     *
+     * @param state Exhausted delivery state
+     * @throws {SystemException} When an unsupported delivery state reaches the handler
+     */
+    private assertNeverDeliveryState(state: never): never {
+        throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
+            context: { class: FinalizeUserAvatarCommandHandler.name, method: this.execute.name },
+        });
+    }
+
+    /**
+     * Converts only missing-object failures to null so reconciliation can distinguish absence from outages.
      *
      * @param key Object key selected by the owner
      * @returns Stored metadata, or null when the object is missing
      * @throws {DependencyUnavailableException} When storage is unavailable
-     * @throws {SystemException} When storage authorization fails
+     * @throws {SystemException} When storage metadata is incomplete or authorization fails
      */
     private async findObject(key: string): Promise<StorageObject | null> {
         try {

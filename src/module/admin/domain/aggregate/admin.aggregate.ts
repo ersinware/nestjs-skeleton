@@ -12,6 +12,7 @@ import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum'
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
+import { AvatarDeliveryState } from 'src/shared/domain/avatar';
 import { Permission, PrincipalType, SessionRevocationReason, type Principal } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
@@ -420,17 +421,32 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Rejects reuse of the currently selected pending or permanent avatar identity.
+     * Validates profile update eligibility before external I/O and before mutation.
      *
-     * @param avatarId Identity of the proposed replacement avatar
-     * @throws {ResourceConflictException} When this avatar identity is already attached
+     * @param payload Verified avatar upload facts, omitted for a name-only update
+     * @throws {SystemException} When the account is deleted, inactive, or the pending avatar key is invalid
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the avatar proof has been revoked
+     * @throws {ResourceConflictException} When the avatar identity is already attached
      */
-    assertAvatarReplacementAllowed(avatarId: string) {
-        if (
-            this.props.avatarKey === buildAdminPendingAvatarKey(this.id, avatarId) ||
-            this.props.avatarKey === buildAdminPermanentAvatarKey(this.id, avatarId)
-        ) {
-            throw new ResourceConflictException();
+    assertProfileUpdateAllowed(payload?: AdminAvatarChange): asserts this is this & {
+        readonly password: string;
+        readonly avatarKey: string;
+    } {
+        this.assertNotDeleted(this.assertProfileUpdateAllowed.name);
+        this.assertActivated(this.assertProfileUpdateAllowed.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: AdminAuditAction.ADMIN_UPDATE_FAILED,
+                    reason: AdminAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        if (payload !== undefined) {
+            this.assertAvatarReplacementAllowed(payload);
         }
     }
 
@@ -446,33 +462,11 @@ export class Admin extends PrincipalAggregateRoot {
      * @throws {ResourceConflictException} When the proposed avatar identity is already attached
      */
     update(name?: string, payload?: AdminAvatarChange): boolean {
-        this.assertNotDeleted(this.update.name);
-        this.assertActivated(this.update.name);
-
-        if (this.props.isBanned) {
-            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
-                audit: {
-                    action: AdminAuditAction.ADMIN_UPDATE_FAILED,
-                    reason: AdminAuditReason.ACCOUNT_BANNED,
-                },
-            });
-        }
+        this.assertProfileUpdateAllowed(payload);
 
         let changed = false;
 
         if (payload !== undefined) {
-            if (payload.revocationVersion !== this.revocationVersion) {
-                throw new InvalidInputException();
-            }
-
-            if (payload.fileKey !== buildAdminPendingAvatarKey(this.id, payload.jti)) {
-                throw new SystemException('The pending avatar key is not in the expected format.', {
-                    context: { class: Admin.name, method: this.update.name, id: this.id },
-                });
-            }
-
-            this.assertAvatarReplacementAllowed(payload.jti);
-
             this.addAvatarReplaceJob(payload.jti, this.avatarKey.slice(this.avatarKey.lastIndexOf('/') + 1));
             this.props.avatarKey = payload.fileKey;
 
@@ -490,6 +484,28 @@ export class Admin extends PrincipalAggregateRoot {
         }
 
         return changed;
+    }
+
+    /**
+     * Interprets the current selection without changing account state or scheduling work.
+     *
+     * @param avatarId Immutable identity of the avatar delivery
+     * @returns Whether the delivery is missing, pending, finalized, or superseded
+     */
+    getAvatarDeliveryState(avatarId: string): AvatarDeliveryState {
+        if (this.props.avatarKey === null) {
+            return AvatarDeliveryState.MISSING;
+        }
+
+        if (this.props.avatarKey === buildAdminPendingAvatarKey(this.id, avatarId)) {
+            return AvatarDeliveryState.PENDING;
+        }
+
+        if (this.props.avatarKey === buildAdminPermanentAvatarKey(this.id, avatarId)) {
+            return AvatarDeliveryState.FINALIZED;
+        }
+
+        return AvatarDeliveryState.SUPERSEDED;
     }
 
     /**
@@ -525,6 +541,27 @@ export class Admin extends PrincipalAggregateRoot {
         this.props.updatedAt = new Date();
 
         return true;
+    }
+
+    /**
+     * Identifies unused objects while protecting a selected pending avatar's in-flight copy.
+     *
+     * @param avatarId Immutable identity whose obsolete objects may be removed
+     * @returns Object keys no longer needed by the current selection
+     */
+    getObsoleteAvatarKeys(avatarId: string): readonly string[] {
+        const pendingKey = buildAdminPendingAvatarKey(this.id, avatarId),
+            permanentKey = buildAdminPermanentAvatarKey(this.id, avatarId);
+
+        if (this.props.avatarKey === pendingKey) {
+            return [];
+        }
+
+        if (this.props.avatarKey === permanentKey) {
+            return [pendingKey];
+        }
+
+        return [pendingKey, permanentKey];
     }
 
     /**
@@ -880,6 +917,36 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
+     * Fixes invitation identity and its three-day lifetime before queuing delivery.
+     */
+    private issueInvitation() {
+        this.props.inviteId = randomUUID();
+        this.props.inviteExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + INVITATION_LIFETIME_MS);
+        this.props.inviteRevocationVersion = this.revocationVersion;
+    }
+
+    /**
+     * Queues delivery for the current pending invitation.
+     *
+     * @throws {SystemException} When no pending invitation exists
+     */
+    private addInvitationJob() {
+        if (this.props.inviteId === null) {
+            throw new SystemException('Cannot deliver invitation without a pending request.', {
+                context: { class: Admin.name, method: this.addInvitationJob.name, id: this.id },
+            });
+        }
+
+        this.addJob([
+            {
+                deliveryId: this.props.inviteId,
+                aggregateId: this.id,
+                queueName: AdminJobQueue.INVITE,
+            },
+        ]);
+    }
+
+    /**
      * Shares live invitation rules and metadata narrowing between preparation and consumption.
      *
      * @param payload Verified invitation identity and deadline
@@ -938,6 +1005,21 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
+     * Queues initial avatar finalization after invitation acceptance.
+     *
+     * @param avatarId Avatar identity shared with the delivery
+     */
+    private addAvatarFinalizeJob(avatarId: string) {
+        this.addJob([
+            {
+                deliveryId: avatarId,
+                aggregateId: this.id,
+                queueName: AdminJobQueue.AVATAR_FINALIZE,
+            },
+        ]);
+    }
+
+    /**
      * Prevents self-service mutations until password and avatar are attached and narrows their public types.
      *
      * @param method Calling mutation for diagnostic context
@@ -961,48 +1043,30 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Fixes invitation identity and its three-day lifetime before queuing delivery.
-     */
-    private issueInvitation() {
-        this.props.inviteId = randomUUID();
-        this.props.inviteExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + INVITATION_LIFETIME_MS);
-        this.props.inviteRevocationVersion = this.revocationVersion;
-    }
-
-    /**
-     * Queues delivery for the current pending invitation.
+     * Rejects revoked, malformed, or already selected avatar replacements.
      *
-     * @throws {SystemException} When no pending invitation exists
+     * @param payload Verified avatar upload facts proposed for this account
+     * @throws {InvalidInputException} When the avatar proof has been revoked
+     * @throws {SystemException} When the pending avatar key violates account identity
+     * @throws {ResourceConflictException} When the avatar identity is already attached
      */
-    private addInvitationJob() {
-        if (this.props.inviteId === null) {
-            throw new SystemException('Cannot deliver invitation without a pending request.', {
-                context: { class: Admin.name, method: this.addInvitationJob.name, id: this.id },
+    private assertAvatarReplacementAllowed(payload: AdminAvatarChange) {
+        if (payload.revocationVersion !== this.revocationVersion) {
+            throw new InvalidInputException();
+        }
+
+        if (payload.fileKey !== buildAdminPendingAvatarKey(this.id, payload.jti)) {
+            throw new SystemException('The pending avatar key is not in the expected format.', {
+                context: { class: Admin.name, method: this.assertAvatarReplacementAllowed.name, id: this.id },
             });
         }
 
-        this.addJob([
-            {
-                deliveryId: this.props.inviteId,
-                aggregateId: this.id,
-                queueName: AdminJobQueue.INVITE,
-            },
-        ]);
-    }
-
-    /**
-     * Queues initial avatar finalization after invitation acceptance.
-     *
-     * @param avatarId Avatar identity shared with the delivery
-     */
-    private addAvatarFinalizeJob(avatarId: string) {
-        this.addJob([
-            {
-                deliveryId: avatarId,
-                aggregateId: this.id,
-                queueName: AdminJobQueue.AVATAR_FINALIZE,
-            },
-        ]);
+        if (
+            this.props.avatarKey === payload.fileKey ||
+            this.props.avatarKey === buildAdminPermanentAvatarKey(this.id, payload.jti)
+        ) {
+            throw new ResourceConflictException();
+        }
     }
 
     /**

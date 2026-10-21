@@ -18,17 +18,18 @@ import {
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
-import { AVATAR_PERMANENT_CACHE_POLICY } from 'src/shared/domain/avatar';
+import { AVATAR_PERMANENT_CACHE_POLICY, AvatarDeliveryState } from 'src/shared/domain/avatar';
 import {
     ExceptionKind,
     ResourceNotFoundException,
+    SystemException,
     TerminalJobException,
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
 
 /**
- * Finalizes the invitation avatar while preserving completed copies across retries.
+ * Finalizes the initial avatar while preserving completed copies across retries.
  */
 @CommandHandler(FinalizeAdminAvatarCommand)
 export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<FinalizeAdminAvatarCommand, void> {
@@ -69,27 +70,43 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
             sourceKey = buildAdminPendingAvatarKey(admin.id, deliveryId),
             destinationKey = buildAdminPermanentAvatarKey(admin.id, deliveryId);
 
-        if (admin.avatarKey === null) {
-            throw new TerminalJobException('The admin has no attached avatar.');
+        let deliveryState: AvatarDeliveryState;
+
+        try {
+            deliveryState = admin.getAvatarDeliveryState(deliveryId);
+        } catch (error) {
+            if (isExceptionWithAudit(error)) {
+                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            }
+
+            throw error;
         }
 
-        // An initial delivery may retry after a profile replacement; never reattach the initial avatar.
-        if (admin.avatarKey !== sourceKey && admin.avatarKey !== destinationKey) {
-            return;
+        switch (deliveryState) {
+            case AvatarDeliveryState.MISSING:
+                throw new TerminalJobException('The admin has no attached avatar.');
+
+            case AvatarDeliveryState.SUPERSEDED:
+                return;
+
+            case AvatarDeliveryState.FINALIZED:
+                // Never recopy a source recreated through a still-valid PUT URL after cleanup.
+                if ((await this.findObject(destinationKey)) === null) {
+                    throw new TerminalJobException('The attached permanent admin avatar object is missing.');
+                }
+
+                await this.storagePort.deleteObject(sourceKey);
+
+                return;
+
+            case AvatarDeliveryState.PENDING:
+                break;
+
+            default:
+                this.assertNeverDeliveryState(deliveryState);
         }
 
         const destinationObject = await this.findObject(destinationKey);
-
-        if (admin.avatarKey === destinationKey) {
-            // Never recopy a source recreated through a still-valid PUT URL after the first cleanup.
-            if (destinationObject === null) {
-                throw new TerminalJobException('The attached permanent admin avatar object is missing.');
-            }
-
-            await this.storagePort.deleteObject(sourceKey);
-
-            return;
-        }
 
         // Reuse a copy left by an earlier attempt before reading or copying its source again.
         if (destinationObject === null) {
@@ -148,6 +165,18 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
         }
 
         await this.storagePort.deleteObject(sourceKey);
+    }
+
+    /**
+     * Rejects unhandled delivery states when the domain vocabulary changes.
+     *
+     * @param state Exhausted delivery state
+     * @throws {SystemException} When an unsupported delivery state reaches the handler
+     */
+    private assertNeverDeliveryState(state: never): never {
+        throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
+            context: { class: FinalizeAdminAvatarCommandHandler.name, method: this.execute.name },
+        });
     }
 
     /**

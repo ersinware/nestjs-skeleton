@@ -37,7 +37,7 @@ import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/modu
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { user } from 'src/module/user/infrastructure/user.schema';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
-import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
+import { AVATAR_PERMANENT_CACHE_POLICY, type AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
 import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
@@ -1210,6 +1210,68 @@ describe('User registration and activation', () => {
             expect(await storageFixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
             expect(await storageFixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
         });
+
+        it.each(['pending', 'permanent'] as const)(
+            'protects a reselected %s avatar from a superseded replacement',
+            async (selection) => {
+                const owner = await account();
+                const first = await profileUpload(owner);
+                const second = await profileUpload(owner);
+                const patch = (uploadToken: string) =>
+                    app.inject({
+                        method: 'PATCH',
+                        url: '/api/v1/user/me',
+                        headers: owner.headers,
+                        payload: { avatar, uploadToken },
+                    });
+
+                expect((await patch(first.uploadToken)).statusCode).toBe(200);
+                expect((await patch(second.uploadToken)).statusCode).toBe(200);
+                // A proof can select its avatar again after another version supersedes it.
+                expect((await patch(first.uploadToken)).statusCode).toBe(200);
+
+                const deliveries = await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, {
+                    data: { aggregateId: owner.id },
+                });
+                const stale = deliveries.find((job) => job.data.deliveryId === second.deliveryId)!;
+                expect(stale.data.payload).toEqual({ previousAvatarId: first.deliveryId });
+
+                const source = await storageFixture.storage.headObject(first.sourceKey);
+                // Simulate a copy completed before its database transition commits.
+                await storageFixture.storage.copyObject({
+                    sourceKey: first.sourceKey,
+                    destinationKey: first.destinationKey,
+                    sourceEtag: source.etag,
+                    contentType: source.contentType!,
+                    cache: AVATAR_PERMANENT_CACHE_POLICY,
+                });
+
+                if (selection === 'permanent') {
+                    const current = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
+                    await app.get(UserAvatarReplaceQueue).consume(current.data);
+                }
+
+                const before = await state(owner.id);
+                const auditBefore = await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED);
+                await app.get(UserAvatarReplaceQueue).consume(stale.data);
+
+                expect(await state(owner.id)).toEqual(before);
+                expect(await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED)).toEqual(auditBefore);
+                expect(await storageFixture.storage.headObject(first.destinationKey)).toMatchObject({ sizeBytes: 4 });
+                if (selection === 'pending') {
+                    expect(await storageFixture.storage.headObject(first.sourceKey)).toMatchObject({ sizeBytes: 4 });
+                } else {
+                    await expect(storageFixture.storage.headObject(first.sourceKey)).rejects.toMatchObject({
+                        kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                    });
+                }
+                for (const key of [second.sourceKey, second.destinationKey]) {
+                    await expect(storageFixture.storage.headObject(key)).rejects.toMatchObject({
+                        kind: ExceptionKind.RESOURCE_NOT_FOUND,
+                    });
+                }
+            },
+        );
 
         it('preserves a newer pending selection across stale delivery and rejects proof replay', async () => {
             const owner = await account();

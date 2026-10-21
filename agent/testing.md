@@ -6,7 +6,7 @@
 - Unit-test domain/application behavior through ports; verify DB/Redis guarantees with real dependencies in integration tests.
 - Do not write unit tests for DTOs.
 - Test apps must use the same bootstrap configuration and wiring as production apps, including hooks, guards, pipes, interceptors, and filters.
-- Run E2E tests through the pipeline; use `act` locally. Provision dependencies in the workflow, never reuse development containers.
+- Run E2E tests through the pipeline; use `act` locally. Local validation must not publish SDKs or documentation. Provision dependencies in the workflow, never reuse development containers.
 - Storage integration tests use the production module/port; direct SDK access is limited to observation, fault injection, and cleanup.
 - SeaweedFS tests validate application storage behavior, not AWS parity. Real S3 acceptance requires explicit opt-in and an isolated test target; default suites must not reach AWS.
 - Keep tests order-independent; clean up resources and isolate external test state from non-test data.

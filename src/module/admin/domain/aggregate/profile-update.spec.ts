@@ -21,13 +21,24 @@ describe('Admin profile updates', () => {
     it.each(['pending', 'permanent'] as const)(
         'captures the previous %s identity before accepting the next avatar',
         (kind) => {
-            const admin = Admin.reconstitute({
+            const admin: Admin = Admin.reconstitute({
                 ...Admin.create({ id, email: 'profile@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
                 avatarKey:
                     kind === 'pending'
                         ? buildAdminPendingAvatarKey(id, previous)
                         : buildAdminPermanentAvatarKey(id, previous),
             });
+            const before = admin.toSnapshot();
+            expect(admin.assertProfileUpdateAllowed()).toBeUndefined();
+            expect(
+                admin.assertProfileUpdateAllowed({
+                    fileKey: buildAdminPendingAvatarKey(id, next),
+                    jti: next,
+                    revocationVersion: 0,
+                }),
+            ).toBeUndefined();
+            expect(admin.toSnapshot()).toEqual(before);
+            expect(admin.pullJobs()).toEqual([]);
             expect(
                 admin.update(undefined, {
                     fileKey: buildAdminPendingAvatarKey(id, next),
@@ -52,12 +63,21 @@ describe('Admin profile updates', () => {
     it.each(['revoked', 'invalid-key', 'replay', 'banned'] as const)(
         'rejects %s without partial name mutation or jobs',
         (scenario) => {
-            const admin = Admin.reconstitute({
+            const admin: Admin = Admin.reconstitute({
                 ...Admin.create({ id, email: 'profile@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
                 avatarKey: buildAdminPermanentAvatarKey(id, scenario === 'replay' ? next : previous),
                 isBanned: scenario === 'banned',
             });
             const before = admin.toSnapshot();
+            expect(() =>
+                admin.assertProfileUpdateAllowed({
+                    fileKey: scenario === 'invalid-key' ? 'wrong' : buildAdminPendingAvatarKey(id, next),
+                    jti: next,
+                    revocationVersion: scenario === 'revoked' ? 1 : 0,
+                }),
+            ).toThrow();
+            expect(admin.toSnapshot()).toEqual(before);
+            expect(admin.pullJobs()).toEqual([]);
             expect(() =>
                 admin.update('Changed', {
                     fileKey: scenario === 'invalid-key' ? 'wrong' : buildAdminPendingAvatarKey(id, next),

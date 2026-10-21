@@ -38,6 +38,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Persist/return object keys; frontend owns CDN URLs and configuration.
 - Permanent files are immutable: each replacement uses a new version key; retries retain that key and prevent overwrites. Public delivery uses long-lived immutable caching.
 - Storage and database changes are not atomic; reconcile retries and delete sources or previous objects only after the replacement key commits or the delivery is superseded. Persist cleanup identities with the mutation; retries must resume cleanup.
+- Valid upload proofs can reselect older avatars; cleanup must preserve selected objects and a selected pending avatar's in-flight permanent copy.
 - Soft deletion retains Admin/User avatars. A writer's missing result does not prove physical deletion; orphan reconciliation must protect avatar references on soft-deleted rows.
 - Cache metadata does not authorize reads; protected files require access control and caching compatible with access revocation.
 

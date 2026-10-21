@@ -20,10 +20,50 @@ import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
-import { ExceptionKind, ResourceNotFoundException, UnauthenticatedException } from 'src/shared/exception';
+import {
+    DependencyUnavailableException,
+    ExceptionKind,
+    ResourceNotFoundException,
+    UnauthenticatedException,
+} from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('UpdateAdminCommandHandler', () => {
+    it.each(['not-found', 'database-failure'] as const)(
+        'stops before token or storage access on %s',
+        async (scenario) => {
+            const failure = new DependencyUnavailableException();
+            const writer = { load: vi.fn().mockResolvedValue(null), save: vi.fn() };
+            if (scenario === 'database-failure') {
+                writer.load.mockRejectedValueOnce(failure);
+            }
+            const audit = { record: vi.fn() };
+            const token = { verifyUploadToken: vi.fn() };
+            const storage = { headObject: vi.fn() };
+            const transaction = { run: vi.fn() };
+            const handler = new UpdateAdminCommandHandler(
+                transaction,
+                writer,
+                audit,
+                token as unknown as ITokenPort,
+                storage as unknown as IStoragePort,
+                new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'secret' }),
+            );
+
+            const result = handler.execute(new UpdateAdminCommand('owner', 'Changed'));
+            if (scenario === 'database-failure') {
+                await expect(result).rejects.toBe(failure);
+            } else {
+                await expect(result).rejects.toMatchObject({ kind: ExceptionKind.RESOURCE_NOT_FOUND });
+            }
+            expect(token.verifyUploadToken).not.toHaveBeenCalled();
+            expect(storage.headObject).not.toHaveBeenCalled();
+            expect(writer.save).not.toHaveBeenCalled();
+            expect(transaction.run).not.toHaveBeenCalled();
+            expect(audit.record).not.toHaveBeenCalled();
+        },
+    );
+
     it.each(['empty', 'avatar-without-proof', 'proof-without-avatar'] as const)(
         'rejects %s before loading or calling dependencies',
         async (scenario) => {
@@ -66,6 +106,10 @@ describe('UpdateAdminCommandHandler', () => {
         'metadata',
         'replay',
         'invalid-key',
+        'banned',
+        'banned-audit-failure',
+        'inactive',
+        'missing-avatar',
     ] as const)('handles %s without forbidden effects', async (scenario) => {
         const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
         const avatarId = 'b603fdc2-5c63-4912-b40e-f0bf3b96f156';
@@ -73,7 +117,9 @@ describe('UpdateAdminCommandHandler', () => {
         const sourceKey = buildAdminPendingAvatarKey(id, avatarId);
         const admin = Admin.reconstitute({
             ...Admin.create({ id, email: 'admin@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
-            avatarKey: scenario === 'replay' ? sourceKey : currentKey,
+            password: scenario === 'inactive' ? null : 'hash',
+            avatarKey: scenario === 'missing-avatar' ? null : scenario === 'replay' ? sourceKey : currentKey,
+            isBanned: scenario === 'banned' || scenario === 'banned-audit-failure',
         });
         const before = admin.toSnapshot();
         const avatar = { sizeBytes: 4, contentType: 'image/png' } as const;
@@ -113,6 +159,9 @@ describe('UpdateAdminCommandHandler', () => {
         }
         const writer = { load: vi.fn().mockResolvedValue(admin), save: vi.fn() };
         const audit = { record: vi.fn() };
+        if (scenario === 'banned-audit-failure') {
+            audit.record.mockRejectedValueOnce(new DependencyUnavailableException());
+        }
         const transaction: ITransactionPort = { run: (work) => work() };
         const run = vi.spyOn(transaction, 'run');
         const handler = new UpdateAdminCommandHandler(
@@ -138,6 +187,10 @@ describe('UpdateAdminCommandHandler', () => {
             metadata: ExceptionKind.INVALID_INPUT,
             replay: ExceptionKind.RESOURCE_CONFLICT,
             'invalid-key': ExceptionKind.SYSTEM,
+            banned: ExceptionKind.ACCESS_DENIED,
+            'banned-audit-failure': ExceptionKind.DEPENDENCY_UNAVAILABLE,
+            inactive: ExceptionKind.SYSTEM,
+            'missing-avatar': ExceptionKind.SYSTEM,
         };
         if (scenario in failureKind) {
             await expect(result).rejects.toMatchObject({ kind: failureKind[scenario as keyof typeof failureKind] });
@@ -149,11 +202,16 @@ describe('UpdateAdminCommandHandler', () => {
                     { action: 'ADMIN_UPDATE_FAILED', reason: 'PRINCIPAL_MISMATCH', targetId: payload.sub },
                     { markExceptionAsAudited: expect.anything() as unknown },
                 );
+            } else if (scenario === 'banned' || scenario === 'banned-audit-failure') {
+                expect(audit.record).toHaveBeenCalledWith(
+                    { action: AdminAuditAction.ADMIN_UPDATE_FAILED, reason: 'ACCOUNT_BANNED' },
+                    { markExceptionAsAudited: expect.anything() as unknown },
+                );
             } else {
                 expect(audit.record).not.toHaveBeenCalled();
             }
             expect(run).not.toHaveBeenCalled();
-            if (scenario !== 'missing-object' && scenario !== 'metadata' && scenario !== 'revoked') {
+            if (scenario !== 'missing-object' && scenario !== 'metadata') {
                 expect(storage.headObject).not.toHaveBeenCalled();
             }
             return;

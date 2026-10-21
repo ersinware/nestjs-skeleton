@@ -9,6 +9,7 @@ import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/modu
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { PrincipalAggregateRoot, type PermissionChange } from 'src/shared/domain/aggregate-root';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
+import { AvatarDeliveryState } from 'src/shared/domain/avatar';
 import { PrincipalType, SessionRevocationReason, type Permission, type Principal } from 'src/shared/domain/principal';
 import {
     AccessDeniedException,
@@ -402,17 +403,31 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Rejects reuse of the currently selected pending or permanent avatar identity.
+     * Validates profile update eligibility before external I/O and before mutation.
      *
-     * @param avatarId Identity of the proposed replacement avatar
-     * @throws {ResourceConflictException} When this avatar identity is already attached
+     * @param payload Verified avatar upload facts, omitted for a name-only update
+     * @throws {SystemException} When the account is deleted, inactive, or the pending avatar key is invalid
+     * @throws {AccessDeniedException} When the account is banned
+     * @throws {InvalidInputException} When the avatar proof has been revoked
+     * @throws {ResourceConflictException} When the avatar identity is already attached
      */
-    assertAvatarReplacementAllowed(avatarId: string) {
-        if (
-            this.props.avatarKey === buildUserPendingAvatarKey(this.id, avatarId) ||
-            this.props.avatarKey === buildUserPermanentAvatarKey(this.id, avatarId)
-        ) {
-            throw new ResourceConflictException();
+    assertProfileUpdateAllowed(payload?: UserAvatarChange): asserts this is this & {
+        readonly activationId: null;
+    } {
+        this.assertNotDeleted(this.assertProfileUpdateAllowed.name);
+        this.assertActivated(this.assertProfileUpdateAllowed.name);
+
+        if (this.props.isBanned) {
+            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
+                audit: {
+                    action: UserAuditAction.USER_UPDATE_FAILED,
+                    reason: UserAuditReason.ACCOUNT_BANNED,
+                },
+            });
+        }
+
+        if (payload !== undefined) {
+            this.assertAvatarReplacementAllowed(payload);
         }
     }
 
@@ -428,33 +443,11 @@ export class User extends PrincipalAggregateRoot {
      * @throws {ResourceConflictException} When the proposed avatar identity is already attached
      */
     update(name?: string, payload?: UserAvatarChange): boolean {
-        this.assertNotDeleted(this.update.name);
-        this.assertActivated(this.update.name);
-
-        if (this.props.isBanned) {
-            throw new AccessDeniedException(AccessDeniedMessage.DEFAULT, {
-                audit: {
-                    action: UserAuditAction.USER_UPDATE_FAILED,
-                    reason: UserAuditReason.ACCOUNT_BANNED,
-                },
-            });
-        }
+        this.assertProfileUpdateAllowed(payload);
 
         let changed = false;
 
         if (payload !== undefined) {
-            if (payload.revocationVersion !== this.revocationVersion) {
-                throw new InvalidInputException();
-            }
-
-            if (payload.fileKey !== buildUserPendingAvatarKey(this.id, payload.jti)) {
-                throw new SystemException('The pending avatar key is not in the expected format.', {
-                    context: { class: User.name, method: this.update.name, id: this.id },
-                });
-            }
-
-            this.assertAvatarReplacementAllowed(payload.jti);
-
             this.addAvatarReplaceJob(payload.jti, this.avatarKey.slice(this.avatarKey.lastIndexOf('/') + 1));
             this.props.avatarKey = payload.fileKey;
 
@@ -473,6 +466,24 @@ export class User extends PrincipalAggregateRoot {
         }
 
         return changed;
+    }
+
+    /**
+     * Interprets the current selection without changing account state or scheduling work.
+     *
+     * @param avatarId Immutable identity of the avatar delivery
+     * @returns Whether the delivery is missing, pending, finalized, or superseded
+     */
+    getAvatarDeliveryState(avatarId: string): AvatarDeliveryState {
+        if (this.props.avatarKey === buildUserPendingAvatarKey(this.id, avatarId)) {
+            return AvatarDeliveryState.PENDING;
+        }
+
+        if (this.props.avatarKey === buildUserPermanentAvatarKey(this.id, avatarId)) {
+            return AvatarDeliveryState.FINALIZED;
+        }
+
+        return AvatarDeliveryState.SUPERSEDED;
     }
 
     /**
@@ -509,6 +520,27 @@ export class User extends PrincipalAggregateRoot {
         this.addCacheInvalidationJob();
 
         return true;
+    }
+
+    /**
+     * Identifies unused objects while protecting a selected pending avatar's in-flight copy.
+     *
+     * @param avatarId Immutable identity whose obsolete objects may be removed
+     * @returns Object keys no longer needed by the current selection
+     */
+    getObsoleteAvatarKeys(avatarId: string): readonly string[] {
+        const pendingKey = buildUserPendingAvatarKey(this.id, avatarId),
+            permanentKey = buildUserPermanentAvatarKey(this.id, avatarId);
+
+        if (this.props.avatarKey === pendingKey) {
+            return [];
+        }
+
+        if (this.props.avatarKey === permanentKey) {
+            return [pendingKey];
+        }
+
+        return [pendingKey, permanentKey];
     }
 
     /**
@@ -799,22 +831,6 @@ export class User extends PrincipalAggregateRoot {
     }
 
     /**
-     * Rejects self-service mutations before email activation and narrows the consumed request identity.
-     *
-     * @param method The attempted aggregate method
-     * @throws {SystemException} When an inactive user reaches authenticated self-service
-     */
-    private assertActivated(method: string): asserts this is this & {
-        readonly activationId: null;
-    } {
-        if (this.props.activationId !== null) {
-            throw new SystemException('An inactive user reached an authenticated self-service flow.', {
-                context: { class: User.name, method, id: this.id },
-            });
-        }
-    }
-
-    /**
      * Replaces activation proof with a new request identity and fixed deadline.
      */
     private issueActivation() {
@@ -857,6 +873,49 @@ export class User extends PrincipalAggregateRoot {
                 queueName: UserJobQueue.AVATAR_FINALIZE,
             },
         ]);
+    }
+
+    /**
+     * Rejects self-service mutations before email activation and narrows the consumed request identity.
+     *
+     * @param method The attempted aggregate method
+     * @throws {SystemException} When an inactive user reaches authenticated self-service
+     */
+    private assertActivated(method: string): asserts this is this & {
+        readonly activationId: null;
+    } {
+        if (this.props.activationId !== null) {
+            throw new SystemException('An inactive user reached an authenticated self-service flow.', {
+                context: { class: User.name, method, id: this.id },
+            });
+        }
+    }
+
+    /**
+     * Rejects revoked, malformed, or already selected avatar replacements.
+     *
+     * @param payload Verified avatar upload facts proposed for this account
+     * @throws {InvalidInputException} When the avatar proof has been revoked
+     * @throws {SystemException} When the pending avatar key violates account identity
+     * @throws {ResourceConflictException} When the avatar identity is already attached
+     */
+    private assertAvatarReplacementAllowed(payload: UserAvatarChange) {
+        if (payload.revocationVersion !== this.revocationVersion) {
+            throw new InvalidInputException();
+        }
+
+        if (payload.fileKey !== buildUserPendingAvatarKey(this.id, payload.jti)) {
+            throw new SystemException('The pending avatar key is not in the expected format.', {
+                context: { class: User.name, method: this.assertAvatarReplacementAllowed.name, id: this.id },
+            });
+        }
+
+        if (
+            this.props.avatarKey === payload.fileKey ||
+            this.props.avatarKey === buildUserPermanentAvatarKey(this.id, payload.jti)
+        ) {
+            throw new ResourceConflictException();
+        }
     }
 
     /**

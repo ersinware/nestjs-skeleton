@@ -17,10 +17,55 @@ import { createUserAvatarChangeFormHash } from 'src/module/user/domain/user-avat
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
-import { ExceptionKind, ResourceNotFoundException, UnauthenticatedException } from 'src/shared/exception';
+import {
+    DependencyUnavailableException,
+    ExceptionKind,
+    ResourceNotFoundException,
+    UnauthenticatedException,
+} from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('UpdateUserCommandHandler', () => {
+    it.each(['not-found', 'database-failure'] as const)(
+        'stops before token or storage access on %s',
+        async (scenario) => {
+            const failure = new DependencyUnavailableException();
+            const writer = {
+                load: vi.fn().mockResolvedValue(null),
+                save: vi.fn(),
+                loadByEmail: vi.fn(),
+                insert: vi.fn(),
+            };
+            if (scenario === 'database-failure') {
+                writer.load.mockRejectedValueOnce(failure);
+            }
+            const audit = { record: vi.fn() };
+            const token = { verifyUploadToken: vi.fn() };
+            const storage = { headObject: vi.fn() };
+            const transaction = { run: vi.fn() };
+            const handler = new UpdateUserCommandHandler(
+                transaction,
+                writer,
+                audit,
+                token as unknown as ITokenPort,
+                storage as unknown as IStoragePort,
+                new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'secret' }),
+            );
+
+            const result = handler.execute(new UpdateUserCommand('owner', 'Changed'));
+            if (scenario === 'database-failure') {
+                await expect(result).rejects.toBe(failure);
+            } else {
+                await expect(result).rejects.toMatchObject({ kind: ExceptionKind.RESOURCE_NOT_FOUND });
+            }
+            expect(token.verifyUploadToken).not.toHaveBeenCalled();
+            expect(storage.headObject).not.toHaveBeenCalled();
+            expect(writer.save).not.toHaveBeenCalled();
+            expect(transaction.run).not.toHaveBeenCalled();
+            expect(audit.record).not.toHaveBeenCalled();
+        },
+    );
+
     it.each(['empty', 'avatar-without-proof', 'proof-without-avatar'] as const)(
         'rejects %s before loading or calling dependencies',
         async (scenario) => {
@@ -63,6 +108,9 @@ describe('UpdateUserCommandHandler', () => {
         'metadata',
         'replay',
         'invalid-key',
+        'banned',
+        'banned-audit-failure',
+        'inactive',
     ] as const)('handles %s without forbidden effects', async (scenario) => {
         const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
         const avatarId = 'b603fdc2-5c63-4912-b40e-f0bf3b96f156';
@@ -76,10 +124,11 @@ describe('UpdateUserCommandHandler', () => {
                 password: 'hash',
                 avatarKey: buildUserPendingAvatarKey(id, id),
             }).toSnapshot(),
-            activationId: null,
+            activationId: scenario === 'inactive' ? avatarId : null,
             activationExpiresAt: null,
             activationRevocationVersion: null,
             avatarKey: scenario === 'replay' ? sourceKey : currentKey,
+            isBanned: scenario === 'banned' || scenario === 'banned-audit-failure',
         });
         const before = user.toSnapshot();
         const avatar = { sizeBytes: 4, contentType: 'image/png' } as const;
@@ -119,6 +168,9 @@ describe('UpdateUserCommandHandler', () => {
         }
         const writer = { load: vi.fn().mockResolvedValue(user), save: vi.fn(), loadByEmail: vi.fn(), insert: vi.fn() };
         const audit = { record: vi.fn() };
+        if (scenario === 'banned-audit-failure') {
+            audit.record.mockRejectedValueOnce(new DependencyUnavailableException());
+        }
         const transaction: ITransactionPort = { run: (work) => work() };
         const run = vi.spyOn(transaction, 'run');
         const handler = new UpdateUserCommandHandler(
@@ -144,6 +196,9 @@ describe('UpdateUserCommandHandler', () => {
             metadata: ExceptionKind.INVALID_INPUT,
             replay: ExceptionKind.RESOURCE_CONFLICT,
             'invalid-key': ExceptionKind.SYSTEM,
+            banned: ExceptionKind.ACCESS_DENIED,
+            'banned-audit-failure': ExceptionKind.DEPENDENCY_UNAVAILABLE,
+            inactive: ExceptionKind.SYSTEM,
         };
         if (scenario in failureKind) {
             await expect(result).rejects.toMatchObject({ kind: failureKind[scenario as keyof typeof failureKind] });
@@ -155,11 +210,16 @@ describe('UpdateUserCommandHandler', () => {
                     { action: 'USER_UPDATE_FAILED', reason: 'PRINCIPAL_MISMATCH', targetId: payload.sub },
                     { markExceptionAsAudited: expect.anything() as unknown },
                 );
+            } else if (scenario === 'banned' || scenario === 'banned-audit-failure') {
+                expect(audit.record).toHaveBeenCalledWith(
+                    { action: UserAuditAction.USER_UPDATE_FAILED, reason: 'ACCOUNT_BANNED' },
+                    { markExceptionAsAudited: expect.anything() as unknown },
+                );
             } else {
                 expect(audit.record).not.toHaveBeenCalled();
             }
             expect(run).not.toHaveBeenCalled();
-            if (scenario !== 'missing-object' && scenario !== 'metadata' && scenario !== 'revoked') {
+            if (scenario !== 'missing-object' && scenario !== 'metadata') {
                 expect(storage.headObject).not.toHaveBeenCalled();
             }
             return;
