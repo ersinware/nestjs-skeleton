@@ -37,7 +37,8 @@ const REDRIVE_PATH = '/api/v1/job-operations/dead-letter/redrive';
  */
 const ACTOR_ID = randomUUID();
 
-describe('Dead-letter redrive', () => {
+// Allow the production worker's 30-second polling interval plus HTTP and database work.
+describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     let app: NestFastifyApplication;
     let boss: PgBoss;
     let database: NodePgDatabase;
@@ -126,7 +127,7 @@ describe('Dead-letter redrive', () => {
     async function waitForOperation(operationId: string, state: string): Promise<void> {
         await expect
             .poll(async () => (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId }))[0]?.state, {
-                timeout: 15_000,
+                timeout: 40_000,
                 interval: 100,
             })
             .toBe(state);
@@ -421,7 +422,8 @@ describe('Dead-letter redrive', () => {
         await waitForOperation(operationId, 'retry');
         await expect
             .poll(async () => (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId }))[0]?.state, {
-                timeout: 40_000,
+                // Allow retry backoff followed by another production polling interval.
+                timeout: 70_000,
                 interval: 200,
             })
             .toBe('completed');
@@ -432,7 +434,7 @@ describe('Dead-letter redrive', () => {
             WHERE name = ${JOB_QUEUE_DEAD_LETTER} AND source_name = ${source}
         `);
         expect(Number(remaining.rows[0]?.total)).toBe(0);
-    }, 45_000);
+    }, 120_000);
 
     it('enforces permissions and validates status IDs without starting or disclosing an operation', async () => {
         const before = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort();

@@ -25,6 +25,11 @@ export class AdminSessionQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
+     * Keeps version propagation prompt with small sequential reconciliation batches.
+     */
+    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 1, batchSize: 5 } as const;
+
+    /**
      * Initializes the consumer with the required pipeline.
      *
      * @param commandPipeline Pipeline used to dispatch reconciliation commands

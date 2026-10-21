@@ -33,9 +33,9 @@ export class DeadLetterRedriveQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
-     * One local worker suffices for the globally exclusive redrive queue.
+     * Polls infrequent orchestration work with one worker for the globally exclusive queue.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 2 } as const;
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 30, batchSize: 1 } as const;
 
     /**
      * Initializes the consumer with the command pipeline.

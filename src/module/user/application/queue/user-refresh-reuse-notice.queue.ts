@@ -25,9 +25,9 @@ export class UserRefreshReuseNoticeQueue implements IJobConsumer {
     readonly transactional = false;
 
     /**
-     * Bounds email concurrency per process; provider quotas also depend on replica count.
+     * Allows modest notice delay and amortizes polling across deliveries.
      */
-    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2 } as const;
+    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 15, batchSize: 10 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

@@ -41,10 +41,9 @@ export interface IJobConsumer {
     readonly queueOptions?: Partial<JobQueueOptions>;
 
     /**
-     * Per-process worker overrides; defaults are one-second polling and concurrency 3 for
-     * transactional consumers or 5 for other consumers. Each batch contains one job.
+     * Explicit per-process worker configuration for this queue.
      */
-    readonly workerOptions?: {
+    readonly workerOptions: {
         /**
          * Number of independent workers for this queue in each process.
          */
@@ -54,6 +53,11 @@ export interface IJobConsumer {
          * Polling interval in seconds.
          */
         readonly pollingIntervalSeconds: number;
+
+        /**
+         * Maximum jobs claimed per fetch and processed sequentially by each worker.
+         */
+        readonly batchSize: number;
     };
 
     /**

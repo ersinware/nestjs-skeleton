@@ -60,6 +60,11 @@ class TransactionalProbeConsumer implements IJobConsumer {
     readonly transactional = true;
 
     /**
+     * Preserves single-job transactions and prompt probe delivery.
+     */
+    readonly workerOptions = { localConcurrency: 3, pollingIntervalSeconds: 1, batchSize: 1 } as const;
+
+    /**
      * Initializes the probe with the transaction-aware dependencies under test.
      *
      * @param database Primary database proxy that must select the pg-boss transaction
@@ -116,6 +121,12 @@ class SettlementProbeConsumer implements IJobConsumer {
      * Allows per-job terminal settlement.
      */
     readonly transactional = false;
+
+    /**
+     * Preserves independent retry and terminal settlement for each probe delivery.
+     */
+    readonly workerOptions = { localConcurrency: 5, pollingIntervalSeconds: 1, batchSize: 1 } as const;
+
     /**
      * Produces the failure requested by the test payload.
      *
