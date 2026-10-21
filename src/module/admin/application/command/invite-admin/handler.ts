@@ -53,7 +53,6 @@ export class InviteAdminCommandHandler implements ICommandHandler<InviteAdminCom
                 id,
                 email: command.email,
                 name: command.name,
-                password: null,
             });
         } catch (error) {
             if (isExceptionWithAudit(error)) {

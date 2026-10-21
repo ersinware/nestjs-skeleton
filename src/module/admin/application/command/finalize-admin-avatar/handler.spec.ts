@@ -31,7 +31,6 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
                 id,
                 email: 'avatar@example.test',
                 name: 'Avatar',
-                password: null,
             });
             const admin = Admin.reconstitute({ ...pending.toSnapshot(), password: 'hash', avatarKey: sourceKey });
             admin.pullJobs();
@@ -96,7 +95,6 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
                 id,
                 email: 'avatar@example.test',
                 name: 'Avatar',
-                password: null,
             });
             const admin = Admin.reconstitute({ ...pending.toSnapshot(), password: 'hash', avatarKey: sourceKey });
             admin.finalizeAvatar(sourceKey, finalKey, deliveryId);
@@ -128,7 +126,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
         },
     );
     it('reports an invalid attached key before touching storage', async () => {
-        const admin = Admin.create({ id: 'admin', name: 'Admin', email: 'admin@example.test', password: null });
+        const admin = Admin.create({ id: 'admin', name: 'Admin', email: 'admin@example.test' });
         const writer = { load: vi.fn().mockResolvedValue(admin), save: vi.fn() };
         const storage = { headObject: vi.fn(), copyObject: vi.fn(), deleteObject: vi.fn() };
         const handler = new FinalizeAdminAvatarCommandHandler(
@@ -158,7 +156,11 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
                     ? buildAdminPendingAvatarKey(id, newerId)
                     : buildAdminPermanentAvatarKey(id, newerId);
             const admin = Admin.reconstitute({
-                ...Admin.create({ id, name: 'Admin', email: 'admin@example.test', password: 'hash' }).toSnapshot(),
+                ...Admin.create({ id, name: 'Admin', email: 'admin@example.test' }).toSnapshot(),
+                password: 'hash',
+                inviteId: null,
+                inviteExpiresAt: null,
+                inviteRevocationVersion: null,
                 avatarKey: selectedKey,
             });
             const before = admin.toSnapshot();
@@ -186,7 +188,11 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
         const deliveryId = 'b603fdc2-5c63-4912-b40e-f0bf3b96f156';
         const finalKey = buildAdminPermanentAvatarKey(id, deliveryId);
         const admin = Admin.reconstitute({
-            ...Admin.create({ id, name: 'Admin', email: 'admin@example.test', password: 'hash' }).toSnapshot(),
+            ...Admin.create({ id, name: 'Admin', email: 'admin@example.test' }).toSnapshot(),
+            password: 'hash',
+            inviteId: null,
+            inviteExpiresAt: null,
+            inviteRevocationVersion: null,
             avatarKey: finalKey,
         });
         const writer = {

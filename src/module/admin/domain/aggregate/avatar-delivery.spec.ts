@@ -34,7 +34,11 @@ describe('Admin avatar delivery queries', () => {
         },
     ])('reports $state and protects selected objects without mutation', ({ selectedKey, state, obsoleteKeys }) => {
         const admin = Admin.reconstitute({
-            ...Admin.create({ id, email: 'avatar@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
+            ...Admin.create({ id, email: 'avatar@example.test', name: 'Admin' }).toSnapshot(),
+            password: 'hash',
+            inviteId: null,
+            inviteExpiresAt: null,
+            inviteRevocationVersion: null,
             avatarKey: selectedKey,
         });
         const before = admin.toSnapshot();

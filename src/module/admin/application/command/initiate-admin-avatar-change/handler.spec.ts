@@ -29,7 +29,11 @@ describe('InitiateAdminAvatarChangeCommandHandler', () => {
         const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
         const currentAvatarKey = buildAdminPermanentAvatarKey(id, 'c116ffde-c006-4b3f-902c-e658d6ad4142');
         const admin = Admin.reconstitute({
-            ...Admin.create({ id, email: 'admin@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
+            ...Admin.create({ id, email: 'admin@example.test', name: 'Admin' }).toSnapshot(),
+            password: 'hash',
+            inviteId: null,
+            inviteExpiresAt: null,
+            inviteRevocationVersion: null,
             avatarKey: currentAvatarKey,
             isBanned,
         });

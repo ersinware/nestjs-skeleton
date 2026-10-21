@@ -27,6 +27,10 @@ describe('Admin email change invariants', () => {
         vi.setSystemTime(new Date('2026-09-24T10:00:00.987Z'));
         account = Admin.reconstitute({
             ...Admin.create(initial).toSnapshot(),
+            password: initial.password,
+            inviteId: null,
+            inviteExpiresAt: null,
+            inviteRevocationVersion: null,
             avatarKey: `avatar/admin/${initial.id}/${randomUUID()}`,
         });
     });
@@ -213,7 +217,7 @@ describe('Admin email change invariants', () => {
     });
 
     it('allows an authorized actor to delete a pending invitation without requiring activation', () => {
-        const pending = Admin.create({ ...initial, password: null });
+        const pending = Admin.create(initial);
         pending.pullJobs();
         pending.markAsDeleted(actor);
         expect(pending.toSnapshot().password).toBeNull();
@@ -230,7 +234,7 @@ describe('Admin email change invariants', () => {
     });
 
     it('rejects inactive self-service paths as programming errors', () => {
-        const account = Admin.create({ ...initial, password: null });
+        const account = Admin.create(initial);
         account.pullJobs();
         expect(() => account.update('Changed')).toThrow(SystemException);
         expect(() => account.requestEmailChange('new@example.test', true, false)).toThrow(SystemException);

@@ -44,7 +44,7 @@ describe('ActivateAdminCommandHandler', () => {
     let admin: Admin, handler: ActivateAdminCommandHandler;
 
     beforeEach(() => {
-        admin = Admin.create({ id: 'admin-1', email: 'admin@example.test', name: 'Admin', password: null });
+        admin = Admin.create({ id: 'admin-1', email: 'admin@example.test', name: 'Admin' });
         load.mockResolvedValue(admin);
         save.mockResolvedValue(undefined);
         record.mockResolvedValue(undefined);

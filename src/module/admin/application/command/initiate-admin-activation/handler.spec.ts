@@ -23,7 +23,7 @@ describe('InitiateAdminActivationCommandHandler', () => {
         vi.setSystemTime(new Date('2026-10-02T08:00:00Z'));
         const now = Math.floor(Date.now() / 1000);
         const admin = Admin.reconstitute({
-            ...Admin.create({ id: 'admin', email: 'admin@example.test', name: 'Admin', password: null }).toSnapshot(),
+            ...Admin.create({ id: 'admin', email: 'admin@example.test', name: 'Admin' }).toSnapshot(),
             inviteExpiresAt: new Date((now + remaining) * 1000),
         });
         admin.pullJobs();
@@ -73,7 +73,7 @@ describe('InitiateAdminActivationCommandHandler', () => {
     });
 
     it('rejects revoked invitations before signing an upload', async () => {
-        const admin = Admin.create({ id: 'admin', email: 'admin@example.test', name: 'Admin', password: null });
+        const admin = Admin.create({ id: 'admin', email: 'admin@example.test', name: 'Admin' });
         const initiateUpload = vi.fn();
         const generateUploadToken = vi.fn();
         const handler = new InitiateAdminActivationCommandHandler(
