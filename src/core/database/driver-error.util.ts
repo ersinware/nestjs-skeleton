@@ -4,12 +4,17 @@
  */
 
 import { DatabaseError } from 'pg';
-import { DependencyUnavailableException, DependencyUnavailableMessage } from 'src/shared/exception';
+import {
+    DependencyUnavailableException,
+    DependencyUnavailableMessage,
+    ExceptionKind,
+    isExceptionOfKind,
+} from 'src/shared/exception';
 
 /**
  * Every code that means "the database is unreachable" rather than "this query is wrong": Node socket
- * errno codes, and the PostgreSQL SQLSTATEs for connection exceptions (class 08), operator-initiated
- * shutdown (57Pxx), and connection-slot exhaustion (53300).
+ * errno codes, selected PostgreSQL connection exceptions (excluding protocol violations),
+ * operator-initiated shutdown, and connection-slot exhaustion.
  */
 const CONNECTION_FAILURE_CODES: ReadonlySet<string> = new Set([
     'ECONNREFUSED',
@@ -25,6 +30,7 @@ const CONNECTION_FAILURE_CODES: ReadonlySet<string> = new Set([
     '08003',
     '08004',
     '08006',
+    '08007',
     '57P01',
     '57P02',
     '57P03',
@@ -32,10 +38,17 @@ const CONNECTION_FAILURE_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The driver's own connection-lifecycle failures carry no code, only a message: the pool's
- * checkout timeout, and a socket the server closed mid-query.
+ * Code-less pg/pg-pool connection failures. A rollback on a broken client can replace the original
+ * failure with the non-queryable message. Query timeouts and deliberately closed clients stay distinct.
  */
-const CONNECTION_FAILURE_MESSAGES = ['timeout exceeded when trying to connect', 'Connection terminated'] as const;
+const CONNECTION_FAILURE_MESSAGES: ReadonlySet<string> = new Set([
+    'timeout exceeded when trying to connect',
+    'timeout expired',
+    'Connection terminated',
+    'Connection terminated unexpectedly',
+    'Connection terminated due to connection timeout',
+    'Client has encountered a connection error and is not queryable',
+]);
 
 /**
  * Reports whether the given error is (or wraps) a PostgreSQL unique-constraint violation. Walks the
@@ -70,7 +83,7 @@ export function isUniqueViolation(error: unknown, constraint?: string): boolean 
  * @returns The taxonomy exception when the database is unreachable, the original error otherwise
  */
 export function translateConnectionFailure(error: unknown): unknown {
-    if (error instanceof DependencyUnavailableException) {
+    if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
         return error;
     }
 
@@ -97,7 +110,7 @@ function isConnectionFailure(error: unknown): boolean {
             return true;
         }
 
-        if (CONNECTION_FAILURE_MESSAGES.some((message) => current.message.startsWith(message))) {
+        if (CONNECTION_FAILURE_MESSAGES.has(current.message)) {
             return true;
         }
     }

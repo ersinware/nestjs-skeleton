@@ -27,30 +27,36 @@ const CONNECTION_MESSAGES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Recognizes transport failures and explicit temporary server unavailability.
+ * Recognizes transport failures and explicit temporary server unavailability through the cause chain.
  * Unknown, authentication, command and Lua errors remain unchanged.
  *
  * @param error The original driver failure
  * @returns Whether Redis is temporarily unavailable
  */
 export function isRedisUnavailable(error: unknown): boolean {
-    if (!(error instanceof Error)) {
-        return false;
+    for (let current = error; current instanceof Error; current = current.cause) {
+        const code = (current as NodeJS.ErrnoException).code;
+
+        if (typeof code === 'string' && CONNECTION_CODES.has(code)) {
+            return true;
+        }
+
+        if (current.name === 'MaxRetriesPerRequestError') {
+            return true;
+        }
+
+        if (current.name === 'Error' && CONNECTION_MESSAGES.has(current.message)) {
+            return true;
+        }
+
+        if (
+            current.name === 'ReplyError' &&
+            (/^(LOADING|BUSY|TRYAGAIN|CLUSTERDOWN|MASTERDOWN)\b/.test(current.message) ||
+                current.message === 'ERR max number of clients reached')
+        ) {
+            return true;
+        }
     }
 
-    const code = (error as NodeJS.ErrnoException).code;
-
-    if (typeof code === 'string' && CONNECTION_CODES.has(code)) {
-        return true;
-    }
-
-    if (error.name === 'MaxRetriesPerRequestError') {
-        return true;
-    }
-
-    if (error.name === 'Error' && CONNECTION_MESSAGES.has(error.message)) {
-        return true;
-    }
-
-    return error.name === 'ReplyError' && /^(LOADING|BUSY|TRYAGAIN|CLUSTERDOWN|MASTERDOWN)\b/.test(error.message);
+    return false;
 }

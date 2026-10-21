@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import type { EnvironmentVariables } from 'src/core/config';
 import { StorageModule, TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import { TOKEN_S3_CLIENT } from 'src/core/storage/storage-client.token';
-import { ResourceNotFoundException } from 'src/shared/exception';
+import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 import { vi } from 'vitest';
 
 /**
@@ -130,7 +130,7 @@ export class StorageTestFixture {
                     try {
                         await this.storage.abortMultipart({ key: upload.Key, uploadId: upload.UploadId });
                     } catch (error) {
-                        if (!(error instanceof ResourceNotFoundException)) {
+                        if (!isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                             failures.push(error);
                         }
                     }

@@ -61,8 +61,8 @@ export type AppExceptionOptions = ErrorOptions & {
 
 /**
  * Base class every application exception extends. Carries a transport-neutral `kind` instead of any
- * protocol status, so throwing code stays ignorant of HTTP (or any other transport) and a single
- * `instanceof AppException` check replaces per-class chains in protocol adapters.
+ * protocol status, so throwing code stays ignorant of HTTP (or any other transport). Protocol
+ * adapters recognize the taxonomy by `kind` through {@link isAppException}.
  */
 export abstract class AppException extends Error {
     /**
@@ -99,6 +99,25 @@ export abstract class AppException extends Error {
             this.audit = options.audit;
         }
     }
+}
+
+/**
+ * Recognizes the taxonomy by a known kind and message without requiring its class prototype.
+ * Only the checked fields are exposed; diagnostic and audit metadata require separate checks.
+ *
+ * @param error The caught value
+ * @returns Whether the value carries a recognized failure kind and a string message
+ */
+export function isAppException(error: unknown): error is Pick<AppException, 'kind' | 'message'> {
+    if (error === null || typeof error !== 'object') {
+        return false;
+    }
+
+    const candidate = error as { readonly kind?: unknown; readonly message?: unknown };
+
+    return (
+        Object.values(ExceptionKind).some((kind) => kind === candidate.kind) && typeof candidate.message === 'string'
+    );
 }
 
 /**

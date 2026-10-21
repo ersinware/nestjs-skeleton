@@ -11,9 +11,9 @@ import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { AuditAction, isExceptionAudited, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import {
-    AppException,
     DependencyUnavailableMessage,
     ExceptionKind,
+    isAppException,
     ResourceNotFoundMessage,
     SystemMessage,
 } from 'src/shared/exception';
@@ -224,7 +224,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * @returns The error DTO, or null when the value is not a taxonomy exception.
      */
     private formatAppException(exception: unknown): ErrorDefaultDto | null {
-        if (!(exception instanceof AppException)) {
+        if (!isAppException(exception)) {
             return null;
         }
 
@@ -233,19 +233,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return new ErrorDefaultDto({
             statusCode,
             message: this.getDefaultMessage(statusCode) ?? [exception.message],
-            statusText: this.deriveStatusText(statusCode, exception.name),
+            statusText: this.deriveStatusText(
+                statusCode,
+                'name' in exception && typeof exception.name === 'string' ? exception.name : 'Error',
+            ),
         });
     }
 
     /**
-     * Derives the human-readable status text from the status code, falling back to the exception
-     * class name for a code `HttpStatus` does not name.
+     * Derives the human-readable status text from the status code, falling back to the supplied
+     * exception label for a code `HttpStatus` does not name.
      *
      * @param statusCode The HTTP status the reply will carry.
-     * @param exceptionName The exception class name, used only for a non-standard code.
+     * @param exceptionLabel The verified exception name or default label, used only for a non-standard code.
      * @returns The title-cased status text (e.g. `Not Found`).
      */
-    private deriveStatusText(statusCode: HttpStatus, exceptionName: string): string {
+    private deriveStatusText(statusCode: HttpStatus, exceptionLabel: string): string {
         const statusText = HttpStatus[statusCode];
         if (typeof statusText === 'string') {
             return statusText
@@ -256,7 +259,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                 .join(' ');
         }
 
-        return exceptionName.replace(/([A-Z])/g, ' $1').trim();
+        return exceptionLabel.replace(/([A-Z])/g, ' $1').trim();
     }
 
     /**

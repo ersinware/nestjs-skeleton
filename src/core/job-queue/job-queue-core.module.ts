@@ -22,7 +22,7 @@ import {
     TOKEN_ERROR_REPORTER_PORT,
     type IErrorReporterPort,
 } from 'src/core/observability/error-reporter';
-import { DependencyUnavailableException } from 'src/shared/exception';
+import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Owns the pg-boss lifecycle and dedicated database pool.
@@ -56,7 +56,7 @@ import { DependencyUnavailableException } from 'src/shared/exception';
                 });
 
                 boss.on('error', (error) => {
-                    if (!(translateConnectionFailure(error) instanceof DependencyUnavailableException)) {
+                    if (!isExceptionOfKind(translateConnectionFailure(error), ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                         errorReporterPort.report(error, { class: JobQueueCoreModule.name, method: 'boss.on' });
                     }
                 });
