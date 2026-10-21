@@ -257,15 +257,16 @@ export class Admin extends PrincipalAggregateRoot {
     }
 
     /**
-     * Creates an admin and queues an invitation when no password is supplied.
+     * Creates a passwordless admin and queues an invitation.
      *
      * @param props The new identifier plus the initial properties, excluding lifecycle-managed fields
      * @returns The newly created aggregate
      */
-    static create(props: Readonly<Pick<AdminSnapshot, 'id' | 'email' | 'name' | 'password'>>): Admin {
+    static create(props: Readonly<Pick<AdminSnapshot, 'id' | 'email' | 'name'>>): Admin {
         const now = new Date(),
             admin = new Admin({
                 ...props,
+                password: null,
                 avatarKey: null,
                 inviteId: null,
                 inviteExpiresAt: null,
@@ -284,10 +285,8 @@ export class Admin extends PrincipalAggregateRoot {
                 updatedAt: now,
             });
 
-        if (props.password === null) {
-            admin.issueInvitation();
-            admin.addInvitationJob();
-        }
+        admin.issueInvitation();
+        admin.addInvitationJob();
 
         return admin;
     }

@@ -22,7 +22,11 @@ describe('Admin profile updates', () => {
         'captures the previous %s identity before accepting the next avatar',
         (kind) => {
             const admin: Admin = Admin.reconstitute({
-                ...Admin.create({ id, email: 'profile@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
+                ...Admin.create({ id, email: 'profile@example.test', name: 'Admin' }).toSnapshot(),
+                password: 'hash',
+                inviteId: null,
+                inviteExpiresAt: null,
+                inviteRevocationVersion: null,
                 avatarKey:
                     kind === 'pending'
                         ? buildAdminPendingAvatarKey(id, previous)
@@ -64,7 +68,11 @@ describe('Admin profile updates', () => {
         'rejects %s without partial name mutation or jobs',
         (scenario) => {
             const admin: Admin = Admin.reconstitute({
-                ...Admin.create({ id, email: 'profile@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
+                ...Admin.create({ id, email: 'profile@example.test', name: 'Admin' }).toSnapshot(),
+                password: 'hash',
+                inviteId: null,
+                inviteExpiresAt: null,
+                inviteRevocationVersion: null,
                 avatarKey: buildAdminPermanentAvatarKey(id, scenario === 'replay' ? next : previous),
                 isBanned: scenario === 'banned',
             });

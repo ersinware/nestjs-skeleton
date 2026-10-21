@@ -40,7 +40,11 @@ describe('ReplaceAdminAvatarCommandHandler', () => {
      */
     function fixture(key: string | null = source) {
         const admin = Admin.reconstitute({
-            ...Admin.create({ id, name: 'Admin', email: 'admin@example.test', password: 'hash' }).toSnapshot(),
+            ...Admin.create({ id, name: 'Admin', email: 'admin@example.test' }).toSnapshot(),
+            password: 'hash',
+            inviteId: null,
+            inviteExpiresAt: null,
+            inviteRevocationVersion: null,
             avatarKey: key,
         });
         const writer = { load: vi.fn().mockResolvedValue(admin), save: vi.fn() };

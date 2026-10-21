@@ -116,8 +116,11 @@ describe('UpdateAdminCommandHandler', () => {
         const currentKey = buildAdminPermanentAvatarKey(id, 'c116ffde-c006-4b3f-902c-e658d6ad4142');
         const sourceKey = buildAdminPendingAvatarKey(id, avatarId);
         const admin = Admin.reconstitute({
-            ...Admin.create({ id, email: 'admin@example.test', name: 'Admin', password: 'hash' }).toSnapshot(),
+            ...Admin.create({ id, email: 'admin@example.test', name: 'Admin' }).toSnapshot(),
             password: scenario === 'inactive' ? null : 'hash',
+            inviteId: null,
+            inviteExpiresAt: null,
+            inviteRevocationVersion: null,
             avatarKey: scenario === 'missing-avatar' ? null : scenario === 'replay' ? sourceKey : currentKey,
             isBanned: scenario === 'banned' || scenario === 'banned-audit-failure',
         });
