@@ -17,12 +17,14 @@ import {
 import { IsNotEmpty, IsString } from 'class-validator';
 import { HttpCache, HttpCachePolicy } from 'src/core/http';
 import { Public } from 'src/core/security/auth';
+import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { ResponseUnhealthyDto } from 'src/module/health/presentation/dto/response-unhealthy.dto';
 
 @Controller('health-exception-trigger')
 @Public()
 export class HealthExceptionTriggerController {
     @Get('health-fail')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerHealthFail() {
         throw new ServiceUnavailableException({
@@ -48,6 +50,7 @@ export class HealthExceptionTriggerController {
     }
 
     @Get('health-non-503')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerHealthNon503() {
         throw new InternalServerErrorException();
@@ -64,59 +67,69 @@ class TestValidationDto {
 @Controller('exception-trigger')
 export class ExceptionTriggerController {
     @Get('non-standard')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerNonStandard() {
         throw new HttpException('Non-standard status code error message', 499);
     }
 
     @Get('service-unavailable')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerServiceUnavailable() {
         throw new ServiceUnavailableException('Database or Redis is down');
     }
 
     @Get('internal-server-error')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerInternalServerError() {
         throw new InternalServerErrorException('Database failure or sensitive details');
     }
 
     @Get('not-found')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerNotFound() {
         throw new NotFoundException('User with ID 99999 not found.');
     }
 
     @Post('validation-error')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     triggerValidationError(@Body() body: TestValidationDto) {
         return { success: true, name: body.name };
     }
 
     @Get('empty-object')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerEmptyObject() {
         throw new HttpException({}, HttpStatus.BAD_REQUEST);
     }
 
     @Get('raw-string')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerRawString() {
         throw new HttpException('Raw string error', HttpStatus.BAD_REQUEST);
     }
 
     @Get('null-response')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerNullResponse() {
         throw new HttpException(null as unknown as string, HttpStatus.BAD_REQUEST);
     }
 
     @Get('teapot')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerTeapot() {
         throw new HttpException({ customError: 'Something went wrong' }, HttpStatus.I_AM_A_TEAPOT);
     }
 
     @Get('db-23505')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDb23505() {
         throw Object.assign(new Error('Unique constraint violation'), {
@@ -126,6 +139,7 @@ export class ExceptionTriggerController {
     }
 
     @Get('db-23505-username')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDb23505Username() {
         throw Object.assign(new Error('Unique constraint violation'), {
@@ -135,6 +149,7 @@ export class ExceptionTriggerController {
     }
 
     @Get('db-23505-fallback')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDb23505Fallback() {
         throw Object.assign(new Error('Unique constraint violation'), {
@@ -144,48 +159,56 @@ export class ExceptionTriggerController {
     }
 
     @Get('db-null-detail')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDbNullDetail() {
         throw Object.assign(new Error('Unique constraint violation'), { code: '23505', detail: null });
     }
 
     @Get('db-23503')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDb23503() {
         throw Object.assign(new Error('Foreign key violation'), { code: '23503' });
     }
 
     @Get('db-cause-23503')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDbCause23503() {
         throw Object.assign(new Error('Db action failed'), { cause: { code: '23503' } });
     }
 
     @Get('db-unrecognized')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDbUnrecognized() {
         throw Object.assign(new Error('Database disconnected'), { code: '99999' });
     }
 
     @Get('db-code-length')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDbCodeLength() {
         throw Object.assign(new Error('Invalid error code'), { code: '123' });
     }
 
     @Get('db-cause-code-length')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerDbCauseCodeLength() {
         throw Object.assign(new Error('Invalid wrapped error code'), { cause: { code: '1234' } });
     }
 
     @Get('runtime-error')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerRuntimeError() {
         throw new Error('Unexpected runtime exception');
     }
 
     @Get('plain-string')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
     triggerPlainString() {
         // eslint-disable-next-line @typescript-eslint/only-throw-error

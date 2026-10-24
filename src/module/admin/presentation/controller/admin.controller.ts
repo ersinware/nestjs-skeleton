@@ -22,6 +22,7 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultOkResponsePaginated,
+    ApiDefaultRateLimitedResponse,
     ApiDefaultResourceConflictResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
@@ -39,6 +40,7 @@ import {
 } from 'src/core/http';
 import { Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
+import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { SessionOutcome } from 'src/core/security/session';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
@@ -89,6 +91,7 @@ import { ResourceConflictMessage } from 'src/shared/exception';
     version: VERSION_1,
 })
 @ApiTags('admin')
+@ApiDefaultRateLimitedResponse()
 @ApiDefaultInternalServerErrorResponse()
 @ApiDefaultDependencyUnavailableResponse()
 export class AdminController {
@@ -115,6 +118,7 @@ export class AdminController {
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Delete(ROUTE_PARAM_ID)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_DELETE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -143,6 +147,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get(ROUTE_PARAM_ID)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
@@ -168,6 +173,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get()
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
@@ -202,6 +208,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get('me')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiBearerAuth()
@@ -224,6 +231,7 @@ export class AdminController {
      * @returns The grantable admin catalog
      */
     @Get('permissions')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_PERMISSION_MANAGE)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiBearerAuth()
@@ -256,6 +264,7 @@ export class AdminController {
      * @throws {InvalidInputException} When the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */
     @Patch('me')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
     @ApiBearerAuth()
     @ApiOperation({
@@ -295,6 +304,7 @@ export class AdminController {
      * @throws {SystemException} When the account is inactive or the storage plan violates the contract
      */
     @Post('me/avatar/initiate')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
@@ -333,6 +343,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/initiate')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -376,6 +387,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/confirm')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
@@ -436,6 +448,7 @@ export class AdminController {
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
@@ -497,6 +510,7 @@ export class AdminController {
      * @throws {SystemException} When the delivery queue does not accept every required job
      */
     @Post('invite')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -527,6 +541,7 @@ export class AdminController {
      */
     @Public()
     @Post('activation/initiate')
+    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Prepare admin activation',
@@ -564,6 +579,7 @@ export class AdminController {
      */
     @Public()
     @Post('activation/complete')
+    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Activate admin account',
@@ -598,6 +614,7 @@ export class AdminController {
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Post(`${ROUTE_PARAM_ID}/re-invite`)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -629,6 +646,7 @@ export class AdminController {
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Post(`${ROUTE_PARAM_ID}/ban`)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_BAN)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -660,6 +678,7 @@ export class AdminController {
      * @throws {SystemException} When the loaded account or actor violates the mutation contract
      */
     @Post(`${ROUTE_PARAM_ID}/unban`)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_ACCOUNT_BAN)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -695,6 +714,7 @@ export class AdminController {
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Put(`${ROUTE_PARAM_ID}/permissions`)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.ADMIN_PERMISSION_MANAGE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()

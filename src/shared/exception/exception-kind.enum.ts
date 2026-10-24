@@ -34,6 +34,11 @@ export enum ExceptionKind {
     INVALID_INPUT = 'INVALID_INPUT',
 
     /**
+     * The caller exhausted a request admission budget.
+     */
+    RATE_LIMITED = 'RATE_LIMITED',
+
+    /**
      * A required dependency is unreachable; the condition is transient and retryable.
      */
     DEPENDENCY_UNAVAILABLE = 'DEPENDENCY_UNAVAILABLE',

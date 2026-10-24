@@ -52,7 +52,6 @@ export class TracingBehavior implements ICommandBehavior, IQueryBehavior {
                     return await next();
                 } catch (error) {
                     span.recordException(toError(error));
-
                     span.setStatus({ code: SpanStatusCode.ERROR });
 
                     throw error;

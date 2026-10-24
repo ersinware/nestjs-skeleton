@@ -38,6 +38,7 @@ import { createRedisClient } from 'src/core/redis';
                         port: ENV.REDIS_CACHE_PORT,
                         password: ENV.REDIS_CACHE_PASSWORD,
                         tls: ENV.REDIS_CACHE_TLS,
+                        connectTimeout: ENV.REDIS_CACHE_CONNECT_TIMEOUT,
                         maxRetriesPerRequest: ENV.REDIS_CACHE_MAX_RETRIES_PER_REQUEST,
                         commandTimeout: ENV.REDIS_CACHE_COMMAND_TIMEOUT,
                     },

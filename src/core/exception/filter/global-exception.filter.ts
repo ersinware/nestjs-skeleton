@@ -14,6 +14,7 @@ import {
     DependencyUnavailableMessage,
     ExceptionKind,
     isAppException,
+    isRateLimitedException,
     ResourceNotFoundMessage,
     SystemMessage,
 } from 'src/shared/exception';
@@ -28,6 +29,7 @@ const KIND_TO_STATUS = {
     [ExceptionKind.UNAUTHENTICATED]: HttpStatus.UNAUTHORIZED,
     [ExceptionKind.ACCESS_DENIED]: HttpStatus.FORBIDDEN,
     [ExceptionKind.INVALID_INPUT]: HttpStatus.BAD_REQUEST,
+    [ExceptionKind.RATE_LIMITED]: HttpStatus.TOO_MANY_REQUESTS,
     [ExceptionKind.DEPENDENCY_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
     [ExceptionKind.SYSTEM]: HttpStatus.INTERNAL_SERVER_ERROR,
     [ExceptionKind.TERMINAL_JOB]: HttpStatus.INTERNAL_SERVER_ERROR,
@@ -82,6 +84,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const errorDefaultDto = this.normalizeException(exception);
 
         await this.logException(exception, errorDefaultDto);
+
+        if (isRateLimitedException(exception)) {
+            this.httpAdapterHost.httpAdapter.setHeader(response, 'Retry-After', String(exception.retryAfterSeconds));
+        }
+
         this.httpAdapterHost.httpAdapter.reply(response, { error: errorDefaultDto }, errorDefaultDto.statusCode);
     }
 

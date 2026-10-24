@@ -21,6 +21,7 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultOkResponsePaginated,
+    ApiDefaultRateLimitedResponse,
     ApiDefaultResourceConflictResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
@@ -33,6 +34,7 @@ import {
     ResponsePaginationDto,
 } from 'src/core/http';
 import { Permissions } from 'src/core/security/auth';
+import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
 import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
 import { GetDeadLetterJobQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
@@ -54,6 +56,7 @@ import { Permission } from 'src/shared/domain/principal';
 @ApiBearerAuth()
 @ApiDefaultUnauthenticatedResponse()
 @ApiDefaultAccessDeniedResponse()
+@ApiDefaultRateLimitedResponse()
 @ApiDefaultInternalServerErrorResponse()
 @ApiDefaultDependencyUnavailableResponse()
 export class JobQueueOperationsController {
@@ -77,6 +80,7 @@ export class JobQueueOperationsController {
      * @throws {SystemException} When persisted job metadata or the returned page count is invalid
      */
     @Get('jobs')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
@@ -109,6 +113,7 @@ export class JobQueueOperationsController {
      * @throws {SystemException} When persisted job provenance, identifiers, or timestamps are invalid
      */
     @Get('jobs/:id')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
@@ -134,6 +139,7 @@ export class JobQueueOperationsController {
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('redrive')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_REDRIVE)
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiOperation({
@@ -157,6 +163,7 @@ export class JobQueueOperationsController {
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
      */
     @Get('redrive/:operationId')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
@@ -184,6 +191,7 @@ export class JobQueueOperationsController {
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('discard')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_DISCARD)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({

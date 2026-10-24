@@ -20,11 +20,13 @@ import {
     ApiDefaultDependencyUnavailableResponse,
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
+    ApiDefaultRateLimitedResponse,
     ApiDefaultResourceConflictResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { RequestValidationMessage } from 'src/core/http';
 import { Authenticated, CurrentPrincipal, Public } from 'src/core/security/auth';
+import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { SessionOutcome } from 'src/core/security/session';
 import { LoginAdminCommand } from 'src/module/auth/application/command/login-admin/command';
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
@@ -52,6 +54,7 @@ import { UnauthenticatedMessage } from 'src/shared/exception';
     version: VERSION_1,
 })
 @ApiTags('auth')
+@ApiDefaultRateLimitedResponse()
 @ApiDefaultInternalServerErrorResponse()
 @ApiDefaultDependencyUnavailableResponse()
 export class AuthController {
@@ -72,6 +75,7 @@ export class AuthController {
      */
     @Public()
     @Post('user/login')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate user',
@@ -118,6 +122,7 @@ export class AuthController {
      */
     @Public()
     @Post('admin/login')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate admin',
@@ -145,6 +150,7 @@ export class AuthController {
      */
     @Public()
     @Post('refresh')
+    @RateLimit(RateLimitPolicy.REFRESH_TOKEN)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Refresh session tokens',
@@ -169,6 +175,7 @@ export class AuthController {
      * @throws {DependencyUnavailableException} When session closure or audit persistence is unavailable
      */
     @Post('logout')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Public()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
@@ -190,6 +197,7 @@ export class AuthController {
      * @throws {SystemException} When the revocation job is not accepted
      */
     @Post('logout-all')
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Authenticated()
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()

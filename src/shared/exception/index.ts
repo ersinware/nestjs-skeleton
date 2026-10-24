@@ -17,6 +17,11 @@ export {
 } from 'src/shared/exception/dependency-unavailable.exception';
 export { ExceptionKind } from 'src/shared/exception/exception-kind.enum';
 export { InvalidInputException, InvalidInputMessage } from 'src/shared/exception/invalid-input.exception';
+export {
+    RateLimitedException,
+    RateLimitedMessage,
+    isRateLimitedException,
+} from 'src/shared/exception/rate-limited.exception';
 export { ResourceConflictException, ResourceConflictMessage } from 'src/shared/exception/resource-conflict.exception';
 export { ResourceNotFoundException, ResourceNotFoundMessage } from 'src/shared/exception/resource-not-found.exception';
 export { SystemException, SystemMessage } from 'src/shared/exception/system.exception';
