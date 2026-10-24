@@ -16,6 +16,7 @@ import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { LoggerModule } from 'src/core/observability/logger';
 import { AuthenticationGuard, AuthorizationGuard, AuthPolicyModule } from 'src/core/security/auth';
+import { PostAuthRateLimitGuard, PreAuthRateLimitGuard, RateLimitingModule } from 'src/core/security/rate-limiting';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
 import { StorageModule } from 'src/core/storage';
@@ -46,6 +47,7 @@ import { UserModule } from 'src/module/user';
         StorageModule,
         SessionModule,
         AuthPolicyModule,
+        RateLimitingModule,
         HealthModule,
         AuthModule,
         UserModule,
@@ -56,7 +58,15 @@ import { UserModule } from 'src/module/user';
     providers: [
         {
             provide: APP_GUARD,
+            useExisting: PreAuthRateLimitGuard,
+        },
+        {
+            provide: APP_GUARD,
             useClass: AuthenticationGuard,
+        },
+        {
+            provide: APP_GUARD,
+            useExisting: PostAuthRateLimitGuard,
         },
         {
             provide: APP_GUARD,

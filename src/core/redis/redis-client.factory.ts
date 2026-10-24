@@ -26,11 +26,12 @@ export function createRedisClient(
         readonly port: string;
         readonly password: string;
         readonly tls: string;
+        readonly connectTimeout: string;
         readonly maxRetriesPerRequest: string;
         readonly commandTimeout: string;
     },
     token: symbol,
-) {
+): Redis {
     const clientName = token.description ?? token.toString(),
         password = config.getOrThrow<string>(env.password),
         redis = new Redis({
@@ -38,8 +39,9 @@ export function createRedisClient(
             port: config.getOrThrow<number>(env.port),
             ...(password ? { password } : {}),
             ...(config.getOrThrow<boolean>(env.tls) ? { tls: {} } : {}),
-            maxRetriesPerRequest: config.getOrThrow<number>(env.maxRetriesPerRequest),
             // App duration values are seconds; ioredis expects milliseconds.
+            connectTimeout: config.getOrThrow<number>(env.connectTimeout) * 1000,
+            maxRetriesPerRequest: config.getOrThrow<number>(env.maxRetriesPerRequest),
             commandTimeout: config.getOrThrow<number>(env.commandTimeout) * 1000,
         });
 

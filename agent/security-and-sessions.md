@@ -82,4 +82,7 @@
 
 ### Rate Limiting
 
-Unimplemented. Follow the agreed target design and compatibility requirements in `docs/issue/rate-limiting.md`. No isolated limiters, dependencies, or environment settings.
+- Follow the [rate-limit decisions](../docs/issue/rate-limiting.md); use an explicit central policy on each HTTP handler, including `default`, or a probe exemption. No class-level declarations or implicit fallback.
+- Preserve guard order: pre-auth rate limit → authentication → post-auth rate limit → authorization. Only authentication publishes verified identity; limiters never decode/verify credentials or publish audit actors.
+- Keep counters in dedicated Redis; no offline queue, uncertain-mutation replay, local fallback or fail-open. Counter-operation timeout ends waiting, not execution; stop subsequent checks without retrying the uncertain operation.
+- Required storage availability/timeout/known OOM failures deny with 503; the first block denies with 429 and standard `Retry-After`. Preserve other failures ([Exceptions](exceptions.md#exceptions)). Technical rejections produce no audit or additional per-request reporting; HTTP access logging remains unchanged.

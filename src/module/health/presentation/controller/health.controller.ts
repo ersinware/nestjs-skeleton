@@ -20,11 +20,13 @@ import { QueryPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultAccessDeniedResponse,
     ApiDefaultInternalServerErrorResponse,
+    ApiDefaultRateLimitedResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
 import { ErrorDefaultDto } from 'src/core/exception';
 import { HttpCache, HttpCachePolicy } from 'src/core/http';
 import { Permissions, Public } from 'src/core/security/auth';
+import { RateLimit, RateLimitExempt, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { CheckReadinessQuery } from 'src/module/health/application/query/check-readiness/query';
 import { GetHealthStatusQuery } from 'src/module/health/application/query/get-health-status/query';
 import { ResponseHealthyDto } from 'src/module/health/presentation/dto/response-healthy.dto';
@@ -58,6 +60,7 @@ export class HealthController {
      * downed database or cache. Reaching this method IS the answer, so no use case is dispatched.
      */
     @Get(ROUTE_HEALTH_LIVE)
+    @RateLimitExempt()
     @Public()
     @HttpCache(HttpCachePolicy.NO_STORE)
     @HttpCode(HttpStatus.NO_CONTENT)
@@ -75,6 +78,7 @@ export class HealthController {
      * @throws {ServiceUnavailableException} When a checked health indicator fails
      */
     @Get(ROUTE_HEALTH_READY)
+    @RateLimitExempt()
     @Public()
     @HttpCache(HttpCachePolicy.NO_STORE)
     @HttpCode(HttpStatus.NO_CONTENT)
@@ -98,18 +102,21 @@ export class HealthController {
      * @throws {SystemException} When a successful health report violates the indicator contract
      */
     @Get()
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.HEALTH_DETAIL_READ)
     @HttpCache(HttpCachePolicy.NO_STORE)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Detailed health status',
-        description: `Returns the per-indicator health status of the service and its dependencies. Requires the '${Permission.HEALTH_DETAIL_READ}' permission. A 503 carries the indicator report below, except while the session store is unreachable: authentication then fails closed ahead of the check, and the 503 carries the standard error body instead.`,
+        description: `Returns the per-indicator health status of the service and its dependencies. Requires the '${Permission.HEALTH_DETAIL_READ}' permission. A 503 carries the indicator report below, except while a required session or rate-limit check is unavailable: admission then fails closed ahead of the check, and the 503 carries the standard error body instead.`,
     })
     @ApiOkResponse({
         description: 'Service is fully healthy.',
         type: ResponseHealthyDto,
     })
-    @ApiExtraModels(ResponseUnhealthyDto, ErrorDefaultDto)
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultRateLimitedResponse()
     @ApiServiceUnavailableResponse({
         description: DependencyUnavailableMessage.DEFAULT,
         schema: {
@@ -117,8 +124,7 @@ export class HealthController {
             oneOf: [{ $ref: getSchemaPath(ResponseUnhealthyDto) }, { $ref: getSchemaPath(ErrorDefaultDto) }],
         },
     })
-    @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultAccessDeniedResponse()
+    @ApiExtraModels(ResponseUnhealthyDto, ErrorDefaultDto)
     async getStatus(): Promise<ResponseHealthyDto> {
         return plainToInstance(ResponseHealthyDto, await this.queryPipeline.execute(new GetHealthStatusQuery()));
     }

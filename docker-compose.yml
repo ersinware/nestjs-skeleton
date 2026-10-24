@@ -50,6 +50,20 @@ services:
         networks:
             - api-network
 
+    redis-rate-limiting:
+        image: redis:8.6.3-alpine3.23@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+        container_name: redis-rate-limiting
+        restart: always
+        mem_limit: 512m
+        command: redis-server --maxmemory 128mb --maxmemory-policy noeviction --appendonly yes --appendfsync everysec --loglevel warning --requirepass "password"
+        ports:
+            - '6381:6379'
+        volumes:
+            - redis_rate_limiting_data:/data
+        logging: *logging
+        networks:
+            - api-network
+
     seaweedfs:
         image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
         container_name: seaweedfs
@@ -142,6 +156,7 @@ networks:
 volumes:
     pg_data_vol:
     redis_session_data:
+    redis_rate_limiting_data:
     seaweedfs_data:
     # Exporter queues and log offsets survive recreation; docker:*:down:clean removes them.
     otel_collector_data:

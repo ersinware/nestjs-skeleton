@@ -8,6 +8,7 @@ export { ApiDefaultDependencyUnavailableResponse } from 'src/core/doc/decorator/
 export { ApiDefaultInternalServerErrorResponse } from 'src/core/doc/decorator/api-default-internal-server-error-response.decorator';
 export { ApiDefaultInvalidRequestResponse } from 'src/core/doc/decorator/api-default-invalid-request-response.decorator';
 export { ApiDefaultOkResponsePaginated } from 'src/core/doc/decorator/api-default-ok-response-paginated.decorator';
+export { ApiDefaultRateLimitedResponse } from 'src/core/doc/decorator/api-default-rate-limited-response.decorator';
 export { ApiDefaultResourceConflictResponse } from 'src/core/doc/decorator/api-default-resource-conflict-response.decorator';
 export { ApiDefaultResourceNotFoundResponse } from 'src/core/doc/decorator/api-default-resource-not-found-response.decorator';
 export { ApiDefaultUnauthenticatedResponse } from 'src/core/doc/decorator/api-default-unauthenticated-response.decorator';

@@ -14,6 +14,7 @@ import {
     ApiDefaultInternalServerErrorResponse,
     ApiDefaultInvalidRequestResponse,
     ApiDefaultOkResponsePaginated,
+    ApiDefaultRateLimitedResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
 } from 'src/core/doc';
@@ -27,6 +28,7 @@ import {
 } from 'src/core/http';
 import { Audited } from 'src/core/observability/audit';
 import { Permissions } from 'src/core/security/auth';
+import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { GetAuditTrailRecordByIdQuery } from 'src/module/audit-trail/application/query/get-audit-trail-record-by-id/query';
 import { ListAuditTrailRecordsQuery } from 'src/module/audit-trail/application/query/list-audit-trail-records/query';
 import { QueryAuditTrailDto } from 'src/module/audit-trail/presentation/dto/query-audit-trail.dto';
@@ -49,6 +51,7 @@ import { Permission } from 'src/shared/domain/principal';
 @ApiBearerAuth()
 @ApiDefaultUnauthenticatedResponse()
 @ApiDefaultAccessDeniedResponse()
+@ApiDefaultRateLimitedResponse()
 @ApiDefaultInternalServerErrorResponse()
 @ApiDefaultDependencyUnavailableResponse()
 export class AuditTrailController {
@@ -67,6 +70,7 @@ export class AuditTrailController {
      * @throws {DependencyUnavailableException} When the audit database is unavailable
      */
     @Get()
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'List audit trail records',
@@ -98,6 +102,7 @@ export class AuditTrailController {
      * @throws {DependencyUnavailableException} When the audit database is unavailable
      */
     @Get(ROUTE_PARAM_ID)
+    @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'Get audit trail record by ID',

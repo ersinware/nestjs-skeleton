@@ -224,6 +224,13 @@ export class EnvironmentVariables {
     readonly TRUST_PROXY!: string;
 
     /**
+     * Stable service identity used to isolate counter namespaces across services.
+     */
+    @IsString()
+    @Matches(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
+    readonly SERVICE_NAME!: string;
+
+    /**
      * Connection URL of the primary (writer) PostgreSQL endpoint.
      */
     @IsString()
@@ -347,6 +354,14 @@ export class EnvironmentVariables {
     readonly REDIS_CACHE_TLS!: boolean;
 
     /**
+     * Redis cache connection establishment timeout in seconds.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly REDIS_CACHE_CONNECT_TIMEOUT!: number;
+
+    /**
      * Maximum number of Redis cache reconnection retries per request.
      */
     @IsEnvNumber(true)
@@ -390,6 +405,14 @@ export class EnvironmentVariables {
     readonly REDIS_SESSION_TLS!: boolean;
 
     /**
+     * Redis session connection establishment timeout in seconds.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly REDIS_SESSION_CONNECT_TIMEOUT!: number;
+
+    /**
      * Maximum number of Redis session reconnection retries per request.
      */
     @IsEnvNumber(true)
@@ -404,6 +427,49 @@ export class EnvironmentVariables {
     @Min(0.001)
     @Max(MAX_TIMER_SECONDS)
     readonly REDIS_SESSION_COMMAND_TIMEOUT!: number;
+
+    /**
+     * Hostname or IP of the independently provisioned counter store.
+     */
+    @IsString()
+    @IsRedisHost()
+    readonly REDIS_RATE_LIMIT_HOST!: string;
+
+    /**
+     * Dedicated counter store port.
+     */
+    @IsEnvNumber(true)
+    @Min(1)
+    @Max(65535)
+    readonly REDIS_RATE_LIMIT_PORT!: number;
+
+    /**
+     * Counter store password; empty means no authentication.
+     */
+    @IsString()
+    readonly REDIS_RATE_LIMIT_PASSWORD!: string;
+
+    /**
+     * Enables TLS for the counter connection.
+     */
+    @IsEnvBoolean()
+    readonly REDIS_RATE_LIMIT_TLS!: boolean;
+
+    /**
+     * Maximum seconds for a single background connection attempt.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly REDIS_RATE_LIMIT_CONNECT_TIMEOUT!: number;
+
+    /**
+     * Maximum seconds to wait for each complete counter-store admission operation.
+     */
+    @IsEnvNumber()
+    @Min(0.001)
+    @Max(MAX_TIMER_SECONDS)
+    readonly REDIS_RATE_LIMIT_COMMAND_TIMEOUT!: number;
 
     /**
      * Maximum administrator login lifetime, independent of refresh activity.

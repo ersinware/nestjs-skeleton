@@ -1,15 +1,10 @@
-# Rate Limiting — Target Architecture
+# Rate Limiting — Architecture Decisions
 
-> **Status: agreed target architecture; rate limiting is not implemented.** This is the single
-> source for the selected rate-limiting decisions, endpoint mappings, and starting values. It
-> consolidates the architecture discussion and temporary decision list. No rate-limiting code,
-> dependencies, policy configuration, or rate-limit Redis service has been added. Existing local
-> cache/session memory settings are identified separately in §7.
->
-> Implementation planning is a separate next task. Package behavior, deployment topology, and
-> managed-service compatibility still require verification (§12); they are not guarantees supplied
-> by this document. If verification conflicts with a selected decision, record and resolve that
-> conflict explicitly. Update this document when a decision changes; do not maintain a second list.
+This document owns the target architecture, policy mappings, and initial budgets.
+Delivery order and acceptance criteria belong in the [implementation plan](rate-limiting-implementation-plan.md).
+Implementation status is determined from code; verification results belong in CI/PR evidence.
+If package or deployment behavior conflicts with a decision, resolve the conflict explicitly
+and update this document rather than maintaining a second decision list.
 
 ---
 
@@ -59,7 +54,7 @@ than the end user. Without trustworthy IP forwarding, unrelated clients may shar
 
 Deployment must define and verify the real paths, trusted networks, and header handling points.
 
-`TRUST_PROXY` today accepts only `false` or an **IP/CIDR list**; `true` and a **hop count** are
+`TRUST_PROXY` must accept only `false` or an **IP/CIDR list**; `true` and a **hop count** are
 rejected at boot. Rationale: a hop count is _positional_ — add one proxy to the chain and it silently
 starts reading the wrong address without erroring. A CIDR list instead says "these networks are
 ours"; it stays correct whether an internal hop is added or removed.
@@ -126,8 +121,7 @@ the owning authentication/workflow code; this decision does not move it into a l
 
 **Integration boundary:** the rate-limit concern owns its policy catalog, guard stages, and
 project port/adapter boundary. The adapter integrates the selected ready-made storage package;
-guards do not implement a Redis counter algorithm or embed workflow rules. Exact contracts and
-placement belong to the later implementation plan.
+guards do not implement a Redis counter algorithm or embed workflow rules.
 
 > **Never:** derive a trusted user tracker from an unverified decoded token. Rate limiting must not
 > publish an actor into the audit context; authentication owns verified, session-checked identity.
@@ -138,7 +132,9 @@ placement belong to the later implementation plan.
 
 **Decision: use a centralized, named policy catalog.** Every endpoint must explicitly declare a
 policy, never inline numbers. Missing or invalid policies fail startup; no implicit default policy
-is assigned. Liveness/readiness probes remain explicitly exempt (§4). Numbers live in the central configuration.
+is assigned. Declarations belong on handlers, never controller classes. Only liveness/readiness
+probes are explicitly exempt. An active policy must contain at least one limiter; an individual
+stage may have none. Numbers live in the central configuration.
 
 **Default-policy decision: use one shared default policy unless a concrete special need exists.**
 Do not create a separate policy for every endpoint. An endpoint must explicitly select even the
@@ -174,7 +170,7 @@ health endpoint also selects default; liveness/readiness probes remain explicitl
 Previously selected special mappings take precedence. Default endpoints share the same IP
 budgets. Request-rate limits do not establish per-request job-count or payload resource limits.
 
-**Policy-value source decision: a separate typed TypeScript file.** Store `limit`,
+**Policy-value source decision: one typed TypeScript catalog.** Store `limit`,
 `windowSeconds`, and `blockDurationSeconds` values in a readonly object literal checked with
 `satisfies` against an exhaustive policy-specific limiter catalog type. Do not use JSON or
 per-policy environment variables, and do not hide mismatches with unchecked casts. This catches
@@ -184,14 +180,14 @@ parser, or external-file schema-validation mechanism.
 TypeScript's `number` does not guarantee positivity or integrality. Retain small startup checks
 for numeric invariants (positive integer limits, valid positive durations, and library bounds)
 and existing endpoint/policy integrity validation. Keep endpoint mappings, tracker sources, and
-stage selection in code. Existing env decisions for Redis connections, SERVICE_NAME, and
-RATE_LIMIT_CHECK_TIMEOUT remain unchanged. Convert seconds to milliseconds at library boundaries.
-Policy-value changes require a new build/deployment; do not dynamically reload the file. Final
-file name and placement follow implementation design; no config code has been added.
+stage selection in code. Convert seconds to milliseconds at library boundaries.
+Policy-value changes require a new build/deployment; do not dynamically reload the file.
+Declare ordered counters, tracker sources, stages and numeric budgets together; add policies
+only with their complete limiter sets.
 
 **Selected policy identifiers.** The following names identify the agreed policy groups;
-endpoint mappings and initial configurations are specified below. Final enum members are planned,
-not implemented.
+endpoint mappings and initial configurations are specified below. Add policies only with their
+complete limiter sets, following the implementation plan.
 
 | Enum                                      | Policy value                              |
 | ----------------------------------------- | ----------------------------------------- |
@@ -464,13 +460,11 @@ ceiling is included. A custom key scheme with a central key builder is selected:
 **`<serviceNamespace>:rl:<policy>:<limiter>:<tracker>`**. **No separate schema-version segment**
 is included. This is the logical counter-key scheme; verify any physical key wrapping or companion
 keys generated by the selected storage adapter. If Redis Cluster is used, verify that each Lua
-operation's keys satisfy hash-slot requirements. Remaining tracker encoding details belong to
-implementation design; future key-format changes require an explicit migration plan.
+operation's keys satisfy hash-slot requirements. Future key-format changes require an explicit migration plan.
 
 - **Prefix (`<serviceNamespace>:rl`)** — the service namespace is environment-configurable;
   `api` is an example value, not a hardcoded identifier. `rl` identifies rate limiting.
-  Planned service-wide setting: `SERVICE_NAME`, centrally boot-validated and read through ConfigService/ENV
-  at implementation time. Instances sharing a service budget use the same namespace; independent
+  Use service-wide `SERVICE_NAME`, centrally boot-validated and read through ConfigService/ENV. Instances sharing a service budget use the same namespace; independent
   services use distinct namespaces. This separates key names, not Redis failure or flush domains (§7).
 - **Policy** — budgets are separated at the policy level.
 - **Limiter** — separates independent counters, including short and long windows.
@@ -510,13 +504,13 @@ physical host. A prefix or DB index does not provide that resource isolation. Pr
 service namespace in key names (§6).
 
 **Production hosting decision: AWS ElastiCache or a comparable managed service.** Do not
-plan self-operated production Redis servers or containers. Provider and service mode remain
-unselected; preserve separate cache/session/rate-limit resource and failure isolation. Compose
+plan self-operated production Redis servers or containers. Select provider and service mode as
+deployment decisions; preserve separate cache/session/rate-limit resource and failure isolation. Compose
 memory limits describe local containers, not managed-service sizing. Validate package/Lua,
 connection topology, eviction, persistence, and failover compatibility when selecting the service.
 
-The selected packages do not invoke FLUSHDB/FLUSHALL in their normal rate-limit path; repository
-cleaners use FLUSHALL for E2E test reset. Do not treat bulk flushing as normal package behavior.
+Do not reset rate-limit state with FLUSHDB/FLUSHALL, including in test cleanup; isolate test
+namespaces and clean only owned keys. Cache/session cleaners do not own rate-limit state.
 Log rate-limit Redis connection lost/restored transitions under the existing connection-level rules.
 
 **Persistence decision: AOF with `appendonly yes` and `appendfsync everysec`.**
@@ -546,42 +540,36 @@ Use `noeviction` with the selected AOF everysec and persistent volume. These are
 settings, not policy TypeScript configuration. They are starting values, not measured capacity
 or an OOM-prevention guarantee; verify headroom under traffic and persistence activity. These
 budgets apply to local Compose; select production capacity for the managed service. Initial
-alert thresholds are recorded in §11; implementation is deferred. The rate-limit Redis service
-has not yet been added.
+alert thresholds are recorded in §11.
 
 **Local Redis memory budgets:**
 
-| Service                       |   Redis maxmemory | Container memory limit | Eviction      |
-| ----------------------------- | ----------------: | ---------------------: | ------------- |
-| `redis-cache`                 | 128 MiB (`128mb`) |       256 MiB (`256m`) | `allkeys-lru` |
-| `redis-session`               | 256 MiB (`256mb`) |           1 GiB (`1g`) | `noeviction`  |
-| Planned `redis-rate-limiting` | 128 MiB (`128mb`) |       512 MiB (`512m`) | `noeviction`  |
+| Service               |   Redis maxmemory | Container memory limit | Eviction      |
+| --------------------- | ----------------: | ---------------------: | ------------- |
+| `redis-cache`         | 128 MiB (`128mb`) |       256 MiB (`256m`) | `allkeys-lru` |
+| `redis-session`       | 256 MiB (`256mb`) |           1 GiB (`1g`) | `noeviction`  |
+| `redis-rate-limiting` | 128 MiB (`128mb`) |       512 MiB (`512m`) | `noeviction`  |
 
-Cache/session values are configured in `docker-compose.yml`; the rate-limit service remains
-planned. Cache has no persistence; session retains its existing AOF everysec, snapshot, and
-persistent-volume settings. Containers were not recreated when these settings were edited.
+Keep local budgets in `docker-compose.yml`. Cache has no persistence; session uses AOF everysec,
+snapshots, and a persistent volume.
 These budgets allow headroom for buffers, persistence, and other process overhead; they are
 starting values, not measured capacity or an OOM-prevention guarantee. Container limits are
 local upper bounds, not reserved memory or production managed-service capacity.
 
 **Timeout/retry decision: bounded waiting without automatic counter-operation retry.**
-If the connection is not ready, reject with 503 without offline queuing. Bound the total wait for
-the required limit check and return 503 on timeout. Do not automatically resend a counter mutation
-whose outcome is uncertain; reconnect the client in the background for subsequent requests.
-A timeout does not undo an operation already applied by Redis, so a rejected request may consume
-budget. **Stage deadline decision: a configurable 1 second, via planned
-`RATE_LIMIT_CHECK_TIMEOUT=1` in seconds.** This bounds all limiter checks in a single stage,
-not each counter independently; exclude authentication and handler execution. Do not start
-additional counter operations after the deadline. An expired response deadline alone does not
-cancel an in-flight Redis mutation; verify queueing, timeout, and replay behavior in the selected
-client/adapter versions.
+If the connection is not ready, reject with 503 without offline queuing. Each `consume()` call
+bounds waiting for a complete `storage.increment()` operation using
+`REDIS_RATE_LIMIT_COMMAND_TIMEOUT=1` in seconds. Script loading and execution share this timeout;
+there is no shared stage deadline. A timeout returns 503 and stops the runner's further counter checks.
+The timeout does not cancel the package operation: it can continue in the background, including
+issuing a later command after script loading. Redis may apply a mutation after the request has
+already failed. Do not retry an operation whose outcome is uncertain. A known `NOSCRIPT` fallback
+remains owned by the package.
 
-Read this value and rate-limit Redis connection settings through central boot-validated
-EnvironmentVariables and ConfigService + ENV, like existing Redis configuration. Convert seconds
-to milliseconds only at library boundaries. This stage deadline is distinct from connection or
-individual-command timeouts; finalize connection env names during implementation design. Keep
-no-replay and no-offline-queue behavior fixed. Per-policy limits, windows, and block durations
-come from typed TypeScript configuration rather than JSON or env (see §4). No actual env settings or config code have been added.
+Read this value and Redis connection settings through central boot-validated EnvironmentVariables
+and ConfigService + ENV. Convert seconds to milliseconds at library boundaries. Keep connection
+establishment timeout separate. Keep offline queueing disabled and do not replay uncertain mutations.
+Per-policy limits, windows and block durations remain typed TypeScript configuration (§4).
 
 **Policy-change decision: retain compatible counter state.** A limit-only change
 keeps the same key and count and applies the new threshold. A block-duration change preserves
@@ -589,20 +577,20 @@ the expiry of active blocks; new blocks use the new duration. Changes to the win
 source that alter state semantics use a new limiter identity: a fresh budget starts and old keys
 expire naturally. Add no separate version segment, counter-conversion mechanism, or bulk reset.
 Ordinary deployments do not reset counters. Plan deployment transitions to prevent incompatible
-configurations from serving traffic concurrently, and verify these semantics in the selected
-package version before implementation.
+configurations from serving traffic concurrently, and verify these semantics when changing the package version.
 
 **Algorithm decision: Sliding Window Counter.** Use the selected Redis adapter's
 ready-made algorithm, not a custom counter implementation. Accept weighted approximate counts
 across adjacent windows; do not use per-request Sliding Window Log storage. This choice balances
-boundary-burst protection and bounded per-tracker storage; no project benchmark has been run.
+boundary-burst protection and bounded per-tracker storage; validate capacity against workload.
 The chosen published version must include the storage adapter's millisecond-TTL correction
 referenced in its v2.0.1 release notes. This is an adapter release, not this application's version.
-Verify actual package versions and compatibility before implementation.
+Verify compatibility against the published versions in the lockfile, including on upgrades.
 
 **Package decision: `@nestjs/throttler` with `@nestjs-redis/throttler-storage`.**
 The former is the official NestJS package; the latter is the CSenshi/nestjs-redis community adapter,
-explicitly selected despite the general preference for official packages. Exact versions remain open; verify published-version support and compatibility before implementation.
+explicitly selected despite the general preference for official packages. Use the lockfile as the
+version source; verify published-version support and compatibility on upgrades.
 Use its ready-made counter algorithm rather than implementing one from scratch.
 
 The selected adapter requires the `redis` (node-redis) client. Integrate that client for rate
@@ -613,14 +601,13 @@ ioredis `createRedisClient`; do not pass the ioredis client directly to the sele
 The rate-limit concern owns the connection through a provider/DI token and manages shutdown.
 The factory integrates central configuration and connection lost/restored logging; pass its
 node-redis instance to the storage adapter. Preserve the selected offline-queue, bounded-wait,
-and uncertain-mutation replay rules. The exact function name and placement follow implementation
-design; no code or dependencies have been added by this decision.
+and uncertain-mutation replay rules.
 Project integration must cover explicit policy validation, pre/post-authentication guard stages,
 tracker/key derivation, required-field errors, outage 503, standard Retry-After, and the project's
 error/metrics contracts. Technical rate-limit events do not produce audit records (§9).
 
-Document the selected algorithm's window start and verify its fixed block-expiry behavior
-before implementation. Selected initial policy values and window configurations are in §4.
+Verify the selected algorithm's window alignment and fixed block-expiry behavior against its
+published implementation. Selected initial policy values and window configurations are in §4.
 
 **Outage behavior — reject when rate-limit storage is unavailable.** This applies to every
 policy, including general-traffic policies: do not proceed without the required counter check. There is no
@@ -704,8 +691,8 @@ credential-stuffing scenario. Account-based request limiting remains in scope.
 
 ## 11. Observability
 
-**Deferred final work item: implement Redis observability for cache, session, and rate limiting
-together.** This records the plan only; no monitoring infrastructure is added now. Preserve
+**Delivery decision: implement Redis observability for cache, session, and rate limiting
+together, after the limiter policies.** Preserve
 existing connection logs, health checks, and failure behavior. Production uses ElastiCache or
 a comparable managed service (§7), so map provider metrics into the existing Grafana Cloud
 alerting approach; do not assume access to production container metrics.
@@ -728,40 +715,28 @@ cache hit ratio and eviction rate and derive their thresholds from actual traffi
 
 The project's general rules apply here unchanged; the rate-limiting-specific distinctions are:
 
-| Signal      | For                                                              | Rule                                                                                                                          |
-| ----------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| **Audit**   | Existing business/security evidence                              | No technical rate-limit audit (§9); existing workflow audit rules remain unchanged.                                           |
-| **Metrics** | Alerting and trends: rejected requests by policy, Redis failures | No distinct block-start count is promised; avoid tracker/IP/account metric labels.                                            |
-| **Logs**    | Diagnosis                                                        | **No** log per rejected request. For outages and the like, one record at the connection level, gated on the state transition. |
+| Signal      | For                                                              | Rule                                                                                                                              |
+| ----------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Audit**   | Existing business/security evidence                              | No technical rate-limit audit (§9); existing workflow audit rules remain unchanged.                                               |
+| **Metrics** | Alerting and trends: rejected requests by policy, Redis failures | No distinct block-start count is promised; avoid tracker/IP/account metric labels.                                                |
+| **Logs**    | Diagnosis                                                        | No additional limiter/filter log per rejection; preserve HTTP access logs. Record outage transitions once per connection episode. |
 
 ---
 
-## 12. Verification and deployment details remaining
+## 12. Compatibility and deployment acceptance
 
-The main architecture choices, policy identifiers, endpoint groups, and initial numeric values
-are selected. This section records outstanding evidence and deployment choices, not a phased
-implementation plan.
-
-- **Package compatibility:** select exact published versions compatible with the repository's
-  NestJS, Node.js, and module/build configuration. Verify ready-made Sliding Window Counter,
-  millisecond TTL handling, window alignment, fixed block expiry, and policy-change behavior.
-- **Storage integration:** verify logical versus physical key layout, atomic counter operations,
-  Lua/hash-slot constraints if clustering is selected, and explicit limiter execution order.
-  Verify offline-queue disabling, bounded stage deadlines, and no uncertain-mutation replay.
-- **Managed production service:** select ElastiCache or a comparable provider and service mode;
-  validate client topology, available configuration, isolation, persistence/recovery, failover,
-  and capacity against §7. Do not infer production guarantees from local AOF/container settings.
-  Session recovery security remains distinct from accepted rate-limit counter loss.
-- **Ingress:** establish actual web/mobile paths, trusted IPs/CIDRs, and forwarding-header cleanup
-  points per environment; verify Fastify resolves the end-client address correctly.
-- **Implementation details:** finalize factory/provider placement, policy TypeScript file location,
-  tracker encoding, connection env names, and integration with standard error/Swagger contracts.
-  These details must preserve the selected boundaries and behaviors.
-- **Final deferred work:** implement observability for all three Redis services together (§11),
-  map managed-service metrics into Grafana Cloud, and validate initial alert thresholds.
-
-The later implementation plan must use this document as its input. No implementation tasks,
-dependencies, or monitoring infrastructure are created by this consolidation.
+- Verify published package behavior against the lockfile, including on upgrades: algorithm,
+  millisecond TTLs, window alignment, fixed blocks, policy changes, physical key wrapping,
+  atomicity, and timeout/retry behavior. README or branch-head behavior is insufficient evidence.
+- Select ElastiCache or a comparable managed service and mode. Validate topology, TLS/ACL, Lua,
+  hash slots if clustered, resource isolation, persistence/recovery, failover and capacity (§7).
+  Local Redis tests do not establish production compatibility or session-recovery safety.
+- Verify actual web/mobile paths, trusted IPs/CIDRs and header cleanup per environment (§2).
+- Validate runtime bootstrap, offline Swagger generation and emitted HTTP schemas as well as
+  real Redis effects. Contract fuzzing that only reaches 401/403/404 does not verify authenticated
+  success paths; report its actual scope.
+- Implement all-three-Redis observability together (§11), mapping provider metrics and validating
+  alert thresholds. Do not treat container memory limits as managed-service capacity.
 
 ---
 

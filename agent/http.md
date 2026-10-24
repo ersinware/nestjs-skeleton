@@ -9,8 +9,12 @@ Paths are version-neutral and relative to the global prefix.
 - `/health`: requires `Permission.HEALTH_DETAIL_READ`; returns indicator details with 200/503.
 - Checks are uncached: detail checks all `HEALTH_INDICATOR_KEYS`; readiness excludes `cache`. Replica probe reuse: [Dependency Outages](observability.md#dependency-outages).
 - Use readiness for traffic eligibility and liveness for restart/replacement decisions. Verify platform health-check consequences, including load-balancer checks; dependency outages must not restart healthy processes.
-- Preserve Terminus `ServiceUnavailableException`: the filter makes readiness 503 bodyless and preserves detailed indicator reports under `error`. Other failures follow [Exceptions](exceptions.md#exceptions); session unavailability can produce a standard guard 503 before detailed checks run.
+- Preserve Terminus `ServiceUnavailableException`: the filter makes readiness 503 bodyless and preserves detailed indicator reports under `error`. Other failures follow [Exceptions](exceptions.md#exceptions); required session or rate-limit checks can produce a standard guard 503 before detailed checks run.
 - Bound check execution within deployment probe timeouts. DB probes use the application's pool acquisition, server statement, and client query timeouts; allow response margin beyond the statement limit and deployment margin beyond acquisition + query waits. HTTP cache policy: [HTTP Caching](http.md#http-caching).
+
+### Client Access
+
+- Support web access through a BFF and direct mobile access through the API ingress. Both paths require trusted IP forwarding ([Rate-Limit Decisions](../docs/issue/rate-limiting.md#2-prerequisite-a-trustworthy-answer-to-who-is-calling)).
 
 ### HTTP Caching
 
@@ -19,7 +23,7 @@ Paths are version-neutral and relative to the global prefix.
 - Require revalidation before reuse, preserving guards/audit; allow freshness only by explicit design for identity-free, non-audited public data.
 - `core/http/caching`: `HttpCacheInterceptor` sets policy; `httpCacheHook` (`main.ts`, Fastify `onSend`) forces errors/missing policy headers to `no-store` and gives storable GET/HEAD 200 string/Buffer bodies weak ETags; matching `If-None-Match` returns bodyless 304.
 - ETags save response transfer, not handler execution ([CQRS](architecture.md#cqrs)).
-- The API is designed to run behind a BFF. Disable BFF fetch caching; forward the browser's `If-None-Match` upstream and `ETag`/`Cache-Control`/304 downstream. Preserve the representation when forwarding its ETag; the browser owns the validator.
+- Disable BFF fetch caching; forward the browser's `If-None-Match` upstream and `ETag`/`Cache-Control`/304 downstream. Preserve the representation when forwarding its ETag; the browser owns the validator.
 
 ### DTOs & Responses
 
@@ -37,7 +41,7 @@ Paths are version-neutral and relative to the global prefix.
 
 ### API Documentation
 
-- Document endpoint tags, operations, authentication, and success/applicable error responses. Reuse `src/core/doc/decorator/` when status/body contracts match; otherwise use raw Swagger decorators.
+- Document endpoint tags, operations, authentication, and success/applicable error responses. Order response decorators by ascending HTTP status within each class or method. Reuse `src/core/doc/decorator/` when status/body contracts match; otherwise use raw Swagger decorators.
 - Standard error decorators accept `message: string`, defaulting to the corresponding shared `DEFAULT`, never module-specific enum types.
 - Error descriptions cover all causes: masked errors use public defaults ([Exceptions](exceptions.md#exceptions)); otherwise one cause uses its client-safe message, several use a generic description. Validation-only 400s use `RequestValidationMessage.PAYLOAD`/`PARAM`. No endpoint cause-enumeration enums; clients branch on status, not message text.
 - Declare payload schemas without outer envelopes; `swagger-document.factory.ts` adds `data`/`error`. Document bodyless responses without body schemas. DTO metadata: [DTOs & Responses](http.md#dtos--responses); 304 metadata: `@HttpCache` ([HTTP Caching](http.md#http-caching)).

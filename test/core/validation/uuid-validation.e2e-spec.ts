@@ -8,6 +8,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ApiSchema } from '@nestjs/swagger';
 import { isUUID } from 'src/core/http';
 import { Public } from 'src/core/security/auth';
+import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -54,6 +55,7 @@ class UuidValidationController {
      * @returns Validated body
      */
     @Post()
+    @RateLimit(RateLimitPolicy.DEFAULT)
     accept(@Body() body: UuidValidationDto): UuidValidationDto {
         return body;
     }

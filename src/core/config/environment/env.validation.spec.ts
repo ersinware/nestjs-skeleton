@@ -15,6 +15,7 @@ describe('env.validation.config', () => {
         PORT: 3000,
         NODE_ENV: Environment.DEVELOPMENT,
         TRUST_PROXY: 'false',
+        SERVICE_NAME: 'api-test',
 
         DATABASE_URL: 'postgres://localhost:5432/db',
         DATABASE_REPLICA_URL: undefined,
@@ -34,14 +35,22 @@ describe('env.validation.config', () => {
         REDIS_CACHE_PORT: 6379,
         REDIS_CACHE_PASSWORD: 'redis-password',
         REDIS_CACHE_TLS: false,
+        REDIS_CACHE_CONNECT_TIMEOUT: 1,
         REDIS_CACHE_MAX_RETRIES_PER_REQUEST: 0,
         REDIS_CACHE_COMMAND_TIMEOUT: 0.1,
         REDIS_SESSION_HOST: 'localhost',
         REDIS_SESSION_PORT: 6380,
         REDIS_SESSION_PASSWORD: 'redis-password',
         REDIS_SESSION_TLS: false,
+        REDIS_SESSION_CONNECT_TIMEOUT: 1,
         REDIS_SESSION_MAX_RETRIES_PER_REQUEST: 1,
         REDIS_SESSION_COMMAND_TIMEOUT: 0.5,
+        REDIS_RATE_LIMIT_HOST: 'localhost',
+        REDIS_RATE_LIMIT_PORT: 6381,
+        REDIS_RATE_LIMIT_PASSWORD: 'redis-password',
+        REDIS_RATE_LIMIT_TLS: false,
+        REDIS_RATE_LIMIT_CONNECT_TIMEOUT: 1,
+        REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 1,
 
         SESSION_ABSOLUTE_TTL_ADMIN: '8h',
         SESSION_ABSOLUTE_TTL_USER: '7d',
@@ -203,9 +212,16 @@ describe('env.validation.config', () => {
 
     it.each([
         ['PORT', 0],
+        ['SERVICE_NAME', ''],
+        ['SERVICE_NAME', 'api:other'],
+        ['SERVICE_NAME', 'api service'],
+        ['SERVICE_NAME', '{api}'],
         ['PORT', 65536],
         ['REDIS_CACHE_PORT', -1],
         ['REDIS_SESSION_PORT', 65536],
+        ['REDIS_RATE_LIMIT_PORT', 65536],
+        ['REDIS_RATE_LIMIT_HOST', 'http://localhost'],
+        ['REDIS_RATE_LIMIT_TLS', 'yes'],
         ['DATABASE_POOL_SIZE', 0],
         ['DATABASE_POOL_SIZE', Number.MAX_SAFE_INTEGER + 1],
         ['REDIS_CACHE_MAX_RETRIES_PER_REQUEST', -1],
@@ -232,6 +248,21 @@ describe('env.validation.config', () => {
         ['SENTRY_DSN', 'https://sentry.example'],
     ] as const)('should reject invalid %s: %s', (key, value) => {
         expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow(Error);
+    });
+
+    describe.each([
+        'REDIS_CACHE_CONNECT_TIMEOUT',
+        'REDIS_SESSION_CONNECT_TIMEOUT',
+        'REDIS_RATE_LIMIT_CONNECT_TIMEOUT',
+        'REDIS_RATE_LIMIT_COMMAND_TIMEOUT',
+    ] as const)('%s', (key) => {
+        it('converts fractional seconds without losing precision', () => {
+            expect(validateConfig({ ...validConfig, [key]: '0.125' })[key]).toBe(0.125);
+        });
+
+        it.each([undefined, '', true, 0, -1, 'invalid', 2147484])('rejects invalid timeout %s', (value) => {
+            expect(() => validateConfig({ ...validConfig, [key]: value })).toThrow();
+        });
     });
 
     it.each(['1s', '10s', '30s', '60s', '1m'])('accepts bounded session rotation grace %s', (value) => {

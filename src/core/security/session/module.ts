@@ -36,6 +36,7 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
                         port: ENV.REDIS_SESSION_PORT,
                         password: ENV.REDIS_SESSION_PASSWORD,
                         tls: ENV.REDIS_SESSION_TLS,
+                        connectTimeout: ENV.REDIS_SESSION_CONNECT_TIMEOUT,
                         maxRetriesPerRequest: ENV.REDIS_SESSION_MAX_RETRIES_PER_REQUEST,
                         commandTimeout: ENV.REDIS_SESSION_COMMAND_TIMEOUT,
                     },
