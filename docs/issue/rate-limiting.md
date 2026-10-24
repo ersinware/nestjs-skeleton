@@ -1,14 +1,15 @@
 # Rate Limiting — Target Architecture
 
-> **Status: NO implementation.** The project contains no rate-limiting code whatsoever. The previous
-> implementation was deliberately removed in full because its architecture will be redesigned. This
-> document is the design input for that rebuild: it describes what will be built, in what order, and
-> why.
+> **Status: agreed target architecture; rate limiting is not implemented.** This is the single
+> source for the selected rate-limiting decisions, endpoint mappings, and starting values. It
+> consolidates the architecture discussion and temporary decision list. No rate-limiting code,
+> dependencies, policy configuration, or rate-limit Redis service has been added. Existing local
+> cache/session memory settings are identified separately in §7.
 >
-> ⚠️ **The decisions here are not fully settled.** Each one is written down with its rationale, but
-> none is final; they must be reviewed again before implementation starts, and the architecture
-> updated where needed. This document is not a "decision record" — it is the current state of the
-> discussion.
+> Implementation planning is a separate next task. Package behavior, deployment topology, and
+> managed-service compatibility still require verification (§12); they are not guarantees supplied
+> by this document. If verification conflicts with a selected decision, record and resolve that
+> conflict explicitly. Update this document when a decision changes; do not maintain a second list.
 
 ---
 
@@ -25,9 +26,9 @@ often?"_ Its purpose is to make guessing (passwords, tokens, codes) and resource
 - **Bot management / fingerprinting.** That is a separate product area.
 - **Authorization.** Rate limiting answers "how many times", not "who, and entitled to what".
 
-This distinction matters because it is the reference point when picking limits: a limit must be wide
-enough to carry a **real user's natural rhythm**, and narrow enough to be **useless to an attack**. A
-number that cannot do both at once was chosen on the wrong axis.
+Select initial limits for the operation's normal usage and resource cost, then validate them
+against real traffic. Shared IPs and changing addresses limit the protection any single tracker
+can provide; the selected budgets do not guarantee prevention of malicious traffic.
 
 ---
 
@@ -36,21 +37,27 @@ number that cannot do both at once was chosen on the wrong axis.
 All of rate limiting is built on this answer. If the answer is wrong, every number stacked on top of
 it is meaningless.
 
-This API sits behind a server-side BFF:
+**Access decision: serve both the web BFF and mobile clients directly.** Mobile
+clients do not have to traverse the web BFF. Both paths must have a defined proxy trust chain.
+Illustrative paths, to be verified against each deployment:
 
 ```
-Browser → CDN / LB → Next.js BFF (server-side) → LB → THIS API
+Browser → CDN/LB → Web BFF → API ingress/LB → API
+Mobile app → API ingress (CDN/WAF/LB as deployed) → API
 ```
 
-The decisive consequence: **this API's TCP peer is always a BFF pod, never the user.** With nothing
-done about it, the entire user base collapses into as many buckets as there are BFF pods.
+Direct mobile access means access to the published API ingress, not a requirement to expose the
+API process outside controlled networking. The API's TCP peer may be an ingress proxy rather
+than the end user. Without trustworthy IP forwarding, unrelated clients may share proxy-IP budgets.
 
-Two conditions must hold, and **neither can be enforced from this repo**:
+1. **Web path:** the BFF must propagate the browser IP established by its trusted upstream chain.
+2. **Mobile path:** client-supplied forwarded headers are untrusted. The trusted ingress must
+   sanitize/rebuild them from its observed client and trusted upstream information. A BFF-specific
+   header is not required for mobile access.
+3. **Both paths:** configure `TRUST_PROXY` for the actual proxy IPs/CIDRs. The limiter consumes
+   Fastify's resolved `request.ip`; it does not parse arbitrary forwarded headers itself.
 
-1. **The BFF must forward the browser's address.** A `fetch()` issued from a Next.js route handler
-   does not send `X-Forwarded-For` on its own; the header must be set explicitly.
-2. **`TRUST_PROXY` must describe the topology.** _(This part already exists and is independent of
-   rate limiting — it was not removed.)_
+Deployment must define and verify the real paths, trusted networks, and header handling points.
 
 `TRUST_PROXY` today accepts only `false` or an **IP/CIDR list**; `true` and a **hop count** are
 rejected at boot. Rationale: a hop count is _positional_ — add one proxy to the chain and it silently
@@ -72,65 +79,350 @@ identity and breaks **in both directions at once**:
   single budget. Tightening the limit punishes real users.
 - IPv6 / mobile / VPN: **one user = dozens of IPs**. The attacker pays nothing to change address.
 
-**Proposed: three tracker axes, selected by what the request is.**
+**Decision: independent limiters with explicit stages.** A policy can apply multiple
+IP, target-account, and user limiters; every applicable limit must be satisfied. A composite
+IP/account tracker does not replace independent limits. Selected endpoint mappings and initial
+configurations are recorded in §4.
 
-| Axis         | When                                            | Key                                | Why                                                                                                           |
-| ------------ | ----------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Identity** | Authenticated request                           | `user:<sub>`                       | Unaffected by NAT, unaffected by IP rotation. One budget per real user.                                       |
-| **Account**  | Authentication attempts (login, password reset) | `account:<hash(normalize(email))>` | The only defense against a distributed attack: the botnet rotates IPs but **the target account stays fixed**. |
-| **Address**  | Anonymous request                               | `ip:<request.ip>`                  | The only axis left when nothing else is available.                                                            |
+The tracker axes are:
+
+| Axis         | When                                                    | Key                                  | Why                                                                               |
+| ------------ | ------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
+| **Identity** | Policies selecting a verified principal tracker         | `principal:<sub>`                    | One budget per verified caller ID, independent of source IP.                      |
+| **Account**  | Login and activation-email resend                       | `account:<sha256(normalize(email))>` | Shares the target budget across source IPs without requiring an existing account. |
+| **Address**  | Policies selecting IP, on public or protected endpoints | `ip:<request.ip>`                    | Shares the source-IP budget before authentication.                                |
 
 The three are not alternatives to one another — they are **different axes answering different
 attacks**. A single login request may be counted on both the account and the address axis at once.
 
-**Critical sub-decision — guard ordering.** To use the identity axis, `sub` must be known at the
-moment the rate-limit decision is made. Two options:
+**Decision: two-stage rate limiting.** Apply IP/target-account limits before
+`AuthenticationGuard`, then user-based limits using its verified principal afterward.
+The pre-authentication stage protects authentication from excessive traffic; the post-authentication
+stage enforces the caller's budget independently of IP changes. The stages share the rate-limit
+mechanism; endpoint-specific policy/axis mappings and values are recorded in §4. An endpoint
+runs only the axes in its selected policy; there is no mandatory extra IP or principal limiter.
 
-- **(Proposed) Keep the rate-limit guard BEFORE `AuthenticationGuard` and let it resolve identity itself** —
-  by verifying **only the token's signature**. HS256 verification is cheap and touches neither the
-  DB nor Redis. An unauthenticated flood is then stopped before it ever reaches the cost of session
-  validation.
-- Move the rate-limit guard after `AuthenticationGuard`. Simpler, but **an unauthenticated flood reaches Redis
-  before it hits the rate limit** — an amplification vector.
+`@Public()` supplies no verified principal, so public endpoints use applicable IP/target-account
+limits without a user stage. On login, the target account is input to a limiter, not the caller's
+identity; these limits run before password verification in the login handler.
 
-> **Never:** decoding the token without verifying it and reading `sub`. With an unsigned token an
-> attacker mints as many fresh buckets as they like — the `X-Forwarded-For` hole rebuilt by hand.
+**Decision: each limiter declares the source and required field used to derive its tracker.**
+If the field is missing or unusable for key derivation, the limiter throws; it must not silently
+skip the counter, switch trackers, or generate a shared empty key. Invalid client input follows
+the project's invalid-input taxonomy (HTTP 400); invalid configuration or a missing principal
+required after authentication is a system fault. Key extraction and normalization must agree with
+the owning login rules; this does not replace validation of the rest of the payload.
+A well-formed email with no existing account still receives account limiting; deriving the key
+must not require an account-existence query.
+
+Additional counter operations are an accepted cost of this ordering. Do not assume a Redis counter
+increment is inherently cheaper than session validation.
+
+**Decision: authentication owns the verified caller principal.** It verifies the access JWT and
+required session state. Rate limiting does not read, decode, or verify JWTs. Its user tracker
+consumes only the principal published by authentication; the pre-authentication stage uses
+IP/target-account trackers. Existing login, refresh, and workflow-proof verification stays in
+the owning authentication/workflow code; this decision does not move it into a limiter.
+
+**Integration boundary:** the rate-limit concern owns its policy catalog, guard stages, and
+project port/adapter boundary. The adapter integrates the selected ready-made storage package;
+guards do not implement a Redis counter algorithm or embed workflow rules. Exact contracts and
+placement belong to the later implementation plan.
+
+> **Never:** derive a trusted user tracker from an unverified decoded token. Rate limiting must not
+> publish an actor into the audit context; authentication owns verified, session-checked identity.
 
 ---
 
 ## 4. The policy catalog — an endpoint knows no numbers, only a name
 
-Endpoints must carry a **policy name**, never a **number**. Numbers live in exactly one place: the
-configuration.
+**Decision: use a centralized, named policy catalog.** Every endpoint must explicitly declare a
+policy, never inline numbers. Missing or invalid policies fail startup; no implicit default policy
+is assigned. Liveness/readiness probes remain explicitly exempt (§4). Numbers live in the central configuration.
+
+**Default-policy decision: use one shared default policy unless a concrete special need exists.**
+Do not create a separate policy for every endpoint. An endpoint must explicitly select even the
+default policy; this is not an automatic fallback for missing metadata. Create a special policy
+only for a concrete protection or independent-budget requirement. `logout` and `logout-all`
+select the default policy, without endpoint-specific policies or mandatory extra principal limiters;
+preserve their existing authentication and business workflows. Default-policy endpoints share
+budgets for the same limiter/tracker (§6). Selected login/refresh policies and health-probe
+exemptions remain unchanged.
+
+**Default tracker decision: IP only.** Apply the default policy before authentication
+using the trusted full IP for both public and protected endpoints. Do not add a principal limiter
+or user/IP fallback. Users behind the same IP and endpoints selecting this policy share its IP
+budgets. Consider principal-based protection in a special policy only for a concrete need.
+
+**Default initial values: two IP windows with short blocks.**
+
+| Limiter  | Request limit | Sliding window | Block duration |
+| -------- | ------------: | -------------: | -------------: |
+| IP short |           600 |     60 seconds |     10 seconds |
+| IP long  |         6,000 |    900 seconds |     30 seconds |
+
+These are starting values, not measured capacity; tune for shared-IP traffic. The budget covers
+the aggregate of default-policy endpoints for the same IP, not each endpoint separately. Login
+and refresh retain independent policy budgets. Requests do not extend active blocks; after
+expiry, normal counter checks apply and admission is not guaranteed.
+
+**Remaining general-endpoint mapping: default policy.** Profile/list/detail reads,
+account deletion, ban/unban, permission updates, audit reads, and job-operations list/redrive/
+discard/status endpoints select the default policy. Preserve existing authentication,
+authorization, and workflow rules; add no special job-mutation policy. The protected detailed
+health endpoint also selects default; liveness/readiness probes remain explicitly exempt.
+Previously selected special mappings take precedence. Default endpoints share the same IP
+budgets. Request-rate limits do not establish per-request job-count or payload resource limits.
+
+**Policy-value source decision: a separate typed TypeScript file.** Store `limit`,
+`windowSeconds`, and `blockDurationSeconds` values in a readonly object literal checked with
+`satisfies` against an exhaustive policy-specific limiter catalog type. Do not use JSON or
+per-policy environment variables, and do not hide mismatches with unchecked casts. This catches
+missing policy/limiter entries and wrong field types during type checking without a JSON loader,
+parser, or external-file schema-validation mechanism.
+
+TypeScript's `number` does not guarantee positivity or integrality. Retain small startup checks
+for numeric invariants (positive integer limits, valid positive durations, and library bounds)
+and existing endpoint/policy integrity validation. Keep endpoint mappings, tracker sources, and
+stage selection in code. Existing env decisions for Redis connections, SERVICE_NAME, and
+RATE_LIMIT_CHECK_TIMEOUT remain unchanged. Convert seconds to milliseconds at library boundaries.
+Policy-value changes require a new build/deployment; do not dynamically reload the file. Final
+file name and placement follow implementation design; no config code has been added.
+
+**Selected policy identifiers.** The following names identify the agreed policy groups;
+endpoint mappings and initial configurations are specified below. Final enum members are planned,
+not implemented.
+
+| Enum                                      | Policy value                              |
+| ----------------------------------------- | ----------------------------------------- |
+| `DEFAULT`                                 | `default`                                 |
+| `USER_LOGIN`                              | `user-login`                              |
+| `ADMIN_LOGIN`                             | `admin-login`                             |
+| `REFRESH_TOKEN`                           | `refresh-token`                           |
+| `PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE`   | `password-change-email-change-initiate`   |
+| `USER_ACTIVATION_RESEND`                  | `user-activation-resend`                  |
+| `USER_REGISTRATION_ADMIN_USER_ACTIVATION` | `user-registration-admin-user-activation` |
+| `ADMIN_INVITATION`                        | `admin-invitation`                        |
+| `AVATAR_UPLOAD_INITIATE`                  | `avatar-upload-initiate`                  |
+
+Use user/admin prefixes only for policies specific to that principal kind. Shared policies have
+no principal-kind prefix. Renaming a policy changes its key identity and starts a new budget.
+
+**Selected limiter identifiers.** Reuse these names within each policy; the policy segment
+already provides isolation. Do not encode numeric durations or repeat policy names here.
+
+| Tracker               | Short window           | Long window           |
+| --------------------- | ---------------------- | --------------------- |
+| IP                    | `ip-short`             | `ip-long`             |
+| Target account/email  | `target-account-short` | `target-account-long` |
+| Verified principal ID | `principal-short`      | `principal-long`      |
+
+**Endpoint mapping summary.** Paths below are relative to the API global/version prefix;
+`{user,admin}` denotes both controller paths. Special mappings take precedence over the general
+default group. Each endpoint still declares its selected policy explicitly.
+
+| Policy                                    | Endpoints                                                                                                                                                                 | Stage and trackers             |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `user-login`                              | `POST auth/user/login`                                                                                                                                                    | Pre-auth: IP + target email    |
+| `admin-login`                             | `POST auth/admin/login`                                                                                                                                                   | Pre-auth: IP + target email    |
+| `refresh-token`                           | `POST auth/refresh`                                                                                                                                                       | Pre-auth: IP                   |
+| `password-change-email-change-initiate`   | `PATCH {user,admin}/me/password`; `POST {user,admin}/me/email/initiate`                                                                                                   | Post-auth: caller principal ID |
+| `user-activation-resend`                  | `POST user/activation/resend`                                                                                                                                             | Pre-auth: IP + target email    |
+| `user-registration-admin-user-activation` | `POST user/registration/initiate`; `POST user/registration/complete`; `POST user/activation/complete`; `POST admin/activation/initiate`; `POST admin/activation/complete` | Pre-auth: IP                   |
+| `admin-invitation`                        | `POST admin/invite`; `POST admin/:id/re-invite`                                                                                                                           | Post-auth: caller admin ID     |
+| `avatar-upload-initiate`                  | `POST {user,admin}/me/avatar/initiate`                                                                                                                                    | Post-auth: caller principal ID |
+| `default`                                 | All other API endpoints, including logout/logout-all, email confirmation, profile changes/reads, administration, audit/job operations, and protected detailed health      | Pre-auth: IP                   |
+| Explicit exemption                        | Liveness/readiness probes                                                                                                                                                 | No limiter                     |
+
+**Login policy decision: separate user and admin policies.** `auth/user/login` and
+`auth/admin/login` use independent policies, budgets, and configurable limits. This allows stricter
+admin settings without imposing them on user login. Selected initial values are below. Web and
+mobile clients using the same endpoint share its policy, without client-application-specific
+budgets. `user-login` and `admin-login` are the selected identifiers.
+
+**Login tracker decision: independent IP and target-account limiters.** Both login
+policies require both budgets to pass before password verification. Use the resolved full IP and
+SHA-256(normalize(email)) trackers from §6, without checking account existence. Successful and
+unsuccessful login requests consume the same budgets; password success does not reset them.
+Public login supplies no verified principal, so no principal-ID limiter applies. User and admin
+policy budgets remain independent.
+
+**Login window decision: short and long windows for both tracker axes.** Each
+login policy has four independent limiters: IP short, IP long, target-account short, and
+target-account long. All applicable budgets must pass. Use the selected ready-made Sliding
+Window Counter algorithm. Selected initial limits and block durations are below.
+
+**User-login initial limits: balanced values.**
+
+| Limiter              | Request limit | Sliding window |
+| -------------------- | ------------: | -------------: |
+| IP short             |            60 |     60 seconds |
+| IP long              |           300 |    900 seconds |
+| Target-account short |             5 |     60 seconds |
+| Target-account long  |            20 |    900 seconds |
+
+These are selected starting values, not a standards requirement or a load-tested capacity claim.
+The selected Sliding Window Counter's approximate counting semantics apply.
+
+**Admin-login initial limits.**
+
+| Limiter              | Request limit | Sliding window |
+| -------------------- | ------------: | -------------: |
+| IP short             |            20 |     60 seconds |
+| IP long              |           100 |    900 seconds |
+| Target-account short |             5 |     60 seconds |
+| Target-account long  |            10 |    900 seconds |
+
+These are selected starting values, not a standards requirement or a load-tested capacity claim.
+The selected Sliding Window Counter's approximate counting semantics apply.
+
+**User-login block durations.** IP short and target-account short use 60-second
+blocks; IP long and target-account long use 300-second blocks. Each duration starts when its
+limiter establishes the block. Requests during an active block do not extend it. After expiry,
+normal counter checks apply; admission is not guaranteed (§5). These are starting values.
+
+**Admin-login block durations: same durations as user login.** IP short and
+target-account short use 60-second blocks; IP long and target-account long use 300-second
+blocks. The same non-extending expiry and recheck rules apply. Equal durations do not merge
+user and admin budgets; their policies remain independent.
+
+**Refresh tracker decision: IP only, with an independent policy/budget.** Apply
+pre-auth limiting using the trusted full IP. Do not verify JWTs in the limiter, hash raw tokens
+as trackers, or use unverified user/session IDs. Preserve the existing refresh verification,
+rotation, and reuse-detection workflow; add no post-verification session limiter. Choose wider
+budgets than login to accommodate automatic refreshes and shared IPs. Limit violations return 429; required storage
+unavailability returns 503 (§7).
+
+**Refresh initial values: two IP windows with short blocks.**
+
+| Limiter  | Request limit | Sliding window | Block duration |
+| -------- | ------------: | -------------: | -------------: |
+| IP short |           300 |     60 seconds |     10 seconds |
+| IP long  |         3,000 |    900 seconds |     30 seconds |
+
+These are starting values, not measured capacity; tune for shared-IP traffic. Requests do not
+extend active blocks, and expiry does not guarantee admission: normal counter checks resume.
+Clients must not discard sessions solely because of 429/503; honor Retry-After for 429.
+
+**Activation resend decision: independent IP and target-account policy.**
+`user/activation/resend` selects a special pre-auth policy, requiring both tracker budgets to
+pass. Use the trusted full IP and SHA-256(normalize(email)) without account-existence queries.
+Count valid email inputs regardless of whether the workflow sends mail. Preserve the workflow's
+anti-enumeration 204 behavior; limiter rejection returns 429 and required storage unavailability
+returns 503. Budgets are independent of login and default policies. The selected identifier is `user-activation-resend`.
+
+**Activation resend initial values.**
+
+| Limiter              | Request limit | Sliding window | Block duration |
+| -------------------- | ------------: | -------------: | -------------: |
+| IP short             |            20 |     60 seconds |     60 seconds |
+| IP long              |           100 |  3,600 seconds |    300 seconds |
+| Target-account short |             1 |     60 seconds |     60 seconds |
+| Target-account long  |             5 |  3,600 seconds |    300 seconds |
+
+These are starting values. Count requests, not delivered emails. Approximate Sliding Window
+Counter semantics apply: the short account limit does not guarantee a minimum 60-second gap
+between sends. Requests do not extend active blocks; expiry triggers normal checks, not
+guaranteed admission.
+
+**Registration/activation decision: shared special policy, IP only.** User
+`registration/initiate`, `registration/complete`, and `activation/complete`, plus admin
+`activation/initiate` and `activation/complete`, share one pre-auth policy and trusted full-IP
+budget, independent of login, default, and activation-resend policies. Add no target-account
+or principal limiter. A normal registration consumes at least two API calls; retries and calls
+whose workflows fail also consume budget. Direct avatar uploads to storage do not pass through
+this API limiter. Preserve existing proof/avatar validation, account creation, and activation
+job behavior. Preserve user activation's existing password verification and admin activation's
+initial-password/proof workflow. Accept that user activation has no cross-IP per-account budget;
+the limiter does not verify tokens or derive trackers from unverified claims. The selected identifier is `user-registration-admin-user-activation`.
+
+**Registration/activation initial values.**
+
+| Limiter  | Request limit | Sliding window | Block duration |
+| -------- | ------------: | -------------: | -------------: |
+| IP short |            20 |     60 seconds |     60 seconds |
+| IP long  |           100 |  3,600 seconds |    300 seconds |
+
+These are starting values, not measured capacity. All five endpoints share the same IP budgets;
+normal registration consumes at least two calls. Requests do not extend active blocks; normal
+counter checks resume after expiry without guaranteeing admission.
+
+**Admin invitation decision: shared special policy, caller principal ID.**
+`admin/invite` and `admin/:id/re-invite` share a post-authentication policy keyed by the verified
+caller ID. Do not automatically add default/IP limiting. Preserve existing authorization and
+business checks. Add no recipient counter or account lookup for tracker derivation. Changing IP
+does not grant the caller a new budget; different administrators do not share a recipient budget,
+an accepted initial limitation. Count calls reaching the policy check, not delivered emails.
+The selected identifier is `admin-invitation`.
+
+**Admin invitation initial values.**
+
+| Limiter                | Request limit | Sliding window | Block duration |
+| ---------------------- | ------------: | -------------: | -------------: |
+| Caller principal short |             3 |     60 seconds |     60 seconds |
+| Caller principal long  |            10 |  3,600 seconds |    300 seconds |
+
+Invite and re-invite calls share the caller's budgets, including calls whose downstream workflow
+fails. The tracker is the verified caller admin ID, not the IP or target admin ID. These are
+starting values, not measured capacity. Requests do not extend active blocks; normal checks
+resume after expiry.
+
+**Avatar upload initiation decision: shared special policy, verified principal ID.**
+User and admin `POST me/avatar/initiate` share the same policy definition; each verified
+principal ID has its own budget. Apply it after authentication without adding IP/default
+limiting. User and admin `PATCH me` select the default policy. Preserve existing upload-proof
+and profile/avatar validation. Direct storage uploads do not pass through this API limiter;
+file-size and total-storage controls remain separate concerns. The selected identifier is `avatar-upload-initiate`.
+
+**Avatar upload initiation initial values.**
+
+| Limiter         | Request limit | Sliding window | Block duration |
+| --------------- | ------------: | -------------: | -------------: |
+| Principal short |             3 |     60 seconds |     60 seconds |
+| Principal long  |            10 |  3,600 seconds |    300 seconds |
+
+These are starting values, not measured capacity. Count API upload-authorization preparation
+calls; direct storage attempts with the same authorization do not consume this API budget.
+Requests do not extend active blocks; normal checks resume after expiry.
+
+**Email-change confirmation decision: default policy.** User and admin `POST me/email/confirm`
+select the default IP policy, without a special confirmation policy or extra principal limiter.
+Preserve existing session, signed-token, ownership, and pending-request validity checks. These
+requests share the default IP budget, not the password-proof budget below. Normal 429 and
+required limiter-storage-unavailable 503 rules apply.
+
+**Authenticated password-proof policy: shared special policy, verified principal ID only.** User and admin `PATCH me/password` and `POST me/email/initiate` select the
+same policy definition. Apply it after authentication using the verified principal ID (§6).
+For the same principal, both operations consume a shared budget; different IDs have separate
+budgets. Do not automatically add an IP limiter or the default policy to these endpoints.
+Preserve password verification in the existing workflow and existing auth/session/audit
+identity semantics. The selected identifier is `password-change-email-change-initiate`.
+
+**Authenticated password-proof initial values.**
+
+| Limiter         | Request limit | Sliding window | Block duration |
+| --------------- | ------------: | -------------: | -------------: |
+| Principal short |             5 |     60 seconds |     60 seconds |
+| Principal long  |            10 |    900 seconds |    300 seconds |
+
+Both operations share these budgets for the same principal; successful and unsuccessful calls
+count, without resetting on success. These are starting values, not measured capacity. Requests
+do not extend active blocks; normal checks resume after expiry without guaranteeing admission.
 
 ```
 Endpoint  ──selects──▶  Policy  ──consists of──▶  one or more limiters
                                                    (each limiter: window + limit + block duration)
 ```
 
-Initial catalog (names are examples, not final):
+**Catalog extensibility:** adding a policy that uses existing tracker sources and stages changes
+the catalog and endpoint metadata, without policy-specific branches in the guard. A policy may
+contain multiple limiter definitions. The policy/limiter mapping must be exhaustive at compile
+time; endpoint metadata completeness is checked at startup.
 
-| Policy            | Where                               | Why separate                                                                                      |
-| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `DEFAULT`         | Every unmarked endpoint             | Softens abuse. **Not a security control**, hence generous.                                        |
-| `AUTH`            | User login                          | Verifies a guessable secret.                                                                      |
-| `ADMIN_AUTH`      | Admin login                         | Used by very few people, of very high value — must be stricter than everything else.              |
-| `REGISTRATION`    | Sign-up                             | Once per person per lifetime. A short window is the wrong axis; a long window + low cap is right. |
-| `SENSITIVE_WRITE` | Password change, email change, etc. | Verifies an existing secret or hands over the account.                                            |
-
-**Adding a policy must cost near zero:** one new enum member + one limiter definition. If the guard
-has to be touched, the mechanism was built wrong. A policy's limiter mapping must be **exhaustive**:
-adding a policy and forgetting to enforce it must be a **compile error**.
-
-**When does something count as critical?** Rule: _an endpoint is critical if it verifies a
-**guessable secret**._
-
-- Login, password change → **yes** (a password can be guessed).
-- Token refresh (`refresh`) → **no**. What is presented is a **signed token** — there is nothing to
-  guess; the real defense is single-use rotation + reuse detection. Moreover this is the one
-  endpoint the application calls without the user asking (startup, token expiry, tab focus) — its
-  traffic arrives in bursts, and a shared IP budget would return 429 to legitimate sessions. Most
-  clients read that as "you were logged out"; the result is mass logout.
+Special policies address concrete guessing, email-delivery, upload-preparation, or independent
+budget needs, as recorded above. Password-guessing protection is not the only reason to select
+a special policy. Refresh uses its independent IP budget for processing load; 429/503 does not
+establish invalid credentials and must not by itself cause a client to discard its session.
 
 ---
 
@@ -143,14 +435,18 @@ A single window sees only one of the two attack shapes.
 | Fast automated burst (seconds)   | Short window, tight limit  | Catches it                                                                                              |
 | Slow, sustained guessing (hours) | Long window, total ceiling | **Cannot see it** — the window keeps resetting; the "slow yourself down, stay invisible" gap stays open |
 
-Sensitive policies must therefore carry **at least two limiters**, and passing requires satisfying
-**all of them at once**: the short window cuts the burst, the long window caps the total attempt
-count. The long window's ceiling is deliberately generous — far above what a real user or a shared
-office would ever produce, far below what an attack needs.
+Every selected policy has a short and long limiter for each of its tracker axes. Each applicable
+limiter must allow the request, in the sequential order specified in §8. The long window adds a
+sustained-traffic budget; neither window guarantees prevention of malicious traffic. With early
+rejection, later counters are not updated and earlier mutations are retained (§8).
 
-**Block duration must be stated explicitly.** Left unstated it defaults to the window duration,
-which means "the price of exceeding the limit is the remainder of a window that was about to expire
-anyway" — i.e., no price at all.
+**Block duration must be stated explicitly** in each limiter's configuration; do not rely on
+library defaults. Selected durations are recorded in §4.
+
+**Decision: requests during an active block do not extend its expiry.** Set the expiry
+when the block starts. After it expires, apply normal Sliding Window Counter admission; expiry
+alone does not guarantee acceptance. Verify this behavior in the selected adapter version without
+implementing a custom counter algorithm.
 
 **How long should a block be?** That depends directly on the **tracker axis**:
 
@@ -162,16 +458,41 @@ anyway" — i.e., no price at all.
 
 ## 6. Key schema
 
-The key consists of three parts: **`<prefix>:<policy>:<tracker>`**
+**Decision: shared budgets per policy.** Endpoints share a budget when their policy,
+limiter, and tracker match. Different policies have independent budgets; no cross-policy aggregate
+ceiling is included. A custom key scheme with a central key builder is selected:
+**`<serviceNamespace>:rl:<policy>:<limiter>:<tracker>`**. **No separate schema-version segment**
+is included. This is the logical counter-key scheme; verify any physical key wrapping or companion
+keys generated by the selected storage adapter. If Redis Cluster is used, verify that each Lua
+operation's keys satisfy hash-slot requirements. Remaining tracker encoding details belong to
+implementation design; future key-format changes require an explicit migration plan.
 
-- **Prefix** — so throttle counters can never be confused with anything else (see §7).
+- **Prefix (`<serviceNamespace>:rl`)** — the service namespace is environment-configurable;
+  `api` is an example value, not a hardcoded identifier. `rl` identifies rate limiting.
+  Planned service-wide setting: `SERVICE_NAME`, centrally boot-validated and read through ConfigService/ENV
+  at implementation time. Instances sharing a service budget use the same namespace; independent
+  services use distinct namespaces. This separates key names, not Redis failure or flush domains (§7).
 - **Policy** — budgets are separated at the policy level.
+- **Limiter** — separates independent counters, including short and long windows.
 - **Tracker** — the axis from §3.
 
-**The route/handler name must not enter the key.** If it does, every endpoint gets its own budget
-and the attacker multiplies the total by walking across endpoints: `login` + `admin login` +
-`register` are three separate budgets. A single ceiling at the policy level produces a meaningful
-bound for "the entire authentication surface".
+**Decision: account trackers use the hexadecimal SHA-256 digest of the normalized email.**
+Use the same normalization as login. No HMAC or additional secret is used; deriving the tracker
+requires no account lookup.
+
+**Decision: IP trackers use the full source address resolved through the trusted-proxy configuration.**
+Normalize equivalent address representations, including IPv4-mapped IPv6 to IPv4. Do not group
+IPv4 or IPv6 addresses by subnet; IPv6 /64 grouping is not used. Different IPv6 addresses receive
+separate budgets, an accepted limitation; account and principal limits remain independent.
+
+**Decision: principal trackers use the verified ID without an admin/user discriminator.** This
+choice applies only to rate-limit keys, not authentication, session, or audit identity semantics.
+Admin and user tables have independent primary keys; no cross-table uniqueness constraint is
+implied by this choice.
+
+**The route/handler name must not enter the key.** Moving between endpoints within one policy
+does not grant a fresh budget. Different policies intentionally grant separate budgets; this
+design does not establish a single ceiling for the entire authentication surface.
 
 The counter-argument: route-level isolation prevents one endpoint's heavy traffic from locking out
 another. That is exactly why the separation happens **at the policy level** — endpoints with
@@ -182,57 +503,162 @@ design.
 
 ## 7. Storage and resilience
 
-**Redis, in a separate key space.** Counters must not share a keyspace with the cache: otherwise a
-cache flush resets every rate-limit counter — i.e., cache maintenance switches off a security
-control. A dedicated key prefix (or a separate DB index) is mandatory. If that requires a second
-connection, that connection's lost/restored transitions must receive **the same logging treatment**
-as the first.
+**Storage decision: a dedicated rate-limit Redis instance/deployment.** Keep counters
+separate from both cache and session Redis to isolate cache eviction and resource contention.
+This requires an independently configured service and resource budget, not necessarily a separate
+physical host. A prefix or DB index does not provide that resource isolation. Preserve the selected
+service namespace in key names (§6).
 
-**Window type: fixed window, accepted; not sliding.** A fixed window allows a 2× burst at the
-boundary (spend the budget at the end of the window, spend it again the moment it rolls over). A
-sliding window closes that but costs an ordered structure (sorted set) per tracker. Decision: **use
-a fixed window and account for the 2× allowance when choosing limits.** Moving to a sliding window
-goes on the table only if boundary bursts become a real problem.
+**Production hosting decision: AWS ElastiCache or a comparable managed service.** Do not
+plan self-operated production Redis servers or containers. Provider and service mode remain
+unselected; preserve separate cache/session/rate-limit resource and failure isolation. Compose
+memory limits describe local containers, not managed-service sizing. Validate package/Lua,
+connection topology, eviction, persistence, and failover compatibility when selecting the service.
 
-**Outage behavior — a single "fail-open" answer is not enough:**
+The selected packages do not invoke FLUSHDB/FLUSHALL in their normal rate-limit path; repository
+cleaners use FLUSHALL for E2E test reset. Do not treat bulk flushing as normal package behavior.
+Log rate-limit Redis connection lost/restored transitions under the existing connection-level rules.
 
-| Policy             | When Redis is down                          | Rationale                                                                                                                                                                               |
-| ------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT`          | **Fail-open** (let through)                 | Not a security control; a cache outage must not take the application down.                                                                                                              |
-| Sensitive policies | **Degrade to an in-process memory counter** | Imperfect (the effective limit is multiplied by the instance count) but far better than "no protection at all". A Redis outage must not be the event that opens the brute-force window. |
+**Persistence decision: AOF with `appendonly yes` and `appendfsync everysec`.**
+Use a persistent disk/volume to restore counters and active blocks after restart without reviving
+expired entries. Accept approximately the last second of changes being lost in a sudden crash;
+this is not a zero-data-loss guarantee. These concrete AOF/volume settings describe local Redis.
+Do not assume a managed service exposes them or provides equivalent recovery guarantees;
+record any required adaptation after provider validation. Session recovery from lost or stale
+state retains its own security requirements, separate from accepted rate-limit counter loss.
 
-**Fail-open must be kept narrow.** It should swallow only the _storage_ failure, never mean "let
-through no matter what happens inside the guard". Otherwise an unrelated error (say, an audit write)
-silently turns into a rate-limit bypass — a failure class where cause and consequence are inversely
-proportional.
+**Failover decision: accept possible loss of recent counter/block updates.**
+Return 503 while Redis is unavailable; resume checks against the available state when the new
+primary is ready. Asynchronous replication can lose recent updates, allowing additional budget
+or losing recent blocks. Do not assume a fixed one-second loss bound: AOF everysec does not
+guarantee replica freshness. This decision does not require deploying replicas or Sentinel;
+it defines behavior if the deployment uses failover.
+
+**Memory decision: an explicit `maxmemory` limit with `noeviction`.** Do not evict
+counters or blocks early under memory pressure; normal TTL expiration continues. If a recognized
+Redis out-of-memory rejection prevents the required limit check, return dependency-unavailable
+503, not 429 or admission. Monitor memory usage and rejected writes, and alert before capacity
+is exhausted. Size the memory budget for deployment capacity, leaving process/container headroom
+for AOF and other Redis memory overhead. Capacity exhaustion may deny legitimate traffic too.
+
+**Selected rate-limit Redis starting budget: `maxmemory 128mb`, container memory limit `512m`.**
+Use `noeviction` with the selected AOF everysec and persistent volume. These are deployment
+settings, not policy TypeScript configuration. They are starting values, not measured capacity
+or an OOM-prevention guarantee; verify headroom under traffic and persistence activity. These
+budgets apply to local Compose; select production capacity for the managed service. Initial
+alert thresholds are recorded in §11; implementation is deferred. The rate-limit Redis service
+has not yet been added.
+
+**Local Redis memory budgets:**
+
+| Service                       |   Redis maxmemory | Container memory limit | Eviction      |
+| ----------------------------- | ----------------: | ---------------------: | ------------- |
+| `redis-cache`                 | 128 MiB (`128mb`) |       256 MiB (`256m`) | `allkeys-lru` |
+| `redis-session`               | 256 MiB (`256mb`) |           1 GiB (`1g`) | `noeviction`  |
+| Planned `redis-rate-limiting` | 128 MiB (`128mb`) |       512 MiB (`512m`) | `noeviction`  |
+
+Cache/session values are configured in `docker-compose.yml`; the rate-limit service remains
+planned. Cache has no persistence; session retains its existing AOF everysec, snapshot, and
+persistent-volume settings. Containers were not recreated when these settings were edited.
+These budgets allow headroom for buffers, persistence, and other process overhead; they are
+starting values, not measured capacity or an OOM-prevention guarantee. Container limits are
+local upper bounds, not reserved memory or production managed-service capacity.
+
+**Timeout/retry decision: bounded waiting without automatic counter-operation retry.**
+If the connection is not ready, reject with 503 without offline queuing. Bound the total wait for
+the required limit check and return 503 on timeout. Do not automatically resend a counter mutation
+whose outcome is uncertain; reconnect the client in the background for subsequent requests.
+A timeout does not undo an operation already applied by Redis, so a rejected request may consume
+budget. **Stage deadline decision: a configurable 1 second, via planned
+`RATE_LIMIT_CHECK_TIMEOUT=1` in seconds.** This bounds all limiter checks in a single stage,
+not each counter independently; exclude authentication and handler execution. Do not start
+additional counter operations after the deadline. An expired response deadline alone does not
+cancel an in-flight Redis mutation; verify queueing, timeout, and replay behavior in the selected
+client/adapter versions.
+
+Read this value and rate-limit Redis connection settings through central boot-validated
+EnvironmentVariables and ConfigService + ENV, like existing Redis configuration. Convert seconds
+to milliseconds only at library boundaries. This stage deadline is distinct from connection or
+individual-command timeouts; finalize connection env names during implementation design. Keep
+no-replay and no-offline-queue behavior fixed. Per-policy limits, windows, and block durations
+come from typed TypeScript configuration rather than JSON or env (see §4). No actual env settings or config code have been added.
+
+**Policy-change decision: retain compatible counter state.** A limit-only change
+keeps the same key and count and applies the new threshold. A block-duration change preserves
+the expiry of active blocks; new blocks use the new duration. Changes to the window or tracker
+source that alter state semantics use a new limiter identity: a fresh budget starts and old keys
+expire naturally. Add no separate version segment, counter-conversion mechanism, or bulk reset.
+Ordinary deployments do not reset counters. Plan deployment transitions to prevent incompatible
+configurations from serving traffic concurrently, and verify these semantics in the selected
+package version before implementation.
+
+**Algorithm decision: Sliding Window Counter.** Use the selected Redis adapter's
+ready-made algorithm, not a custom counter implementation. Accept weighted approximate counts
+across adjacent windows; do not use per-request Sliding Window Log storage. This choice balances
+boundary-burst protection and bounded per-tracker storage; no project benchmark has been run.
+The chosen published version must include the storage adapter's millisecond-TTL correction
+referenced in its v2.0.1 release notes. This is an adapter release, not this application's version.
+Verify actual package versions and compatibility before implementation.
+
+**Package decision: `@nestjs/throttler` with `@nestjs-redis/throttler-storage`.**
+The former is the official NestJS package; the latter is the CSenshi/nestjs-redis community adapter,
+explicitly selected despite the general preference for official packages. Exact versions remain open; verify published-version support and compatibility before implementation.
+Use its ready-made counter algorithm rather than implementing one from scratch.
+
+The selected adapter requires the `redis` (node-redis) client. Integrate that client for rate
+limiting without treating this decision as a migration of existing cache/session `ioredis` clients.
+**Connection ownership decision: our own factory/provider, without changing packages.**
+Do not use `@nestjs-redis/client`. Create a separate node-redis factory analogous to the existing
+ioredis `createRedisClient`; do not pass the ioredis client directly to the selected storage.
+The rate-limit concern owns the connection through a provider/DI token and manages shutdown.
+The factory integrates central configuration and connection lost/restored logging; pass its
+node-redis instance to the storage adapter. Preserve the selected offline-queue, bounded-wait,
+and uncertain-mutation replay rules. The exact function name and placement follow implementation
+design; no code or dependencies have been added by this decision.
+Project integration must cover explicit policy validation, pre/post-authentication guard stages,
+tracker/key derivation, required-field errors, outage 503, standard Retry-After, and the project's
+error/metrics contracts. Technical rate-limit events do not produce audit records (§9).
+
+Document the selected algorithm's window start and verify its fixed block-expiry behavior
+before implementation. Selected initial policy values and window configurations are in §4.
+
+**Outage behavior — reject when rate-limit storage is unavailable.** This applies to every
+policy, including general-traffic policies: do not proceed without the required counter check. There is no
+fail-open path or in-process memory fallback. Rate-limited endpoints therefore depend on Redis
+availability; liveness/readiness probes remain exempt (§4).
+
+Translate recognized Redis availability failures, including the explicit memory-capacity rejection
+above, to `DependencyUnavailableException` (**503**).
+Reserve **429** for an established limit violation (§9); an unavailable counter does not establish
+one and must not create a block audit record. Authentication, configuration, other command, programming,
+and unknown failures must not be flattened into dependency unavailability; propagate them according
+to the project's exception rules.
 
 ---
 
-## 8. The request flow, step by step
+## 8. Request flow — two-stage rate limiting
 
-```
-1. Request arrives
-   └─ Fastify onRequest hook: audit context opens (sourceIp, userAgent, method, route)
-      · sourceIp is the address resolved according to TRUST_PROXY  → §2
+1. Fastify's `onRequest` hook opens the audit context with transport facts before guards;
+   `sourceIp` follows `TRUST_PROXY` (§2).
+2. The pre-authentication rate-limit stage applies the policy's IP/target-account limiters.
+3. `AuthenticationGuard` verifies credentials and session state before publishing a principal or
+   audit actor; `@Public()` skips authentication and supplies no principal.
+4. The post-authentication rate-limit stage applies the policy's user limiters using the verified
+   principal. Public endpoints have no user stage.
+5. `AuthorizationGuard` checks permissions; pipes and the handler follow.
 
-2. Rate-limit guard runs (BEFORE AuthenticationGuard)
-   ├─ a) Policy resolved: the endpoint's decorator → DEFAULT when absent
-   ├─ b) Tracker resolved: user:<sub> when the token signature verifies, else ip:<addr>  → §3
-   ├─ c) For each of the policy's limiters, the counter is incremented and checked  → §5
-   └─ d) Outcome:
-        ├─ All within limits → continue
-        └─ Any exceeded     → 429 + Retry-After            → §9
+Each rate-limit stage uses the endpoint's explicitly declared policy and checks its applicable
+limiters (§5): within limits → continue; exceeded → **429 + Retry-After** (§9);
+storage unavailable → **503** (§7). A rejection stops subsequent stages.
 
-3. AuthenticationGuard runs
-   └─ token is VERIFIED → actor is published into the audit context
+**Multiple-limiter decision: sequential checks, stopping at the first rejection or error.** Within the pre-authentication stage use `ip-short` → `ip-long` →
+`target-account-short` → `target-account-long`; after authentication use `principal-short`
+→ `principal-long`. Run only the limiters present in the selected policy. Do not evaluate
+remaining limiters after rejection. Earlier counter mutations remain; do not add cross-counter
+transactions or rollback. Existing timeout and dependency-failure rules still apply.
 
-4. AuthorizationGuard → permission check
-5. Pipes / handler
-```
-
-The rationale for the ordering: **the cheapest rejection goes first.** A rate-limit decision is a
-counter increment; session validation is a Redis read. Putting the expensive one first makes us pay
-the attacker's bill.
+For public login, the IP/target-account limits precede password verification in the handler.
+The selected policy-to-stage/tracker mappings are recorded in the API inventory (§4).
 
 ---
 
@@ -244,92 +670,127 @@ the attacker's bill.
   client cannot know when to retry and usually retries immediately — the block then fails to reduce
   the load it exists to reduce.
 - The body follows the project's standard error shape (`ErrorDefaultDto`).
-- **Which limiter fired must not be disclosed.** Saying "the per-account limit was exceeded"
-  confirms the account exists (user enumeration).
+- `Retry-After` reports the first rejecting limiter's remaining block time in seconds, without
+  exposing its name. It is not the maximum wait across all limiters or a promise of admission
+  after that time; a later check may still reject the request.
+- **Which limiter fired must not be disclosed.** Keep one client-facing rejection contract
+  without revealing the tracker axis, account input, counter key, or limiter name. A target-account
+  limit does not establish account existence; valid unknown emails receive the same limiting.
 
-**What gets recorded — one record per block, not per request.** A block is **a single decision**
-that rejects thousands of requests. A 60-second block under 100 requests per second produces six
-thousand audit records. The audit store is exempt from the log level, retained by policy, and will
-one day become a table — so a per-request record is a **write-amplification** lever any anonymous
-caller can pull.
+**Recording decision: metrics, without technical rate-limit audit.** Track rejected
+requests by policy and Redis availability/capacity failures through metrics and alerts. Do not
+promise a distinct block-start count from the standard storage result. Do not add block IDs,
+audit deduplication, or durable event delivery for limiter decisions. Neither the limiter nor the
+global exception filter writes audit records for 429 responses.
 
-The record is therefore written **on the first request that exceeds the limit**, and **only by the
-rate-limit component itself**: that is the one place that can distinguish the request that _caused_
-the block from the ones merely caught behind it. Having the global exception filter record the 429
-is wrong — the filter sees every rejection, not just the first.
-
-The record must also receive **no extra identity fields**: address, user agent, method and route
-already come from the ambient context. A rate-limit rejection establishes nothing beyond that.
-
-**Metrics are a separate job.** "How many blocks, on which policy" is a question for metrics, not
-audit; alerting is built there.
+Existing login, authorization, and business-workflow audit rules remain unchanged. A request
+rejected before the login handler runs is not a failed-password event. Authentication alone
+publishes verified identity into the ambient audit context; limiter trackers never become actors.
 
 ---
 
 ## 10. Account-level defense — where the throttle layer ends
 
-Rate limiting measures **speed**. Part of the authentication attack surface is not fast.
+**Scope decision: rate limiting only in this work.** Implement the selected
+IP, target-account, and verified-principal budgets according to the policy inventory. The
+account tracker counts requests independently of whether password verification would succeed.
 
-Distributed credential stuffing is the canonical example: a 1000-IP botnet making 10 attempts per
-minute per IP trips no IP limit — yet 10,000 attempts per minute are being made. The **account
-axis** (§3) catches part of this; the rest is not the throttle layer's job:
-
-| Layer        | Responsibility                                                                                                                                                              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Throttle** | Speed. One limiter on the `account:<hash(email)>` axis.                                                                                                                     |
-| **Domain**   | Failed-attempt counter, progressive delay, risk signals (unseen IP/device), CAPTCHA threshold when needed. This is a **business rule** and lives inside the login use case. |
-
-> **Trap:** plain account lockout hands the attacker a DoS tool — anyone can lock any account by
-> sending wrong passwords to its email. Progressive delay + risk signals are the safer shape. This
-> is work that requires design; it is not a quick add-on.
+Do not add failed-password counters, progressive delays, device/IP risk scoring, CAPTCHA, or
+hard account lockout in this work. Preserve existing login behavior and workflow audit rules.
+Additional login defenses require a separate security design; rate limiting does not cover every
+credential-stuffing scenario. Account-based request limiting remains in scope.
 
 ---
 
 ## 11. Observability
 
+**Deferred final work item: implement Redis observability for cache, session, and rate limiting
+together.** This records the plan only; no monitoring infrastructure is added now. Preserve
+existing connection logs, health checks, and failure behavior. Production uses ElastiCache or
+a comparable managed service (§7), so map provider metrics into the existing Grafana Cloud
+alerting approach; do not assume access to production container metrics.
+
+Use early capacity warnings plus critical failure alerts. Initial thresholds, to validate against
+the selected provider's capacity definitions and observed traffic:
+
+| Signal                                           | Warning                 | Critical               |
+| ------------------------------------------------ | ----------------------- | ---------------------- |
+| Session/rate-limit Redis capacity usage          | Above 75% for 5 minutes | Above 90% for 1 minute |
+| Memory usage of all three local Redis containers | Above 80% for 5 minutes | Above 90% for 1 minute |
+| Writes rejected due to memory exhaustion         | —                       | On first detection     |
+| Redis unavailable or monitoring data missing     | —                       | After 1 minute         |
+| Persistence failure where persistence is enabled | —                       | On first detection     |
+
+Local container thresholds are not production managed-service thresholds. Select corresponding
+provider memory/capacity, availability, persistence, and failover signals during the final work
+item. Cache maxmemory saturation or normal eviction alone does not trigger an alert; monitor
+cache hit ratio and eviction rate and derive their thresholds from actual traffic.
+
 The project's general rules apply here unchanged; the rate-limiting-specific distinctions are:
 
-| Signal      | For                                                    | Rule                                                                                                                          |
-| ----------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| **Audit**   | Evidence: who was blocked, when, from where            | **One** record per block (§9). At block start, written by the rate-limit component itself.                                    |
-| **Metrics** | Alerting and trends: block count, per-policy breakdown | This is what alarms are built on — not audit.                                                                                 |
-| **Logs**    | Diagnosis                                              | **No** log per rejected request. For outages and the like, one record at the connection level, gated on the state transition. |
+| Signal      | For                                                              | Rule                                                                                                                          |
+| ----------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Audit**   | Existing business/security evidence                              | No technical rate-limit audit (§9); existing workflow audit rules remain unchanged.                                           |
+| **Metrics** | Alerting and trends: rejected requests by policy, Redis failures | No distinct block-start count is promised; avoid tracker/IP/account metric labels.                                            |
+| **Logs**    | Diagnosis                                                        | **No** log per rejected request. For outages and the like, one record at the connection level, gated on the state transition. |
 
 ---
 
-## 12. Implementation order
+## 12. Verification and deployment details remaining
 
-Each step assumes the previous one; the order must not be skipped.
+The main architecture choices, policy identifiers, endpoint groups, and initial numeric values
+are selected. This section records outstanding evidence and deployment choices, not a phased
+implementation plan.
 
-| #   | Step                                                                                                                            | Why here                                                                                                                                                                                                                   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0   | **Verify the BFF forwards `X-Forwarded-For`; pin down per-environment `TRUST_PROXY` CIDRs**                                     | Comes before any code. If this is wrong, nothing above it means anything (§2). Deployment work, not code.                                                                                                                  |
-| 1   | **Skeleton:** the rate-limit concern, port + adapter + global guard, the policy decorator, an empty catalog                     | The structure everything else rides on.                                                                                                                                                                                    |
-| 2   | **The `DEFAULT` policy**, single window, IP axis, a **separate key space** in Redis (§7)                                        | The simplest vertical slice; this is where we see it working end to end.                                                                                                                                                   |
-| 3   | **The Swagger decorator for 429** (something like `ApiDefaultTooManyRequestsResponse`) + `Retry-After`                          | Must be written **at the same time** as the first 429-producing endpoint. The decorator was removed together with the old implementation to leave no dead code. An undocumented error state does not exist for the client. |
-| 4   | **The dual window** (burst + sustained) and the **sensitive policies**: `AUTH`, `ADMIN_AUTH`, `REGISTRATION`, `SENSITIVE_WRITE` | With the mechanism standing, this is pure catalog extension.                                                                                                                                                               |
-| 5   | **The identity axis** (`user:<sub>`) + implementing the guard-ordering decision (§3)                                            | Up to this point every limit is on the IP axis; this step brings the real quality.                                                                                                                                         |
-| 6   | **Outage degradation for the sensitive policies** (fall back to the memory counter, §7)                                         | Meaningful only once the fail-open behavior is settled.                                                                                                                                                                    |
-| 7   | **The account axis** (`account:<hash(email)>`) + the domain-layer progressive delay (§10)                                       | Requires design; deliberately last.                                                                                                                                                                                        |
-| 8   | **E2E verification:** the audit context reaches the handler, `Retry-After` is returned, exactly one record per block            | Pins the behavior down.                                                                                                                                                                                                    |
+- **Package compatibility:** select exact published versions compatible with the repository's
+  NestJS, Node.js, and module/build configuration. Verify ready-made Sliding Window Counter,
+  millisecond TTL handling, window alignment, fixed block expiry, and policy-change behavior.
+- **Storage integration:** verify logical versus physical key layout, atomic counter operations,
+  Lua/hash-slot constraints if clustering is selected, and explicit limiter execution order.
+  Verify offline-queue disabling, bounded stage deadlines, and no uncertain-mutation replay.
+- **Managed production service:** select ElastiCache or a comparable provider and service mode;
+  validate client topology, available configuration, isolation, persistence/recovery, failover,
+  and capacity against §7. Do not infer production guarantees from local AOF/container settings.
+  Session recovery security remains distinct from accepted rate-limit counter loss.
+- **Ingress:** establish actual web/mobile paths, trusted IPs/CIDRs, and forwarding-header cleanup
+  points per environment; verify Fastify resolves the end-client address correctly.
+- **Implementation details:** finalize factory/provider placement, policy TypeScript file location,
+  tracker encoding, connection env names, and integration with standard error/Swagger contracts.
+  These details must preserve the selected boundaries and behaviors.
+- **Final deferred work:** implement observability for all three Redis services together (§11),
+  map managed-service metrics into Grafana Cloud, and validate initial alert thresholds.
+
+The later implementation plan must use this document as its input. No implementation tasks,
+dependencies, or monitoring infrastructure are created by this consolidation.
 
 ---
 
-## 13. Traps that must not be repeated in the rebuild
+## 13. Integration constraints
 
-Mistakes whose price was paid in the previous implementation:
+- Application duration values use seconds; convert to library units at the boundary. Keep config
+  field names, environment documentation, and actual conversions consistent.
+- Use the trusted `request.ip`; never let arbitrary client headers select a bucket or audit IP.
+- Endpoint metadata carries a policy name, not a boolean flag or inline numeric limits.
+- If framework guards are extended, inspect the selected version's DI metadata and defaults;
+  preserve required injections and override any defaults conflicting with this design, including
+  key scope, IP normalization, headers, and limiter ordering.
+- Technical limiter rejection produces no audit record. Preserve existing business/auth audit.
+- Liveness/readiness are explicitly exempt; protected detailed health uses `default`. Do not let
+  dependency failure turn a liveness probe into a request to restart an otherwise healthy process.
 
-- **Duration units.** Whatever unit the library expects, the JSDoc and the `.env` comment must state
-  **the same unit**. A millisecond value mistaken for seconds disables rate limiting **without an
-  error**. Every default that fails silently in the wrong direction must be written down like this.
-- **Trusting `X-Forwarded-For`.** A "trust every hop" setting lets the caller choose its own IP —
-  i.e., choose its own rate-limit bucket. The same value also feeds `sourceIp` in the audit record.
-- **A boolean decorator.** A decorator carrying an "is it critical?" flag collapses the moment a
-  second policy is needed. It must carry a **policy name** from the start.
-- **Extending a framework guard.** Extending a framework class and adding `@Inject` on the subclass
-  **shadows** (does not extend) the base class's dependency metadata — the base class's injects must
-  be re-declared too, or the application dies at boot.
-- **Recording the rejection at every layer.** The one place that writes the record is the place that
-  _establishes_ the fact. The filter sees every 429; it cannot tell the first one apart.
-- **Health endpoints.** Liveness/readiness probes must not be rate-limited — if a load balancer's
-  health check receives a 429, the instance is declared unhealthy and the outage amplifies itself.
+---
+
+## 14. Sources
+
+These sources describe framework/library capabilities and operational behavior. The policy
+choices and numeric values above are project decisions, not thresholds prescribed by the sources.
+Published-version and managed-service validation remains required as stated in §12.
+
+- [NestJS rate limiting](https://docs.nestjs.com/security/rate-limiting)
+- [NestJS guards and execution order](https://docs.nestjs.com/guards)
+- [Official NestJS throttler package](https://github.com/nestjs/throttler)
+- [Selected community Redis storage adapter](https://github.com/CSenshi/nestjs-redis/tree/main/packages/throttler-storage)
+- [Redis Lua execution](https://redis.io/docs/latest/develop/programmability/eval-intro/)
+- [Redis eviction and memory accounting](https://redis.io/docs/latest/develop/reference/eviction/)
+- [Redis persistence](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/)
+- [Redis replication and failover limitations](https://redis.io/docs/latest/operate/oss_and_stack/management/replication/)
