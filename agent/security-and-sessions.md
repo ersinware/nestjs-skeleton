@@ -82,4 +82,4 @@
 
 ### Rate Limiting
 
-Unimplemented. Before changes, review `docs/issue/rate-limiting.md`; its proposals are not final. No isolated limiters, dependencies, or environment settings.
+Unimplemented. Follow the agreed target design and compatibility requirements in `docs/issue/rate-limiting.md`. No isolated limiters, dependencies, or environment settings.

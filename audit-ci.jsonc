@@ -2,27 +2,5 @@
     "high": true,
     "show-found": true,
     "show-not-found": true,
-    "allowlist": [
-        {
-            "GHSA-vfj7-8cjw-p6xm|@stoplight/spectral-cli>fast-glob>micromatch>braces": {
-                "active": true,
-                "notes": "No patched braces release. Accept nested-pattern stack exhaustion temporarily in development-only Spectral; remove when patched.",
-                "expiry": "2026-11-05T00:00:00+03:00"
-            }
-        },
-        {
-            "GHSA-vfj7-8cjw-p6xm|eslint-plugin-boundaries>@boundaries/elements>micromatch>braces": {
-                "active": true,
-                "notes": "No patched braces release. Accept nested-pattern stack exhaustion temporarily in development-only ESLint boundaries; remove when patched.",
-                "expiry": "2026-11-05T00:00:00+03:00"
-            }
-        },
-        {
-            "GHSA-vfj7-8cjw-p6xm|micromatch>braces>": {
-                "active": true,
-                "notes": "audit-ci emits this additional path for deduplicated micromatch shared by the development-only Spectral and ESLint dependencies; no patched braces release.",
-                "expiry": "2026-11-05T00:00:00+03:00"
-            }
-        }
-    ]
+    "allowlist": []
 }
