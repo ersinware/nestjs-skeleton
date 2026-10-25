@@ -10,11 +10,13 @@
 
 - Use multiline JSDoc (`/**`, ` * ...`, ` */` on separate lines); separate the summary from tags with an empty ` *` line.
 - Files start with matching `@file` + `@description`; classes/interfaces/methods/functions and variables or fields declared outside function/method bodies require purpose/rationale JSDoc.
-- Every property in an interface or type, including nested objects and union variants, requires JSDoc.
+- Every property in an interface or type, including nested objects and union variants, requires JSDoc, except inline parameter types and temporary inline types in function bodies (casts, type arguments, local annotations).
+- Document inline object parameter fields with `@param name.field`, omitting the parent `@param name`; use a descriptive object name for destructured parameters. Do not put field JSDoc inside these inline types; named contract declarations retain property documentation.
+- Do not add JSDoc to inline callbacks; document named functions, methods and constructors instead. Keep necessary callback rationale in ordinary comments.
 - Comments explain current rationale briefly; no filler/history/code narration.
 - DI token JSDoc links to its represented contract, behavior, or client with `{@link ...}`.
 - Document contract failures with `@throws {ExceptionType}` at their declaration (interface methods, facades, etc.), not again in implementations: taxonomy, health/cleaner failures and caller-caught library errors, including propagation and async rejection. Omit universal unexpected-error tags.
-- Require `@param` for each parameter without TS types, and `@returns` except for `void` / `Promise<void>` (omit it). Describe return meaning, including decorator factories, not raw types.
+- Require `@param` for each parameter without TS types (object fields follow the rule above), and `@returns` except for `void` / `Promise<void>` (omit it). Describe return meaning, including decorator factories, not raw types.
 
 ### Types, Signatures & Variables
 

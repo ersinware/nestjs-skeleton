@@ -12,7 +12,8 @@ import { ResponsePaginationDto } from 'src/core/http';
  * Builds a named ResponsePaginationDto subclass per model so Swagger and Scalar resolve
  * item schemas and examples instead of showing an untyped list.
  *
- * @param options The response description and the item DTO model.
+ * @param options.message Description of the successful paginated response.
+ * @param options.model DTO constructor used for item schemas and examples.
  * @returns A decorator applying the paginated response metadata to a controller or method.
  */
 export function ApiDefaultOkResponsePaginated<T extends Type<unknown>>(options: {

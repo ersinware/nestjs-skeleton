@@ -13,7 +13,9 @@ import { IsNotEmpty, IsUUID, ValidateIf } from 'class-validator';
  * Optionality and nullability are declared here so validation and OpenAPI agree.
  *
  * @param descriptionPrefix Field label used in validation messages and the Swagger description
- * @param options UUID version, optionality, and nullability of the field
+ * @param options.version Accepted UUID version; defaults to version 7.
+ * @param options.optional Whether the field may be omitted.
+ * @param options.nullable Whether the field may explicitly contain null.
  * @returns A decorator validating and documenting a UUID identifier
  */
 export function isUUID(

@@ -1,14 +1,14 @@
 /**
- * @file ip-tracker.resolver.spec.ts
+ * @file ip-tracker-resolver.adapter.spec.ts
  * @description Canonical full-address tracking without trusting forwarded headers directly.
  */
 
 import type { FastifyRequest } from 'fastify';
-import { IpTrackerResolver } from 'src/core/security/rate-limiting/ip-tracker.resolver';
+import { IpTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/ip-tracker-resolver.adapter';
 import { describe, expect, it } from 'vitest';
 
-describe('IpTrackerResolver', () => {
-    const resolver = new IpTrackerResolver();
+describe('IpTrackerResolverAdapter', () => {
+    const resolver = new IpTrackerResolverAdapter();
 
     it.each([
         ['192.0.2.1', '192.0.2.1'],

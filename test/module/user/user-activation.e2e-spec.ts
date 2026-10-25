@@ -27,6 +27,7 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
+import { ResendUserActivationCommand } from 'src/module/user/application/command/resend-user-activation/command';
 import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
 import { UserAvatarFinalizeQueue } from 'src/module/user/application/queue/user-avatar-finalize.queue';
 import { UserAvatarReplaceQueue } from 'src/module/user/application/queue/user-avatar-replace.queue';
@@ -511,6 +512,50 @@ describe('User registration and activation', () => {
         ).toHaveLength(0);
     });
 
+    it('counts successful login responses and prevents later credential and audit effects after exhaustion', async () => {
+        const row = await register();
+        const hashing = vi.spyOn(hashingPort, 'verify');
+        for (let i = 0; i < 5; i++) {
+            const response = await app.inject({
+                method: 'POST',
+                url: '/api/v1/auth/user/login',
+                remoteAddress: `192.0.2.${i + 1}`,
+                payload: { email: row.email, password },
+            });
+            expect(response.statusCode).toBe(200);
+            expect(data(response)).toEqual({ session: 'activation_required' });
+        }
+        const before = await actions(row.id);
+        const blocked = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/user/login',
+            remoteAddress: '198.51.100.1',
+            payload: { email: row.email, password },
+        });
+        expect(blocked.statusCode).toBe(429);
+        expect(hashing).toHaveBeenCalledTimes(5);
+        expect(await actions(row.id)).toEqual(before);
+    });
+
+    it('limits pending-account resend without additional proof, job or audit mutations', async () => {
+        const row = await register();
+        const request = () =>
+            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } });
+        expect((await request()).statusCode).toBe(204);
+        const [before] = await database.select().from(user).where(eq(user.id, row.id));
+        const beforeJobs = await jobs(row.id);
+        const beforeAudit = await actions(row.id);
+        expect(beforeJobs).toHaveLength(2);
+        expect(
+            beforeAudit.filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATION_REQUESTED)),
+        ).toHaveLength(1);
+        expect((await request()).statusCode).toBe(429);
+        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]).toEqual(before);
+        expect((await jobs(row.id)).map((job) => job.id).sort()).toEqual(beforeJobs.map((job) => job.id).sort());
+        expect(await actions(row.id)).toEqual(beforeAudit);
+        expect(sendEmail).not.toHaveBeenCalled();
+    });
+
     it('replaces valid and expired proofs, invalidating prior links and deliveries', async () => {
         const row = await register();
         const oldToken = await proof(row);
@@ -546,7 +591,8 @@ describe('User registration and activation', () => {
             .update(user)
             .set({ activationExpiresAt: new Date(Date.now() - 1_000) })
             .where(eq(user.id, row.id));
-        expect((await resend()).statusCode).toBe(204);
+        // Exercise proof renewal independently of the HTTP resend cooldown already consumed above.
+        await app.get(CommandPipeline).execute(new ResendUserActivationCommand(row.email));
         const [renewed] = await database.select().from(user).where(eq(user.id, row.id));
         expect(renewed!.activationId).not.toBe(replaced!.activationId);
         expect(renewed!.activationExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 60 * 60 * 1000 - 5_000);
@@ -588,12 +634,15 @@ describe('User registration and activation', () => {
             await bothLoaded;
             return aggregate;
         });
-        const payload = { email: row.email };
-        const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload }),
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload }),
+        // Race authoritative writes through the production pipeline; HTTP admission permits only one resend.
+        const results = await Promise.allSettled([
+            app.get(CommandPipeline).execute(new ResendUserActivationCommand(row.email)),
+            app.get(CommandPipeline).execute(new ResendUserActivationCommand(row.email)),
         ]);
-        expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
+        expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+        expect(results.find((result) => result.status === 'rejected')).toMatchObject({
+            reason: { kind: ExceptionKind.RESOURCE_CONFLICT },
+        });
         expect(await jobs(row.id)).toHaveLength(2);
         expect(
             (await actions(row.id)).filter(

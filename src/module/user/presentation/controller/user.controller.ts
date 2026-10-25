@@ -641,7 +641,7 @@ export class UserController {
      */
     @Public()
     @Post('activation/resend')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.USER_ACTIVATION_RESEND)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Resend user activation email',

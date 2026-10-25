@@ -14,14 +14,14 @@ import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 @Controller('rate-limit-test')
 export class RateLimitingTestController {
     /**
-     * Number of admitted public handler executions.
+     * Number of admitted fixture handler executions.
      */
     calls = 0;
 
     /**
-
      * First endpoint sharing the default budget.
-
+     *
+     * @returns Cumulative number of admitted fixture handler executions.
      */
     @Get('a')
     @Public()
@@ -32,9 +32,9 @@ export class RateLimitingTestController {
     }
 
     /**
-
      * Second endpoint sharing the default budget.
-
+     *
+     * @returns Cumulative number of admitted fixture handler executions.
      */
     @Get('b')
     @Public()
@@ -45,9 +45,9 @@ export class RateLimitingTestController {
     }
 
     /**
-
      * Independent policy for the same caller.
-
+     *
+     * @returns Cumulative number of admitted fixture handler executions.
      */
     @Get('refresh')
     @Public()
@@ -58,9 +58,9 @@ export class RateLimitingTestController {
     }
 
     /**
-
      * Missing credentials must fail after pre-auth consumption.
-
+     *
+     * @returns Cumulative number of admitted fixture handler executions.
      */
     @Get('protected')
     @Authenticated()

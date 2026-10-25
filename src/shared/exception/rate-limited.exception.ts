@@ -26,6 +26,8 @@ export class RateLimitedException extends AppException {
     override readonly kind = ExceptionKind.RATE_LIMITED;
 
     /**
+     * Carries the first blocking counter's retry delay without exposing its identity.
+     *
      * @param retryAfterSeconds Positive whole seconds remaining on the first blocking counter.
      * @param message Client-safe description.
      * @param options Original cause and optional diagnostic metadata.

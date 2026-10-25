@@ -117,9 +117,13 @@ describe('Rate limiting with production wiring and real Redis', () => {
         redis.destroy();
         const response = await app.inject({ url: '/api/v1/rate-limit-test/a' });
         expect(response.statusCode).toBe(503);
-        expect(response.json<{ error: { message: string[] } }>().error.message).toEqual([
-            DependencyUnavailableMessage.DEFAULT,
-        ]);
+        expect(
+            response.json<{
+                error: {
+                    message: string[];
+                };
+            }>().error.message,
+        ).toEqual([DependencyUnavailableMessage.DEFAULT]);
         expect(response.headers['retry-after']).toBeUndefined();
         expect((await app.inject({ url: '/api/health/live' })).statusCode).toBe(204);
         expect((await app.inject({ url: '/api/health/ready' })).statusCode).toBe(204);

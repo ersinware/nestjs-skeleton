@@ -71,7 +71,11 @@ export type CredentialLoginResult =
  * must hold identically for users and admins, and a single body is what guarantees a future fix
  * (e.g. timing hardening) cannot land in one kind and miss the other.
  *
- * @param ports The ports the flow runs on, injected by the calling handler
+ * @param ports.identityReaderPort Loads account credentials for the requested principal kind.
+ * @param ports.hashingPort Verifies passwords and performs equivalent work for rejected identities.
+ * @param ports.tokenPort Issues the authenticated session tokens.
+ * @param ports.sessionPort Registers the session against the current account version.
+ * @param ports.auditPort Persists login outcomes and refusal evidence.
  * @param principalType The kind of principal the credentials authenticate against
  * @param email The email address identifying the account
  * @param password The plain-text password to verify

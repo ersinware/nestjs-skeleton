@@ -13,11 +13,15 @@ import { RateLimitStageRunner } from 'src/core/security/rate-limiting/rate-limit
 @Injectable()
 export class PostAuthRateLimitGuard implements CanActivate {
     /**
+     * Connects post-auth admission to the shared policy runner.
+     *
      * @param runner Shared policy executor.
      */
     constructor(private readonly runner: RateLimitStageRunner) {}
 
     /**
+     * Checks the endpoint counters assigned to the post-auth stage.
+     *
      * @param context Current HTTP execution context.
      * @returns Admission result; failures follow the runner's taxonomy contract.
      * @throws {RateLimitedException} When a configured counter blocks admission.

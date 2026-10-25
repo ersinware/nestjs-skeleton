@@ -6,6 +6,7 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { KEY_DECORATOR_RATE_LIMIT_EXEMPT } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
 import { KEY_DECORATOR_RATE_LIMIT } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
 import type { IRateLimitCounterPort } from 'src/core/security/rate-limiting/port/rate-limit-counter.port';
@@ -18,24 +19,29 @@ import { describe, expect, it, vi } from 'vitest';
 
 /**
  * Builds the executor with observable port boundaries and real policy metadata.
+ *
  * @returns Runner, request context and dependency spies.
  */
 function setup() {
     const handler = () => undefined;
     Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, RateLimitPolicy.DEFAULT, handler);
+    const request = { ip: '192.0.2.1', body: { email: 'user@example.test' } };
     const context = {
         getHandler: () => handler,
-        switchToHttp: () => ({ getRequest: () => ({ ip: '192.0.2.1' }) }),
+        switchToHttp: () => ({ getRequest: () => request }),
     } as unknown as ExecutionContext;
     const resolve = vi.fn(() => '192.0.2.1');
     const consume = vi.fn<IRateLimitCounterPort['consume']>().mockResolvedValue({ allowed: true });
     const runner = new RateLimitStageRunner(
         new Reflector(),
-        { [RateLimitTrackerSource.IP]: { resolve } },
+        {
+            [RateLimitTrackerSource.IP]: { resolve },
+            [RateLimitTrackerSource.TARGET_ACCOUNT]: new TargetAccountTrackerResolverAdapter(),
+        },
         { consume },
         new ConfigService({ SERVICE_NAME: 'api' }),
     );
-    return { runner, context, handler, consume, resolve };
+    return { runner, context, handler, consume, resolve, request };
 }
 
 describe('RateLimitStageRunner', () => {
@@ -97,5 +103,45 @@ describe('RateLimitStageRunner', () => {
         resolve.mockReturnValue('');
         await expect(runner.run(context, RateLimitStage.PRE_AUTH)).rejects.toThrow('invalid tracker');
         expect(consume).not.toHaveBeenCalled();
+    });
+    it.each([RateLimitPolicy.USER_LOGIN, RateLimitPolicy.ADMIN_LOGIN, RateLimitPolicy.USER_ACTIVATION_RESEND])(
+        'executes %s IP counters before both shared account counters',
+        async (policy) => {
+            const { runner, context, handler, consume } = setup();
+            Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, policy, handler);
+            await expect(runner.run(context, RateLimitStage.PRE_AUTH)).resolves.toBe(true);
+            const keys = consume.mock.calls.map(([attempt]) => attempt.key);
+            expect(keys).toHaveLength(4);
+            expect(keys[0]).toBe(`api:rl:${policy}:ip-short:192.0.2.1`);
+            expect(keys[1]).toBe(`api:rl:${policy}:ip-long:192.0.2.1`);
+            expect(keys[2]).toMatch(new RegExp(`^api:rl:${policy}:target-account-short:[a-f0-9]{64}$`));
+            expect(keys[3]).toBe(keys[2]!.replace('target-account-short', 'target-account-long'));
+        },
+    );
+
+    it.each([0, 1, 2, 3])('stops before later resolvers and counters when counter %i refuses', async (index) => {
+        const { runner, context, handler, consume, request } = setup();
+        Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, RateLimitPolicy.USER_LOGIN, handler);
+        if (index < 2) {
+            // Malformed input must not override an earlier IP block.
+            request.body.email = '';
+        }
+        for (let i = 0; i < index; i++) {
+            consume.mockResolvedValueOnce({ allowed: true });
+        }
+        consume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 17 });
+        await expect(runner.run(context, RateLimitStage.PRE_AUTH)).rejects.toMatchObject({
+            kind: 'RATE_LIMITED',
+            retryAfterSeconds: 17,
+        });
+        expect(consume).toHaveBeenCalledTimes(index + 1);
+    });
+
+    it('consumes only IP counters when the account field is invalid', async () => {
+        const { runner, context, handler, consume, request } = setup();
+        Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, RateLimitPolicy.USER_LOGIN, handler);
+        request.body.email = '';
+        await expect(runner.run(context, RateLimitStage.PRE_AUTH)).rejects.toMatchObject({ kind: 'INVALID_INPUT' });
+        expect(consume.mock.calls.map(([attempt]) => attempt.limiterName)).toEqual(['ip-short', 'ip-long']);
     });
 });

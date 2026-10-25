@@ -19,7 +19,7 @@ const NAME_MIN_LENGTH = 2,
  * Single source of the person-name field contract: enforces length bounds, an initial letter,
  * and Unicode letters/marks with spaces, periods, apostrophes, and hyphens.
  *
- * @param options Disable normalization on response DTOs to preserve stored values.
+ * @param options.normalize Whether to normalize input; disable to preserve stored response values.
  * @returns A decorator that normalizes, validates and documents a person-name property.
  */
 export function IsPersonName(options: { readonly normalize?: boolean } = {}): PropertyDecorator {

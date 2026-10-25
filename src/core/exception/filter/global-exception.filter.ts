@@ -100,13 +100,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
      * containing "health" can never bypass normalization.
      *
      * @param exception The caught value, of any type.
-     * @param request The incoming request, read for its URL only.
+     * @param request.url Request URL used to identify exact health-probe paths.
      * @returns The passthrough reply (its body, if any), or null when this is not a health-probe 503.
      */
     private resolveHealthProbePassthrough(
         exception: unknown,
-        request: { readonly url?: string },
-    ): { readonly body?: unknown } | null {
+        request: {
+            readonly url?: string;
+        },
+    ): {
+        readonly body?: unknown;
+    } | null {
         if (!(exception instanceof HttpException)) {
             return null;
         }

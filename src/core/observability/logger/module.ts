@@ -35,9 +35,8 @@ const ENVIRONMENT_TO_LEVEL = {
                     pinoHttp: {
                         level: ENVIRONMENT_TO_LEVEL[config.getOrThrow<Environment>(ENV.NODE_ENV)],
                         serializers: {
-                            // Whitelist, not denylist: a new header stays private until named here.
-                            // The body is never logged (credentials, tokens, PII) and the URL drops
-                            // its query string for the same reason — a query can carry a token.
+                            // Whitelists request fields; headers stay private unless selected explicitly.
+                            // Omits bodies and query strings because they can contain credentials or tokens.
                             req: (req: IncomingMessage & { readonly id: unknown; readonly remoteAddress: string }) => ({
                                 id: req.id,
                                 method: req.method,
@@ -45,8 +44,7 @@ const ENVIRONMENT_TO_LEVEL = {
                                 remoteAddress: req.remoteAddress,
                                 userAgent: req.headers['user-agent'],
                             }),
-                            // Response headers are dropped wholesale: Set-Cookie and any future
-                            // token-bearing header would land there by default.
+                            // Serializes only the status, excluding Set-Cookie and other token-bearing headers.
                             res: (res: { readonly statusCode: number }) => ({ statusCode: res.statusCode }),
                             error: serializeError,
                         },

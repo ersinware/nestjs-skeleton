@@ -16,7 +16,14 @@ import { toError } from 'src/shared/exception';
  * The dispatched message's role, carried as a span attribute so a query and a command never merge.
  */
 enum MessageKind {
+    /**
+     * Identifies dispatched commands in span attributes.
+     */
     COMMAND = 'command',
+
+    /**
+     * Identifies dispatched queries in span attributes.
+     */
     QUERY = 'query',
 }
 
@@ -27,6 +34,9 @@ enum MessageKind {
  */
 @Injectable()
 export class TracingBehavior implements ICommandBehavior, IQueryBehavior {
+    /**
+     * Creates use-case spans under the CQRS instrumentation scope.
+     */
     private readonly tracer = trace.getTracer('cqrs');
 
     /**
