@@ -6,6 +6,7 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { PrincipalTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/principal-tracker-resolver.adapter';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { KEY_DECORATOR_RATE_LIMIT_EXEMPT } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
 import { KEY_DECORATOR_RATE_LIMIT } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
@@ -37,6 +38,7 @@ function setup() {
         {
             [RateLimitTrackerSource.IP]: { resolve },
             [RateLimitTrackerSource.TARGET_ACCOUNT]: new TargetAccountTrackerResolverAdapter(),
+            [RateLimitTrackerSource.PRINCIPAL]: new PrincipalTrackerResolverAdapter(),
         },
         { consume },
         new ConfigService({ SERVICE_NAME: 'api' }),
@@ -143,5 +145,45 @@ describe('RateLimitStageRunner', () => {
         request.body.email = '';
         await expect(runner.run(context, RateLimitStage.PRE_AUTH)).rejects.toMatchObject({ kind: 'INVALID_INPUT' });
         expect(consume.mock.calls.map(([attempt]) => attempt.limiterName)).toEqual(['ip-short', 'ip-long']);
+    });
+    it.each([
+        RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE,
+        RateLimitPolicy.ADMIN_INVITATION,
+        RateLimitPolicy.AVATAR_UPLOAD_INITIATE,
+    ])('runs only post-auth principal counters for %s', async (policy) => {
+        const { runner, context, handler, consume, request, resolve } = setup();
+        Object.assign(request, { accessTokenPayload: { sub: 'verified-caller' } });
+        Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, policy, handler);
+        await expect(runner.run(context, RateLimitStage.PRE_AUTH)).resolves.toBe(true);
+        expect(consume).not.toHaveBeenCalled();
+        await expect(runner.run(context, RateLimitStage.POST_AUTH)).resolves.toBe(true);
+        expect(consume.mock.calls.map(([attempt]) => attempt.key)).toEqual([
+            `api:rl:${policy}:principal-short:verified-caller`,
+            `api:rl:${policy}:principal-long:verified-caller`,
+        ]);
+        expect(resolve).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 1])('stops at principal counter %i without undoing earlier consumption', async (index) => {
+        const { runner, context, handler, consume, request } = setup();
+        Object.assign(request, { accessTokenPayload: { sub: 'verified-caller' } });
+        Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, RateLimitPolicy.ADMIN_INVITATION, handler);
+        for (let i = 0; i < index; i++) {
+            consume.mockResolvedValueOnce({ allowed: true });
+        }
+        consume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 23 });
+        await expect(runner.run(context, RateLimitStage.POST_AUTH)).rejects.toMatchObject({
+            kind: 'RATE_LIMITED',
+            retryAfterSeconds: 23,
+        });
+        expect(consume).toHaveBeenCalledTimes(index + 1);
+    });
+
+    it('rejects missing verified principal without IP fallback or counter consumption', async () => {
+        const { runner, context, handler, consume, resolve } = setup();
+        Reflect.defineMetadata(KEY_DECORATOR_RATE_LIMIT, RateLimitPolicy.ADMIN_INVITATION, handler);
+        await expect(runner.run(context, RateLimitStage.POST_AUTH)).rejects.toMatchObject({ kind: 'SYSTEM' });
+        expect(consume).not.toHaveBeenCalled();
+        expect(resolve).not.toHaveBeenCalled();
     });
 });

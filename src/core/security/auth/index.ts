@@ -3,6 +3,7 @@
  * @description Public entry point of the auth concern. Nothing outside may import past this barrel.
  */
 
+export { isPublicAuthPolicy } from 'src/core/security/auth/auth-policy';
 export type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 export { Authenticated } from 'src/core/security/auth/decorator/authenticated.decorator';
 export { CurrentPrincipal } from 'src/core/security/auth/decorator/current-principal.decorator';

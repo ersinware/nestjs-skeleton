@@ -16,4 +16,9 @@ export enum RateLimitTrackerSource {
      * Normalized email supplied in a configured body field, independent of account existence.
      */
     TARGET_ACCOUNT = 'target-account',
+
+    /**
+     * Verified caller ID published after authentication and session admission.
+     */
+    PRINCIPAL = 'principal',
 }

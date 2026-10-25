@@ -36,6 +36,21 @@ export enum RateLimitPolicy {
     USER_ACTIVATION_RESEND = 'user-activation-resend',
 
     /**
+     * Shared password verification budget for password changes and email-change initiation.
+     */
+    PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE = 'password-change-email-change-initiate',
+
+    /**
+     * Shared invitation and re-invitation budget for the calling administrator.
+     */
+    ADMIN_INVITATION = 'admin-invitation',
+
+    /**
+     * Avatar upload preparation budget for the verified caller.
+     */
+    AVATAR_UPLOAD_INITIATE = 'avatar-upload-initiate',
+
+    /**
      * Shared registration and activation workflow budget.
      */
     USER_REGISTRATION_ADMIN_USER_ACTIVATION = 'user-registration-admin-user-activation',
@@ -64,6 +79,16 @@ export enum RateLimiterName {
      * Long target-account window shared across source IPs.
      */
     TARGET_ACCOUNT_LONG = 'target-account-long',
+
+    /**
+     * Short verified-principal window shared across source IPs.
+     */
+    PRINCIPAL_SHORT = 'principal-short',
+
+    /**
+     * Long verified-principal window shared across source IPs.
+     */
+    PRINCIPAL_LONG = 'principal-long',
 }
 
 /**
@@ -131,6 +156,22 @@ export type RateLimiterDefinition = {
            * Body property containing the target account email.
            */
           readonly field: RateLimitTrackerField;
+      }
+    | {
+          /**
+           * Session-checked caller identity published by authentication.
+           */
+          readonly source: RateLimitTrackerSource.PRINCIPAL;
+
+          /**
+           * Principal limits require successful authentication.
+           */
+          readonly stage: RateLimitStage.POST_AUTH;
+
+          /**
+           * Principal trackers do not read a body field.
+           */
+          readonly field?: never;
       }
 );
 
@@ -296,6 +337,60 @@ export const RATE_LIMIT_POLICIES = {
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 100,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
+        },
+    ],
+    [RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE]: [
+        {
+            name: RateLimiterName.PRINCIPAL_SHORT,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 5,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
+        },
+        {
+            name: RateLimiterName.PRINCIPAL_LONG,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 10,
+            windowSeconds: 900,
+            blockDurationSeconds: 300,
+        },
+    ],
+    [RateLimitPolicy.ADMIN_INVITATION]: [
+        {
+            name: RateLimiterName.PRINCIPAL_SHORT,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 3,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
+        },
+        {
+            name: RateLimiterName.PRINCIPAL_LONG,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 10,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
+        },
+    ],
+    [RateLimitPolicy.AVATAR_UPLOAD_INITIATE]: [
+        {
+            name: RateLimiterName.PRINCIPAL_SHORT,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 3,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
+        },
+        {
+            name: RateLimiterName.PRINCIPAL_LONG,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 10,
             windowSeconds: 3600,
             blockDurationSeconds: 300,
         },

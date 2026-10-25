@@ -304,7 +304,7 @@ export class AdminController {
      * @throws {SystemException} When the account is inactive or the storage plan violates the contract
      */
     @Post('me/avatar/initiate')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.AVATAR_UPLOAD_INITIATE)
     @PrincipalOnly(PrincipalType.ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
@@ -343,7 +343,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/initiate')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -448,7 +448,7 @@ export class AdminController {
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
@@ -510,7 +510,7 @@ export class AdminController {
      * @throws {SystemException} When the delivery queue does not accept every required job
      */
     @Post('invite')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.ADMIN_INVITATION)
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -614,7 +614,7 @@ export class AdminController {
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Post(`${ROUTE_PARAM_ID}/re-invite`)
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.ADMIN_INVITATION)
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()

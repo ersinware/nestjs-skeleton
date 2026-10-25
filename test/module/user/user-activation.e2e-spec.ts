@@ -1441,27 +1441,25 @@ describe('User registration and activation', () => {
             expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toEqual([]);
         });
 
-        it('validates upload initiation without changing the account or enqueueing replacement work', async () => {
+        it.each([
+            {},
+            { name: 'Changed User' },
+            { avatar: null },
+            { avatar, name: null },
+            { avatar: { ...avatar, sizeBytes: 0 } },
+            { avatar: { ...avatar, contentType: 'image/svg+xml' } },
+            { avatar: { ...avatar, extra: true } },
+            { avatar, extra: true },
+        ])('validates upload initiation without account changes or replacement work: %j', async (payload) => {
             const owner = await account();
             const before = await state(owner.id);
-            for (const payload of [
-                {},
-                { name: 'Changed User' },
-                { avatar: null },
-                { avatar, name: null },
-                { avatar: { ...avatar, sizeBytes: 0 } },
-                { avatar: { ...avatar, contentType: 'image/svg+xml' } },
-                { avatar: { ...avatar, extra: true } },
-                { avatar, extra: true },
-            ]) {
-                const response = await app.inject({
-                    method: 'POST',
-                    url: '/api/v1/user/me/avatar/initiate',
-                    headers: owner.headers,
-                    payload,
-                });
-                expect(response.statusCode).toBe(400);
-            }
+            const response = await app.inject({
+                method: 'POST',
+                url: '/api/v1/user/me/avatar/initiate',
+                headers: owner.headers,
+                payload,
+            });
+            expect(response.statusCode).toBe(400);
             expect(await state(owner.id)).toEqual(before);
             expect(await jobs(owner.id, UserJobQueue.AVATAR_REPLACE)).toEqual([]);
         });
