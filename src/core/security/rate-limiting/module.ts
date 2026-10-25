@@ -11,6 +11,7 @@ import { ENV } from 'src/core/config';
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { createNodeRedisClient } from 'src/core/redis';
 import { IpTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/ip-tracker-resolver.adapter';
+import { PrincipalTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/principal-tracker-resolver.adapter';
 import { RateLimitCounterAdapter } from 'src/core/security/rate-limiting/adapter/rate-limit-counter.adapter';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { PostAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/post-auth-rate-limit.guard';
@@ -52,15 +53,18 @@ import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-lim
         { provide: TOKEN_RATE_LIMIT_COUNTER_PORT, useClass: RateLimitCounterAdapter },
         IpTrackerResolverAdapter,
         TargetAccountTrackerResolverAdapter,
+        PrincipalTrackerResolverAdapter,
         {
             provide: TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY,
-            inject: [IpTrackerResolverAdapter, TargetAccountTrackerResolverAdapter],
+            inject: [IpTrackerResolverAdapter, TargetAccountTrackerResolverAdapter, PrincipalTrackerResolverAdapter],
             useFactory: (
                 ipTrackerResolver: IpTrackerResolverAdapter,
                 targetAccountTrackerResolver: TargetAccountTrackerResolverAdapter,
+                principalTrackerResolver: PrincipalTrackerResolverAdapter,
             ): RateLimitTrackerResolverRegistry => ({
                 [RateLimitTrackerSource.IP]: ipTrackerResolver,
                 [RateLimitTrackerSource.TARGET_ACCOUNT]: targetAccountTrackerResolver,
+                [RateLimitTrackerSource.PRINCIPAL]: principalTrackerResolver,
             }),
         },
         RateLimitPolicyValidator,

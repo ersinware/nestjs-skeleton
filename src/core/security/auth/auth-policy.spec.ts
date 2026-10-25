@@ -3,10 +3,11 @@
  * @description Real-metadata coverage of endpoint policy combinations and malformed declarations.
  */
 
-import { SetMetadata } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { Get, SetMetadata, type Type } from '@nestjs/common';
+import { DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
 import 'reflect-metadata';
 import { resolveAuthPolicy, type AuthPolicy } from 'src/core/security/auth/auth-policy';
+import { AuthPolicyValidator } from 'src/core/security/auth/auth-policy.validator';
 import { Authenticated, KEY_DECORATOR_AUTHENTICATED } from 'src/core/security/auth/decorator/authenticated.decorator';
 import { KEY_DECORATOR_PERMISSIONS, Permissions } from 'src/core/security/auth/decorator/permissions.decorator';
 import { KEY_DECORATOR_PRINCIPAL_ONLY, PrincipalOnly } from 'src/core/security/auth/decorator/principal-only.decorator';
@@ -16,6 +17,19 @@ import { SystemException } from 'src/shared/exception';
 import { describe, expect, it } from 'vitest';
 
 type PolicyDecorator = ClassDecorator & MethodDecorator;
+
+/**
+ * Validates a discovered controller through the public bootstrap lifecycle.
+ *
+ * @param controller Controller whose HTTP metadata is under test.
+ * @param reflector Reads the controller and endpoint metadata.
+ */
+function validateController(controller: Type<unknown>, reflector: Reflector) {
+    const discovery = {
+        getControllers: () => [{ metatype: controller }],
+    } as unknown as DiscoveryService;
+    new AuthPolicyValidator(discovery, new MetadataScanner(), reflector).onApplicationBootstrap();
+}
 
 /**
  * Applies real decorators to fresh targets, isolating metadata between test cases.
@@ -28,6 +42,7 @@ function resolve(classPolicies: readonly PolicyDecorator[], methodPolicies: read
         /**
          * Endpoint whose metadata is under test.
          */
+        @Get()
         endpoint(this: void) {}
     }
     for (const decorator of classPolicies) decorator(ControllerFixture);
@@ -38,13 +53,15 @@ function resolve(classPolicies: readonly PolicyDecorator[], methodPolicies: read
             Object.getOwnPropertyDescriptor(ControllerFixture.prototype, 'endpoint')!,
         );
     }
-    return resolveAuthPolicy(new Reflector(), ControllerFixture, ControllerFixture.prototype.endpoint);
+    const reflector = new Reflector();
+    validateController(ControllerFixture, reflector);
+    return resolveAuthPolicy(reflector, ControllerFixture, ControllerFixture.prototype.endpoint);
 }
 
 const read = Permission.ADMIN_ACCOUNT_READ,
     ban = Permission.ADMIN_ACCOUNT_BAN;
 
-describe('resolveAuthPolicy', () => {
+describe('auth policy validation and resolution', () => {
     it.each([
         ['public', Public(), true, undefined, []],
         ['authenticated', Authenticated(), false, undefined, []],
@@ -161,10 +178,13 @@ describe('resolveAuthPolicy', () => {
             /**
              * Inherited endpoint with an additional permission.
              */
+            @Get()
             @Permissions(ban)
             endpoint(this: void) {}
         }
         class Child extends Base {}
-        expect(resolveAuthPolicy(new Reflector(), Child, Child.prototype.endpoint).permissions).toEqual([read, ban]);
+        const reflector = new Reflector();
+        validateController(Child, reflector);
+        expect(resolveAuthPolicy(reflector, Child, Child.prototype.endpoint).permissions).toEqual([read, ban]);
     });
 });

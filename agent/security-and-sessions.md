@@ -82,8 +82,9 @@
 
 ### Rate Limiting
 
-- Follow the [rate-limit decisions](../docs/issue/rate-limiting.md); use an explicit central policy on each HTTP handler, including `default`, or a probe exemption. No class-level declarations or implicit fallback.
+- Follow the [rate-limit decisions](../docs/issue/rate-limiting.md); use an explicit central policy on each HTTP handler, including `default`, or a probe exemption. No class-level declarations, implicit fallback, or automatic default-policy stacking.
 - Preserve guard order: pre-auth rate limit → authentication → post-auth rate limit → authorization. Only authentication publishes verified identity; limiters never decode/verify credentials or publish audit actors.
+- Principal budgets use the session-checked caller ID alone, never session/IP or request target IDs. Reject public mappings at startup and missing verified identity with `SystemException`; no tracker fallback.
 - Derive target-account trackers without account lookup, matching the owning workflow's field validation and normalization. Missing/invalid tracker input fails at that counter; never skip it or fall back to IP.
 - Count requests reaching each counter regardless of workflow outcome; success never resets the budget.
 - Keep counters in dedicated Redis; no offline queue, uncertain-mutation replay, local fallback or fail-open. Counter-operation timeout ends waiting, not execution; stop subsequent checks without retrying the uncertain operation.

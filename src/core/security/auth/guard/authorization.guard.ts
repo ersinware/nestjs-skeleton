@@ -5,7 +5,7 @@
 
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { readAuthPolicy } from 'src/core/security/auth/auth-policy';
+import { resolveAuthPolicy } from 'src/core/security/auth/auth-policy';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { AccessDeniedException } from 'src/shared/exception';
 
@@ -32,7 +32,7 @@ export class AuthorizationGuard implements CanActivate {
      * @throws {AccessDeniedException} if the token's kind or permissions do not satisfy the route.
      */
     canActivate(context: ExecutionContext): boolean {
-        const policy = readAuthPolicy(this.reflector, context.getClass(), context.getHandler());
+        const policy = resolveAuthPolicy(this.reflector, context.getClass(), context.getHandler());
 
         if (policy.public) {
             return true;

@@ -6,6 +6,7 @@
 import { Inject, Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
+import { isPublicAuthPolicy } from 'src/core/security/auth';
 import { KEY_DECORATOR_RATE_LIMIT_EXEMPT } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
 import { KEY_DECORATOR_RATE_LIMIT } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
 import {
@@ -17,6 +18,7 @@ import {
     TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY,
     type RateLimitTrackerResolverRegistry,
 } from 'src/core/security/rate-limiting/rate-limit-tracker-resolver-registry';
+import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-limit-tracker-source';
 import { SystemException } from 'src/shared/exception';
 
 /**
@@ -112,7 +114,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
             for (const method of this.scanner.getAllMethodNames(prototype)) {
                 const handler = prototype[method];
                 if (handler && this.reflector.get<number | undefined>(METHOD_METADATA, handler) !== undefined) {
-                    this.validateEndpoint(handler);
+                    this.validateEndpoint(controller, handler);
                 }
             }
         }
@@ -121,10 +123,11 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
     /**
      * Validates an explicit endpoint declaration before requests are served.
      *
+     * @param controller Controller owning the endpoint.
      * @param handler Endpoint handler.
      * @throws {SystemException} When metadata is missing, conflicting or invalid.
      */
-    private validateEndpoint(handler: Parameters<Reflector['get']>[1]) {
+    private validateEndpoint(controller: Parameters<Reflector['get']>[1], handler: Parameters<Reflector['get']>[1]) {
         const policy = this.reflector.get<RateLimitPolicy | undefined>(KEY_DECORATOR_RATE_LIMIT, handler),
             exempt = this.reflector.get<boolean | undefined>(KEY_DECORATOR_RATE_LIMIT_EXEMPT, handler);
 
@@ -140,6 +143,24 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
                     handler: handler.name,
                 },
             });
+        }
+
+        if (
+            RATE_LIMIT_POLICIES[policy].some((limiter) => limiter.source === RateLimitTrackerSource.PRINCIPAL) &&
+            isPublicAuthPolicy(this.reflector, controller, handler)
+        ) {
+            throw new SystemException(
+                `Public endpoint cannot use a principal rate-limit policy: ${controller.name}.${handler.name}`,
+                {
+                    context: {
+                        class: RateLimitPolicyValidator.name,
+                        method: this.validateEndpoint.name,
+                        controller: controller.name,
+                        handler: handler.name,
+                        policy,
+                    },
+                },
+            );
         }
     }
 }

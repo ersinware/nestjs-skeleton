@@ -303,7 +303,7 @@ export class UserController {
      * @throws {SystemException} When the account is inactive or the storage plan violates the contract
      */
     @Post('me/avatar/initiate')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.AVATAR_UPLOAD_INITIATE)
     @PrincipalOnly(PrincipalType.USER)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
@@ -342,7 +342,7 @@ export class UserController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/initiate')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
     @PrincipalOnly(PrincipalType.USER)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -447,7 +447,7 @@ export class UserController {
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
     @PrincipalOnly(PrincipalType.USER)
     @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()

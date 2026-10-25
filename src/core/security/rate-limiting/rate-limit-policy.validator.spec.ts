@@ -7,6 +7,8 @@ import { Controller, Get, Scope, type Type } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import 'reflect-metadata';
+import { Authenticated, Public } from 'src/core/security/auth';
+import { PrincipalTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/principal-tracker-resolver.adapter';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { RateLimitExempt } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
 import { RateLimit } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
@@ -30,6 +32,7 @@ async function bootstrap(
     registry: Partial<RateLimitTrackerResolverRegistry> = {
         ip: { resolve: () => '192.0.2.1' },
         'target-account': new TargetAccountTrackerResolverAdapter(),
+        principal: new PrincipalTrackerResolverAdapter(),
     },
 ): Promise<void> {
     const module = await Test.createTestingModule({
@@ -204,5 +207,64 @@ describe('RateLimitPolicyValidator bootstrap', () => {
         } finally {
             Object.assign(RATE_LIMIT_POLICIES, { default: original });
         }
+    });
+    it.each([
+        RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE,
+        RateLimitPolicy.ADMIN_INVITATION,
+        RateLimitPolicy.AVATAR_UPLOAD_INITIATE,
+    ])(
+        'accepts protected %s and rejects public declarations at either level, including inherited handlers',
+        async (policy) => {
+            /**
+             * Inherited handler for principal policy metadata validation.
+             */
+            class BaseController {
+                /**
+                 * Requires authentication before resolving the caller tracker.
+                 */
+                @Get()
+                @RateLimit(policy)
+                endpoint() {}
+            }
+            /**
+             * Class protection applies to the inherited endpoint.
+             */
+            @Controller('protected')
+            @Authenticated()
+            class ProtectedController extends BaseController {}
+            await expect(bootstrap([ProtectedController])).resolves.toBeUndefined();
+            /**
+             * Class-level public access must not bypass the principal requirement.
+             */
+            @Controller('public-class')
+            @Public()
+            class PublicClassController extends BaseController {}
+            await expect(bootstrap([PublicClassController])).rejects.toThrow('Public endpoint cannot use a principal');
+            /**
+             * Handler-level public access is also incompatible with a principal policy.
+             */
+            @Controller('public-handler')
+            class PublicHandlerController {
+                /**
+                 * Deliberately contradictory public endpoint.
+                 */
+                @Get()
+                @Public()
+                @RateLimit(policy)
+                endpoint() {}
+            }
+            await expect(bootstrap([PublicHandlerController])).rejects.toThrow(
+                'Public endpoint cannot use a principal',
+            );
+        },
+    );
+
+    it('rejects missing principal registration even when earlier sources are available', async () => {
+        await expect(
+            bootstrap([], {
+                ip: { resolve: () => '192.0.2.1' },
+                'target-account': new TargetAccountTrackerResolverAdapter(),
+            }),
+        ).rejects.toThrow('Invalid rate-limit configuration');
     });
 });
