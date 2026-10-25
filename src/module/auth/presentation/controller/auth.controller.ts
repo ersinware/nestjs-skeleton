@@ -75,7 +75,7 @@ export class AuthController {
      */
     @Public()
     @Post('user/login')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.USER_LOGIN)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate user',
@@ -122,7 +122,7 @@ export class AuthController {
      */
     @Public()
     @Post('admin/login')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.ADMIN_LOGIN)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate admin',

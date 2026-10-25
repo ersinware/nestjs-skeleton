@@ -65,8 +65,8 @@ export class CacheAdapter implements ICachePort {
      * @param key Cache key.
      * @param value Cache value.
      * @param ttlSeconds Optional time-to-live in seconds.
-     * @param useJitter Adds random variation to the TTL, spreading expirations to avoid stampedes.
-     * @param jitterMaxPercent Maximum percentage of the TTL to add as jitter.
+     * @param options.useJitter Adds random variation to the TTL, spreading expirations to avoid stampedes.
+     * @param options.jitterMaxPercent Maximum percentage of the TTL to add as jitter.
      */
     async set(
         key: string,

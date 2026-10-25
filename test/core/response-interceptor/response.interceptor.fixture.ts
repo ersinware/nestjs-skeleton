@@ -8,9 +8,17 @@ import { HttpCache, HttpCachePolicy } from 'src/core/http';
 import { Public } from 'src/core/security/auth';
 import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 
+/**
+ * Exercises response wrapping and statuses that must not carry a body.
+ */
 @Controller('response-interceptor-trigger')
 @Public()
 export class ResponseInterceptorTriggerController {
+    /**
+     * Returns data under a 204 status to verify body suppression.
+     *
+     * @returns Sentinel data that must be omitted from the HTTP response.
+     */
     @Get('204')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
@@ -19,6 +27,11 @@ export class ResponseInterceptorTriggerController {
         return 'no-content-data';
     }
 
+    /**
+     * Returns data under a 304 status to verify body suppression.
+     *
+     * @returns Sentinel data that must be omitted from the HTTP response.
+     */
     @Get('304')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
@@ -27,6 +40,11 @@ export class ResponseInterceptorTriggerController {
         return 'not-modified-data';
     }
 
+    /**
+     * Returns an object to verify successful response wrapping.
+     *
+     * @returns Object to be wrapped in the standard response envelope.
+     */
     @Get('data')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
@@ -34,6 +52,11 @@ export class ResponseInterceptorTriggerController {
         return { id: 1 };
     }
 
+    /**
+     * Returns null to verify empty-value wrapping.
+     *
+     * @returns Null handler result.
+     */
     @Get('null')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)
@@ -41,6 +64,11 @@ export class ResponseInterceptorTriggerController {
         return null;
     }
 
+    /**
+     * Returns undefined to verify empty-value wrapping.
+     *
+     * @returns Undefined handler result.
+     */
     @Get('undefined')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @HttpCache(HttpCachePolicy.NO_STORE)

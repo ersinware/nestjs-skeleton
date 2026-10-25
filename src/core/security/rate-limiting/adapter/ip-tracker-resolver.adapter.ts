@@ -1,5 +1,5 @@
 /**
- * @file ip-tracker.resolver.ts
+ * @file ip-tracker-resolver.adapter.ts
  * @description Resolves full canonical IP trackers exclusively from Fastify's trusted address.
  */
 
@@ -7,15 +7,17 @@ import { Injectable } from '@nestjs/common';
 import { normalizeIp } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
 import { isIP } from 'node:net';
-import type { IRateLimitTrackerResolver } from 'src/core/security/rate-limiting/rate-limit-tracker.resolver';
+import type { IRateLimitTrackerResolverPort } from 'src/core/security/rate-limiting/port/rate-limit-tracker-resolver.port';
 import { SystemException } from 'src/shared/exception';
 
 /**
  * Uses the adapter's validated proxy chain, never arbitrary forwarded headers.
  */
 @Injectable()
-export class IpTrackerResolver implements IRateLimitTrackerResolver {
+export class IpTrackerResolverAdapter implements IRateLimitTrackerResolverPort {
     /**
+     * Canonicalizes the trusted client IP without grouping distinct IPv6 addresses.
+     *
      * @param request Request carrying the adapter-resolved IP.
      * @returns Full canonical IP, mapping IPv4-mapped IPv6 to IPv4.
      */
@@ -23,7 +25,7 @@ export class IpTrackerResolver implements IRateLimitTrackerResolver {
         if (!isIP(request.ip)) {
             throw new SystemException('The HTTP adapter did not resolve a valid rate-limit IP.', {
                 context: {
-                    class: IpTrackerResolver.name,
+                    class: IpTrackerResolverAdapter.name,
                     method: this.resolve.name,
                 },
             });

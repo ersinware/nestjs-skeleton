@@ -25,6 +25,8 @@ import { SystemException } from 'src/shared/exception';
 @Injectable()
 export class RateLimitPolicyValidator implements OnApplicationBootstrap {
     /**
+     * Connects endpoint discovery and policy metadata to the configured tracker resolvers.
+     *
      * @param discovery Enumerates registered controllers.
      * @param scanner Enumerates inherited controller handlers.
      * @param reflector Reads policy metadata.

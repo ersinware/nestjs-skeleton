@@ -16,7 +16,7 @@
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
 - Account activation and email confirmation receive verified claims for the target aggregate; a `sub` mismatch throws `SystemException`. Email confirmation handlers must reject session/token ownership mismatches before calling the aggregate.
 - Admin self-service mutations require a password and avatar; missing either is a `SystemException`. Pending accounts remain administrable.
-- Both principal kinds share `login.util.ts`. Invalid credentials receive uniform `CREDENTIALS` refusals; each refused login performs one Argon2 verification. Unknown/banned/passwordless accounts use `simulateVerify` with a boot-generated, current-cost hash. Only a pending user with a correct password receives audited `session: activation_required`, without tokens or a session.
+- Both principal kinds share `login.util.ts`. Credential checks use uniform `CREDENTIALS` refusals and one Argon2 verification per refusal. Unknown/banned/passwordless accounts use `simulateVerify` with a boot-generated, current-cost hash. Only a pending user with a correct password receives audited `session: activation_required`, without tokens or a session.
 
 ### Administration
 
@@ -46,7 +46,7 @@
 - User activation verifies the existing password without replacing it. The aggregate rechecks eligibility, expiry, and exact proof binding to the stored request identity, deadline, and revocation snapshot; the snapshot must match current revocation. Consume proof and audit in one optimistic-lock commit without advancing session counters; replay must never open another session.
 - Only after user activation commits, attempt session creation. Rejected session registration or recognized session unavailability returns `login_required` without tokens; unexpected errors propagate. Neither undoes activation; clients recover through login, never proof replay.
 - Audit user activation refusals for incorrect current passwords; invalid/expired proofs alone require no refusal audit. Preserve refusal kinds ([Exceptions](exceptions.md#exceptions)).
-- Public user-activation resend returns 204 for eligible, missing, deleted, banned, and active accounts to prevent enumeration; audit committed requests. A three-day expiry leaves the account pending. Each accepted resend replaces the proof, invalidates earlier links, starts a new three-day deadline, and enqueues delivery; propagate concurrency and dependency failures.
+- After rate-limit admission, public user-activation resend returns 204 for eligible, missing, deleted, banned, and active accounts to prevent enumeration; audit committed requests. A three-day expiry leaves the account pending. Each accepted resend replaces the proof, invalidates earlier links, starts a new three-day deadline, and enqueues delivery; propagate concurrency and dependency failures.
 - Audit workflow refusals caused by bans; keep public anti-enumeration responses and delivery/no-op skips unchanged.
 - Password-change and email-change-request refusals audit incorrect current-password proof; unchanged proposed passwords are ordinary invalid input without audit.
 - Banned accounts cannot change passwords (403). A stale guard mirror must not permit fresh token issuance. Persist the password before issuing replacement tokens at the committed version; await atomic Redis version synchronization/session opening before returning them.
@@ -84,5 +84,7 @@
 
 - Follow the [rate-limit decisions](../docs/issue/rate-limiting.md); use an explicit central policy on each HTTP handler, including `default`, or a probe exemption. No class-level declarations or implicit fallback.
 - Preserve guard order: pre-auth rate limit → authentication → post-auth rate limit → authorization. Only authentication publishes verified identity; limiters never decode/verify credentials or publish audit actors.
+- Derive target-account trackers without account lookup, matching the owning workflow's field validation and normalization. Missing/invalid tracker input fails at that counter; never skip it or fall back to IP.
+- Count requests reaching each counter regardless of workflow outcome; success never resets the budget.
 - Keep counters in dedicated Redis; no offline queue, uncertain-mutation replay, local fallback or fail-open. Counter-operation timeout ends waiting, not execution; stop subsequent checks without retrying the uncertain operation.
 - Required storage availability/timeout/known OOM failures deny with 503; the first block denies with 429 and standard `Retry-After`. Preserve other failures ([Exceptions](exceptions.md#exceptions)). Technical rejections produce no audit or additional per-request reporting; HTTP access logging remains unchanged.

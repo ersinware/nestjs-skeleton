@@ -7,6 +7,7 @@ import { Controller, Get, Scope, type Type } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import 'reflect-metadata';
+import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { RateLimitExempt } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
 import { RateLimit } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
 import { RATE_LIMIT_POLICIES, RateLimitPolicy } from 'src/core/security/rate-limiting/rate-limit-policy';
@@ -19,13 +20,17 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Boots the production validator with real controller discovery and no network clients.
+ *
  * @param controllers Controllers included in discovery.
  * @param registry Configured tracker resolvers.
- * @returns Completion after validation and module disposal.
+ * @throws {SystemException} When policy configuration or endpoint metadata is invalid.
  */
 async function bootstrap(
     controllers: readonly Type<unknown>[],
-    registry: Partial<RateLimitTrackerResolverRegistry> = { ip: { resolve: () => '192.0.2.1' } },
+    registry: Partial<RateLimitTrackerResolverRegistry> = {
+        ip: { resolve: () => '192.0.2.1' },
+        'target-account': new TargetAccountTrackerResolverAdapter(),
+    },
 ): Promise<void> {
     const module = await Test.createTestingModule({
         imports: [DiscoveryModule],
@@ -45,6 +50,9 @@ async function bootstrap(
 describe('RateLimitPolicyValidator bootstrap', () => {
     it('accepts explicit policies, exemptions and inherited routes without constructing scoped controllers', async () => {
         let constructions = 0;
+        /**
+         * Provides an inherited route with an explicit policy.
+         */
         class BaseController {
             /**
              * Inherited limited endpoint.
@@ -53,6 +61,9 @@ describe('RateLimitPolicyValidator bootstrap', () => {
             @RateLimit(RateLimitPolicy.DEFAULT)
             limited() {}
         }
+        /**
+         * Exercises inherited routes, explicit exemptions and request-scoped discovery.
+         */
         @Controller({ path: 'valid', scope: Scope.REQUEST })
         class ValidController extends BaseController {
             /**
@@ -78,6 +89,9 @@ describe('RateLimitPolicyValidator bootstrap', () => {
     });
 
     it('rejects a missing policy on an inherited GET', async () => {
+        /**
+         * Provides an inherited route missing its required policy.
+         */
         class BaseController {
             /**
              * Deliberately unprotected route.
@@ -85,12 +99,18 @@ describe('RateLimitPolicyValidator bootstrap', () => {
             @Get()
             endpoint() {}
         }
+        /**
+         * Inherits a route without the required rate-limit declaration.
+         */
         @Controller('missing')
         class MissingController extends BaseController {}
         await expect(bootstrap([MissingController])).rejects.toThrow('Missing or conflicting rate-limit policy');
     });
 
     it('rejects conflicting endpoint declarations', async () => {
+        /**
+         * Declares both a policy and an exemption to exercise bootstrap rejection.
+         */
         @Controller('conflict')
         class ConflictController {
             /**
@@ -105,6 +125,9 @@ describe('RateLimitPolicyValidator bootstrap', () => {
     });
 
     it('rejects class-level policies even when handlers declare a policy', async () => {
+        /**
+         * Receives forbidden class-level metadata despite a valid endpoint declaration.
+         */
         @Controller('class-policy')
         class ClassPolicyController {
             /**
@@ -120,6 +143,9 @@ describe('RateLimitPolicyValidator bootstrap', () => {
     });
 
     it('rejects an unknown policy name', async () => {
+        /**
+         * Supplies an unsupported policy name to exercise bootstrap rejection.
+         */
         @Controller('unknown')
         class UnknownController {
             /**
@@ -134,6 +160,12 @@ describe('RateLimitPolicyValidator bootstrap', () => {
 
     it('rejects a configured source without a resolver', async () => {
         await expect(bootstrap([], {})).rejects.toThrow('Invalid rate-limit configuration');
+    });
+
+    it('rejects missing target-account registration even when IP resolution is available', async () => {
+        await expect(bootstrap([], { ip: { resolve: () => '192.0.2.1' } })).rejects.toThrow(
+            'Invalid rate-limit configuration',
+        );
     });
 
     it.each([

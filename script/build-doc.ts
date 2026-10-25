@@ -71,7 +71,9 @@ async function bootstrap() {
     /**
      * Stamps the script's origin onto a log entry so both loggers emit the same shape.
      *
-     * @param entry - The log content to wrap with the script's origin.
+     * @param entry.message Message emitted by this log entry.
+     * @param entry.error Original failure included when the entry reports an error.
+     * @param entry.data Additional structured log data.
      * @returns The origin-stamped payload accepted by both loggers.
      */
     function createLogPayload({

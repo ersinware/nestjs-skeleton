@@ -66,7 +66,7 @@ import { createRedisClient } from 'src/core/redis';
 })
 export class CacheModule implements OnApplicationShutdown {
     /**
-     * Creates an instance of CacheModule.
+     * Retains the cache Redis connection for orderly shutdown.
      *
      * @param cacheRedis The injected cache Redis client instance.
      */

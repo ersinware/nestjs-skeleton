@@ -48,6 +48,9 @@ describe('GlobalExceptionFilter', () => {
     /**
      * Builds the ArgumentsHost the filter reads, defaulting to an unauthenticated request on a
      * non-health route so each test only states the part it actually cares about.
+     *
+     * @param request.url Request URL used to identify exact health-probe paths.
+     * @returns HTTP execution host carrying the supplied request fields.
      */
     function createHost(request: Partial<AuthenticatedRequest> & { readonly url?: string } = {}): ArgumentsHost {
         const response = { sent: true };

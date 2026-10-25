@@ -56,7 +56,9 @@ export class ErrorDefaultDto {
      * Constructs a real class instance — serialization keys off the class metadata, which a
      * structurally similar object literal would not carry.
      *
-     * @param fields The status code, messages, and status text of the failed request
+     * @param fields.statusCode HTTP status assigned to the failed request.
+     * @param fields.message Client-safe descriptions of the failure.
+     * @param fields.statusText Short status description exposed in the error response.
      */
     constructor(fields: {
         readonly statusCode: HttpStatus;

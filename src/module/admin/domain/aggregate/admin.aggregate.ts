@@ -653,7 +653,10 @@ export class Admin extends PrincipalAggregateRoot {
     /**
      * Consumes a matching verified proof, changes the address, and revokes existing sessions.
      *
-     * @param payload Identity and expiry claims after signature, type, and principal verification
+     * @param payload.sub Account identity carried by the verified proof.
+     * @param payload.jti Request identity that must match the pending proof.
+     * @param payload.emailRevocationVersion Email-change revocation version captured when the proof was issued.
+     * @param payload.exp Proof expiration as Unix time in seconds.
      * @param notificationId Identity shared with the immutable old-address notification record
      * @throws {SystemException} When the account is deleted, lacks an activation password or avatar, or differs from the token subject
      * @throws {AccessDeniedException} When the account is banned

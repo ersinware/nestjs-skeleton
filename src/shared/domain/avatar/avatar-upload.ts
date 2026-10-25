@@ -38,7 +38,8 @@ export type AvatarUploadDescriptor = {
 /**
  * Rejects uploaded metadata that differs from the descriptor bound to the account form.
  *
- * @param actual Metadata read from the uploaded object
+ * @param actual.sizeBytes Uploaded object size in bytes.
+ * @param actual.contentType Uploaded object media type; absence fails the descriptor comparison.
  * @param expected Descriptor accepted when the upload was prepared
  * @throws {InvalidInputException} When the size or media type differs, including a missing media type
  */

@@ -12,7 +12,11 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
  *
  * @param config Validated application configuration.
  * @param logger Connection transition logger.
- * @param env Keys for this client's connection settings.
+ * @param env.host Configuration key for the Redis hostname or IP address.
+ * @param env.port Configuration key for the Redis TCP port.
+ * @param env.password Configuration key for the Redis password; an empty value disables authentication.
+ * @param env.tls Configuration key controlling TLS for this connection.
+ * @param env.connectTimeout Configuration key for the connection timeout in seconds.
  * @param token Connection identity used in transition logs.
  * @returns A client that never queues offline work or replays unacknowledged commands on reconnect.
  */

@@ -1,8 +1,7 @@
 /**
  * @file redis-client.factory.ts
  * @description Factory building configured Redis clients with per-episode connection-transition logging.
- * Shared by every concern that owns a Redis connection (cache, session state), so connection policy
- * and outage forensics live in exactly one place.
+ * Shared by concerns using ioredis, including cache and session state.
  */
 
 import { ConfigService } from '@nestjs/config';
@@ -14,7 +13,13 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
  *
  * @param config The config service instance.
  * @param logger The logger service instance.
- * @param env The configuration keys for this specific client.
+ * @param env.host Configuration key for the Redis hostname or IP address.
+ * @param env.port Configuration key for the Redis TCP port.
+ * @param env.password Configuration key for the Redis password; an empty value disables authentication.
+ * @param env.tls Configuration key controlling TLS for this connection.
+ * @param env.connectTimeout Configuration key for the connection timeout in seconds.
+ * @param env.maxRetriesPerRequest Configuration key limiting retries for pending requests.
+ * @param env.commandTimeout Configuration key for the command response timeout in seconds.
  * @param token The injection token the client is provided under; its description names the client in logs.
  * @returns The initialized Redis client instance.
  */

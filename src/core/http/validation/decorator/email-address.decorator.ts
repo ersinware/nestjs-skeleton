@@ -8,15 +8,26 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsNotEmpty, MaxLength, MinLength } from 'class-validator';
 import { Trim } from 'src/core/http/validation/decorator/trim.decorator';
 
-const EMAIL_MIN_LENGTH = 5,
-    EMAIL_MAX_LENGTH = 255,
-    EMAIL_LABEL = 'The email address';
+/**
+ * Minimum accepted email length shared by DTO validation and pre-pipe tracker extraction.
+ */
+export const EMAIL_MIN_LENGTH = 5;
+
+/**
+ * Maximum accepted email length shared by DTO validation and pre-pipe tracker extraction.
+ */
+export const EMAIL_MAX_LENGTH = 255;
+
+/**
+ * Client-safe field label used by validation and schema descriptions.
+ */
+const EMAIL_LABEL = 'The email address';
 
 /**
  * Single source of the email-address field contract: every limit lives here once and
  * feeds both the validation rules and the OpenAPI schema.
  *
- * @param options Disable normalization on response DTOs to preserve stored values.
+ * @param options.normalize Whether to trim input; disable to preserve stored response values.
  * @returns A decorator that trims, validates and documents an email address property.
  */
 export function IsEmailAddress(options: { readonly normalize?: boolean } = {}): PropertyDecorator {

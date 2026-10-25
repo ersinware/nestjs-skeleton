@@ -14,7 +14,11 @@ import {
     TOKEN_RATE_LIMIT_COUNTER_PORT,
     type IRateLimitCounterPort,
 } from 'src/core/security/rate-limiting/port/rate-limit-counter.port';
-import { RATE_LIMIT_POLICIES, RateLimitPolicy } from 'src/core/security/rate-limiting/rate-limit-policy';
+import {
+    RATE_LIMIT_POLICIES,
+    RateLimitPolicy,
+    type RateLimiterDefinition,
+} from 'src/core/security/rate-limiting/rate-limit-policy';
 import { RateLimitStage } from 'src/core/security/rate-limiting/rate-limit-stage';
 import {
     TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY,
@@ -33,6 +37,8 @@ export class RateLimitStageRunner {
     private readonly serviceName: string;
 
     /**
+     * Connects policy execution to tracker resolution, counter storage and service namespacing.
+     *
      * @param reflector Reads endpoint declarations already validated at bootstrap.
      * @param trackerResolverRegistry Module-composed tracker resolver instances.
      * @param counter Atomic counter admission port.
@@ -66,7 +72,9 @@ export class RateLimitStageRunner {
         }
 
         const policy = this.reflector.get<RateLimitPolicy>(KEY_DECORATOR_RATE_LIMIT, handler),
-            limiters = RATE_LIMIT_POLICIES[policy].filter((limiter) => limiter.stage === stage);
+            limiters: readonly RateLimiterDefinition[] = RATE_LIMIT_POLICIES[policy].filter(
+                (limiter) => limiter.stage === stage,
+            );
 
         if (limiters.length === 0) {
             return true;
@@ -75,7 +83,7 @@ export class RateLimitStageRunner {
         const request = context.switchToHttp().getRequest<FastifyRequest>();
 
         for (const limiter of limiters) {
-            const tracker = this.trackerResolverRegistry[limiter.source].resolve(request);
+            const tracker = this.trackerResolverRegistry[limiter.source].resolve(request, limiter.field);
             if (!tracker) {
                 throw new SystemException('Rate-limit resolver produced an invalid tracker.', {
                     context: {

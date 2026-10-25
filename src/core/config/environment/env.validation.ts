@@ -99,7 +99,7 @@ function IsTrustedProxyList(): PropertyDecorator {
 /**
  * Treats an empty optional environment value as unset.
  *
- * @param params Transform input containing the raw value.
+ * @param params.value Raw environment value to convert.
  * @returns Undefined for an empty string; otherwise the original value.
  */
 function emptyToUndefined<T>({ value }: { readonly value: T }): T | undefined {
@@ -136,7 +136,7 @@ function IsEnvBoolean(): PropertyDecorator {
 /**
  * Converts recognized boolean strings and leaves invalid values for validation.
  *
- * @param params Transform input containing the raw value.
+ * @param params.value Raw environment value to convert.
  * @returns A boolean for recognized values; otherwise the original value.
  */
 function transformToBoolean<T>({ value }: { readonly value: T }): boolean | T {

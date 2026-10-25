@@ -307,7 +307,8 @@ export class JobQueueOperationsAdapter
     /**
      * Normalizes timestamps and removes pg-boss-only fields from a dead-letter job.
      *
-     * @param job Persisted pg-boss job
+     * @param job.createdOn Dead-letter creation timestamp, accepted as a Date or database string.
+     * @param job.sourceCreatedOn Original job creation timestamp; missing provenance is rejected.
      * @returns Internal dead-letter view
      * @throws {SystemException} When persisted provenance, identifiers, or timestamps are invalid
      */

@@ -10,10 +10,11 @@ import type { RedisClientType } from 'redis';
 import { ENV } from 'src/core/config';
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { createNodeRedisClient } from 'src/core/redis';
+import { IpTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/ip-tracker-resolver.adapter';
 import { RateLimitCounterAdapter } from 'src/core/security/rate-limiting/adapter/rate-limit-counter.adapter';
+import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { PostAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/post-auth-rate-limit.guard';
 import { PreAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/pre-auth-rate-limit.guard';
-import { IpTrackerResolver } from 'src/core/security/rate-limiting/ip-tracker.resolver';
 import { TOKEN_RATE_LIMIT_COUNTER_PORT } from 'src/core/security/rate-limiting/port/rate-limit-counter.port';
 import { TOKEN_RATE_LIMIT_CONNECTION } from 'src/core/security/rate-limiting/rate-limit-connection.token';
 import { RateLimitPolicyValidator } from 'src/core/security/rate-limiting/rate-limit-policy.validator';
@@ -49,12 +50,17 @@ import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-lim
                 ),
         },
         { provide: TOKEN_RATE_LIMIT_COUNTER_PORT, useClass: RateLimitCounterAdapter },
-        IpTrackerResolver,
+        IpTrackerResolverAdapter,
+        TargetAccountTrackerResolverAdapter,
         {
             provide: TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY,
-            inject: [IpTrackerResolver],
-            useFactory: (ipTrackerResolver: IpTrackerResolver): RateLimitTrackerResolverRegistry => ({
+            inject: [IpTrackerResolverAdapter, TargetAccountTrackerResolverAdapter],
+            useFactory: (
+                ipTrackerResolver: IpTrackerResolverAdapter,
+                targetAccountTrackerResolver: TargetAccountTrackerResolverAdapter,
+            ): RateLimitTrackerResolverRegistry => ({
                 [RateLimitTrackerSource.IP]: ipTrackerResolver,
+                [RateLimitTrackerSource.TARGET_ACCOUNT]: targetAccountTrackerResolver,
             }),
         },
         RateLimitPolicyValidator,
@@ -66,6 +72,8 @@ import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-lim
 })
 export class RateLimitingModule implements OnApplicationBootstrap, OnApplicationShutdown {
     /**
+     * Retains the rate-limit Redis connection for startup and shutdown.
+     *
      * @param redis Concern-owned connection; no cache/session clients are reused.
      */
     constructor(@Inject(TOKEN_RATE_LIMIT_CONNECTION) private readonly redis: RedisClientType) {}

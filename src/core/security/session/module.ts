@@ -60,6 +60,8 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
 })
 export class SessionModule implements OnApplicationShutdown {
     /**
+     * Retains the session Redis connection for orderly shutdown.
+     *
      * @param sessionRedis The session store Redis client.
      */
     constructor(@Inject(TOKEN_SESSION_CONNECTION) private readonly sessionRedis: Redis) {}

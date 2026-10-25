@@ -40,6 +40,8 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
     private readonly storage: ThrottlerStorage;
 
     /**
+     * Connects the storage adapter to the dedicated Redis client and operation timeout.
+     *
      * @param redis Dedicated node-redis connection owned by the rate-limit module.
      * @param config Validated counter-operation timeout configuration.
      */
@@ -60,6 +62,8 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
     }
 
     /**
+     * Consumes one counter budget, bounding the wait and translating known storage outages.
+     *
      * @param attempt Counter identity and budget.
      * @returns The admission decision or remaining block duration.
      */

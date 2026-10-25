@@ -25,6 +25,7 @@ const attempt = {
 
 /**
  * Creates a connection facade; only the package's admission boundary is mocked.
+ *
  * @returns Adapter and connection event emitter.
  */
 function setup() {
