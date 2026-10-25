@@ -21,6 +21,7 @@ export const HEALTH_INDICATOR_KEYS = [
     'database_replica',
     'cache',
     'session',
+    'rate_limit',
 ] as const;
 
 /**
@@ -39,6 +40,7 @@ export const UnhealthyIndicatorMessage = {
     database_replica: 'Database replica connection failed.',
     cache: 'Cache connection failed.',
     session: 'Session store connection failed.',
+    rate_limit: 'Rate-limit store connection failed.',
 } as const satisfies Record<HealthIndicatorKey, string>;
 
 /**

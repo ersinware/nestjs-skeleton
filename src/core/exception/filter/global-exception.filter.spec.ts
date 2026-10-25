@@ -7,7 +7,7 @@ import type { ArgumentsHost } from '@nestjs/common';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PATH_HEALTH } from 'src/core/config';
+import { PATH_HEALTH_STATUS } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { GlobalExceptionFilter } from 'src/core/exception/filter/global-exception.filter';
 import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
@@ -106,7 +106,7 @@ describe('GlobalExceptionFilter', () => {
             const indicatorBody = { status: 'error', details: { redis: { status: 'down' } } },
                 exception = new HttpException(indicatorBody, HttpStatus.SERVICE_UNAVAILABLE);
 
-            await filter.catch(exception, createHost({ url: PATH_HEALTH }));
+            await filter.catch(exception, createHost({ url: PATH_HEALTH_STATUS }));
 
             expect(mockReply).toHaveBeenCalledWith(
                 expect.anything(),
@@ -121,7 +121,7 @@ describe('GlobalExceptionFilter', () => {
             const indicatorBody = { status: 'error' },
                 exception = new HttpException(indicatorBody, HttpStatus.SERVICE_UNAVAILABLE);
 
-            await filter.catch(exception, createHost({ url: `${PATH_HEALTH}?verbose=true` }));
+            await filter.catch(exception, createHost({ url: `${PATH_HEALTH_STATUS}?verbose=true` }));
 
             expect(mockReply).toHaveBeenCalledWith(
                 expect.anything(),
@@ -142,14 +142,14 @@ describe('GlobalExceptionFilter', () => {
         it('should normalize a non-503 response on the health path', async () => {
             const exception = new HttpException('Nope', HttpStatus.BAD_REQUEST);
 
-            await filter.catch(exception, createHost({ url: PATH_HEALTH }));
+            await filter.catch(exception, createHost({ url: PATH_HEALTH_STATUS }));
 
             expect(repliedDto()).toBeInstanceOf(ErrorDefaultDto);
             expect(repliedDto().statusCode).toBe(HttpStatus.BAD_REQUEST);
         });
 
         it('should normalize a non-HttpException even on the health path', async () => {
-            await filter.catch(new Error('boom'), createHost({ url: PATH_HEALTH }));
+            await filter.catch(new Error('boom'), createHost({ url: PATH_HEALTH_STATUS }));
 
             expect(repliedDto().statusCode).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
         });

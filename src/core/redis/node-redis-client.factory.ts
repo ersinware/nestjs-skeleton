@@ -10,7 +10,7 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
 /**
  * Creates an unconnected client; its concern owns startup and shutdown.
  *
- * @param config Validated application configuration.
+ * @param configService Validated application configuration.
  * @param logger Connection transition logger.
  * @param env.host Configuration key for the Redis hostname or IP address.
  * @param env.port Configuration key for the Redis TCP port.
@@ -21,7 +21,7 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
  * @returns A client that never queues offline work or replays unacknowledged commands on reconnect.
  */
 export function createNodeRedisClient(
-    config: ConfigService,
+    configService: ConfigService,
     logger: ILoggerPort,
     env: {
         readonly host: string;
@@ -33,16 +33,16 @@ export function createNodeRedisClient(
     token: symbol,
 ): RedisClientType {
     const clientName = token.description ?? token.toString(),
-        password = config.getOrThrow<string>(env.password),
+        password = configService.getOrThrow<string>(env.password),
         redis = createClient({
             // On disconnect, node-redis flushes both unsent and unacknowledged commands.
             disableOfflineQueue: true,
             ...(password ? { password } : {}),
             socket: {
-                host: config.getOrThrow<string>(env.host),
-                port: config.getOrThrow<number>(env.port),
-                connectTimeout: config.getOrThrow<number>(env.connectTimeout) * 1000,
-                ...(config.getOrThrow<boolean>(env.tls) ? { tls: true as const } : {}),
+                host: configService.getOrThrow<string>(env.host),
+                port: configService.getOrThrow<number>(env.port),
+                connectTimeout: configService.getOrThrow<number>(env.connectTimeout) * 1000,
+                ...(configService.getOrThrow<boolean>(env.tls) ? { tls: true as const } : {}),
             },
         });
 

@@ -8,4 +8,8 @@ export { RateLimit } from 'src/core/security/rate-limiting/decorator/rate-limit.
 export { PostAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/post-auth-rate-limit.guard';
 export { PreAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/pre-auth-rate-limit.guard';
 export { RateLimitingModule } from 'src/core/security/rate-limiting/module';
+export {
+    TOKEN_RATE_LIMIT_HEALTH_PORT,
+    type IRateLimitHealthPort,
+} from 'src/core/security/rate-limiting/port/rate-limit-health.port';
 export { RateLimitPolicy } from 'src/core/security/rate-limiting/rate-limit-policy';

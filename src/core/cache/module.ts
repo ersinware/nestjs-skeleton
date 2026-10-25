@@ -29,9 +29,9 @@ import { createRedisClient } from 'src/core/redis';
         {
             inject: [ConfigService, TOKEN_LOGGER_PORT],
             provide: TOKEN_CACHE_CONNECTION,
-            useFactory: (config: ConfigService, logger: ILoggerPort) =>
+            useFactory: (configService: ConfigService, logger: ILoggerPort) =>
                 createRedisClient(
-                    config,
+                    configService,
                     logger,
                     {
                         host: ENV.REDIS_CACHE_HOST,

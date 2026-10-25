@@ -29,6 +29,11 @@ export const ROUTE_HEALTH_LIVE = 'live';
 export const ROUTE_HEALTH_READY = 'ready';
 
 /**
+ * The route segment for permission-protected per-indicator health details.
+ */
+export const ROUTE_HEALTH_STATUS = 'status';
+
+/**
  * The route segment the API documentation pages are mounted under. Owned here because the
  * composition root serves them and the logger's request-log exclusion must name the same segment,
  * so the two can never drift apart.
@@ -39,10 +44,10 @@ export const ROUTE_DOCS = 'docs';
  * The exact request path of the detailed health endpoint (global prefix + version-neutral health
  * route), whose intentional 503 must bypass response normalization in the global exception filter.
  */
-export const PATH_HEALTH = `/${GLOBAL_PREFIX}/${ROUTE_HEALTH}`;
+export const PATH_HEALTH_STATUS = `/${GLOBAL_PREFIX}/${ROUTE_HEALTH}/${ROUTE_HEALTH_STATUS}`;
 
 /**
  * The exact request path of the readiness probe, whose intentional 503 must reach the orchestrator
  * as a bare status code — the filter suppresses the body entirely rather than normalizing it.
  */
-export const PATH_HEALTH_READY = `${PATH_HEALTH}/${ROUTE_HEALTH_READY}`;
+export const PATH_HEALTH_READY = `/${GLOBAL_PREFIX}/${ROUTE_HEALTH}/${ROUTE_HEALTH_READY}`;

@@ -57,13 +57,13 @@ export class S3StorageAdapter implements IStoragePort {
      * Uses one endpoint for server operations and browser-facing signatures.
      *
      * @param client S3 operations and signing client.
-     * @param config Validated storage configuration.
+     * @param configService Validated storage configuration.
      */
     constructor(
         @Inject(TOKEN_S3_CLIENT) private readonly client: S3Client,
-        config: ConfigService,
+        configService: ConfigService,
     ) {
-        this.bucket = config.getOrThrow<string>(ENV.STORAGE_BUCKET);
+        this.bucket = configService.getOrThrow<string>(ENV.STORAGE_BUCKET);
     }
 
     /**

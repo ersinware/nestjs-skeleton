@@ -42,16 +42,16 @@ export class RateLimitStageRunner {
      * @param reflector Reads endpoint declarations already validated at bootstrap.
      * @param trackerResolverRegistry Module-composed tracker resolver instances.
      * @param counter Atomic counter admission port.
-     * @param config Validated service namespace configuration.
+     * @param configService Validated service namespace configuration.
      */
     constructor(
         private readonly reflector: Reflector,
         @Inject(TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY)
         private readonly trackerResolverRegistry: RateLimitTrackerResolverRegistry,
         @Inject(TOKEN_RATE_LIMIT_COUNTER_PORT) private readonly counter: IRateLimitCounterPort,
-        config: ConfigService,
+        configService: ConfigService,
     ) {
-        this.serviceName = config.getOrThrow<string>(ENV.SERVICE_NAME);
+        this.serviceName = configService.getOrThrow<string>(ENV.SERVICE_NAME);
     }
 
     /**

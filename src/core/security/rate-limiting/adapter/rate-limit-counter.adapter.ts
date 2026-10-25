@@ -43,11 +43,11 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
      * Connects the storage adapter to the dedicated Redis client and operation timeout.
      *
      * @param redis Dedicated node-redis connection owned by the rate-limit module.
-     * @param config Validated counter-operation timeout configuration.
+     * @param configService Validated counter-operation timeout configuration.
      */
     constructor(
         @Inject(TOKEN_RATE_LIMIT_CONNECTION) private readonly redis: RedisClientType,
-        config: ConfigService,
+        configService: ConfigService,
     ) {
         redis.on('ready', () => {
             this.connectionFault = undefined;
@@ -57,7 +57,7 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
             this.connectionFault = isNodeRedisUnavailable(error) ? undefined : error;
         });
 
-        this.timeoutMs = config.getOrThrow<number>(ENV.REDIS_RATE_LIMIT_COMMAND_TIMEOUT) * 1000;
+        this.timeoutMs = configService.getOrThrow<number>(ENV.REDIS_RATE_LIMIT_COMMAND_TIMEOUT) * 1000;
         this.storage = new RedisThrottlerStorage(redis, ThrottlerAlgorithm.SlidingWindowCounter);
     }
 

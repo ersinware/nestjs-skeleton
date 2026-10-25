@@ -17,6 +17,7 @@ import { TOKEN_CACHE_HEALTH_PORT } from 'src/core/cache';
 import { ENV } from 'src/core/config';
 import type { IDatabaseHealthPort } from 'src/core/database';
 import { TOKEN_DATABASE_HEALTH_PORT, TOKEN_DATABASE_REPLICA_HEALTH_PORT } from 'src/core/database';
+import { TOKEN_RATE_LIMIT_HEALTH_PORT, type IRateLimitHealthPort } from 'src/core/security/rate-limiting';
 import type { ISessionHealthPort } from 'src/core/security/session';
 import { TOKEN_SESSION_HEALTH_PORT } from 'src/core/security/session';
 import type { ICheckReadinessPort } from 'src/module/health/application/query/check-readiness/port';
@@ -44,6 +45,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
      * @param databaseReplicaHealthIndicatorPort Replica database ping.
      * @param cacheHealthIndicatorPort Cache ping.
      * @param sessionHealthIndicatorPort Session store ping.
+     * @param rateLimitHealthIndicatorPort Rate-limit store ping.
      */
     constructor(
         private readonly health: HealthCheckService,
@@ -56,6 +58,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
         private readonly databaseReplicaHealthIndicatorPort: IDatabaseHealthPort,
         @Inject(TOKEN_CACHE_HEALTH_PORT) private readonly cacheHealthIndicatorPort: ICacheHealthPort,
         @Inject(TOKEN_SESSION_HEALTH_PORT) private readonly sessionHealthIndicatorPort: ISessionHealthPort,
+        @Inject(TOKEN_RATE_LIMIT_HEALTH_PORT) private readonly rateLimitHealthIndicatorPort: IRateLimitHealthPort,
     ) {}
 
     /**
@@ -85,6 +88,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
                 () => this.checkDependency('database_replica', this.databaseReplicaHealthIndicatorPort),
                 () => this.checkDependency('cache', this.cacheHealthIndicatorPort),
                 () => this.checkDependency('session', this.sessionHealthIndicatorPort),
+                () => this.checkDependency('rate_limit', this.rateLimitHealthIndicatorPort),
             ]),
         );
     }
@@ -110,6 +114,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
             () => this.checkDependency('database', this.databaseHealthIndicatorPort),
             () => this.checkDependency('database_replica', this.databaseReplicaHealthIndicatorPort),
             () => this.checkDependency('session', this.sessionHealthIndicatorPort),
+            () => this.checkDependency('rate_limit', this.rateLimitHealthIndicatorPort),
         ]);
     }
 
@@ -158,6 +163,7 @@ export class HealthReaderAdapter implements IGetHealthStatusPort, ICheckReadines
             database_replica: this.assertHealthy(result, 'database_replica'),
             cache: this.assertHealthy(result, 'cache'),
             session: this.assertHealthy(result, 'session'),
+            rate_limit: this.assertHealthy(result, 'rate_limit'),
         };
 
         return {

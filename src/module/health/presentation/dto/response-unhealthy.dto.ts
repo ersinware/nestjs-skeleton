@@ -115,6 +115,10 @@ function createUnhealthyErrorSchema(description: string): Record<string, unknown
                 status: 'down',
                 message: UnhealthyIndicatorMessage.cache,
             },
+            rate_limit: {
+                status: 'down',
+                message: UnhealthyIndicatorMessage.rate_limit,
+            },
         } satisfies Partial<Record<HealthIndicatorKey, UnhealthyIndicatorState>>,
     };
 }
@@ -170,6 +174,7 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
             database_replica: createHealthyOrUnhealthyIndicator('database_replica', 'down'),
             cache: createHealthyOrUnhealthyIndicator('cache', 'down'),
             session: createHealthyOrUnhealthyIndicator('session', 'up'),
+            rate_limit: createHealthyOrUnhealthyIndicator('rate_limit', 'down'),
         },
         additionalProperties: false,
         minProperties: HEALTH_INDICATOR_KEYS.length,
@@ -190,6 +195,10 @@ function createUnhealthyDetailsSchema(description: string): Record<string, unkno
             cache: {
                 status: 'down',
                 message: UnhealthyIndicatorMessage.cache,
+            },
+            rate_limit: {
+                status: 'down',
+                message: UnhealthyIndicatorMessage.rate_limit,
             },
         } satisfies Record<HealthIndicatorKey, HealthyOrUnhealthyIndicatorState>,
     };

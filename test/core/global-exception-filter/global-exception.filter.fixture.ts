@@ -40,6 +40,7 @@ export class HealthExceptionTriggerController {
             info: {
                 memory_heap: { status: 'up' },
                 memory_rss: { status: 'up' },
+                rate_limit: { status: 'up' },
             },
             error: {
                 database: { status: 'down', message: 'Database connection failed.' },
@@ -49,6 +50,7 @@ export class HealthExceptionTriggerController {
             details: {
                 memory_heap: { status: 'up' },
                 memory_rss: { status: 'up' },
+                rate_limit: { status: 'up' },
                 session: { status: 'up' },
                 database: { status: 'down', message: 'Database connection failed.' },
                 database_replica: { status: 'down', message: 'Database replica connection failed.' },

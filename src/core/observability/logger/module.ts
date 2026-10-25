@@ -30,10 +30,10 @@ const ENVIRONMENT_TO_LEVEL = {
     imports: [
         PinoLoggerModule.forRootAsync({
             inject: [ConfigService],
-            useFactory: (config: ConfigService) => {
+            useFactory: (configService: ConfigService) => {
                 return {
                     pinoHttp: {
-                        level: ENVIRONMENT_TO_LEVEL[config.getOrThrow<Environment>(ENV.NODE_ENV)],
+                        level: ENVIRONMENT_TO_LEVEL[configService.getOrThrow<Environment>(ENV.NODE_ENV)],
                         serializers: {
                             // Whitelists request fields; headers stay private unless selected explicitly.
                             // Omits bodies and query strings because they can contain credentials or tokens.

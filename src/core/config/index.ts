@@ -13,12 +13,13 @@ export { RUNTIME_FLAG } from 'src/core/config/environment/runtime-flag.constant'
 export { resolveTrustProxy } from 'src/core/config/environment/trust-proxy.util';
 export {
     GLOBAL_PREFIX,
-    PATH_HEALTH,
     PATH_HEALTH_READY,
+    PATH_HEALTH_STATUS,
     ROUTE_DOCS,
     ROUTE_HEALTH,
     ROUTE_HEALTH_LIVE,
     ROUTE_HEALTH_READY,
+    ROUTE_HEALTH_STATUS,
 } from 'src/core/config/path.constant';
 export { ACTIVE_VERSIONS, VERSION_1, VERSION_PREFIX } from 'src/core/config/version.constant';
 export type { APIVersion } from 'src/core/config/version.constant';

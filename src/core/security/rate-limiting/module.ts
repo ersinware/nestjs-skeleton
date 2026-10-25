@@ -13,10 +13,12 @@ import { createNodeRedisClient } from 'src/core/redis';
 import { IpTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/ip-tracker-resolver.adapter';
 import { PrincipalTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/principal-tracker-resolver.adapter';
 import { RateLimitCounterAdapter } from 'src/core/security/rate-limiting/adapter/rate-limit-counter.adapter';
+import { RateLimitHealthAdapter } from 'src/core/security/rate-limiting/adapter/rate-limit-health.adapter';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { PostAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/post-auth-rate-limit.guard';
 import { PreAuthRateLimitGuard } from 'src/core/security/rate-limiting/guard/pre-auth-rate-limit.guard';
 import { TOKEN_RATE_LIMIT_COUNTER_PORT } from 'src/core/security/rate-limiting/port/rate-limit-counter.port';
+import { TOKEN_RATE_LIMIT_HEALTH_PORT } from 'src/core/security/rate-limiting/port/rate-limit-health.port';
 import { TOKEN_RATE_LIMIT_CONNECTION } from 'src/core/security/rate-limiting/rate-limit-connection.token';
 import { RateLimitPolicyValidator } from 'src/core/security/rate-limiting/rate-limit-policy.validator';
 import { RateLimitStageRunner } from 'src/core/security/rate-limiting/rate-limit-stage.runner';
@@ -36,9 +38,9 @@ import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-lim
         {
             provide: TOKEN_RATE_LIMIT_CONNECTION,
             inject: [ConfigService, TOKEN_LOGGER_PORT],
-            useFactory: (config: ConfigService, logger: ILoggerPort) =>
+            useFactory: (configService: ConfigService, logger: ILoggerPort) =>
                 createNodeRedisClient(
-                    config,
+                    configService,
                     logger,
                     {
                         host: ENV.REDIS_RATE_LIMIT_HOST,
@@ -51,6 +53,7 @@ import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-lim
                 ),
         },
         { provide: TOKEN_RATE_LIMIT_COUNTER_PORT, useClass: RateLimitCounterAdapter },
+        { provide: TOKEN_RATE_LIMIT_HEALTH_PORT, useClass: RateLimitHealthAdapter },
         IpTrackerResolverAdapter,
         TargetAccountTrackerResolverAdapter,
         PrincipalTrackerResolverAdapter,
@@ -72,7 +75,7 @@ import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-lim
         PreAuthRateLimitGuard,
         PostAuthRateLimitGuard,
     ],
-    exports: [PreAuthRateLimitGuard, PostAuthRateLimitGuard],
+    exports: [PreAuthRateLimitGuard, PostAuthRateLimitGuard, TOKEN_RATE_LIMIT_HEALTH_PORT],
 })
 export class RateLimitingModule implements OnApplicationBootstrap, OnApplicationShutdown {
     /**

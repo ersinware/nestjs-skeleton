@@ -11,7 +11,7 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
 /**
  * Creates a configured Redis client instance.
  *
- * @param config The config service instance.
+ * @param configService The config service instance.
  * @param logger The logger service instance.
  * @param env.host Configuration key for the Redis hostname or IP address.
  * @param env.port Configuration key for the Redis TCP port.
@@ -24,7 +24,7 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
  * @returns The initialized Redis client instance.
  */
 export function createRedisClient(
-    config: ConfigService,
+    configService: ConfigService,
     logger: ILoggerPort,
     env: {
         readonly host: string;
@@ -38,16 +38,16 @@ export function createRedisClient(
     token: symbol,
 ): Redis {
     const clientName = token.description ?? token.toString(),
-        password = config.getOrThrow<string>(env.password),
+        password = configService.getOrThrow<string>(env.password),
         redis = new Redis({
-            host: config.getOrThrow<string>(env.host),
-            port: config.getOrThrow<number>(env.port),
+            host: configService.getOrThrow<string>(env.host),
+            port: configService.getOrThrow<number>(env.port),
             ...(password ? { password } : {}),
-            ...(config.getOrThrow<boolean>(env.tls) ? { tls: {} } : {}),
+            ...(configService.getOrThrow<boolean>(env.tls) ? { tls: {} } : {}),
             // App duration values are seconds; ioredis expects milliseconds.
-            connectTimeout: config.getOrThrow<number>(env.connectTimeout) * 1000,
-            maxRetriesPerRequest: config.getOrThrow<number>(env.maxRetriesPerRequest),
-            commandTimeout: config.getOrThrow<number>(env.commandTimeout) * 1000,
+            connectTimeout: configService.getOrThrow<number>(env.connectTimeout) * 1000,
+            maxRetriesPerRequest: configService.getOrThrow<number>(env.maxRetriesPerRequest),
+            commandTimeout: configService.getOrThrow<number>(env.commandTimeout) * 1000,
         });
 
     // One log per outage episode, gated on a per-client transition flag: ioredis re-emits 'error' on
