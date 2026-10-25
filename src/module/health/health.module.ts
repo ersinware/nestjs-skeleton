@@ -8,6 +8,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { CacheModule } from 'src/core/cache';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
+import { RateLimitingModule } from 'src/core/security/rate-limiting';
 import { SessionModule } from 'src/core/security/session';
 import { CheckReadinessQueryHandler } from 'src/module/health/application/query/check-readiness/handler';
 import { TOKEN_CHECK_READINESS_PORT } from 'src/module/health/application/query/check-readiness/port';
@@ -25,6 +26,7 @@ import { HealthController } from 'src/module/health/presentation/controller/heal
         DatabaseModule,
         CacheModule,
         SessionModule,
+        RateLimitingModule,
         TerminusModule.forRoot({
             logger: false,
         }),

@@ -15,7 +15,7 @@ import {
     getSchemaPath,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import { ROUTE_HEALTH, ROUTE_HEALTH_LIVE, ROUTE_HEALTH_READY } from 'src/core/config';
+import { ROUTE_HEALTH, ROUTE_HEALTH_LIVE, ROUTE_HEALTH_READY, ROUTE_HEALTH_STATUS } from 'src/core/config';
 import { QueryPipeline } from 'src/core/cqrs';
 import {
     ApiDefaultAccessDeniedResponse,
@@ -101,7 +101,7 @@ export class HealthController {
      * @throws {ServiceUnavailableException} When a checked health indicator fails
      * @throws {SystemException} When a successful health report violates the indicator contract
      */
-    @Get()
+    @Get(ROUTE_HEALTH_STATUS)
     @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.HEALTH_DETAIL_READ)
     @HttpCache(HttpCachePolicy.NO_STORE)

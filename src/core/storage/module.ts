@@ -20,17 +20,17 @@ import { TOKEN_S3_CLIENT } from 'src/core/storage/storage-client.token';
         {
             provide: TOKEN_S3_CLIENT,
             inject: [ConfigService],
-            useFactory: (config: ConfigService): S3Client => {
-                const endpoint = config.get<string>(ENV.STORAGE_ENDPOINT);
+            useFactory: (configService: ConfigService): S3Client => {
+                const endpoint = configService.get<string>(ENV.STORAGE_ENDPOINT);
 
                 return new S3Client({
-                    region: config.getOrThrow<string>(ENV.STORAGE_REGION),
+                    region: configService.getOrThrow<string>(ENV.STORAGE_REGION),
                     forcePathStyle: Boolean(endpoint),
                     // The browser owns PUT bytes; the server cannot precompute their checksum while presigning.
                     requestChecksumCalculation: 'WHEN_REQUIRED',
                     requestHandler: new NodeHttpHandler({
-                        connectionTimeout: config.getOrThrow<number>(ENV.STORAGE_CONNECT_TIMEOUT) * 1000,
-                        requestTimeout: config.getOrThrow<number>(ENV.STORAGE_REQUEST_TIMEOUT) * 1000,
+                        connectionTimeout: configService.getOrThrow<number>(ENV.STORAGE_CONNECT_TIMEOUT) * 1000,
+                        requestTimeout: configService.getOrThrow<number>(ENV.STORAGE_REQUEST_TIMEOUT) * 1000,
                         throwOnRequestTimeout: true,
                     }),
                     ...(endpoint && { endpoint }),

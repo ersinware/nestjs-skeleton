@@ -43,8 +43,8 @@ export async function createTestApp(options?: OptionsTestApp): Promise<NestFasti
     const namespace = `api-test-${randomUUID()}`;
     builder.overrideProvider(TOKEN_RATE_LIMIT_COUNTER_PORT).useFactory({
         inject: [TOKEN_RATE_LIMIT_CONNECTION, ConfigService],
-        factory: (redis: RedisClientType, config: ConfigService): IRateLimitCounterPort => {
-            const counter = new RateLimitCounterAdapter(redis, config);
+        factory: (redis: RedisClientType, configService: ConfigService): IRateLimitCounterPort => {
+            const counter = new RateLimitCounterAdapter(redis, configService);
             return {
                 consume: (attempt: RateLimitCounterAttempt): Promise<RateLimitCounterResult> =>
                     counter.consume({

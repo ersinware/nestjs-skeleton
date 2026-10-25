@@ -15,6 +15,7 @@ export const HealthIndicatorDescription = {
     database_replica: 'Database read-replica connection indicator status; the primary when no replica is configured.',
     cache: 'Cache connection indicator status.',
     session: 'Session store connection indicator status.',
+    rate_limit: 'Rate-limit store connection indicator status.',
 } as const satisfies Record<HealthIndicatorKey, string>;
 
 /**
@@ -30,6 +31,7 @@ export function createHealthyIndicatorProperties(): Record<HealthIndicatorKey, R
         database_replica: createHealthyIndicator(HealthIndicatorDescription.database_replica),
         cache: createHealthyIndicator(HealthIndicatorDescription.cache),
         session: createHealthyIndicator(HealthIndicatorDescription.session),
+        rate_limit: createHealthyIndicator(HealthIndicatorDescription.rate_limit),
     };
 }
 

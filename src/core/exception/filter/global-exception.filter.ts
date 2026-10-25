@@ -6,7 +6,7 @@
 import type { ArgumentsHost } from '@nestjs/common';
 import { Catch, ExceptionFilter, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { PATH_HEALTH, PATH_HEALTH_READY } from 'src/core/config';
+import { PATH_HEALTH_READY, PATH_HEALTH_STATUS } from 'src/core/config';
 import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { AuditAction, isExceptionAudited, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
@@ -126,7 +126,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return {};
         }
 
-        if (path === PATH_HEALTH) {
+        if (path === PATH_HEALTH_STATUS) {
             return { body: { error: exception.getResponse() } };
         }
 

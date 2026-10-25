@@ -83,6 +83,7 @@ function createHealthyDetailsSchema(description: string): Record<string, unknown
             database_replica: { status: 'up' },
             cache: { status: 'up' },
             session: { status: 'up' },
+            rate_limit: { status: 'up' },
         } satisfies Record<HealthIndicatorKey, HealthyIndicatorState>,
     };
 }

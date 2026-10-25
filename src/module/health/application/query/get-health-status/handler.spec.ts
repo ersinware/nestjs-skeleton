@@ -41,6 +41,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 database_replica: { status: 'up' },
                 cache: { status: 'up' },
                 session: { status: 'up' },
+                rate_limit: { status: 'up' },
             },
             error: {},
             details: {
@@ -50,6 +51,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 database_replica: { status: 'up' },
                 cache: { status: 'up' },
                 session: { status: 'up' },
+                rate_limit: { status: 'up' },
             },
         };
         const checkSpy = vi.spyOn(healthCheckPort, 'getStatus').mockResolvedValue(mockResult);
@@ -70,6 +72,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 database_replica: { status: 'up' },
                 cache: { status: 'up' },
                 session: { status: 'up' },
+                rate_limit: { status: 'up' },
             },
             error: {
                 database: { status: 'down', message: 'Connection timeout' },
@@ -81,6 +84,7 @@ describe('GetHealthStatusQueryHandler', () => {
                 database_replica: { status: 'up' },
                 cache: { status: 'up' },
                 session: { status: 'up' },
+                rate_limit: { status: 'up' },
             },
         };
         const checkSpy = vi.spyOn(healthCheckPort, 'getStatus').mockResolvedValue(mockResult);

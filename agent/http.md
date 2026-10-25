@@ -6,15 +6,15 @@ Paths are version-neutral and relative to the global prefix.
 
 - `/health/live`: public, bodyless 204; no checks or dispatch.
 - `/health/ready`: public, bodyless 204 when readiness indicators pass, 503 on their failure; never disclose topology.
-- `/health`: requires `Permission.HEALTH_DETAIL_READ`; returns indicator details with 200/503.
-- Checks are uncached: detail checks all `HEALTH_INDICATOR_KEYS`; readiness excludes `cache`. Replica probe reuse: [Dependency Outages](observability.md#dependency-outages).
+- `/health/status`: requires `Permission.HEALTH_DETAIL_READ`; returns indicator details with 200/503.
+- Checks are uncached. Readiness includes fail-closed session/rate-limit stores; cache failure must not remove an otherwise ready instance. Dependency checks must not consume rate-limit budgets. Replica probe reuse: [Dependency Outages](observability.md#dependency-outages).
 - Use readiness for traffic eligibility and liveness for restart/replacement decisions. Verify platform health-check consequences, including load-balancer checks; dependency outages must not restart healthy processes.
 - Preserve Terminus `ServiceUnavailableException`: the filter makes readiness 503 bodyless and preserves detailed indicator reports under `error`. Other failures follow [Exceptions](exceptions.md#exceptions); required session or rate-limit checks can produce a standard guard 503 before detailed checks run.
 - Bound check execution within deployment probe timeouts. DB probes use the application's pool acquisition, server statement, and client query timeouts; allow response margin beyond the statement limit and deployment margin beyond acquisition + query waits. HTTP cache policy: [HTTP Caching](http.md#http-caching).
 
 ### Client Access
 
-- Support web access through a BFF and direct mobile access through the API ingress. Both paths require trusted IP forwarding ([Rate-Limit Decisions](../docs/issue/rate-limiting.md#2-prerequisite-a-trustworthy-answer-to-who-is-calling)).
+- Support web access through a BFF and direct mobile access through the API ingress. Both paths require trusted IP forwarding: ingress sanitizes client-supplied forwarded headers, the BFF propagates the trusted browser IP, and `TRUST_PROXY` identifies actual proxy IPs/CIDRs. Verify both paths after deployment; limiters use Fastify's resolved `request.ip`.
 
 ### HTTP Caching
 

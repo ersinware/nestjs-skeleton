@@ -37,7 +37,7 @@ describe('HealthController', () => {
         await app.close();
     });
 
-    it('GET /health - should return service health status', async () => {
+    it('GET /health/status - should return service health status', async () => {
         const cacheHealthIndicator = app.get<ICacheHealthPort>(TOKEN_CACHE_HEALTH_PORT);
         const databaseHealthIndicator = app.get<IDatabaseHealthPort>(TOKEN_DATABASE_HEALTH_PORT);
 
@@ -47,7 +47,7 @@ describe('HealthController', () => {
         const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockResolvedValue(undefined);
 
         await request(app.getHttpServer())
-            .get('/api/health')
+            .get('/api/health/status')
             .auth('health', { type: 'bearer' })
             .expect(200)
             .expect((res) => {
@@ -61,6 +61,7 @@ describe('HealthController', () => {
                             database_replica: { status: 'up' },
                             cache: { status: 'up' },
                             session: { status: 'up' },
+                            rate_limit: { status: 'up' },
                         },
                         error: {},
                         details: {
@@ -70,6 +71,7 @@ describe('HealthController', () => {
                             database_replica: { status: 'up' },
                             cache: { status: 'up' },
                             session: { status: 'up' },
+                            rate_limit: { status: 'up' },
                         },
                     },
                 });
@@ -79,7 +81,7 @@ describe('HealthController', () => {
         expect(spyDb).toHaveBeenCalledTimes(2);
     });
 
-    it('GET /health - should return 503 service unavailable when both Database and Cache are down', async () => {
+    it('GET /health/status - should return 503 service unavailable when both Database and Cache are down', async () => {
         const cacheHealthIndicator = app.get<ICacheHealthPort>(TOKEN_CACHE_HEALTH_PORT);
         const databaseHealthIndicator = app.get<IDatabaseHealthPort>(TOKEN_DATABASE_HEALTH_PORT);
 
@@ -87,7 +89,7 @@ describe('HealthController', () => {
         const spyDb = vi.spyOn(databaseHealthIndicator, 'ping').mockRejectedValue(new Error('DB failed'));
 
         await request(app.getHttpServer())
-            .get('/api/health')
+            .get('/api/health/status')
             .auth('health', { type: 'bearer' })
             .expect(503)
             .expect((res) => {
@@ -98,6 +100,7 @@ describe('HealthController', () => {
                             memory_heap: { status: 'up' },
                             memory_rss: { status: 'up' },
                             session: { status: 'up' },
+                            rate_limit: { status: 'up' },
                         },
                         error: {
                             database: {
@@ -129,6 +132,7 @@ describe('HealthController', () => {
                                 message: 'Cache connection failed.',
                             },
                             session: { status: 'up' },
+                            rate_limit: { status: 'up' },
                         },
                     },
                 });

@@ -27,9 +27,9 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
         {
             inject: [ConfigService, TOKEN_LOGGER_PORT],
             provide: TOKEN_SESSION_CONNECTION,
-            useFactory: (config: ConfigService, logger: ILoggerPort) =>
+            useFactory: (configService: ConfigService, logger: ILoggerPort) =>
                 createRedisClient(
-                    config,
+                    configService,
                     logger,
                     {
                         host: ENV.REDIS_SESSION_HOST,
