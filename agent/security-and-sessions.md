@@ -84,9 +84,11 @@
 
 - Use an explicit central policy on each HTTP handler, including `default`, or a probe exemption. No class-level declarations, implicit fallback, or automatic default-policy stacking.
 - Preserve guard order: pre-auth rate limit → authentication → post-auth rate limit → authorization. Only authentication publishes verified identity; limiters never decode/verify credentials or publish audit actors.
-- Principal budgets use the session-checked caller ID alone, never session/IP or request target IDs. Reject public mappings at startup and missing verified identity with `SystemException`; no tracker fallback.
-- Derive target-account trackers without account lookup, matching the owning workflow's field validation and normalization. Missing/invalid tracker input fails at that counter; never skip it or fall back to IP.
+- Principal budgets use the session-checked caller ID alone, never session/IP or request target IDs. Missing verified identity throws `SystemException`; no tracker fallback.
+- Resolve target trackers before pipes without account lookup, matching workflow validation/normalization. Email body fields run pre-auth; route IDs post-auth. Invalid input fails at that counter; no fallback.
+- Scope counters by environment, service, budget and tracker, independently of policy. Reuse shared limiter constants; reject conflicting definitions, duplicate budgets within a policy and public post-auth mappings at bootstrap.
+- Sliding Window Counter estimates usage; it guarantees neither exact quotas nor cooldowns. Blocks start on rejection; blocked retries do not extend them.
 - Apply counters in declared order; stop at the first rejection/failure without rolling back earlier consumption. Count requests reaching each counter regardless of workflow outcome; success never resets the budget.
 - Keep counters in dedicated Redis; no offline queue, uncertain-mutation replay, local fallback or fail-open. Counter-operation timeout ends waiting, not execution; never retry the uncertain operation.
 - Required storage availability/timeout/known OOM failures deny with 503; the first block denies with 429 and standard `Retry-After`. Preserve other failures ([Exceptions](exceptions.md#exceptions)). Technical rejections produce no audit or additional per-request reporting; HTTP access logging remains unchanged.
-- Preserve counter state across compatible policy changes; window/tracker semantic changes require a new limiter identity. Do not serve incompatible configurations concurrently or reset shared counters during deployment; rollback code and policy mappings together.
+- Preserve counter state across compatible policy changes; window/tracker semantic changes require a new budget identity. Do not serve incompatible configurations concurrently or reset shared counters during deployment; rollback code and policy mappings together.

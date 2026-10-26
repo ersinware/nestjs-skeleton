@@ -188,14 +188,32 @@ describe('RateLimitPolicyValidator bootstrap', () => {
         }
     });
 
-    it('rejects duplicate limiter names within one policy', async () => {
-        const limiter = RATE_LIMIT_POLICIES[RateLimitPolicy.DEFAULT][1];
-        const original = { ...limiter };
+    it('rejects duplicate limiter references within one policy', async () => {
+        const limiters = RATE_LIMIT_POLICIES[RateLimitPolicy.DEFAULT];
+        const original = limiters[1];
         try {
-            Object.assign(limiter, { name: RATE_LIMIT_POLICIES.default[0].name });
+            Object.assign(limiters, { 1: limiters[0] });
             await expect(bootstrap([])).rejects.toThrow('Invalid rate-limit configuration');
         } finally {
-            Object.assign(limiter, original);
+            Object.assign(limiters, { 1: original });
+        }
+    });
+
+    it.each([
+        { source: 'principal' },
+        { stage: 'post-auth' },
+        { field: 'email' },
+        { limit: 601 },
+        { windowSeconds: 61 },
+        { blockDurationSeconds: 11 },
+    ])('rejects conflicting shared budget definitions %j', async (change) => {
+        const limiters = RATE_LIMIT_POLICIES[RateLimitPolicy.JOB_QUEUE_MUTATION];
+        const original = limiters[0];
+        try {
+            Object.assign(limiters, { 0: { ...original, ...change } });
+            await expect(bootstrap([])).rejects.toThrow('Conflicting shared rate-limit counter');
+        } finally {
+            Object.assign(limiters, { 0: original });
         }
     });
 
@@ -209,8 +227,10 @@ describe('RateLimitPolicyValidator bootstrap', () => {
         }
     });
     it.each([
-        RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE,
+        RateLimitPolicy.CREDENTIAL_CHANGE,
         RateLimitPolicy.ADMIN_INVITATION,
+        RateLimitPolicy.ADMIN_REINVITATION,
+        RateLimitPolicy.JOB_QUEUE_MUTATION,
         RateLimitPolicy.AVATAR_UPLOAD_INITIATE,
     ])(
         'accepts protected %s and rejects public declarations at either level, including inherited handlers',

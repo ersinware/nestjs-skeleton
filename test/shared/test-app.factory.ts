@@ -49,7 +49,7 @@ export async function createTestApp(options?: OptionsTestApp): Promise<NestFasti
                 consume: (attempt: RateLimitCounterAttempt): Promise<RateLimitCounterResult> =>
                     counter.consume({
                         ...attempt,
-                        key: `${namespace}-${TestRunner.getCurrentTest()?.id ?? 'bootstrap'}${attempt.key.slice(attempt.key.indexOf(':'))}`,
+                        key: `${namespace}-${TestRunner.getCurrentTest()?.id ?? 'bootstrap'}:${attempt.key}`,
                     }),
             };
         },

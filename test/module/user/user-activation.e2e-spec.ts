@@ -515,7 +515,7 @@ describe('User registration and activation', () => {
     it('counts successful login responses and prevents later credential and audit effects after exhaustion', async () => {
         const row = await register();
         const hashing = vi.spyOn(hashingPort, 'verify');
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 3; i++) {
             const response = await app.inject({
                 method: 'POST',
                 url: '/api/v1/auth/user/login',
@@ -533,7 +533,7 @@ describe('User registration and activation', () => {
             payload: { email: row.email, password },
         });
         expect(blocked.statusCode).toBe(429);
-        expect(hashing).toHaveBeenCalledTimes(5);
+        expect(hashing).toHaveBeenCalledTimes(3);
         expect(await actions(row.id)).toEqual(before);
     });
 

@@ -11,14 +11,15 @@ import { KEY_DECORATOR_RATE_LIMIT_EXEMPT } from 'src/core/security/rate-limiting
 import { KEY_DECORATOR_RATE_LIMIT } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
 import {
     RATE_LIMIT_POLICIES,
+    RateLimitBudget,
     RateLimitPolicy,
     type RateLimiterDefinition,
 } from 'src/core/security/rate-limiting/rate-limit-policy';
+import { RateLimitStage } from 'src/core/security/rate-limiting/rate-limit-stage';
 import {
     TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY,
     type RateLimitTrackerResolverRegistry,
 } from 'src/core/security/rate-limiting/rate-limit-tracker-resolver-registry';
-import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-limit-tracker-source';
 import { SystemException } from 'src/shared/exception';
 
 /**
@@ -48,23 +49,34 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
      * @throws {SystemException} When catalog values or endpoint policies are invalid.
      */
     onApplicationBootstrap() {
+        this.validatePolicies();
+        this.validateControllers();
+    }
+
+    /**
+     * Validates policy budgets, rejecting duplicate budgets and conflicting shared definitions.
+     *
+     * @throws {SystemException} When a policy or limiter definition is invalid.
+     */
+    private validatePolicies() {
+        const sharedBudgets = new Map<RateLimitBudget, RateLimiterDefinition>();
+
         for (const policy of Object.values(RateLimitPolicy)) {
             const limiters: readonly RateLimiterDefinition[] = RATE_LIMIT_POLICIES[policy];
             if (limiters.length === 0) {
                 throw new SystemException(`Rate-limit policy has no limiters: ${policy}`, {
                     context: {
                         class: RateLimitPolicyValidator.name,
-                        method: this.onApplicationBootstrap.name,
+                        method: this.validatePolicies.name,
                         policy,
                     },
                 });
             }
 
-            const names = new Set<string>();
+            const budgets = new Set<RateLimitBudget>();
             for (const limiter of limiters) {
-                const resolver = this.trackerResolverRegistry[limiter.source];
                 if (
-                    names.has(limiter.name) ||
+                    budgets.has(limiter.budget) ||
                     !Number.isSafeInteger(limiter.limit) ||
                     limiter.limit <= 0 ||
                     limiter.limit >= Number.MAX_SAFE_INTEGER ||
@@ -74,23 +86,50 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
                     limiter.windowSeconds * 1000 * 2 > Number.MAX_SAFE_INTEGER ||
                     !Number.isSafeInteger(limiter.blockDurationSeconds * 1000) ||
                     limiter.blockDurationSeconds <= 0 ||
-                    !resolver
+                    !this.trackerResolverRegistry[limiter.source]
                 ) {
-                    throw new SystemException(`Invalid rate-limit configuration: ${policy}.${limiter.name}`, {
+                    throw new SystemException(`Invalid rate-limit configuration: ${policy}.${limiter.budget}`, {
                         context: {
                             class: RateLimitPolicyValidator.name,
-                            method: this.onApplicationBootstrap.name,
+                            method: this.validatePolicies.name,
                             policy,
-                            limiter: limiter.name,
-                            source: limiter.source,
+                            limiter,
                         },
                     });
                 }
 
-                names.add(limiter.name);
+                const shared = sharedBudgets.get(limiter.budget);
+                if (
+                    shared &&
+                    (shared.source !== limiter.source ||
+                        shared.stage !== limiter.stage ||
+                        shared.field !== limiter.field ||
+                        shared.limit !== limiter.limit ||
+                        shared.windowSeconds !== limiter.windowSeconds ||
+                        shared.blockDurationSeconds !== limiter.blockDurationSeconds)
+                ) {
+                    throw new SystemException(`Conflicting shared rate-limit counter: ${limiter.budget}`, {
+                        context: {
+                            class: RateLimitPolicyValidator.name,
+                            method: this.validatePolicies.name,
+                            policy,
+                            budget: limiter.budget,
+                        },
+                    });
+                }
+
+                budgets.add(limiter.budget);
+                sharedBudgets.set(limiter.budget, limiter);
             }
         }
+    }
 
+    /**
+     * Checks controller placement and discovers endpoint declarations without constructing controllers.
+     *
+     * @throws {SystemException} When rate-limit metadata is missing, misplaced or incompatible with authentication.
+     */
+    private validateControllers() {
         for (const wrapper of this.discovery.getControllers()) {
             const controller = wrapper.metatype;
             if (!controller) {
@@ -104,7 +143,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
                 throw new SystemException(`Rate-limit policies must be declared on endpoints: ${controller.name}`, {
                     context: {
                         class: RateLimitPolicyValidator.name,
-                        method: this.onApplicationBootstrap.name,
+                        method: this.validateControllers.name,
                         controller: controller.name,
                     },
                 });
@@ -146,11 +185,11 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
         }
 
         if (
-            RATE_LIMIT_POLICIES[policy].some((limiter) => limiter.source === RateLimitTrackerSource.PRINCIPAL) &&
+            RATE_LIMIT_POLICIES[policy].some((limiter) => limiter.stage === RateLimitStage.POST_AUTH) &&
             isPublicAuthPolicy(this.reflector, controller, handler)
         ) {
             throw new SystemException(
-                `Public endpoint cannot use a principal rate-limit policy: ${controller.name}.${handler.name}`,
+                `Public endpoint cannot use a principal or post-auth target rate-limit policy: ${controller.name}.${handler.name}`,
                 {
                     context: {
                         class: RateLimitPolicyValidator.name,

@@ -13,7 +13,7 @@ export enum RateLimitTrackerSource {
     IP = 'ip',
 
     /**
-     * Normalized email supplied in a configured body field, independent of account existence.
+     * Validated email body field or resource ID route parameter, independent of account existence.
      */
     TARGET_ACCOUNT = 'target-account',
 

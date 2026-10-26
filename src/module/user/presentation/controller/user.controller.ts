@@ -342,7 +342,7 @@ export class UserController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/initiate')
-    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @PrincipalOnly(PrincipalType.USER)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -447,7 +447,7 @@ export class UserController {
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
-    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @PrincipalOnly(PrincipalType.USER)
     @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
@@ -510,7 +510,7 @@ export class UserController {
      */
     @Public()
     @Post('registration/initiate')
-    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
+    @RateLimit(RateLimitPolicy.USER_REGISTRATION)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Prepare user registration',
@@ -551,7 +551,7 @@ export class UserController {
      */
     @Public()
     @Post('registration/complete')
-    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
+    @RateLimit(RateLimitPolicy.USER_REGISTRATION)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Register user',
@@ -587,7 +587,7 @@ export class UserController {
      */
     @Public()
     @Post('activation/complete')
-    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
+    @RateLimit(RateLimitPolicy.USER_ACTIVATION)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Activate user account',

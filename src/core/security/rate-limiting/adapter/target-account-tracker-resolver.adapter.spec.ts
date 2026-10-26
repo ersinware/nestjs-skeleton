@@ -27,16 +27,16 @@ describe('TargetAccountTrackerResolverAdapter', () => {
     it('hashes trimmed email without mutating raw input or including other credentials', () => {
         const body = { email: ' \tUser+alias@example.test\n', password: 'secret' };
         const expected = createHash('sha256').update('User+alias@example.test').digest('hex');
-        expect(resolver.resolve(request(body), RateLimitTrackerField.EMAIL)).toBe(expected);
+        expect(resolver.resolve(request(body), RateLimitTrackerField.TARGET_EMAIL)).toBe(expected);
         expect(
-            resolver.resolve(request({ email: body.email, password: 'different' }), RateLimitTrackerField.EMAIL),
+            resolver.resolve(request({ email: body.email, password: 'different' }), RateLimitTrackerField.TARGET_EMAIL),
         ).toBe(expected);
         expect(body.email).toBe(' \tUser+alias@example.test\n');
     });
 
     it('preserves case and provider aliases because account lookup uses exact email equality', () => {
         const trackers = ['User@example.test', 'user@example.test', 'user+tag@example.test'].map((email) =>
-            resolver.resolve(request({ email }), RateLimitTrackerField.EMAIL),
+            resolver.resolve(request({ email }), RateLimitTrackerField.TARGET_EMAIL),
         );
         expect(new Set(trackers).size).toBe(3);
         for (const tracker of trackers) {
@@ -62,7 +62,34 @@ describe('TargetAccountTrackerResolverAdapter', () => {
         { email: 'a@b' },
         { email: `a@${'b'.repeat(EMAIL_MAX_LENGTH)}.test` },
     ])('rejects malformed raw payload %j instead of using an empty or fallback tracker', (body) => {
-        expect(() => resolver.resolve(request(body), RateLimitTrackerField.EMAIL)).toThrow(InvalidInputException);
+        expect(() => resolver.resolve(request(body), RateLimitTrackerField.TARGET_EMAIL)).toThrow(
+            InvalidInputException,
+        );
+    });
+
+    it('canonicalizes UUID v7 without changing the raw route parameter', () => {
+        const id = '019A1234-ABCD-7DEF-8ABC-123456789ABC';
+        const params = { id };
+        expect(resolver.resolve({ params } as unknown as FastifyRequest, RateLimitTrackerField.TARGET_ID)).toBe(
+            id.toLowerCase(),
+        );
+        expect(params.id).toBe(id);
+    });
+
+    it.each([
+        undefined,
+        null,
+        [],
+        'id',
+        {},
+        { id: 1 },
+        { id: '' },
+        { id: '550e8400-e29b-41d4-a716-446655440000' },
+        { id: '019a1234-abcd-7def-8abc-123456789abc ' },
+    ])('rejects invalid target route parameters %j before counter access', (params) => {
+        expect(() =>
+            resolver.resolve({ params } as unknown as FastifyRequest, RateLimitTrackerField.TARGET_ID),
+        ).toThrow(InvalidInputException);
     });
 
     it.each([undefined, null])('rejects missing server configuration %s with diagnostic context', (field) => {

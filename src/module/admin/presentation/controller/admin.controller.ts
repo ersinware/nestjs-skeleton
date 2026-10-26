@@ -343,7 +343,7 @@ export class AdminController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/initiate')
-    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
@@ -448,7 +448,7 @@ export class AdminController {
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
-    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @PrincipalOnly(PrincipalType.ADMIN)
     @HttpCode(HttpStatus.OK)
     @ApiBearerAuth()
@@ -541,7 +541,7 @@ export class AdminController {
      */
     @Public()
     @Post('activation/initiate')
-    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
+    @RateLimit(RateLimitPolicy.ADMIN_ACTIVATION)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Prepare admin activation',
@@ -579,7 +579,7 @@ export class AdminController {
      */
     @Public()
     @Post('activation/complete')
-    @RateLimit(RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION)
+    @RateLimit(RateLimitPolicy.ADMIN_ACTIVATION)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Activate admin account',
@@ -614,7 +614,7 @@ export class AdminController {
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Post(`${ROUTE_PARAM_ID}/re-invite`)
-    @RateLimit(RateLimitPolicy.ADMIN_INVITATION)
+    @RateLimit(RateLimitPolicy.ADMIN_REINVITATION)
     @Permissions(Permission.ADMIN_ACCOUNT_INVITE)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()

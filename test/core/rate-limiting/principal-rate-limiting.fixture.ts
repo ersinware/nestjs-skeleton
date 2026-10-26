@@ -25,7 +25,7 @@ export class PrincipalRateLimitingTestController {
      * @returns Cumulative number of admitted handler executions.
      */
     @Get('password')
-    @RateLimit(RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE)
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @HttpCache(HttpCachePolicy.NO_STORE)
     password(): number {
         return ++this.calls;

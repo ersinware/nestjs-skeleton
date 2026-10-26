@@ -16,7 +16,7 @@ import {
     type RateLimitCounterAttempt,
 } from 'src/core/security/rate-limiting/port/rate-limit-counter.port';
 import { TOKEN_RATE_LIMIT_CONNECTION } from 'src/core/security/rate-limiting/rate-limit-connection.token';
-import { RATE_LIMIT_POLICIES, RateLimiterName } from 'src/core/security/rate-limiting/rate-limit-policy';
+import { RATE_LIMIT_POLICIES } from 'src/core/security/rate-limiting/rate-limit-policy';
 import { DependencyUnavailableMessage, RateLimitedMessage } from 'src/shared/exception';
 import { RateLimitingTestController } from 'test/core/rate-limiting/rate-limiting.fixture';
 import { createTestApp } from 'test/shared/test-app.factory';
@@ -92,6 +92,24 @@ describe('Rate limiting with production wiring and real Redis', () => {
         expect(app.get(RateLimitingTestController).calls).toBe(1);
     });
 
+    it.each([0, 1])('shares default IP counter %i with job queue mutations', async (index) => {
+        const limiter = RATE_LIMIT_POLICIES.default[index]!;
+        const counter = app.get<IRateLimitCounterPort>(TOKEN_RATE_LIMIT_COUNTER_PORT);
+        const ip = '192.0.2.91';
+        for (let i = 0; i < limiter.limit; i++) {
+            expect((await counter.consume({ ...limiter, key: `${limiter.budget}:${ip}` })).allowed).toBe(true);
+        }
+        for (const action of ['redrive', 'discard']) {
+            const response = await app.inject({
+                method: 'POST',
+                url: `/api/v1/job-operations/dead-letter/${action}`,
+                remoteAddress: ip,
+                payload: {},
+            });
+            expect(response.statusCode).toBe(429);
+        }
+    });
+
     it('keeps full IPv6 addresses distinct while sharing canonical equivalent representations', async () => {
         const url = '/api/v1/rate-limit-test/a';
         expect((await app.inject({ url, remoteAddress: '2001:db8::1' })).statusCode).toBe(200);
@@ -126,11 +144,12 @@ describe('Rate limiting with production wiring and real Redis', () => {
         ).toEqual([DependencyUnavailableMessage.DEFAULT]);
         expect(response.headers['retry-after']).toBeUndefined();
         expect((await app.inject({ url: '/api/health/live' })).statusCode).toBe(204);
-        expect((await app.inject({ url: '/api/health/ready' })).statusCode).toBe(204);
+        expect((await app.inject({ url: '/api/health/ready' })).statusCode).toBe(503);
         expect(app.get(RateLimitingTestController).calls).toBe(0);
         expect(report).not.toHaveBeenCalled();
         await redis.connect();
         expect((await app.inject({ url: '/api/v1/rate-limit-test/a' })).statusCode).toBe(200);
+        expect((await app.inject({ url: '/api/health/ready' })).statusCode).toBe(204);
     });
 
     it('isolates separate application namespaces without flushing shared Redis', async () => {
@@ -154,7 +173,7 @@ describe('Rate limiting with production wiring and real Redis', () => {
         const second = new RateLimitCounterAdapter(secondApp.get<RedisClientType>(TOKEN_RATE_LIMIT_CONNECTION), config);
         const attempt = {
             key: `api:rl:concurrency:ip-short:${randomUUID()}`,
-            limiterName: RateLimiterName.IP_SHORT,
+
             limit: 3,
             windowSeconds: 60,
             blockDurationSeconds: 1,
@@ -170,13 +189,35 @@ describe('Rate limiting with production wiring and real Redis', () => {
         }
     });
 
+    it('isolates identical logical keys by service and environment while sharing between replicas', async () => {
+        const redis = app.get<RedisClientType>(TOKEN_RATE_LIMIT_CONNECTION);
+        const service = `namespace-${randomUUID()}`;
+        const make = (environment: string, name: string): RateLimitCounterAdapter =>
+            new RateLimitCounterAdapter(
+                redis,
+                new ConfigService({ NODE_ENV: environment, SERVICE_NAME: name, REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 1 }),
+            );
+        const first = make('test', service);
+        const replica = make('test', service);
+        const otherService = make('test', `${service}-other`);
+        const otherEnvironment = make('production', service);
+        const attempt = { key: `namespace:${randomUUID()}`, limit: 1, windowSeconds: 60, blockDurationSeconds: 60 };
+        expect((await first.consume(attempt)).allowed).toBe(true);
+        expect((await replica.consume(attempt)).allowed).toBe(false);
+        expect((await otherService.consume(attempt)).allowed).toBe(true);
+        expect((await otherEnvironment.consume(attempt)).allowed).toBe(true);
+        const keys = await redis.keys(`*${attempt.key}*`);
+        expect(keys.some((key) => key.includes(`:test:${service}:rate-limit`))).toBe(true);
+        expect(keys.some((key) => key.includes(`:production:${service}:rate-limit`))).toBe(true);
+    });
+
     it('retains counts across limit changes and preserves an already active block', async () => {
         const redis = app.get<RedisClientType>(TOKEN_RATE_LIMIT_CONNECTION);
         const adapter = new RateLimitCounterAdapter(redis, app.get(ConfigService));
         const id = randomUUID();
         const attempt = {
             key: `api:rl:config-change:ip-short:${id}`,
-            limiterName: RateLimiterName.IP_SHORT,
+
             limit: 2,
             windowSeconds: 60,
             blockDurationSeconds: 1,
@@ -194,7 +235,7 @@ describe('Rate limiting with production wiring and real Redis', () => {
         const adapter = new RateLimitCounterAdapter(redis, app.get(ConfigService));
         const attempt = {
             key: `api:rl:script-recovery:ip-short:${randomUUID()}`,
-            limiterName: RateLimiterName.IP_SHORT,
+
             limit: 2,
             windowSeconds: 60,
             blockDurationSeconds: 1,
@@ -210,11 +251,15 @@ describe('Rate limiting with production wiring and real Redis', () => {
         const redis = app.get<RedisClientType>(TOKEN_RATE_LIMIT_CONNECTION);
         const adapter = new RateLimitCounterAdapter(
             redis,
-            new ConfigService({ REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 0.05 }),
+            new ConfigService({
+                REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 0.05,
+                NODE_ENV: 'test',
+                SERVICE_NAME: 'timeout-test',
+            }),
         );
         const attempt = {
             key: `api:rl:timeout:ip-short:${randomUUID()}`,
-            limiterName: RateLimiterName.IP_SHORT,
+
             limit: 1,
             windowSeconds: 60,
             blockDurationSeconds: 1,
@@ -234,7 +279,7 @@ describe('Rate limiting with production wiring and real Redis', () => {
         const id = randomUUID();
         const attempt: RateLimitCounterAttempt = {
             key: `api:rl:expiry:ip-short:${id}`,
-            limiterName: RateLimiterName.IP_SHORT,
+
             limit: 1,
             windowSeconds: 1,
             blockDurationSeconds: 1,
@@ -262,7 +307,7 @@ describe('Rate-limit test isolation with a reused application', () => {
     let app: NestFastifyApplication;
     const attempt: RateLimitCounterAttempt = {
         key: `api:rl:case-isolation:ip-short:${randomUUID()}`,
-        limiterName: RateLimiterName.IP_SHORT,
+
         limit: 1,
         windowSeconds: 60,
         blockDurationSeconds: 60,
