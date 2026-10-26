@@ -15,6 +15,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
+import { PrincipalType } from 'src/shared/domain/principal';
 import {
     ExceptionKind,
     ResourceNotFoundException,
@@ -78,16 +79,18 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis.
-        void this.sessionPort.setVersion(admin.id, admin.sessionVersion).catch((error: unknown) => {
-            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return;
-            }
+        void this.sessionPort
+            .setVersion(admin.id, PrincipalType.ADMIN, admin.sessionVersion)
+            .catch((error: unknown) => {
+                if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
+                    return;
+                }
 
-            this.errorReporterPort.report(error, {
-                class: this.constructor.name,
-                method: this.execute.name,
-                message: 'Best-effort session version update failed.',
+                this.errorReporterPort.report(error, {
+                    class: this.constructor.name,
+                    method: this.execute.name,
+                    message: 'Best-effort session version update failed.',
+                });
             });
-        });
     }
 }

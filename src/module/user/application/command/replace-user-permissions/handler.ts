@@ -15,6 +15,7 @@ import {
 } from 'src/module/user/application/command/port/user-writer.port';
 import { ReplaceUserPermissionsCommand } from 'src/module/user/application/command/replace-user-permissions/command';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
+import { PrincipalType } from 'src/shared/domain/principal';
 import {
     ExceptionKind,
     ResourceNotFoundException,
@@ -90,7 +91,7 @@ export class ReplaceUserPermissionsCommandHandler implements ICommandHandler<Rep
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis.
-        void this.sessionPort.setVersion(user.id, user.sessionVersion).catch((error: unknown) => {
+        void this.sessionPort.setVersion(user.id, PrincipalType.USER, user.sessionVersion).catch((error: unknown) => {
             if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                 return;
             }

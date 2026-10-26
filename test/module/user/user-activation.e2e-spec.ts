@@ -105,7 +105,13 @@ describe('User registration and activation', () => {
             const redis = app.get<Redis>(TOKEN_SESSION_CONNECTION);
             let cursor = '0';
             do {
-                const [next, keys] = await redis.scan(cursor, 'MATCH', `auth:{${id}}:*`, 'COUNT', 100);
+                const [next, keys] = await redis.scan(
+                    cursor,
+                    'MATCH',
+                    `auth:{${PrincipalType.USER}:${id}}:*`,
+                    'COUNT',
+                    100,
+                );
                 cursor = next;
                 if (keys.length) {
                     await redis.del(...keys);
@@ -118,7 +124,13 @@ describe('User registration and activation', () => {
             const redis = app.get<Redis>(TOKEN_SESSION_CONNECTION);
             let cursor = '0';
             do {
-                const [next, keys] = await redis.scan(cursor, 'MATCH', `auth:{${id}}:*`, 'COUNT', 100);
+                const [next, keys] = await redis.scan(
+                    cursor,
+                    'MATCH',
+                    `auth:{${PrincipalType.ADMIN}:${id}}:*`,
+                    'COUNT',
+                    100,
+                );
                 cursor = next;
                 if (keys.length) {
                     await redis.del(...keys);
