@@ -18,16 +18,17 @@ import type { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
 /**
- * The principal hash tag colocates keys used by each atomic operation.
+ * The principal kind and identifier hash tag colocates keys used by each atomic operation.
  */
 const SessionKeys = {
     /**
      * Identifies the account-wide minimum accepted access-token version.
      *
      * @param id Principal identifier
-     * @returns Redis key for the account access floor
+     * @param type Owning principal context
+     * @returns Redis key for the principal access floor
      */
-    version: (id: string): string => `auth:{${id}}:version`,
+    version: (id: string, type: PrincipalType): string => `auth:{${type}:${id}}:version`,
 
     /**
      * Identifies the stable session record, including its credential deadlines.
@@ -37,7 +38,7 @@ const SessionKeys = {
      * @param sid Stable session identifier
      * @returns Redis key for the session registration
      */
-    session: (id: string, type: PrincipalType, sid: string): string => `auth:{${id}}:${type}:session:${sid}`,
+    session: (id: string, type: PrincipalType, sid: string): string => `auth:{${type}:${id}}:session:${sid}`,
 
     /**
      * Identifies the grace marker for a consumed refresh credential.
@@ -49,7 +50,7 @@ const SessionKeys = {
      * @returns Redis key for the credential rotation grace marker
      */
     tombstone: (id: string, type: PrincipalType, sid: string, jti: string): string =>
-        `auth:{${id}}:${type}:rotated:${sid}:${jti}`,
+        `auth:{${type}:${id}}:rotated:${sid}:${jti}`,
 };
 
 /**
@@ -201,7 +202,7 @@ export class SessionAdapter implements ISessionPort {
                 this.redis.eval(
                     OPEN_SESSION_LUA,
                     2,
-                    SessionKeys.version(id),
+                    SessionKeys.version(id, session.principalType),
                     SessionKeys.session(id, session.principalType, session.sid),
                     JSON.stringify(session),
                     this.versionTtlSeconds,
@@ -225,7 +226,7 @@ export class SessionAdapter implements ISessionPort {
                 3,
                 SessionKeys.session(id, session.principalType, session.sid),
                 SessionKeys.tombstone(id, session.principalType, session.sid, oldJti),
-                SessionKeys.version(id),
+                SessionKeys.version(id, session.principalType),
                 oldJti,
                 JSON.stringify(session),
                 this.versionTtlSeconds,
@@ -278,7 +279,7 @@ export class SessionAdapter implements ISessionPort {
                 this.redis.eval(
                     CHECK_SESSION_LUA,
                     2,
-                    SessionKeys.version(id),
+                    SessionKeys.version(id, principalType),
                     SessionKeys.session(id, principalType, sid),
                     version,
                 ),
@@ -290,20 +291,24 @@ export class SessionAdapter implements ISessionPort {
      * Mirrors the monotonic account access floor without sweeping sessions.
      *
      * @param id Principal identifier.
+     * @param principalType Owning context.
      * @param version Candidate floor.
      */
-    async setVersion(id: string, version: number) {
-        await this.run(() => this.redis.eval(VERSION_LUA, 1, SessionKeys.version(id), version, this.versionTtlSeconds));
+    async setVersion(id: string, principalType: PrincipalType, version: number) {
+        await this.run(() =>
+            this.redis.eval(VERSION_LUA, 1, SessionKeys.version(id, principalType), version, this.versionTtlSeconds),
+        );
     }
 
     /**
      * Reads the mirrored account floor.
      *
      * @param id Principal identifier.
+     * @param principalType Owning context.
      * @returns Stored floor or null.
      */
-    async getVersion(id: string): Promise<number | null> {
-        const version = await this.run(() => this.redis.get(SessionKeys.version(id)));
+    async getVersion(id: string, principalType: PrincipalType): Promise<number | null> {
+        const version = await this.run(() => this.redis.get(SessionKeys.version(id, principalType)));
 
         return version === null ? null : Number(version);
     }

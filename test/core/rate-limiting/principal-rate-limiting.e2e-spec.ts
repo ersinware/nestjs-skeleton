@@ -62,6 +62,7 @@ describe('Principal policies with production guards and Redis', () => {
     let tokens: ITokenPort;
     let sessions: ISessionPort;
     const ids: string[] = [];
+    const kinds = new Map<string, PrincipalType>();
 
     beforeAll(async () => {
         app = await createTestApp({ extraControllers: [PrincipalRateLimitingTestController] });
@@ -82,7 +83,13 @@ describe('Principal policies with production guards and Redis', () => {
             for (const id of ids) {
                 let cursor = '0';
                 do {
-                    const [next, keys] = await redis.scan(cursor, 'MATCH', `auth:{${id}}:*`, 'COUNT', 100);
+                    const [next, keys] = await redis.scan(
+                        cursor,
+                        'MATCH',
+                        `auth:{${kinds.get(id)!}:${id}}:*`,
+                        'COUNT',
+                        100,
+                    );
                     cursor = next;
                     if (keys.length) {
                         await redis.del(...keys);
@@ -108,6 +115,7 @@ describe('Principal policies with production guards and Redis', () => {
         permissions: readonly Permission[] = kind === PrincipalType.ADMIN ? [Permission.ADMIN_ACCOUNT_INVITE] : [],
     ): Promise<Awaited<ReturnType<ITokenPort['generateTokens']>> & Principal> {
         ids.push(id);
+        kinds.set(id, kind);
         const pair = await tokens.generateTokens({ id, type: kind, permissions }, 0);
         expect(await sessions.openSession(id, pair.session)).toBe(true);
         return { id, type: kind, permissions, ...pair };

@@ -195,7 +195,13 @@ describe.each(CASES)('$route email change', (context) => {
                 const redis = app.get<Redis>(TOKEN_SESSION_CONNECTION);
                 let cursor = '0';
                 do {
-                    const [next, keys] = await redis.scan(cursor, 'MATCH', `auth:{${id}}:*`, 'COUNT', 100);
+                    const [next, keys] = await redis.scan(
+                        cursor,
+                        'MATCH',
+                        `auth:{${context.kind}:${id}}:*`,
+                        'COUNT',
+                        100,
+                    );
                     cursor = next;
                     if (keys.length) {
                         await redis.del(...keys);
@@ -635,7 +641,7 @@ describe.each(CASES)('$route email change', (context) => {
             } else {
                 const open = sessionPort.openSession.bind(sessionPort);
                 vi.spyOn(sessionPort, 'openSession').mockImplementationOnce(async (id, registration) => {
-                    await sessionPort.setVersion(id, registration.sessionVersion + 1);
+                    await sessionPort.setVersion(id, registration.principalType, registration.sessionVersion + 1);
                     return open(id, registration);
                 });
             }

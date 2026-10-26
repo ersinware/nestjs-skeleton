@@ -12,6 +12,7 @@ import {
     TOKEN_GET_USER_SESSION_VERSION_PORT,
     type IGetUserSessionVersionPort,
 } from 'src/module/user/application/query/get-user-session-version/port';
+import { PrincipalType } from 'src/shared/domain/principal';
 
 /**
  * Pushes the user's current DB session version into Redis. Re-reading the version from the database
@@ -44,6 +45,6 @@ export class ReconcileUserSessionCommandHandler implements ICommandHandler<Recon
             return;
         }
 
-        await this.sessionPort.setVersion(command.id, result.sessionVersion);
+        await this.sessionPort.setVersion(command.id, PrincipalType.USER, result.sessionVersion);
     }
 }

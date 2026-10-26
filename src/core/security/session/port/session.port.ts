@@ -114,17 +114,19 @@ export interface ISessionPort {
      * Advances the account access floor monotonically and renews its independent retention.
      *
      * @param id Principal identifier.
+     * @param principalType Owning context.
      * @param version Candidate access floor.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
-    setVersion(id: string, version: number): Promise<void>;
+    setVersion(id: string, principalType: PrincipalType, version: number): Promise<void>;
 
     /**
      * Reads the account access floor without an accepting default.
      *
      * @param id Principal identifier.
+     * @param principalType Owning context.
      * @returns Stored floor or null.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
      */
-    getVersion(id: string): Promise<number | null>;
+    getVersion(id: string, principalType: PrincipalType): Promise<number | null>;
 }

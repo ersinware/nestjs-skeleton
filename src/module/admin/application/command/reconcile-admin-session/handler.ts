@@ -11,6 +11,7 @@ import {
     TOKEN_GET_ADMIN_SESSION_VERSION_PORT,
     type IGetAdminSessionVersionPort,
 } from 'src/module/admin/application/query/get-admin-session-version/port';
+import { PrincipalType } from 'src/shared/domain/principal';
 
 /**
  * Pushes the current database session version to the session store.
@@ -42,6 +43,6 @@ export class ReconcileAdminSessionCommandHandler implements ICommandHandler<Reco
             return;
         }
 
-        await this.sessionPort.setVersion(command.id, result.sessionVersion);
+        await this.sessionPort.setVersion(command.id, PrincipalType.ADMIN, result.sessionVersion);
     }
 }
