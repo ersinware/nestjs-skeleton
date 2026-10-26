@@ -3,7 +3,7 @@
  * @description Transport-neutral contract for an atomic counter admission attempt.
  */
 
-import type { RateLimiterDefinition, RateLimiterName } from 'src/core/security/rate-limiting/rate-limit-policy';
+import type { RateLimiterDefinition } from 'src/core/security/rate-limiting/rate-limit-policy';
 
 /**
  * Injection token for {@link IRateLimitCounterPort}.
@@ -18,14 +18,9 @@ export type RateLimitCounterAttempt = Pick<
     'limit' | 'windowSeconds' | 'blockDurationSeconds'
 > & {
     /**
-     * Policy-scoped logical key, including service namespace and tracker.
+     * Logical budget and tracker key; the adapter supplies environment and service namespacing.
      */
     readonly key: string;
-
-    /**
-     * Stable limiter name.
-     */
-    readonly limiterName: RateLimiterName;
 };
 
 /**

@@ -139,7 +139,7 @@ export class JobQueueOperationsController {
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('redrive')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.JOB_QUEUE_MUTATION)
     @Permissions(Permission.JOB_DEAD_LETTER_REDRIVE)
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiOperation({
@@ -191,7 +191,7 @@ export class JobQueueOperationsController {
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('discard')
-    @RateLimit(RateLimitPolicy.DEFAULT)
+    @RateLimit(RateLimitPolicy.JOB_QUEUE_MUTATION)
     @Permissions(Permission.JOB_DEAD_LETTER_DISCARD)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({

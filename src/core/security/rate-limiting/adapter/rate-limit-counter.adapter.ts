@@ -35,6 +35,11 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
     private readonly timeoutMs: number;
 
     /**
+     * Environment and service namespace shared by replicas using the same rate-limit counters.
+     */
+    private readonly throttlerName: string;
+
+    /**
      * Official storage contract implemented by the selected community Redis adapter.
      */
     private readonly storage: ThrottlerStorage;
@@ -58,6 +63,7 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
         });
 
         this.timeoutMs = configService.getOrThrow<number>(ENV.REDIS_RATE_LIMIT_COMMAND_TIMEOUT) * 1000;
+        this.throttlerName = `${configService.getOrThrow<string>(ENV.NODE_ENV)}:${configService.getOrThrow<string>(ENV.SERVICE_NAME)}:rate-limit`;
         this.storage = new RedisThrottlerStorage(redis, ThrottlerAlgorithm.SlidingWindowCounter);
     }
 
@@ -80,7 +86,7 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
                     attempt.windowSeconds * 1000,
                     attempt.limit,
                     attempt.blockDurationSeconds * 1000,
-                    attempt.limiterName,
+                    this.throttlerName,
                 ),
                 new Promise<never>((_, reject) => {
                     timer = setTimeout(() => reject(new TimeoutError()), this.timeoutMs);

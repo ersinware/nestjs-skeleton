@@ -4,7 +4,12 @@
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
-import { ArrayMinSize, ArrayUnique, IsArray, IsUUID } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsUUID } from 'class-validator';
+
+/**
+ * Bounds synchronous deletion and audit payload size per discard request.
+ */
+const MAX_DISCARD_JOBS = 100;
 
 /**
  * A non-empty, duplicate-free set of dead-letter jobs to discard atomically.
@@ -16,12 +21,14 @@ export class PostDeadLetterDiscardDto {
      */
     @IsArray({ message: 'The job IDs must be an array.' })
     @ArrayMinSize(1, { message: 'The job IDs must contain at least one job.' })
+    @ArrayMaxSize(MAX_DISCARD_JOBS, { message: `The job IDs must contain at most ${MAX_DISCARD_JOBS} jobs.` })
     @ArrayUnique({ message: 'The job IDs cannot contain duplicates.' })
     @IsUUID('all', { each: true, message: 'Each job ID must be a valid UUID.' })
     @ApiProperty({
         type: String,
         isArray: true,
         minItems: 1,
+        maxItems: MAX_DISCARD_JOBS,
         uniqueItems: true,
         format: 'uuid',
         description: 'Exact shared dead-letter job identifiers.',

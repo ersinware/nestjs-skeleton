@@ -4,10 +4,8 @@
  */
 
 import { ExecutionContext, Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { ENV } from 'src/core/config';
 import { KEY_DECORATOR_RATE_LIMIT_EXEMPT } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
 import { KEY_DECORATOR_RATE_LIMIT } from 'src/core/security/rate-limiting/decorator/rate-limit.decorator';
 import {
@@ -32,27 +30,18 @@ import { RateLimitedException, SystemException } from 'src/shared/exception';
 @Injectable()
 export class RateLimitStageRunner {
     /**
-     * Service identity shared by instances using the same rate-limit counters.
-     */
-    private readonly serviceName: string;
-
-    /**
-     * Connects policy execution to tracker resolution, counter storage and service namespacing.
+     * Connects policy execution to tracker resolution and counter storage.
      *
      * @param reflector Reads endpoint declarations already validated at bootstrap.
      * @param trackerResolverRegistry Module-composed tracker resolver instances.
      * @param counter Atomic counter admission port.
-     * @param configService Validated service namespace configuration.
      */
     constructor(
         private readonly reflector: Reflector,
         @Inject(TOKEN_RATE_LIMIT_TRACKER_RESOLVER_REGISTRY)
         private readonly trackerResolverRegistry: RateLimitTrackerResolverRegistry,
         @Inject(TOKEN_RATE_LIMIT_COUNTER_PORT) private readonly counter: IRateLimitCounterPort,
-        configService: ConfigService,
-    ) {
-        this.serviceName = configService.getOrThrow<string>(ENV.SERVICE_NAME);
-    }
+    ) {}
 
     /**
      * Checks applicable counters in declaration order, stopping at the first refusal or failure.
@@ -72,34 +61,32 @@ export class RateLimitStageRunner {
         }
 
         const policy = this.reflector.get<RateLimitPolicy>(KEY_DECORATOR_RATE_LIMIT, handler),
-            limiters: readonly RateLimiterDefinition[] = RATE_LIMIT_POLICIES[policy].filter(
-                (limiter) => limiter.stage === stage,
-            );
-
-        if (limiters.length === 0) {
-            return true;
-        }
-
-        const request = context.switchToHttp().getRequest<FastifyRequest>();
+            limiters: readonly RateLimiterDefinition[] = RATE_LIMIT_POLICIES[policy];
 
         for (const limiter of limiters) {
-            const tracker = this.trackerResolverRegistry[limiter.source].resolve(request, limiter.field);
+            if (limiter.stage !== stage) {
+                continue;
+            }
+
+            const tracker = this.trackerResolverRegistry[limiter.source].resolve(
+                context.switchToHttp().getRequest<FastifyRequest>(),
+                limiter.field,
+            );
+
             if (!tracker) {
                 throw new SystemException('Rate-limit resolver produced an invalid tracker.', {
                     context: {
                         class: RateLimitStageRunner.name,
                         method: this.run.name,
                         policy,
-                        limiterName: limiter.name,
-                        source: limiter.source,
+                        limiter,
                         stage,
                     },
                 });
             }
 
             const result = await this.counter.consume({
-                key: `${this.serviceName}:rl:${policy}:${limiter.name}:${tracker}`,
-                limiterName: limiter.name,
+                key: `${limiter.budget}:${tracker}`,
                 limit: limiter.limit,
                 windowSeconds: limiter.windowSeconds,
                 blockDurationSeconds: limiter.blockDurationSeconds,

@@ -8,7 +8,6 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter } from 'node:events';
 import { ErrorReply, type RedisClientType } from 'redis';
 import { RateLimitCounterAdapter } from 'src/core/security/rate-limiting/adapter/rate-limit-counter.adapter';
-import { RateLimiterName } from 'src/core/security/rate-limiting/rate-limit-policy';
 import { DependencyUnavailableException } from 'src/shared/exception';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,8 +15,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  * Counter budget shared by adapter-boundary tests.
  */
 const attempt = {
-    key: 'api:rl:default:ip-short:192.0.2.1',
-    limiterName: RateLimiterName.IP_SHORT,
+    key: 'api:rl:default-ip-short:192.0.2.1',
+
     limit: 2,
     windowSeconds: 60,
     blockDurationSeconds: 10,
@@ -32,7 +31,7 @@ function setup() {
     const redis = Object.assign(new EventEmitter(), { isReady: true });
     const adapter = new RateLimitCounterAdapter(
         redis as unknown as RedisClientType,
-        new ConfigService({ REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 0.1 }),
+        new ConfigService({ REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 0.1, NODE_ENV: 'test', SERVICE_NAME: 'api' }),
     );
     return { redis, adapter };
 }
@@ -47,7 +46,7 @@ describe('RateLimitCounterAdapter', () => {
             .mockResolvedValue({ isBlocked: false, totalHits: 1, timeToExpire: 60, timeToBlockExpire: -1 });
         const { adapter } = setup();
         await expect(adapter.consume(attempt)).resolves.toEqual({ allowed: true });
-        expect(increment).toHaveBeenCalledWith(attempt.key, 60000, 2, 10000, attempt.limiterName);
+        expect(increment).toHaveBeenCalledWith(attempt.key, 60000, 2, 10000, 'test:api:rate-limit');
         expect(vi.getTimerCount()).toBe(0);
     });
 

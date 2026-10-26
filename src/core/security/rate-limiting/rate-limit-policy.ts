@@ -16,6 +16,36 @@ export enum RateLimitPolicy {
     DEFAULT = 'default',
 
     /**
+     * Independent public user registration budget.
+     */
+    USER_REGISTRATION = 'user-registration',
+
+    /**
+     * Independent public user activation budget.
+     */
+    USER_ACTIVATION = 'user-activation',
+
+    /**
+     * Independent activation resend budgets by source IP and target email.
+     */
+    USER_ACTIVATION_RESEND = 'user-activation-resend',
+
+    /**
+     * Invitation budget shared with re-invitation for the calling administrator.
+     */
+    ADMIN_INVITATION = 'admin-invitation',
+
+    /**
+     * Shared caller invitation budget with additional target-admin limits.
+     */
+    ADMIN_REINVITATION = 'admin-reinvitation',
+
+    /**
+     * Independent public admin activation budget.
+     */
+    ADMIN_ACTIVATION = 'admin-activation',
+
+    /**
      * Independent user credential-guessing budgets by source IP and target email.
      */
     USER_LOGIN = 'user-login',
@@ -31,19 +61,9 @@ export enum RateLimitPolicy {
     REFRESH_TOKEN = 'refresh-token',
 
     /**
-     * Independent activation resend budgets by source IP and target email.
-     */
-    USER_ACTIVATION_RESEND = 'user-activation-resend',
-
-    /**
      * Shared password verification budget for password changes and email-change initiation.
      */
-    PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE = 'password-change-email-change-initiate',
-
-    /**
-     * Shared invitation and re-invitation budget for the calling administrator.
-     */
-    ADMIN_INVITATION = 'admin-invitation',
+    CREDENTIAL_CHANGE = 'credential-change',
 
     /**
      * Avatar upload preparation budget for the verified caller.
@@ -51,64 +71,249 @@ export enum RateLimitPolicy {
     AVATAR_UPLOAD_INITIATE = 'avatar-upload-initiate',
 
     /**
-     * Shared registration and activation workflow budget.
+     * Dead-letter mutation budget with the default shared IP counters.
      */
-    USER_REGISTRATION_ADMIN_USER_ACTIVATION = 'user-registration-admin-user-activation',
+    JOB_QUEUE_MUTATION = 'job-queue-mutation',
 }
 
 /**
- * Stable counter names shared across policy declarations and storage.
+ * Named budgets shared explicitly across policy declarations.
  */
-export enum RateLimiterName {
+export enum RateLimitBudget {
     /**
-     * Short IP window.
+     * Default minute budget by source IP.
      */
-    IP_SHORT = 'ip-short',
+    DEFAULT_IP_SHORT = 'default-ip-short',
 
     /**
-     * Long IP window.
+     * Default fifteen-minute budget by source IP.
      */
-    IP_LONG = 'ip-long',
+    DEFAULT_IP_LONG = 'default-ip-long',
 
     /**
-     * Short target-account window shared across source IPs.
+     * User registration minute budget by source IP.
      */
-    TARGET_ACCOUNT_SHORT = 'target-account-short',
+    USER_REGISTRATION_IP_SHORT = 'user-registration-ip-short',
 
     /**
-     * Long target-account window shared across source IPs.
+     * User registration hourly budget by source IP.
      */
-    TARGET_ACCOUNT_LONG = 'target-account-long',
+    USER_REGISTRATION_IP_LONG = 'user-registration-ip-long',
 
     /**
-     * Short verified-principal window shared across source IPs.
+     * User activation minute budget by source IP.
      */
-    PRINCIPAL_SHORT = 'principal-short',
+    USER_ACTIVATION_IP_SHORT = 'user-activation-ip-short',
 
     /**
-     * Long verified-principal window shared across source IPs.
+     * User activation hourly budget by source IP.
      */
-    PRINCIPAL_LONG = 'principal-long',
+    USER_ACTIVATION_IP_LONG = 'user-activation-ip-long',
+
+    /**
+     * User activation resend minute budget by source IP.
+     */
+    USER_ACTIVATION_RESEND_IP_SHORT = 'user-activation-resend-ip-short',
+
+    /**
+     * User activation resend hourly budget by source IP.
+     */
+    USER_ACTIVATION_RESEND_IP_LONG = 'user-activation-resend-ip-long',
+
+    /**
+     * User activation resend minute budget by target email.
+     */
+    USER_ACTIVATION_RESEND_TARGET_SHORT = 'user-activation-resend-target-short',
+
+    /**
+     * User activation resend hourly budget by target email.
+     */
+    USER_ACTIVATION_RESEND_TARGET_LONG = 'user-activation-resend-target-long',
+
+    /**
+     * User activation resend daily budget by target email.
+     */
+    USER_ACTIVATION_RESEND_TARGET_DAILY = 'user-activation-resend-target-daily',
+
+    /**
+     * Admin invitation minute budget by source IP.
+     */
+    ADMIN_INVITATION_IP_SHORT = 'admin-invitation-ip-short',
+
+    /**
+     * Admin invitation fifteen-minute budget by source IP.
+     */
+    ADMIN_INVITATION_IP_LONG = 'admin-invitation-ip-long',
+
+    /**
+     * Admin invitation minute budget by verified caller.
+     */
+    ADMIN_INVITATION_SHORT = 'admin-invitation-short',
+
+    /**
+     * Admin invitation hourly budget by verified caller.
+     */
+    ADMIN_INVITATION_LONG = 'admin-invitation-long',
+
+    /**
+     * Admin reinvitation minute budget by target admin.
+     */
+    ADMIN_REINVITATION_TARGET_SHORT = 'admin-reinvitation-target-short',
+
+    /**
+     * Admin reinvitation hourly budget by target admin.
+     */
+    ADMIN_REINVITATION_TARGET_LONG = 'admin-reinvitation-target-long',
+
+    /**
+     * Admin reinvitation daily budget by target admin.
+     */
+    ADMIN_REINVITATION_TARGET_DAILY = 'admin-reinvitation-target-daily',
+
+    /**
+     * Admin activation minute budget by source IP.
+     */
+    ADMIN_ACTIVATION_IP_SHORT = 'admin-activation-ip-short',
+
+    /**
+     * Admin activation hourly budget by source IP.
+     */
+    ADMIN_ACTIVATION_IP_LONG = 'admin-activation-ip-long',
+
+    /**
+     * User login minute budget by source IP.
+     */
+    USER_LOGIN_IP_SHORT = 'user-login-ip-short',
+
+    /**
+     * User login fifteen-minute budget by source IP.
+     */
+    USER_LOGIN_IP_LONG = 'user-login-ip-long',
+
+    /**
+     * User login minute budget by target email.
+     */
+    USER_LOGIN_TARGET_SHORT = 'user-login-target-short',
+
+    /**
+     * User login fifteen-minute budget by target email.
+     */
+    USER_LOGIN_TARGET_LONG = 'user-login-target-long',
+
+    /**
+     * Admin login minute budget by source IP.
+     */
+    ADMIN_LOGIN_IP_SHORT = 'admin-login-ip-short',
+
+    /**
+     * Admin login fifteen-minute budget by source IP.
+     */
+    ADMIN_LOGIN_IP_LONG = 'admin-login-ip-long',
+
+    /**
+     * Admin login minute budget by target email.
+     */
+    ADMIN_LOGIN_TARGET_SHORT = 'admin-login-target-short',
+
+    /**
+     * Admin login fifteen-minute budget by target email.
+     */
+    ADMIN_LOGIN_TARGET_LONG = 'admin-login-target-long',
+
+    /**
+     * Refresh token minute budget by source IP.
+     */
+    REFRESH_TOKEN_IP_SHORT = 'refresh-token-ip-short',
+
+    /**
+     * Refresh token fifteen-minute budget by source IP.
+     */
+    REFRESH_TOKEN_IP_LONG = 'refresh-token-ip-long',
+
+    /**
+     * Credential change minute budget by source IP.
+     */
+    CREDENTIAL_CHANGE_IP_SHORT = 'credential-change-ip-short',
+
+    /**
+     * Credential change fifteen-minute budget by source IP.
+     */
+    CREDENTIAL_CHANGE_IP_LONG = 'credential-change-ip-long',
+
+    /**
+     * Credential change minute budget by verified caller.
+     */
+    CREDENTIAL_CHANGE_SHORT = 'credential-change-short',
+
+    /**
+     * Credential change fifteen-minute budget by verified caller.
+     */
+    CREDENTIAL_CHANGE_LONG = 'credential-change-long',
+
+    /**
+     * Credential change hourly budget by verified caller.
+     */
+    CREDENTIAL_CHANGE_HOURLY = 'credential-change-hourly',
+
+    /**
+     * Credential change daily budget by verified caller.
+     */
+    CREDENTIAL_CHANGE_DAILY = 'credential-change-daily',
+
+    /**
+     * Avatar upload initiate minute budget by source IP.
+     */
+    AVATAR_UPLOAD_INITIATE_IP_SHORT = 'avatar-upload-initiate-ip-short',
+
+    /**
+     * Avatar upload initiate fifteen-minute budget by source IP.
+     */
+    AVATAR_UPLOAD_INITIATE_IP_LONG = 'avatar-upload-initiate-ip-long',
+
+    /**
+     * Avatar upload initiate minute budget by verified caller.
+     */
+    AVATAR_UPLOAD_INITIATE_SHORT = 'avatar-upload-initiate-short',
+
+    /**
+     * Avatar upload initiate hourly budget by verified caller.
+     */
+    AVATAR_UPLOAD_INITIATE_LONG = 'avatar-upload-initiate-long',
+
+    /**
+     * Job queue mutation minute budget by verified caller.
+     */
+    JOB_QUEUE_MUTATION_SHORT = 'job-queue-mutation-short',
+
+    /**
+     * Job queue mutation fifteen-minute budget by verified caller.
+     */
+    JOB_QUEUE_MUTATION_LONG = 'job-queue-mutation-long',
 }
 
 /**
- * Body properties supported by client-supplied tracker policies.
+ * Client-supplied fields supported by target-account tracker policies.
  */
 export enum RateLimitTrackerField {
     /**
      * Target account email supplied in the request body.
      */
-    EMAIL = 'email',
+    TARGET_EMAIL = 'email',
+
+    /**
+     * Target account UUID v7 supplied through the shared resource ID route parameter.
+     */
+    TARGET_ID = 'route-id',
 }
 
 /**
- * Complete counter declaration within a policy, including its request budget.
+ * Policy-owned limiter definition, including its shared budget and tracker contract.
  */
 export type RateLimiterDefinition = {
     /**
-     * Counter identity, stable across numeric budget changes.
+     * Policy-independent budget shared by limiters using the same tracker.
      */
-    readonly name: RateLimiterName;
+    readonly budget: RateLimitBudget;
 
     /**
      * Maximum weighted request count.
@@ -134,7 +339,7 @@ export type RateLimiterDefinition = {
           /**
            * Stage at which this counter runs.
            */
-          readonly stage: RateLimitStage;
+          readonly stage: RateLimitStage.PRE_AUTH;
 
           /**
            * IP trackers do not read a body field.
@@ -143,7 +348,7 @@ export type RateLimiterDefinition = {
       }
     | {
           /**
-           * Client-supplied target account.
+           * Client-supplied target account email.
            */
           readonly source: RateLimitTrackerSource.TARGET_ACCOUNT;
 
@@ -155,7 +360,23 @@ export type RateLimiterDefinition = {
           /**
            * Body property containing the target account email.
            */
-          readonly field: RateLimitTrackerField;
+          readonly field: RateLimitTrackerField.TARGET_EMAIL;
+      }
+    | {
+          /**
+           * Client-supplied target account route identifier.
+           */
+          readonly source: RateLimitTrackerSource.TARGET_ACCOUNT;
+
+          /**
+           * Target route budgets require an authenticated caller.
+           */
+          readonly stage: RateLimitStage.POST_AUTH;
+
+          /**
+           * Selector for the shared resource ID route parameter.
+           */
+          readonly field: RateLimitTrackerField.TARGET_ID;
       }
     | {
           /**
@@ -176,30 +397,231 @@ export type RateLimiterDefinition = {
 );
 
 /**
- * Complete active policies in counter execution order; changes require a build and deployment.
+ * Minute IP limiter shared by default endpoints and job queue mutations.
+ */
+const DEFAULT_IP_SHORT_LIMITER = {
+    budget: RateLimitBudget.DEFAULT_IP_SHORT,
+    source: RateLimitTrackerSource.IP,
+    stage: RateLimitStage.PRE_AUTH,
+    limit: 600,
+    windowSeconds: 60,
+    blockDurationSeconds: 10,
+} as const satisfies RateLimiterDefinition;
+
+/**
+ * Fifteen-minute IP limiter shared by default endpoints and job queue mutations.
+ */
+const DEFAULT_IP_LONG_LIMITER = {
+    budget: RateLimitBudget.DEFAULT_IP_LONG,
+    source: RateLimitTrackerSource.IP,
+    stage: RateLimitStage.PRE_AUTH,
+    limit: 6000,
+    windowSeconds: 900,
+    blockDurationSeconds: 30,
+} as const satisfies RateLimiterDefinition;
+
+/**
+ * Minute IP limiter shared by invitations and re-invitations.
+ */
+const ADMIN_INVITATION_IP_SHORT_LIMITER = {
+    budget: RateLimitBudget.ADMIN_INVITATION_IP_SHORT,
+    source: RateLimitTrackerSource.IP,
+    stage: RateLimitStage.PRE_AUTH,
+    limit: 60,
+    windowSeconds: 60,
+    blockDurationSeconds: 10,
+} as const satisfies RateLimiterDefinition;
+
+/**
+ * Fifteen-minute IP limiter shared by invitations and re-invitations.
+ */
+const ADMIN_INVITATION_IP_LONG_LIMITER = {
+    budget: RateLimitBudget.ADMIN_INVITATION_IP_LONG,
+    source: RateLimitTrackerSource.IP,
+    stage: RateLimitStage.PRE_AUTH,
+    limit: 300,
+    windowSeconds: 900,
+    blockDurationSeconds: 30,
+} as const satisfies RateLimiterDefinition;
+
+/**
+ * Minute caller limiter shared by invitations and re-invitations.
+ */
+const ADMIN_INVITATION_SHORT_LIMITER = {
+    budget: RateLimitBudget.ADMIN_INVITATION_SHORT,
+    source: RateLimitTrackerSource.PRINCIPAL,
+    stage: RateLimitStage.POST_AUTH,
+    limit: 3,
+    windowSeconds: 60,
+    blockDurationSeconds: 60,
+} as const satisfies RateLimiterDefinition;
+
+/**
+ * Hourly caller limiter shared by invitations and re-invitations.
+ */
+const ADMIN_INVITATION_LONG_LIMITER = {
+    budget: RateLimitBudget.ADMIN_INVITATION_LONG,
+    source: RateLimitTrackerSource.PRINCIPAL,
+    stage: RateLimitStage.POST_AUTH,
+    limit: 10,
+    windowSeconds: 3600,
+    blockDurationSeconds: 300,
+} as const satisfies RateLimiterDefinition;
+
+/**
+ * Complete active policies in counter execution order.
  */
 export const RATE_LIMIT_POLICIES = {
-    [RateLimitPolicy.DEFAULT]: [
+    [RateLimitPolicy.DEFAULT]: [DEFAULT_IP_SHORT_LIMITER, DEFAULT_IP_LONG_LIMITER],
+    [RateLimitPolicy.USER_REGISTRATION]: [
         {
-            name: RateLimiterName.IP_SHORT,
+            budget: RateLimitBudget.USER_REGISTRATION_IP_SHORT,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 600,
+            limit: 20,
             windowSeconds: 60,
-            blockDurationSeconds: 10,
+            blockDurationSeconds: 60,
+        },
+
+        {
+            budget: RateLimitBudget.USER_REGISTRATION_IP_LONG,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 100,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
+        },
+    ],
+    [RateLimitPolicy.USER_ACTIVATION]: [
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_IP_SHORT,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 20,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
+        },
+
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_IP_LONG,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 100,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
+        },
+    ],
+    [RateLimitPolicy.USER_ACTIVATION_RESEND]: [
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_RESEND_IP_SHORT,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 20,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
+        },
+
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_RESEND_IP_LONG,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 100,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
+        },
+
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_RESEND_TARGET_SHORT,
+            source: RateLimitTrackerSource.TARGET_ACCOUNT,
+            stage: RateLimitStage.PRE_AUTH,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 1,
+            windowSeconds: 60,
+            blockDurationSeconds: 300,
+        },
+
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_RESEND_TARGET_LONG,
+            source: RateLimitTrackerSource.TARGET_ACCOUNT,
+            stage: RateLimitStage.PRE_AUTH,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 3,
+            windowSeconds: 3600,
+            blockDurationSeconds: 900,
+        },
+
+        {
+            budget: RateLimitBudget.USER_ACTIVATION_RESEND_TARGET_DAILY,
+            source: RateLimitTrackerSource.TARGET_ACCOUNT,
+            stage: RateLimitStage.PRE_AUTH,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 6,
+            windowSeconds: 86400,
+            blockDurationSeconds: 1800,
+        },
+    ],
+    [RateLimitPolicy.ADMIN_INVITATION]: [
+        ADMIN_INVITATION_IP_SHORT_LIMITER,
+        ADMIN_INVITATION_IP_LONG_LIMITER,
+        ADMIN_INVITATION_SHORT_LIMITER,
+        ADMIN_INVITATION_LONG_LIMITER,
+    ],
+    [RateLimitPolicy.ADMIN_REINVITATION]: [
+        ADMIN_INVITATION_IP_SHORT_LIMITER,
+        ADMIN_INVITATION_IP_LONG_LIMITER,
+        {
+            budget: RateLimitBudget.ADMIN_REINVITATION_TARGET_SHORT,
+            source: RateLimitTrackerSource.TARGET_ACCOUNT,
+            stage: RateLimitStage.POST_AUTH,
+            field: RateLimitTrackerField.TARGET_ID,
+            limit: 1,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.IP_LONG,
+            budget: RateLimitBudget.ADMIN_REINVITATION_TARGET_LONG,
+            source: RateLimitTrackerSource.TARGET_ACCOUNT,
+            stage: RateLimitStage.POST_AUTH,
+            field: RateLimitTrackerField.TARGET_ID,
+            limit: 3,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
+        },
+        {
+            budget: RateLimitBudget.ADMIN_REINVITATION_TARGET_DAILY,
+            source: RateLimitTrackerSource.TARGET_ACCOUNT,
+            stage: RateLimitStage.POST_AUTH,
+            field: RateLimitTrackerField.TARGET_ID,
+            limit: 6,
+            windowSeconds: 86400,
+            blockDurationSeconds: 1800,
+        },
+
+        ADMIN_INVITATION_SHORT_LIMITER,
+
+        ADMIN_INVITATION_LONG_LIMITER,
+    ],
+    [RateLimitPolicy.ADMIN_ACTIVATION]: [
+        {
+            budget: RateLimitBudget.ADMIN_ACTIVATION_IP_SHORT,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 6000,
-            windowSeconds: 900,
-            blockDurationSeconds: 30,
+            limit: 20,
+            windowSeconds: 60,
+            blockDurationSeconds: 60,
+        },
+        {
+            budget: RateLimitBudget.ADMIN_ACTIVATION_IP_LONG,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 100,
+            windowSeconds: 3600,
+            blockDurationSeconds: 300,
         },
     ],
     [RateLimitPolicy.USER_LOGIN]: [
         {
-            name: RateLimiterName.IP_SHORT,
+            budget: RateLimitBudget.USER_LOGIN_IP_SHORT,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 60,
@@ -207,7 +629,7 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.IP_LONG,
+            budget: RateLimitBudget.USER_LOGIN_IP_LONG,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 300,
@@ -215,27 +637,27 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 300,
         },
         {
-            name: RateLimiterName.TARGET_ACCOUNT_SHORT,
+            budget: RateLimitBudget.USER_LOGIN_TARGET_SHORT,
             source: RateLimitTrackerSource.TARGET_ACCOUNT,
-            field: RateLimitTrackerField.EMAIL,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 5,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 3,
             windowSeconds: 60,
             blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.TARGET_ACCOUNT_LONG,
+            budget: RateLimitBudget.USER_LOGIN_TARGET_LONG,
             source: RateLimitTrackerSource.TARGET_ACCOUNT,
-            field: RateLimitTrackerField.EMAIL,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 20,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 5,
             windowSeconds: 900,
             blockDurationSeconds: 300,
         },
     ],
     [RateLimitPolicy.ADMIN_LOGIN]: [
         {
-            name: RateLimiterName.IP_SHORT,
+            budget: RateLimitBudget.ADMIN_LOGIN_IP_SHORT,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 20,
@@ -243,7 +665,7 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.IP_LONG,
+            budget: RateLimitBudget.ADMIN_LOGIN_IP_LONG,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 100,
@@ -251,27 +673,27 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 300,
         },
         {
-            name: RateLimiterName.TARGET_ACCOUNT_SHORT,
+            budget: RateLimitBudget.ADMIN_LOGIN_TARGET_SHORT,
             source: RateLimitTrackerSource.TARGET_ACCOUNT,
-            field: RateLimitTrackerField.EMAIL,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 5,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 3,
             windowSeconds: 60,
             blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.TARGET_ACCOUNT_LONG,
+            budget: RateLimitBudget.ADMIN_LOGIN_TARGET_LONG,
             source: RateLimitTrackerSource.TARGET_ACCOUNT,
-            field: RateLimitTrackerField.EMAIL,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 10,
+            field: RateLimitTrackerField.TARGET_EMAIL,
+            limit: 5,
             windowSeconds: 900,
             blockDurationSeconds: 300,
         },
     ],
     [RateLimitPolicy.REFRESH_TOKEN]: [
         {
-            name: RateLimiterName.IP_SHORT,
+            budget: RateLimitBudget.REFRESH_TOKEN_IP_SHORT,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 300,
@@ -279,7 +701,7 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 10,
         },
         {
-            name: RateLimiterName.IP_LONG,
+            budget: RateLimitBudget.REFRESH_TOKEN_IP_LONG,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
             limit: 3000,
@@ -287,81 +709,25 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 30,
         },
     ],
-    [RateLimitPolicy.USER_ACTIVATION_RESEND]: [
+    [RateLimitPolicy.CREDENTIAL_CHANGE]: [
         {
-            name: RateLimiterName.IP_SHORT,
+            budget: RateLimitBudget.CREDENTIAL_CHANGE_IP_SHORT,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 20,
+            limit: 60,
             windowSeconds: 60,
-            blockDurationSeconds: 60,
+            blockDurationSeconds: 10,
         },
         {
-            name: RateLimiterName.IP_LONG,
+            budget: RateLimitBudget.CREDENTIAL_CHANGE_IP_LONG,
             source: RateLimitTrackerSource.IP,
             stage: RateLimitStage.PRE_AUTH,
-            limit: 100,
-            windowSeconds: 3600,
-            blockDurationSeconds: 300,
-        },
-        {
-            name: RateLimiterName.TARGET_ACCOUNT_SHORT,
-            source: RateLimitTrackerSource.TARGET_ACCOUNT,
-            field: RateLimitTrackerField.EMAIL,
-            stage: RateLimitStage.PRE_AUTH,
-            limit: 1,
-            windowSeconds: 60,
-            blockDurationSeconds: 60,
-        },
-        {
-            name: RateLimiterName.TARGET_ACCOUNT_LONG,
-            source: RateLimitTrackerSource.TARGET_ACCOUNT,
-            field: RateLimitTrackerField.EMAIL,
-            stage: RateLimitStage.PRE_AUTH,
-            limit: 5,
-            windowSeconds: 3600,
-            blockDurationSeconds: 300,
-        },
-    ],
-    [RateLimitPolicy.USER_REGISTRATION_ADMIN_USER_ACTIVATION]: [
-        {
-            name: RateLimiterName.IP_SHORT,
-            source: RateLimitTrackerSource.IP,
-            stage: RateLimitStage.PRE_AUTH,
-            limit: 20,
-            windowSeconds: 60,
-            blockDurationSeconds: 60,
-        },
-        {
-            name: RateLimiterName.IP_LONG,
-            source: RateLimitTrackerSource.IP,
-            stage: RateLimitStage.PRE_AUTH,
-            limit: 100,
-            windowSeconds: 3600,
-            blockDurationSeconds: 300,
-        },
-    ],
-    [RateLimitPolicy.PASSWORD_CHANGE_EMAIL_CHANGE_INITIATE]: [
-        {
-            name: RateLimiterName.PRINCIPAL_SHORT,
-            source: RateLimitTrackerSource.PRINCIPAL,
-            stage: RateLimitStage.POST_AUTH,
-            limit: 5,
-            windowSeconds: 60,
-            blockDurationSeconds: 60,
-        },
-        {
-            name: RateLimiterName.PRINCIPAL_LONG,
-            source: RateLimitTrackerSource.PRINCIPAL,
-            stage: RateLimitStage.POST_AUTH,
-            limit: 10,
+            limit: 300,
             windowSeconds: 900,
-            blockDurationSeconds: 300,
+            blockDurationSeconds: 30,
         },
-    ],
-    [RateLimitPolicy.ADMIN_INVITATION]: [
         {
-            name: RateLimiterName.PRINCIPAL_SHORT,
+            budget: RateLimitBudget.CREDENTIAL_CHANGE_SHORT,
             source: RateLimitTrackerSource.PRINCIPAL,
             stage: RateLimitStage.POST_AUTH,
             limit: 3,
@@ -369,17 +735,49 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.PRINCIPAL_LONG,
+            budget: RateLimitBudget.CREDENTIAL_CHANGE_LONG,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 5,
+            windowSeconds: 900,
+            blockDurationSeconds: 300,
+        },
+        {
+            budget: RateLimitBudget.CREDENTIAL_CHANGE_HOURLY,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 7,
+            windowSeconds: 3600,
+            blockDurationSeconds: 900,
+        },
+        {
+            budget: RateLimitBudget.CREDENTIAL_CHANGE_DAILY,
             source: RateLimitTrackerSource.PRINCIPAL,
             stage: RateLimitStage.POST_AUTH,
             limit: 10,
-            windowSeconds: 3600,
-            blockDurationSeconds: 300,
+            windowSeconds: 86400,
+            blockDurationSeconds: 1800,
         },
     ],
     [RateLimitPolicy.AVATAR_UPLOAD_INITIATE]: [
         {
-            name: RateLimiterName.PRINCIPAL_SHORT,
+            budget: RateLimitBudget.AVATAR_UPLOAD_INITIATE_IP_SHORT,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 60,
+            windowSeconds: 60,
+            blockDurationSeconds: 10,
+        },
+        {
+            budget: RateLimitBudget.AVATAR_UPLOAD_INITIATE_IP_LONG,
+            source: RateLimitTrackerSource.IP,
+            stage: RateLimitStage.PRE_AUTH,
+            limit: 300,
+            windowSeconds: 900,
+            blockDurationSeconds: 30,
+        },
+        {
+            budget: RateLimitBudget.AVATAR_UPLOAD_INITIATE_SHORT,
             source: RateLimitTrackerSource.PRINCIPAL,
             stage: RateLimitStage.POST_AUTH,
             limit: 3,
@@ -387,12 +785,32 @@ export const RATE_LIMIT_POLICIES = {
             blockDurationSeconds: 60,
         },
         {
-            name: RateLimiterName.PRINCIPAL_LONG,
+            budget: RateLimitBudget.AVATAR_UPLOAD_INITIATE_LONG,
             source: RateLimitTrackerSource.PRINCIPAL,
             stage: RateLimitStage.POST_AUTH,
             limit: 10,
             windowSeconds: 3600,
             blockDurationSeconds: 300,
+        },
+    ],
+    [RateLimitPolicy.JOB_QUEUE_MUTATION]: [
+        DEFAULT_IP_SHORT_LIMITER,
+        DEFAULT_IP_LONG_LIMITER,
+        {
+            budget: RateLimitBudget.JOB_QUEUE_MUTATION_SHORT,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 3,
+            windowSeconds: 60,
+            blockDurationSeconds: 30,
+        },
+        {
+            budget: RateLimitBudget.JOB_QUEUE_MUTATION_LONG,
+            source: RateLimitTrackerSource.PRINCIPAL,
+            stage: RateLimitStage.POST_AUTH,
+            limit: 10,
+            windowSeconds: 900,
+            blockDurationSeconds: 60,
         },
     ],
 } as const satisfies Readonly<Record<RateLimitPolicy, readonly RateLimiterDefinition[]>>;

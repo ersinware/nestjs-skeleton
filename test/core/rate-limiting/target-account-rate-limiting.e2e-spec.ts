@@ -3,10 +3,8 @@
  * @description Target-account admission through production endpoints, guards and real Redis counters.
  */
 
-import { ConfigService } from '@nestjs/config';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createHash, randomUUID } from 'node:crypto';
-import { ENV } from 'src/core/config';
 import { CommandPipeline } from 'src/core/cqrs';
 import {
     TOKEN_RATE_LIMIT_COUNTER_PORT,
@@ -29,14 +27,12 @@ const endpoints = [
 describe('Target-account policies with production HTTP and Redis', () => {
     let app: NestFastifyApplication;
     let counter: IRateLimitCounterPort;
-    let serviceName: string;
     const previousTrustProxy = process.env['TRUST_PROXY'];
 
     beforeAll(async () => {
         process.env['TRUST_PROXY'] = 'false';
         app = await createTestApp();
         counter = app.get(TOKEN_RATE_LIMIT_COUNTER_PORT);
-        serviceName = app.get(ConfigService).getOrThrow<string>(ENV.SERVICE_NAME);
     });
 
     afterAll(async () => {
@@ -77,10 +73,14 @@ describe('Target-account policies with production HTTP and Redis', () => {
 
     it.each(
         endpoints.flatMap((endpoint) =>
-            RATE_LIMIT_POLICIES[endpoint.policy].map((limiter, index) => ({ ...endpoint, limiter, index })),
+            RATE_LIMIT_POLICIES[endpoint.policy].map((limiter, index) => ({
+                ...endpoint,
+                limiter,
+                index,
+            })),
         ),
     )(
-        'enforces $policy $limiter.name independently and stops subsequent effects',
+        'enforces $policy $limiter.budget independently and stops subsequent effects',
         async ({ policy, url, limiter, index, status }) => {
             const email = `${randomUUID()}@example.test`;
             const ip = '192.0.2.50';
@@ -89,8 +89,7 @@ describe('Target-account policies with production HTTP and Redis', () => {
             // Seed through the production port and real Redis, without modifying configured budgets.
             const attempt = {
                 ...limiter,
-                limiterName: limiter.name,
-                key: `${serviceName}:rl:${policy}:${limiter.name}:${tracker}`,
+                key: `${limiter.budget}:${tracker}`,
             };
             for (let i = 0; i < limiter.limit; i++) {
                 expect((await counter.consume(attempt)).allowed).toBe(true);
@@ -105,10 +104,44 @@ describe('Target-account policies with production HTTP and Redis', () => {
             });
             expect(blocked.statusCode).toBe(429);
             expect(Number(blocked.headers['retry-after'])).toBeGreaterThanOrEqual(1);
-            expect(consume.mock.calls.map(([input]) => input.limiterName)).toEqual(
-                RATE_LIMIT_POLICIES[policy].slice(0, index + 1).map((item) => item.name),
+            expect(consume.mock.calls.map(([input]) => input.key.split(':')[0])).toEqual(
+                RATE_LIMIT_POLICIES[policy].slice(0, index + 1).map((limiter) => limiter.budget),
             );
             expect(execute).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(
+        [
+            { policy: RateLimitPolicy.USER_REGISTRATION, url: '/api/v1/user/registration/initiate' },
+            { policy: RateLimitPolicy.USER_REGISTRATION, url: '/api/v1/user/registration/complete' },
+            { policy: RateLimitPolicy.USER_ACTIVATION, url: '/api/v1/user/activation/complete' },
+            { policy: RateLimitPolicy.ADMIN_ACTIVATION, url: '/api/v1/admin/activation/initiate' },
+            { policy: RateLimitPolicy.ADMIN_ACTIVATION, url: '/api/v1/admin/activation/complete' },
+        ].flatMap((endpoint) =>
+            RATE_LIMIT_POLICIES[endpoint.policy].map((limiter, index) => ({ ...endpoint, limiter, index })),
+        ),
+    )(
+        'enforces $limiter.budget on $url without consuming another public workflow budget',
+        async ({ policy, url, limiter, index }) => {
+            const ip = '192.0.2.90';
+            for (let i = 0; i < limiter.limit; i++) {
+                expect((await counter.consume({ ...limiter, key: `${limiter.budget}:${ip}` })).allowed).toBe(true);
+            }
+            const consume = vi.spyOn(counter, 'consume');
+            const execute = vi.spyOn(app.get(CommandPipeline), 'execute');
+            expect((await app.inject({ method: 'POST', url, remoteAddress: ip, payload: {} })).statusCode).toBe(429);
+            expect(consume.mock.calls.map(([attempt]) => attempt.key.split(':')[0])).toEqual(
+                RATE_LIMIT_POLICIES[policy].slice(0, index + 1).map((definition) => definition.budget),
+            );
+            expect(execute).not.toHaveBeenCalled();
+            const otherUrl =
+                policy === RateLimitPolicy.USER_REGISTRATION
+                    ? '/api/v1/admin/activation/initiate'
+                    : '/api/v1/user/registration/initiate';
+            expect(
+                (await app.inject({ method: 'POST', url: otherUrl, remoteAddress: ip, payload: {} })).statusCode,
+            ).toBe(400);
         },
     );
 
@@ -152,7 +185,7 @@ describe('Target-account policies with production HTTP and Redis', () => {
 
     it.each(endpoints)(
         'rejects missing or malformed email in $policy after IP checks without account consumption',
-        async ({ url }) => {
+        async ({ policy, url }) => {
             const consume = vi.spyOn(counter, 'consume');
             const execute = vi.spyOn(app.get(CommandPipeline), 'execute');
             for (const payload of [{}, { email: null }, { email: 'bad' }]) {
@@ -162,7 +195,9 @@ describe('Target-account policies with production HTTP and Redis', () => {
                 expect(response.json()).toMatchObject({ error: { statusCode: 400 } });
                 expect(Array.isArray(response.json<{ error: { message: unknown } }>().error.message)).toBe(true);
                 expect(response.headers['retry-after']).toBeUndefined();
-                expect(consume.mock.calls.map(([input]) => input.limiterName)).toEqual(['ip-short', 'ip-long']);
+                expect(consume.mock.calls.map(([input]) => input.key.split(':')[0])).toEqual(
+                    RATE_LIMIT_POLICIES[policy].slice(0, 2).map((limiter) => limiter.budget),
+                );
             }
             expect(execute).not.toHaveBeenCalled();
         },
@@ -174,8 +209,7 @@ describe('Target-account policies with production HTTP and Redis', () => {
         for (let i = 0; i < limiter.limit; i++) {
             await counter.consume({
                 ...limiter,
-                limiterName: limiter.name,
-                key: `${serviceName}:rl:${policy}:${limiter.name}:192.0.2.70`,
+                key: `${limiter.budget}:192.0.2.70`,
             });
         }
         const consume = vi.spyOn(counter, 'consume');
