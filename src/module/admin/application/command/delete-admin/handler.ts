@@ -72,7 +72,7 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
 
             throw error;
         }
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AdminAuditAction.ADMIN_DELETED, targetId: admin.id });
         });

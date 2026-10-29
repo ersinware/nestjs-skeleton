@@ -40,7 +40,7 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
     async execute(command: DiscardDeadLetterJobsCommand) {
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             const affected = await this.operatorPort.discardDeadLetterJobs(command.jobIds);
 
             if (affected !== command.jobIds.length) {

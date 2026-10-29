@@ -154,7 +154,7 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
         }
 
         if (changed) {
-            await this.transactionPort.run(async () => {
+            await this.transactionPort.start(async () => {
                 await this.adminWriterPort.save(admin);
                 await this.auditPort.record({
                     action: AdminAuditAction.ADMIN_AVATAR_FINALIZED,

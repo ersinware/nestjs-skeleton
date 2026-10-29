@@ -136,7 +136,7 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.userWriterPort.save(user);
             await this.notificationWriterPort.save(notification);
             await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGED });

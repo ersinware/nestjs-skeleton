@@ -141,7 +141,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         // Commit the reuse evidence and revocation request before rejecting the credential.
         const deliveryId = randomUUID();
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.jobQueueWriterPort.enqueue([
                 {
                     deliveryId,

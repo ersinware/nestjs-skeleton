@@ -34,7 +34,7 @@ describe('ActivateAdminCommandHandler', () => {
         verifyInviteToken = vi.fn<ITokenPort['verifyInviteToken']>(),
         verifyUploadToken = vi.fn<ITokenPort['verifyUploadToken']>(),
         hash = vi.fn<IHashingPort['hash']>(),
-        transaction: ITransactionPort = { run: (work) => work() },
+        transaction: ITransactionPort = { start: (work) => work(), join: vi.fn() },
         command = new ActivateAdminCommand(
             'invitation',
             'new-password',

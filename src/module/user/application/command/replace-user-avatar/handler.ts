@@ -156,7 +156,7 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
         }
 
         if (changed) {
-            await this.transactionPort.run(async () => {
+            await this.transactionPort.start(async () => {
                 await this.userWriterPort.save(user);
                 await this.auditPort.record({
                     action: UserAuditAction.USER_AVATAR_FINALIZED,

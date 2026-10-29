@@ -2,13 +2,15 @@
 
 - Durable asynchronous delivery uses `core/job-queue`, backed by pg-boss.
 - Development/test startup may migrate the pg-boss schema. Production startup sets `migrate: false` and rejects a missing or mismatched schema.
-- Commands own the outer `ITransactionPort.run`. Aggregate writers persist state and accumulated jobs; commands enqueue command-owned jobs directly. All enqueueing uses the primary Drizzle proxy, so jobs commit with surrounding writes and mutation audit ([Audit](observability.md#audit)). pg-boss owns its `pgboss` schema; exclude it from Drizzle discovery and schema filters.
+- Aggregate writers persist state and accumulated jobs; commands enqueue command-owned jobs directly. All enqueueing uses the primary Drizzle proxy, so jobs commit with surrounding writes and mutation audit ([Audit](observability.md#audit)). pg-boss owns its `pgboss` schema; exclude it from Drizzle discovery and schema filters.
 - Delivery attempts may repeat or outlive expiration and overlap a retry; queue claims do not make external effects exclusive. Retries and backoff are bounded.
-- Non-transactional consumers use `TerminalJobException` only when automatic retries cannot recover; workers skip retries. Transactional consumers retain normal retries.
+- Use `TerminalJobException` only when retries cannot recover: non-transactional workers skip retries; transactional workers roll back and retry normally. Transactional callbacks must propagate failures; returning `deadletter` would commit their writes.
 - Normal queues route exhausted or explicitly terminal failures to the shared DLQ. Technical queues, including redrive orchestration, opt out with `disableDeadLetter: true`; the DLQ has no worker.
 - Routing changes do not backfill already queued jobs or historical source failures.
 - `job-queue-operations` reads require authorization but no audit; exact-ID discard and exclusive, retryable all-DLQ redrive require audit. Discard is atomic. Jobs without a source queue remain in the DLQ; pg-boss retention bounds operation status.
-- Job consumers declare `transactional: boolean`. Transactional consumers run only short PostgreSQL work: the ambient Drizzle executor and pg-boss completion share the pg-boss-owned transaction. Consumers that call Redis, email, or other network dependencies remain non-transactional and tolerate or deduplicate repeated effects.
+- Consumers declare `transactional: boolean`. Transactional consumers, including dispatched handlers and pipeline behaviors, perform only short PostgreSQL work; handlers use `join` ([Data & State](data-and-state.md#data--state)). pg-boss commits writes, audit, follow-up jobs, and completion after the consumer returns; never await that commit inside it. Diagnostic telemetry remains allowed; refusal audit follows [Audit](observability.md#audit).
+- Consumers with external business effects are non-transactional. Use `start` for related DB writes; await it before commit-dependent effects. Job completion is separate: retries must resume committed work and cleanup using durable identities. Make effects idempotent, deduplicate, or explicitly tolerate repeats.
+- When callers need different transaction ownership, separate orchestration and share business logic.
 - Configure workers through `IJobConsumer.workerOptions`; balance polling and batch size against delivery latency and backlog throughput. Concurrency multiplies by process count; worker settings do not guarantee provider rate limits.
 - Batches execute sequentially and settle after the batch, with per-job results for non-transactional consumers. Size batches to finish before job expiry; keep transactional batches at one job.
 - Keep total transactional concurrency below the queue pool limit, reserving capacity for polling, completion, and maintenance.
@@ -19,7 +21,6 @@
 - Cross-context producers depend on owner-defined shared job contracts, never another module's domain enum. Keep queue names and payloads compatible with queued work and concurrently running versions.
 - Runtime provisioning creates missing queues, verifies immutable policy/partitioning, and reconciles mutable retry defaults. Change immutable options through an explicit operational migration.
 - Durable job consumers use `application/queue/`; network ingress uses `presentation/listener/`. Thin listeners and consumers await commands through pipelines; cache eviction may call its port directly.
-- Prefer idempotent reconciliation for repeated/concurrent delivery. Email may be sent more than once.
 - Pipeline and durable-job cache eviction share `<module>-cache-key.util.ts`; neither prevents concurrent stale cache fills. Failure semantics: [Adapters](data-and-state.md#adapters).
 
 ### Deployment

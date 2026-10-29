@@ -14,6 +14,7 @@ import {
     DatabaseModule,
     TOKEN_DATABASE_CLIENT,
     TOKEN_TRANSACTION_PORT,
+    runOutsideDatabaseTransaction,
     type ITransactionPort,
 } from 'src/core/database';
 import {
@@ -26,7 +27,7 @@ import {
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
-import { SystemException, TerminalJobException } from 'src/shared/exception';
+import { ExceptionKind, SystemException, TerminalJobException } from 'src/shared/exception';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -68,7 +69,7 @@ class TransactionalProbeConsumer implements IJobConsumer {
      * Initializes the probe with the transaction-aware dependencies under test.
      *
      * @param database Primary database proxy that must select the pg-boss transaction
-     * @param transactionPort Nested application transaction boundary that must join the ambient transaction
+     * @param transactionPort Application transaction boundary that explicitly joins the ambient transaction
      * @param jobQueueWriterPort Child-job writer that must enqueue through the same transaction
      */
     constructor(
@@ -83,7 +84,7 @@ class TransactionalProbeConsumer implements IJobConsumer {
      * @param job Probe job
      */
     async consume(job: Job) {
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.join(async () => {
             await this.database.execute(sql`
                 INSERT INTO public.job_queue_transaction_probe (id)
                 VALUES (${job.deliveryId})
@@ -95,10 +96,21 @@ class TransactionalProbeConsumer implements IJobConsumer {
                     queueName: CHILD_QUEUE,
                 },
             ]);
+
+            if (job.aggregateId === 'fail-at-commit') {
+                // The deferred primary key accepts this statement and fails only at outer COMMIT.
+                await this.database.execute(sql`
+                    INSERT INTO public.job_queue_transaction_probe (id) VALUES (${job.deliveryId})
+                `);
+            }
         });
 
         if (job.aggregateId === FAILURE_AGGREGATE_ID) {
             throw new Error('Intentional transactional consumer failure.');
+        }
+
+        if (job.aggregateId === 'terminal') {
+            throw new TerminalJobException('Intentional transactional terminal failure.');
         }
     }
 }
@@ -144,6 +156,7 @@ describe('Transactional pg-boss consumer', () => {
     let module: TestingModule;
     let boss: PgBoss;
     let database: NodePgDatabase;
+    let transactionPort: ITransactionPort;
 
     /**
      * Captures intentional consumer failures.
@@ -178,6 +191,7 @@ describe('Transactional pg-boss consumer', () => {
         module = await builder.compile();
         boss = module.get<PgBoss>(TOKEN_JOB_QUEUE_CLIENT);
         database = module.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
+        transactionPort = module.get<ITransactionPort>(TOKEN_TRANSACTION_PORT);
 
         await boss.deleteQueue(SETTLEMENT_QUEUE);
         await boss.deleteQueue(PROBE_QUEUE);
@@ -185,7 +199,7 @@ describe('Transactional pg-boss consumer', () => {
         await boss.createQueue(CHILD_QUEUE, { policy: 'standard' });
         await database.execute(sql`
             CREATE TABLE IF NOT EXISTS public.job_queue_transaction_probe (
-                id text PRIMARY KEY
+                id text PRIMARY KEY DEFERRABLE INITIALLY DEFERRED
             )
         `);
         await database.execute(sql`TRUNCATE TABLE public.job_queue_transaction_probe`);
@@ -206,6 +220,106 @@ describe('Transactional pg-boss consumer', () => {
         await database.execute(sql`DROP TABLE public.job_queue_transaction_probe`);
         await module.close();
     });
+
+    it('rejects join outside a transaction without executing its callback', async () => {
+        const work = vi.fn();
+
+        await expect(transactionPort.join(work)).rejects.toMatchObject({ kind: ExceptionKind.SYSTEM });
+        expect(work).not.toHaveBeenCalled();
+    });
+
+    it('keeps joined writes invisible until start commits and rejects a nested start', async () => {
+        const deliveryId = 'owned-commit';
+        const nestedWork = vi.fn();
+        const result = await transactionPort.start(async () => {
+            await transactionPort.join(async () => {
+                await database.execute(sql`
+                    INSERT INTO public.job_queue_transaction_probe (id) VALUES (${deliveryId})
+                `);
+            });
+            const visibleBeforeCommit = await runOutsideDatabaseTransaction(() =>
+                database.execute(sql`SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}`),
+            );
+            expect(visibleBeforeCommit.rows).toEqual([]);
+            await expect(transactionPort.start(nestedWork)).rejects.toMatchObject({ kind: ExceptionKind.SYSTEM });
+            return 'committed-result';
+        });
+
+        expect(result).toBe('committed-result');
+        expect(nestedWork).not.toHaveBeenCalled();
+        const rows = await database.execute(sql`
+            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
+        `);
+        expect(rows.rows).toEqual([{ id: deliveryId }]);
+    });
+
+    it('rolls joined writes back when the start owner fails after join returns', async () => {
+        const deliveryId = 'owned-rollback';
+        const failure = new Error('Failure after join returned');
+
+        await expect(
+            transactionPort.start(async () => {
+                await transactionPort.join(async () => {
+                    await database.execute(sql`
+                        INSERT INTO public.job_queue_transaction_probe (id) VALUES (${deliveryId})
+                    `);
+                });
+                throw failure;
+            }),
+        ).rejects.toBe(failure);
+
+        const rows = await database.execute(sql`
+            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
+        `);
+        expect(rows.rows).toEqual([]);
+    });
+
+    it('rejects start on a real commit failure before running post-commit effects', async () => {
+        const deliveryId = 'owned-commit-failure';
+        const afterCommit = vi.fn();
+        let callbackCompleted = false;
+        const result = transactionPort
+            .start(async () => {
+                await database.execute(sql`
+                    INSERT INTO public.job_queue_transaction_probe (id) VALUES (${deliveryId}), (${deliveryId})
+                `);
+                callbackCompleted = true;
+            })
+            .then(afterCommit);
+
+        await expect(result).rejects.toThrow();
+        expect(callbackCompleted).toBe(true);
+        expect(afterCommit).not.toHaveBeenCalled();
+        const rows = await database.execute(sql`
+            SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
+        `);
+        expect(rows.rows).toEqual([]);
+    });
+
+    it.each(['fail-at-commit', 'terminal'])(
+        'rolls back effects and retries transactional %s failures',
+        async (aggregateId) => {
+            const deliveryId = `transactional-${aggregateId}`;
+            const jobId = await boss.send(PROBE_QUEUE, { deliveryId, aggregateId });
+
+            expect(jobId).not.toBeNull();
+            await expect
+                .poll(async () => (await boss.findJobs(PROBE_QUEUE, { id: jobId! }))[0]?.state, {
+                    timeout: 10_000,
+                    interval: 100,
+                })
+                .toBe('retry');
+
+            const rows = await database.execute(sql`
+                SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}
+            `);
+            expect(rows.rows).toEqual([]);
+            expect((await boss.findJobs<Job>(CHILD_QUEUE)).some((job) => job.data.deliveryId === deliveryId)).toBe(
+                false,
+            );
+            expect((await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).some((job) => job.sourceId === jobId)).toBe(false);
+        },
+    );
 
     it('bypasses configured retries only for terminal non-transactional failures', async () => {
         const terminalId = await boss.send(SETTLEMENT_QUEUE, {

@@ -175,7 +175,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
             return;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({ action: UserAuditAction.USER_UPDATED });
         });

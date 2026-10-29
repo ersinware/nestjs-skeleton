@@ -81,7 +81,7 @@ export class ReplaceAdminPermissionsCommandHandler implements ICommandHandler<Re
             return;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({
                 action: AdminAuditAction.ADMIN_PERMISSIONS_CHANGED,

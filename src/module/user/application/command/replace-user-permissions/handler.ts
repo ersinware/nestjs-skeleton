@@ -80,7 +80,7 @@ export class ReplaceUserPermissionsCommandHandler implements ICommandHandler<Rep
             return;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({
                 action: UserAuditAction.USER_PERMISSIONS_CHANGED,

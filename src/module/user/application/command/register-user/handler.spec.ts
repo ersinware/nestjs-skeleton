@@ -32,7 +32,10 @@ describe('RegisterUserCommandHandler', () => {
         const storage = { headObject: vi.fn().mockResolvedValue({ sizeBytes: 4, contentType: 'image/png' }) };
         const writer = { insert: vi.fn() };
         const hashing = { hash: vi.fn().mockResolvedValue('hash') };
-        const transaction = { run: vi.fn(async (callback: () => Promise<void>) => callback()) };
+        const transaction = {
+            start: vi.fn(async (callback: () => Promise<void>) => callback()),
+            join: vi.fn(),
+        };
         const audit = { record: vi.fn() };
         const handler = new RegisterUserCommandHandler(
             transaction as never,
@@ -77,7 +80,7 @@ describe('RegisterUserCommandHandler', () => {
             await expect(fixture.handler.execute(command)).rejects.toMatchObject({ kind });
             expect(fixture.hashing.hash).not.toHaveBeenCalled();
             expect(fixture.writer.insert).not.toHaveBeenCalled();
-            expect(fixture.transaction.run).not.toHaveBeenCalled();
+            expect(fixture.transaction.start).not.toHaveBeenCalled();
             expect(fixture.audit.record).not.toHaveBeenCalled();
         },
     );
