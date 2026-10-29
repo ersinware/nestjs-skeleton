@@ -185,6 +185,7 @@ export class SessionAdapter implements ISessionPort {
             if (isRedisUnavailable(error)) {
                 throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
             }
+
             throw error;
         }
     }

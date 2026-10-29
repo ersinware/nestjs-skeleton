@@ -9,7 +9,7 @@ import { Resend } from 'resend';
 import { ENV } from 'src/core/config';
 import { buildEmailIdempotencyKey } from 'src/core/email/email-idempotency-key.util';
 import type { EmailDeliveryIdentity, EmailPayload, IEmailerPort } from 'src/core/email/port/emailer.port';
-import { SystemException } from 'src/shared/exception';
+import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
 /**
  * Sends transactional email through Resend with a stable key for each outgoing request.
@@ -54,8 +54,23 @@ export class EmailerAdapter implements IEmailerPort {
         );
 
         if (error) {
+            // Match the API's names as strings: its error catalog can precede SDK type updates.
+            // A null status is ambiguous: the SDK also uses it for response-decoding failures.
+            if (
+                (error.statusCode === 409 &&
+                    ['concurrent_idempotent_requests', 'resource_locked'].includes(error.name)) ||
+                (error.statusCode === 429 && error.name === 'rate_limit_exceeded') ||
+                (error.statusCode !== null &&
+                    error.statusCode >= 500 &&
+                    error.statusCode < 600 &&
+                    ['application_error', 'service_unavailable', 'internal_server_error'].includes(error.name))
+            ) {
+                throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
+            }
+
             throw new SystemException(
                 `Email provider request failed: ${error.name} (${error.statusCode ?? 'unknown status'}).`,
+                { cause: error, context: { class: this.constructor.name, method: this.sendEmail.name } },
             );
         }
     }

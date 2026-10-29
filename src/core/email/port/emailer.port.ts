@@ -53,7 +53,8 @@ export interface IEmailerPort {
      *
      * @param data The recipient, subject, and body of the email
      * @param delivery The owning queue and stable delivery identity
-     * @throws {SystemException} When the provider rejects the email request.
+     * @throws {DependencyUnavailableException} When a recognized provider availability, rate-limit, or concurrent-request failure prevents delivery.
+     * @throws {SystemException} When delivery fails for configuration, quota, validation, or ambiguous/unrecognized reasons.
      */
     sendEmail(data: EmailPayload, delivery: EmailDeliveryIdentity): Promise<void>;
 }
