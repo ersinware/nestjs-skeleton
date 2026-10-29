@@ -1,5 +1,5 @@
 /**
- * @file user-avatar-replace.queue.ts
+ * @file user-avatar-replace.consumer.ts
  * @description Dispatches user profile avatar replacement through the owning command pipeline.
  */
 
@@ -14,7 +14,7 @@ import { TerminalJobException } from 'src/shared/exception';
  * Uses the existing retry defaults and shared DLQ for storage reconciliation.
  */
 @Injectable()
-export class UserAvatarReplaceQueue implements IJobConsumer {
+export class UserAvatarReplaceConsumer implements IJobConsumer {
     /**
      * Queue owned by the user's profile avatar workflow.
      */

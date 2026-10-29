@@ -15,7 +15,7 @@ import { TransactionAdapter } from 'src/core/database/adapter/transaction.adapte
 import { TOKEN_DATABASE_CLIENT, TOKEN_DATABASE_REPLICA_CLIENT } from 'src/core/database/database-client.token';
 import { createDatabasePool } from 'src/core/database/database-pool.factory';
 import { DatabaseRole } from 'src/core/database/database-role.enum';
-import { transactionStorage } from 'src/core/database/database-transaction.storage';
+import { transactionStorage } from 'src/core/database/database-transaction-context';
 import { TOKEN_DATABASE_CLEANER_PORT } from 'src/core/database/port/database-cleaner.port';
 import {
     TOKEN_DATABASE_HEALTH_PORT,

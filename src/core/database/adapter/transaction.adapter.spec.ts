@@ -5,7 +5,7 @@
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TransactionAdapter } from 'src/core/database/adapter/transaction.adapter';
-import { transactionStorage } from 'src/core/database/database-transaction.storage';
+import { transactionStorage } from 'src/core/database/database-transaction-context';
 import { DependencyUnavailableException, ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 

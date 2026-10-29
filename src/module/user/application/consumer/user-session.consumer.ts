@@ -1,23 +1,23 @@
 /**
- * @file admin-session.queue.ts
- * @description Dispatches admin session reconciliation jobs to the command pipeline.
+ * @file user-session.consumer.ts
+ * @description Dispatches user session reconciliation jobs to the command pipeline.
  */
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
-import { ReconcileAdminSessionCommand } from 'src/module/admin/application/command/reconcile-admin-session/command';
-import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
+import { type IJobConsumer, type Job } from 'src/core/job-queue';
+import { ReconcileUserSessionCommand } from 'src/module/user/application/command/reconcile-user-session/command';
+import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 
 /**
- * Consumes durable admin session reconciliation jobs.
+ * Consumes durable user session reconciliation jobs.
  */
 @Injectable()
-export class AdminSessionQueue implements IJobConsumer {
+export class UserSessionConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
-    readonly name = AdminJobQueue.SESSION_RECONCILE;
+    readonly name = UserJobQueue.SESSION_RECONCILE;
 
     /**
      * Redis synchronization cannot participate in the queue transaction.
@@ -37,11 +37,11 @@ export class AdminSessionQueue implements IJobConsumer {
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Dispatches session reconciliation for the referenced admin.
+     * Dispatches session reconciliation for the referenced user.
      *
      * @param job Session reconciliation job
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new ReconcileAdminSessionCommand(job.aggregateId));
+        await this.commandPipeline.execute(new ReconcileUserSessionCommand(job.aggregateId));
     }
 }

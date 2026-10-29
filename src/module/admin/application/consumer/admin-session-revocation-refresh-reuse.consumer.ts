@@ -1,24 +1,24 @@
 /**
- * @file user-session-revocation-refresh-reuse.queue.ts
- * @description Dispatches refresh-token reuse revocation jobs to the user command pipeline.
+ * @file admin-session-revocation-refresh-reuse.consumer.ts
+ * @description Dispatches refresh-token reuse revocation jobs to the admin command pipeline.
  */
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { type IJobConsumer, type Job } from 'src/core/job-queue';
-import { RevokeUserSessionsCommand } from 'src/module/user/application/command/revoke-user-sessions/command';
+import { IJobConsumer, Job } from 'src/core/job-queue';
+import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
+import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { SessionRevocationReason } from 'src/shared/domain/principal';
-import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 
 /**
- * Consumes refresh-token reuse revocation jobs for users.
+ * Consumes refresh-token reuse revocation jobs for admins.
  */
 @Injectable()
-export class UserSessionRevocationRefreshReuseQueue implements IJobConsumer {
+export class AdminSessionRevocationRefreshReuseConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
-    readonly name = UserSessionRevocationJobQueue.REFRESH_REUSE;
+    readonly name = AdminSessionRevocationJobQueue.REFRESH_REUSE;
 
     /**
      * Revocation state, audit, produced jobs, and job completion must commit together.
@@ -38,13 +38,13 @@ export class UserSessionRevocationRefreshReuseQueue implements IJobConsumer {
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Dispatches a refresh-token reuse revocation command for the referenced user.
+     * Dispatches a refresh-token reuse revocation command for the referenced admin.
      *
      * @param job Refresh-token reuse revocation job
      */
     async consume(job: Job) {
         await this.commandPipeline.execute(
-            new RevokeUserSessionsCommand(job.aggregateId, SessionRevocationReason.REFRESH_REUSE, job.deliveryId),
+            new RevokeAdminSessionsCommand(job.aggregateId, SessionRevocationReason.REFRESH_REUSE, job.deliveryId),
         );
     }
 }

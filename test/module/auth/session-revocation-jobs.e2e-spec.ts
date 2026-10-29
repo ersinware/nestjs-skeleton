@@ -21,8 +21,8 @@ import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/s
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
-import { AdminSessionRevocationLogoutAllQueue } from 'src/module/admin/application/queue/admin-session-revocation-logout-all.queue';
-import { AdminSessionRevocationRefreshReuseQueue } from 'src/module/admin/application/queue/admin-session-revocation-refresh-reuse.queue';
+import { AdminSessionRevocationLogoutAllConsumer } from 'src/module/admin/application/consumer/admin-session-revocation-logout-all.consumer';
+import { AdminSessionRevocationRefreshReuseConsumer } from 'src/module/admin/application/consumer/admin-session-revocation-refresh-reuse.consumer';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { AdminWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-writer.adapter';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
@@ -38,8 +38,8 @@ import { RefreshTokensCommandHandler } from 'src/module/auth/application/command
 import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
 import { RevokeUserSessionsCommandHandler } from 'src/module/user/application/command/revoke-user-sessions/handler';
-import { UserSessionRevocationLogoutAllQueue } from 'src/module/user/application/queue/user-session-revocation-logout-all.queue';
-import { UserSessionRevocationRefreshReuseQueue } from 'src/module/user/application/queue/user-session-revocation-refresh-reuse.queue';
+import { UserSessionRevocationLogoutAllConsumer } from 'src/module/user/application/consumer/user-session-revocation-logout-all.consumer';
+import { UserSessionRevocationRefreshReuseConsumer } from 'src/module/user/application/consumer/user-session-revocation-refresh-reuse.consumer';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { UserWriterAdapter } from 'src/module/user/infrastructure/adapter/user-writer.adapter';
 import { user } from 'src/module/user/infrastructure/user.schema';
@@ -192,10 +192,10 @@ describe('Auth session-revocation jobs', () => {
                 AuthRevocationJobTestModule,
                 JobQueueModule.forFeature(
                     [
-                        AdminSessionRevocationLogoutAllQueue,
-                        AdminSessionRevocationRefreshReuseQueue,
-                        UserSessionRevocationLogoutAllQueue,
-                        UserSessionRevocationRefreshReuseQueue,
+                        AdminSessionRevocationLogoutAllConsumer,
+                        AdminSessionRevocationRefreshReuseConsumer,
+                        UserSessionRevocationLogoutAllConsumer,
+                        UserSessionRevocationRefreshReuseConsumer,
                     ],
                     [AuthRevocationJobTestModule],
                 ),

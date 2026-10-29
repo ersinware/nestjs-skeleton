@@ -11,13 +11,13 @@ import { AuditModule } from 'src/core/observability/audit';
 import { DiscardDeadLetterJobsCommandHandler } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/handler';
 import { RedriveDeadLetterJobsCommandHandler } from 'src/module/job-queue-operations/application/command/redrive-dead-letter-jobs/handler';
 import { StartDeadLetterRedriveCommandHandler } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/handler';
+import { DeadLetterRedriveConsumer } from 'src/module/job-queue-operations/application/consumer/dead-letter-redrive.consumer';
 import { GetDeadLetterJobQueryHandler } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/handler';
 import { TOKEN_GET_DEAD_LETTER_JOB_PORT } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/port';
 import { GetDeadLetterRedriveStatusQueryHandler } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/handler';
 import { TOKEN_GET_DEAD_LETTER_REDRIVE_STATUS_PORT } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/port';
 import { ListDeadLetterJobsQueryHandler } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/handler';
 import { TOKEN_LIST_DEAD_LETTER_JOBS_PORT } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/port';
-import { DeadLetterRedriveQueue } from 'src/module/job-queue-operations/application/queue/dead-letter-redrive.queue';
 import { JobQueueOperationsReaderAdapter } from 'src/module/job-queue-operations/infrastructure/adapter/job-queue-operations-reader.adapter';
 import { JobQueueOperationsController } from 'src/module/job-queue-operations/presentation/controller/job-queue-operations.controller';
 
@@ -30,7 +30,7 @@ import { JobQueueOperationsController } from 'src/module/job-queue-operations/pr
         CqrsPipelineModule,
         DatabaseModule,
         JobQueueModule,
-        JobQueueModule.forFeature([DeadLetterRedriveQueue], [CqrsPipelineModule]),
+        JobQueueModule.forFeature([DeadLetterRedriveConsumer], [CqrsPipelineModule]),
     ],
     controllers: [JobQueueOperationsController],
     providers: [

@@ -33,18 +33,18 @@ import {
     type IAdminEmailChangeNotificationWriterPort,
 } from 'src/module/admin/application/command/port/admin-email-change-notification-writer.port';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
-import { AdminEmailChangeNotificationQueue } from 'src/module/admin/application/queue/admin-email-change-notification.queue';
-import { AdminEmailConfirmationQueue } from 'src/module/admin/application/queue/admin-email-confirmation.queue';
-import { AdminSessionQueue } from 'src/module/admin/application/queue/admin-session.queue';
+import { AdminEmailChangeNotificationConsumer } from 'src/module/admin/application/consumer/admin-email-change-notification.consumer';
+import { AdminEmailConfirmationConsumer } from 'src/module/admin/application/consumer/admin-email-confirmation.consumer';
+import { AdminSessionConsumer } from 'src/module/admin/application/consumer/admin-session.consumer';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { admin, emailChangeNotification as adminNotification } from 'src/module/admin/infrastructure/admin.schema';
 import { TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT } from 'src/module/user/application/command/port/user-email-change-notification-writer.port';
 import { TOKEN_USER_WRITER_PORT } from 'src/module/user/application/command/port/user-writer.port';
-import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
-import { UserEmailChangeNotificationQueue } from 'src/module/user/application/queue/user-email-change-notification.queue';
-import { UserEmailConfirmationQueue } from 'src/module/user/application/queue/user-email-confirmation.queue';
-import { UserSessionQueue } from 'src/module/user/application/queue/user-session.queue';
+import { UserCacheConsumer } from 'src/module/user/application/consumer/user-cache.consumer';
+import { UserEmailChangeNotificationConsumer } from 'src/module/user/application/consumer/user-email-change-notification.consumer';
+import { UserEmailConfirmationConsumer } from 'src/module/user/application/consumer/user-email-confirmation.consumer';
+import { UserSessionConsumer } from 'src/module/user/application/consumer/user-session.consumer';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
@@ -339,9 +339,9 @@ describe.each(CASES)('$route email change', (context) => {
      */
     async function deliver(job: Job) {
         if (context.kind === PrincipalType.ADMIN) {
-            await app.get(AdminEmailConfirmationQueue).consume(job);
+            await app.get(AdminEmailConfirmationConsumer).consume(job);
         } else {
-            await app.get(UserEmailConfirmationQueue).consume(job);
+            await app.get(UserEmailConfirmationConsumer).consume(job);
         }
     }
 
@@ -374,9 +374,9 @@ describe.each(CASES)('$route email change', (context) => {
      */
     async function notify(job: Job) {
         if (context.kind === PrincipalType.ADMIN) {
-            await app.get(AdminEmailChangeNotificationQueue).consume(job);
+            await app.get(AdminEmailChangeNotificationConsumer).consume(job);
         } else {
-            await app.get(UserEmailChangeNotificationQueue).consume(job);
+            await app.get(UserEmailChangeNotificationConsumer).consume(job);
         }
     }
 
@@ -616,9 +616,9 @@ describe.each(CASES)('$route email change', (context) => {
         expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
         const mirrorJob = (await jobs(context.queues.SESSION_RECONCILE))[0]!;
         if (context.kind === PrincipalType.ADMIN) {
-            await app.get(AdminSessionQueue).consume(mirrorJob.data);
+            await app.get(AdminSessionConsumer).consume(mirrorJob.data);
         } else {
-            await app.get(UserSessionQueue).consume(mirrorJob.data);
+            await app.get(UserSessionConsumer).consume(mirrorJob.data);
         }
         expect((await http('GET', '', undefined, data.accessToken)).statusCode).toBe(200);
         expect(
@@ -902,12 +902,12 @@ describe.each(CASES)('$route email change', (context) => {
         expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
         const reconcile = (await jobs(context.queues.SESSION_RECONCILE))[0]!;
         if (context.kind === PrincipalType.ADMIN) {
-            await app.get(AdminSessionQueue).consume(reconcile.data);
+            await app.get(AdminSessionConsumer).consume(reconcile.data);
         } else {
-            await app.get(UserSessionQueue).consume(reconcile.data);
+            await app.get(UserSessionConsumer).consume(reconcile.data);
             const eviction = (await jobs(UserJobQueue.CACHE_INVALIDATE))[0]!;
             expect(await cache.get(CacheKeys.userById(account.id))).not.toBeNull();
-            await app.get(UserCacheQueue).consume(eviction.data);
+            await app.get(UserCacheConsumer).consume(eviction.data);
             expect(await cache.get(CacheKeys.userById(account.id))).toBeNull();
         }
         expect((await http('GET', '')).statusCode).toBe(401);

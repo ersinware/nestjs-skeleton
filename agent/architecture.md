@@ -55,7 +55,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Dispatched queries extend `Query<T>`; queries never mutate business state. Infer dispatch results from queries; explicit return signatures use query-owned read-models, never domain types.
 - In `src/module/<context>/application/query/<name>/`, keep results in `query.ts`, outbound contracts in `port.ts`; add `handler.ts` for pipeline dispatch, omit it for direct port reads.
 - Outbound query handlers use one purpose-specific local port; compose sources behind it in adapters, even for forwarding/merging ([Adapters](data-and-state.md#adapters)). Static permission catalogs need no outbound port.
-- Controllers/facades/listeners/queue consumers/crons dispatch through pipelines, never raw buses or direct handler calls. Exceptions: liveness ([Health Probes](http.md#health-probes)), cache eviction ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
+- Controllers/facades/listeners/consumers/crons dispatch through pipelines, never raw buses or direct handler calls. Exceptions: liveness ([Health Probes](http.md#health-probes)), cache eviction ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Handlers inject ports directly, never pipelines/buses; write decisions must not use cached reads ([Data & State](data-and-state.md#data--state)).
 - Payload/result fields and arrays are `readonly`; preserve cache-key/result stability. HTTP mapping: [DTOs & Responses](http.md#dtos--responses).
 - Pipelines wrap Nest buses, never override their tokens. `CqrsPipelineModule` re-exports `CqrsModule` for handler registration; behavior order belongs in `src/core/cqrs/module.ts`.
@@ -85,7 +85,7 @@ src/module/<context>/
     command/port/       # ports shared by commands
     command/<name>/     # command.ts, handler.ts; local port.ts if needed
     query/<name>/       # files: architecture.md#cqrs
-    queue/  cron/
+    consumer/  cron/
   infrastructure/
     adapter/  <context>.schema.ts
   presentation/
@@ -105,9 +105,10 @@ Within `src/`, group by ownership and reasons to change, never TS kind. Placemen
 
 - `src/module/<context>/shared/` holds pure enums, data types, and constants shared by that module's layers. Group by concept; keep business behavior in domain and project-wide contracts in `src/shared/`. Access follows [Layer Isolation](#layer-isolation) and [Barrels](#barrels).
 - Separate contracts whose meanings/change drivers diverge; merge only when they represent the same concept. Split growing concepts into meaningfully named sub-concepts, never arbitrary file/kind buckets.
-- Use singular role folders from the first file: adapter, port, command, query, listener, queue, cron, job, controller, dto, decorator, guard, filter, hook, interceptor, pipe.
+- Use singular role folders from the first file: adapter, port, command, query, listener, consumer, cron, job, controller, dto, decorator, guard, filter, hook, interceptor, pipe.
 - Keep module/facade/schema files flat; module schemas: `infrastructure/<context>.schema.ts`. Identify data sources in filenames, not folders ([Adapters](data-and-state.md#adapters)).
 - Use kebab-case names and dot-separated suffixes. Concept/use-case names may be plural when meaningful; role folders remain singular.
+- Job consumer files/classes use `.consumer.ts` / `Consumer`; queue identities/options retain queue terminology.
 - No kind/generic buckets or bare filenames (`type`, `enum`, `constant`, `util`, `interface`, `class`, `payload`, `common`, `shared`, `helper`, `misc`); never nest pillar names (`shared`, `core`, `module`) below source pillars. The sole exception is `src/module/<context>/shared/`.
 - Content-named files may use kind suffixes when independently justified by ownership. Prefer architectural roles over implementation kinds: `.adapter.ts`, never `.class.ts`.
 - A role file directly inside its concept uses the bare role (`command.ts`, `handler.ts`, `port.ts`, `module.ts`); inside a role folder, include its subject (`adapter/user-reader.adapter.ts`, never `adapter/adapter.ts`).

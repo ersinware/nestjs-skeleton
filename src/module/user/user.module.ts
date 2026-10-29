@@ -38,6 +38,16 @@ import { SendUserEmailConfirmationCommandHandler } from 'src/module/user/applica
 import { SendUserRefreshReuseNoticeCommandHandler } from 'src/module/user/application/command/send-user-refresh-reuse-notice/handler';
 import { UnbanUserCommandHandler } from 'src/module/user/application/command/unban-user/handler';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
+import { UserActivationConsumer } from 'src/module/user/application/consumer/user-activation.consumer';
+import { UserAvatarFinalizeConsumer } from 'src/module/user/application/consumer/user-avatar-finalize.consumer';
+import { UserAvatarReplaceConsumer } from 'src/module/user/application/consumer/user-avatar-replace.consumer';
+import { UserCacheConsumer } from 'src/module/user/application/consumer/user-cache.consumer';
+import { UserEmailChangeNotificationConsumer } from 'src/module/user/application/consumer/user-email-change-notification.consumer';
+import { UserEmailConfirmationConsumer } from 'src/module/user/application/consumer/user-email-confirmation.consumer';
+import { UserRefreshReuseNoticeConsumer } from 'src/module/user/application/consumer/user-refresh-reuse-notice.consumer';
+import { UserSessionRevocationLogoutAllConsumer } from 'src/module/user/application/consumer/user-session-revocation-logout-all.consumer';
+import { UserSessionRevocationRefreshReuseConsumer } from 'src/module/user/application/consumer/user-session-revocation-refresh-reuse.consumer';
+import { UserSessionConsumer } from 'src/module/user/application/consumer/user-session.consumer';
 import { GetFreshUserByIdQueryHandler } from 'src/module/user/application/query/get-fresh-user-by-id/handler';
 import { TOKEN_GET_FRESH_USER_BY_ID_PORT } from 'src/module/user/application/query/get-fresh-user-by-id/port';
 import { TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-activation-recipient/port';
@@ -55,16 +65,6 @@ import { TOKEN_IS_USER_EMAIL_IN_USE_PORT } from 'src/module/user/application/que
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
-import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
-import { UserAvatarFinalizeQueue } from 'src/module/user/application/queue/user-avatar-finalize.queue';
-import { UserAvatarReplaceQueue } from 'src/module/user/application/queue/user-avatar-replace.queue';
-import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
-import { UserEmailChangeNotificationQueue } from 'src/module/user/application/queue/user-email-change-notification.queue';
-import { UserEmailConfirmationQueue } from 'src/module/user/application/queue/user-email-confirmation.queue';
-import { UserRefreshReuseNoticeQueue } from 'src/module/user/application/queue/user-refresh-reuse-notice.queue';
-import { UserSessionRevocationLogoutAllQueue } from 'src/module/user/application/queue/user-session-revocation-logout-all.queue';
-import { UserSessionRevocationRefreshReuseQueue } from 'src/module/user/application/queue/user-session-revocation-refresh-reuse.queue';
-import { UserSessionQueue } from 'src/module/user/application/queue/user-session.queue';
 import { UserEmailChangeNotificationWriterAdapter } from 'src/module/user/infrastructure/adapter/user-email-change-notification-writer.adapter';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
 import { UserReplicaReaderAdapter } from 'src/module/user/infrastructure/adapter/user-replica-reader.adapter';
@@ -91,16 +91,16 @@ import { UserFacade } from 'src/module/user/user.facade';
         CqrsPipelineModule,
         JobQueueModule.forFeature(
             [
-                UserActivationQueue,
-                UserAvatarFinalizeQueue,
-                UserAvatarReplaceQueue,
-                UserEmailConfirmationQueue,
-                UserEmailChangeNotificationQueue,
-                UserCacheQueue,
-                UserRefreshReuseNoticeQueue,
-                UserSessionQueue,
-                UserSessionRevocationLogoutAllQueue,
-                UserSessionRevocationRefreshReuseQueue,
+                UserActivationConsumer,
+                UserAvatarFinalizeConsumer,
+                UserAvatarReplaceConsumer,
+                UserEmailConfirmationConsumer,
+                UserEmailChangeNotificationConsumer,
+                UserCacheConsumer,
+                UserRefreshReuseNoticeConsumer,
+                UserSessionConsumer,
+                UserSessionRevocationLogoutAllConsumer,
+                UserSessionRevocationRefreshReuseConsumer,
             ],
             [CacheModule, CqrsPipelineModule],
         ),

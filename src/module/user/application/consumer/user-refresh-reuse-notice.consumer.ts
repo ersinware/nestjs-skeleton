@@ -1,5 +1,5 @@
 /**
- * @file user-refresh-reuse-notice.queue.ts
+ * @file user-refresh-reuse-notice.consumer.ts
  * @description Dispatches user refresh-token reuse notice jobs to the command pipeline.
  */
 
@@ -13,7 +13,7 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
  * Consumes durable refresh-token reuse notice jobs.
  */
 @Injectable()
-export class UserRefreshReuseNoticeQueue implements IJobConsumer {
+export class UserRefreshReuseNoticeConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
