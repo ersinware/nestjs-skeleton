@@ -90,7 +90,7 @@ export class TargetAccountTrackerResolverAdapter implements IRateLimitTrackerRes
     private assertTrackerFieldExhausted(field: never): never {
         throw new SystemException('The target-account tracker requires a supported field.', {
             context: {
-                class: TargetAccountTrackerResolverAdapter.name,
+                class: this.constructor.name,
                 method: this.resolve.name,
                 field,
             },

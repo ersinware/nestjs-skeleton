@@ -305,7 +305,7 @@ export class User extends PrincipalAggregateRoot {
 
         if (this.props.activationExpiresAt === null || this.props.activationRevocationVersion === null) {
             throw new SystemException('Pending user activation metadata is incomplete.', {
-                context: { class: User.name, method: this.resendActivation.name, id: this.id },
+                context: { class: this.constructor.name, method: this.resendActivation.name, id: this.id },
             });
         }
 
@@ -342,7 +342,7 @@ export class User extends PrincipalAggregateRoot {
 
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
-                context: { class: User.name, method: this.activate.name, id: this.id, sub: payload.sub },
+                context: { class: this.constructor.name, method: this.activate.name, id: this.id, sub: payload.sub },
             });
         }
 
@@ -659,7 +659,12 @@ export class User extends PrincipalAggregateRoot {
 
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
-                context: { class: User.name, method: this.confirmEmailChange.name, id: this.id, sub: payload.sub },
+                context: {
+                    class: this.constructor.name,
+                    method: this.confirmEmailChange.name,
+                    id: this.id,
+                    sub: payload.sub,
+                },
             });
         }
 
@@ -853,7 +858,7 @@ export class User extends PrincipalAggregateRoot {
     private addActivationJob() {
         if (this.props.activationId === null) {
             throw new SystemException('Cannot deliver activation without a pending request.', {
-                context: { class: User.name, method: this.addActivationJob.name, id: this.id },
+                context: { class: this.constructor.name, method: this.addActivationJob.name, id: this.id },
             });
         }
 
@@ -892,7 +897,7 @@ export class User extends PrincipalAggregateRoot {
     } {
         if (this.props.activationId !== null) {
             throw new SystemException('An inactive user reached an authenticated self-service flow.', {
-                context: { class: User.name, method, id: this.id },
+                context: { class: this.constructor.name, method, id: this.id },
             });
         }
     }
@@ -912,7 +917,11 @@ export class User extends PrincipalAggregateRoot {
 
         if (payload.fileKey !== buildUserPendingAvatarKey(this.id, payload.jti)) {
             throw new SystemException('The pending avatar key is not in the expected format.', {
-                context: { class: User.name, method: this.assertAvatarReplacementAllowed.name, id: this.id },
+                context: {
+                    class: this.constructor.name,
+                    method: this.assertAvatarReplacementAllowed.name,
+                    id: this.id,
+                },
             });
         }
 

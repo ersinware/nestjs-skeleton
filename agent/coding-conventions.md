@@ -28,6 +28,7 @@
 - Explicitly type all function/method returns except `void` / `Promise<void>`, which implementations infer; interface returns are always explicit.
 - Exhaust enum/union decisions: switch defaults call a local `never` guard throwing `SystemException`; maps use `satisfies Record<Enum, T>`. Only ternaries dispatching by enum/union member require closed two-member types.
 - Used once → inline; reused → named variable, unless each use requires a fresh read.
+- Diagnostic class names: `this.constructor.name` for the current instance, `instance.constructor.name` for others; class/function `.name` without an instance.
 
 ### Environment & Route Constants
 

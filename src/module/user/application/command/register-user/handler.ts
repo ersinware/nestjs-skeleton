@@ -89,7 +89,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
 
         if (payload.fileKey !== buildUserPendingAvatarKey(payload.sub, payload.sub)) {
             throw new SystemException('Verified upload file key does not match the registration pending avatar key.', {
-                context: { class: RegisterUserCommandHandler.name, method: this.execute.name },
+                context: { class: this.constructor.name, method: this.execute.name },
             });
         }
 

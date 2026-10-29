@@ -44,7 +44,7 @@ export class HttpCacheInterceptor implements NestInterceptor {
                 context.getClass(),
             ]),
             diagnostic = {
-                class: HttpCacheInterceptor.name,
+                class: this.constructor.name,
                 method: this.intercept.name,
                 handler: `${context.getClass().name}.${context.getHandler().name}`,
             };

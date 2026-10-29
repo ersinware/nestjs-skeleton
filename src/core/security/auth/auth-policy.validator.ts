@@ -87,7 +87,7 @@ export class AuthPolicyValidator implements OnApplicationBootstrap {
         ) {
             throw new SystemException(`Invalid auth metadata: ${controller.name}.${handler.name}`, {
                 context: {
-                    class: 'auth-policy.validator.ts',
+                    class: this.constructor.name,
                     method: this.validateAuthPolicy.name,
                 },
             });
@@ -107,7 +107,7 @@ export class AuthPolicyValidator implements OnApplicationBootstrap {
         ) {
             throw new SystemException(`Missing or conflicting auth policy: ${controller.name}.${handler.name}`, {
                 context: {
-                    class: 'auth-policy.validator.ts',
+                    class: this.constructor.name,
                     method: this.validateAuthPolicy.name,
                 },
             });

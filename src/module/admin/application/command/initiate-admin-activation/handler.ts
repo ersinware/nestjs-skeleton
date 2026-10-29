@@ -119,7 +119,7 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
 
         if (plan.mode !== 'single') {
             throw new SystemException('Avatar upload requires a single PUT plan.', {
-                context: { class: InitiateAdminActivationCommandHandler.name, method: this.execute.name },
+                context: { class: this.constructor.name, method: this.execute.name },
             });
         }
 
