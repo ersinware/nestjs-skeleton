@@ -76,6 +76,10 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
             } as const;
 
             if (consumer.transactional) {
+                // pg-boss forbids perJobResults with transactional workers. Propagate every failure,
+                // including TerminalJobException, so consumer writes roll back before normal retries.
+                // Exhausted retries still follow the configured DLQ routing. Returning a deadletter
+                // result here would instead count as success and commit the consumer's writes.
                 const transactionalOptions = {
                     ...options,
                     transactional: true,

@@ -151,7 +151,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AdminAuditAction.ADMIN_ACTIVATED, targetId: admin.id });
         });

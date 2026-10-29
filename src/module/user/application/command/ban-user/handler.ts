@@ -76,7 +76,7 @@ export class BanUserCommandHandler implements ICommandHandler<BanUserCommand, vo
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({ action: UserAuditAction.USER_BANNED, targetId: user.id });
         });

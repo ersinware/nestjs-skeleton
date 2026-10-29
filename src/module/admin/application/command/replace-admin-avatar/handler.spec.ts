@@ -50,7 +50,7 @@ describe('ReplaceAdminAvatarCommandHandler', () => {
         const writer = { load: vi.fn().mockResolvedValue(admin), save: vi.fn() };
         const storage = { headObject: vi.fn().mockResolvedValue(metadata), copyObject: vi.fn(), deleteObject: vi.fn() };
         const audit = { record: vi.fn() };
-        const transaction: ITransactionPort = { run: (work) => work() };
+        const transaction: ITransactionPort = { start: (work) => work(), join: vi.fn() };
         const handler = new ReplaceAdminAvatarCommandHandler(writer, storage as never, transaction, audit);
         return {
             admin,

@@ -74,7 +74,7 @@ export class InitiateUserEmailChangeCommandHandler implements ICommandHandler<In
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
         });

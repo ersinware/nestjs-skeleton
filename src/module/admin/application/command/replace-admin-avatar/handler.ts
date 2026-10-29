@@ -159,7 +159,7 @@ export class ReplaceAdminAvatarCommandHandler implements ICommandHandler<Replace
         }
 
         if (changed) {
-            await this.transactionPort.run(async () => {
+            await this.transactionPort.start(async () => {
                 await this.adminWriterPort.save(admin);
                 await this.auditPort.record({
                     action: AdminAuditAction.ADMIN_AVATAR_FINALIZED,

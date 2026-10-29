@@ -89,7 +89,7 @@ export class ChangeAdminPasswordCommandHandler implements ICommandHandler<
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: PrincipalAuditAction.PASSWORD_CHANGED });
         });

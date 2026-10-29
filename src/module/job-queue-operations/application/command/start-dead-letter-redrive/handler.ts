@@ -43,7 +43,7 @@ export class StartDeadLetterRedriveCommandHandler implements ICommandHandler<Sta
     async execute(): Promise<string> {
         const operationId = randomUUID();
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             const accepted = await this.operatorPort.enqueueDeadLetterRedrive(operationId);
 
             if (!accepted) {

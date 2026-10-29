@@ -42,7 +42,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
             };
             const writer = { load: vi.fn().mockResolvedValue(admin), save: vi.fn() };
             const audit = { record: vi.fn() };
-            const transaction: ITransactionPort = { run: (work) => work() };
+            const transaction: ITransactionPort = { start: (work) => work(), join: vi.fn() };
             if (scenario !== 'existing-copy') {
                 storage.headObject.mockRejectedValueOnce(new ResourceNotFoundException());
             }
@@ -105,7 +105,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
                 deleteObject: vi.fn(),
                 copyObject: vi.fn(),
             };
-            const transaction = { run: vi.fn() };
+            const transaction = { start: vi.fn(), join: vi.fn() };
             const audit = { record: vi.fn() };
             const handler = new FinalizeAdminAvatarCommandHandler(writer, storage as never, transaction, audit);
             const result = handler.execute(new FinalizeAdminAvatarCommand(id, deliveryId));
@@ -120,7 +120,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
             expect(storage.headObject).toHaveBeenCalledExactlyOnceWith(finalKey);
             expect(storage.deleteObject).not.toHaveBeenCalled();
             expect(storage.copyObject).not.toHaveBeenCalled();
-            expect(transaction.run).not.toHaveBeenCalled();
+            expect(transaction.start).not.toHaveBeenCalled();
             expect(writer.save).not.toHaveBeenCalled();
             expect(audit.record).not.toHaveBeenCalled();
         },
@@ -132,7 +132,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
         const handler = new FinalizeAdminAvatarCommandHandler(
             writer,
             storage as never,
-            { run: vi.fn() },
+            { start: vi.fn(), join: vi.fn() },
             { record: vi.fn() },
         );
         await expect(
@@ -170,7 +170,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
             const handler = new FinalizeAdminAvatarCommandHandler(
                 writer,
                 storage as never,
-                { run: (work) => work() },
+                { start: (work) => work(), join: vi.fn() },
                 audit,
             );
             await handler.execute(new FinalizeAdminAvatarCommand(id, deliveryId));
@@ -209,7 +209,7 @@ describe('FinalizeAdminAvatarCommandHandler', () => {
         const handler = new FinalizeAdminAvatarCommandHandler(
             writer,
             storage as never,
-            { run: (work) => work() },
+            { start: (work) => work(), join: vi.fn() },
             audit,
         );
         const command = new FinalizeAdminAvatarCommand(id, deliveryId);

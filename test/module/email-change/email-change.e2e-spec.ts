@@ -1000,7 +1000,7 @@ describe.each(CASES)('$route email change', (context) => {
             auditPort = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
 
         await expect(
-            app.get<ITransactionPort>(TOKEN_TRANSACTION_PORT).run(async () => {
+            app.get<ITransactionPort>(TOKEN_TRANSACTION_PORT).start(async () => {
                 await database
                     .update(context.table)
                     .set({ name: 'Rolled back mutation' })

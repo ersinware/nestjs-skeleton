@@ -55,7 +55,7 @@ export class RevokeAdminSessionsCommandHandler implements ICommandHandler<Revoke
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.join(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({
                 action: AdminAuditAction.ADMIN_SESSIONS_REVOKED,

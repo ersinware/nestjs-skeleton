@@ -31,6 +31,8 @@ export interface IJobConsumer {
 
     /**
      * Whether database effects and job completion commit together.
+     * Transactional workflows use ITransactionPort.join and perform no external business effects.
+     * Non-transactional workflows must resume safely across retries after independently committed work.
      */
     readonly transactional: boolean;
 

@@ -39,7 +39,10 @@ describe('FinalizeUserAvatarCommandHandler', () => {
             };
             const writer = { load: vi.fn().mockResolvedValue(user), save: vi.fn() };
             const audit = { record: vi.fn() };
-            const transaction = { run: vi.fn(async (work: () => Promise<void>) => work()) };
+            const transaction = {
+                start: vi.fn(async (work: () => Promise<void>) => work()),
+                join: vi.fn(),
+            };
             if (scenario !== 'existing-copy') storage.headObject.mockRejectedValueOnce(new ResourceNotFoundException());
             if (scenario === 'source-deleted')
                 storage.headObject.mockRejectedValueOnce(new ResourceNotFoundException());
@@ -99,7 +102,7 @@ describe('FinalizeUserAvatarCommandHandler', () => {
                 deleteObject: vi.fn(),
                 copyObject: vi.fn(),
             };
-            const transaction = { run: vi.fn() };
+            const transaction = { start: vi.fn(), join: vi.fn() };
             const audit = { record: vi.fn() };
             const handler = new FinalizeUserAvatarCommandHandler(
                 writer as never,
@@ -119,7 +122,7 @@ describe('FinalizeUserAvatarCommandHandler', () => {
             expect(storage.headObject).toHaveBeenCalledExactlyOnceWith(finalKey);
             expect(storage.deleteObject).not.toHaveBeenCalled();
             expect(storage.copyObject).not.toHaveBeenCalled();
-            expect(transaction.run).not.toHaveBeenCalled();
+            expect(transaction.start).not.toHaveBeenCalled();
             expect(writer.save).not.toHaveBeenCalled();
             expect(audit.record).not.toHaveBeenCalled();
         },

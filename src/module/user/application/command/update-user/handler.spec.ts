@@ -42,7 +42,7 @@ describe('UpdateUserCommandHandler', () => {
             const audit = { record: vi.fn() };
             const token = { verifyUploadToken: vi.fn() };
             const storage = { headObject: vi.fn() };
-            const transaction = { run: vi.fn() };
+            const transaction = { start: vi.fn(), join: vi.fn() };
             const handler = new UpdateUserCommandHandler(
                 transaction,
                 writer,
@@ -61,7 +61,7 @@ describe('UpdateUserCommandHandler', () => {
             expect(token.verifyUploadToken).not.toHaveBeenCalled();
             expect(storage.headObject).not.toHaveBeenCalled();
             expect(writer.save).not.toHaveBeenCalled();
-            expect(transaction.run).not.toHaveBeenCalled();
+            expect(transaction.start).not.toHaveBeenCalled();
             expect(audit.record).not.toHaveBeenCalled();
         },
     );
@@ -74,7 +74,7 @@ describe('UpdateUserCommandHandler', () => {
             const token = { verifyUploadToken: vi.fn() };
             const storage = { headObject: vi.fn() };
             const handler = new UpdateUserCommandHandler(
-                { run: vi.fn() },
+                { start: vi.fn(), join: vi.fn() },
                 writer,
                 audit,
                 token as unknown as ITokenPort,
@@ -171,8 +171,8 @@ describe('UpdateUserCommandHandler', () => {
         if (scenario === 'banned-audit-failure') {
             audit.record.mockRejectedValueOnce(new DependencyUnavailableException());
         }
-        const transaction: ITransactionPort = { run: (work) => work() };
-        const run = vi.spyOn(transaction, 'run');
+        const transaction: ITransactionPort = { start: (work) => work(), join: vi.fn() };
+        const start = vi.spyOn(transaction, 'start');
         const handler = new UpdateUserCommandHandler(
             transaction,
             writer,
@@ -218,7 +218,7 @@ describe('UpdateUserCommandHandler', () => {
             } else {
                 expect(audit.record).not.toHaveBeenCalled();
             }
-            expect(run).not.toHaveBeenCalled();
+            expect(start).not.toHaveBeenCalled();
             if (scenario !== 'missing-object' && scenario !== 'metadata') {
                 expect(storage.headObject).not.toHaveBeenCalled();
             }

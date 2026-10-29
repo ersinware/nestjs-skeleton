@@ -54,7 +54,7 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
     async execute(command: LogoutAllCommand) {
         const deliveryId = randomUUID();
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.jobQueueWriterPort.enqueue([
                 {
                     deliveryId,

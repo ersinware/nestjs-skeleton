@@ -74,7 +74,7 @@ export class InitiateAdminEmailChangeCommandHandler implements ICommandHandler<I
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
         });

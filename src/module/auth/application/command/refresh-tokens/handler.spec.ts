@@ -29,7 +29,7 @@ describe('RefreshTokensCommandHandler', () => {
     const getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>();
     const rotateSession = vi.fn<ISessionPort['rotateSession']>();
     const enqueue = vi.fn<IJobQueueWriterPort['enqueue']>();
-    const run = vi.fn<ITransactionPort['run']>();
+    const start = vi.fn<ITransactionPort['start']>();
     const record = vi.fn<IAuditPort['record']>();
     const session = {
         sessionVersion: 2,
@@ -64,13 +64,13 @@ describe('RefreshTokensCommandHandler', () => {
         });
         rotateSession.mockResolvedValue(RotateOutcome.ROTATED);
         enqueue.mockResolvedValue(undefined);
-        run.mockImplementation(async (cb: () => Promise<unknown>) => cb());
+        start.mockImplementation(async (cb: () => Promise<unknown>) => cb());
         handler = new RefreshTokensCommandHandler(
             { verifyRefreshToken, refreshTokens } as unknown as ITokenPort,
             { getRefreshState } as unknown as IIdentityReaderPort,
             { rotateSession } as unknown as ISessionPort,
             { enqueue },
-            { run } as unknown as ITransactionPort,
+            { start, join: vi.fn() } as unknown as ITransactionPort,
             { record },
         );
     });
@@ -143,7 +143,7 @@ describe('RefreshTokensCommandHandler', () => {
         rotateSession.mockResolvedValueOnce(RotateOutcome.REUSE_DETECTED);
 
         await expect(handler.execute(new RefreshTokensCommand('old'))).rejects.toBeInstanceOf(UnauthenticatedException);
-        expect(run).toHaveBeenCalledTimes(1);
+        expect(start).toHaveBeenCalledTimes(1);
         const job = enqueue.mock.calls[0]?.[0][0];
         expect(job?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
         expect(job).toMatchObject({ aggregateId: 'principal-1', queueName });

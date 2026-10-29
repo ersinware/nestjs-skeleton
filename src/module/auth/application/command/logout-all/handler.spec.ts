@@ -16,15 +16,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('LogoutAllCommandHandler', () => {
     const enqueue = vi.fn<IJobQueueWriterPort['enqueue']>();
-    const run = vi.fn<ITransactionPort['run']>();
+    const start = vi.fn<ITransactionPort['start']>();
     const record = vi.fn<IAuditPort['record']>();
     let handler: LogoutAllCommandHandler;
 
     beforeEach(() => {
         enqueue.mockResolvedValue(undefined);
         record.mockResolvedValue(undefined);
-        run.mockImplementation(async (callback: () => Promise<unknown>) => callback());
-        handler = new LogoutAllCommandHandler({ enqueue }, { run } as unknown as ITransactionPort, { record });
+        start.mockImplementation(async (callback: () => Promise<unknown>) => callback());
+        handler = new LogoutAllCommandHandler({ enqueue }, { start, join: vi.fn() } as unknown as ITransactionPort, {
+            record,
+        });
     });
 
     it.each([
@@ -33,7 +35,7 @@ describe('LogoutAllCommandHandler', () => {
     ])('routes $principalType revocation to its owner queue', async ({ principalType, queueName }) => {
         await handler.execute(new LogoutAllCommand('principal-1', principalType));
 
-        expect(run).toHaveBeenCalledTimes(1);
+        expect(start).toHaveBeenCalledTimes(1);
         const job = enqueue.mock.calls[0]?.[0][0];
         expect(job?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
         expect(job).toMatchObject({ aggregateId: 'principal-1', queueName });

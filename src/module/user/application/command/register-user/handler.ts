@@ -127,7 +127,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.start(async () => {
             await this.userWriterPort.insert(user);
             await this.auditPort.record({ action: UserAuditAction.USER_REGISTERED, targetId: user.id });
         });

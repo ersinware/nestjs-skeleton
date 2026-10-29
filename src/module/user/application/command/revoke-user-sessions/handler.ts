@@ -55,7 +55,7 @@ export class RevokeUserSessionsCommandHandler implements ICommandHandler<RevokeU
             throw error;
         }
 
-        await this.transactionPort.run(async () => {
+        await this.transactionPort.join(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({
                 action: UserAuditAction.USER_SESSIONS_REVOKED,
