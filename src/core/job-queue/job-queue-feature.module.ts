@@ -15,7 +15,22 @@ import { runInJobConsumerSpan } from 'src/core/job-queue/job-trace-context';
 import { Job } from 'src/core/job-queue/job.type';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { isRedisUnavailable } from 'src/core/redis';
-import { ExceptionKind, SystemException, isExceptionOfKind, toError } from 'src/shared/exception';
+import { ExceptionKind, SystemException, isAppException, isExceptionOfKind, toError } from 'src/shared/exception';
+
+/**
+ * Selects actionable taxonomy failures without coupling worker reporting to HTTP statuses.
+ */
+const REPORT_CONSUMER_FAILURE_BY_KIND = {
+    [ExceptionKind.RESOURCE_NOT_FOUND]: false,
+    [ExceptionKind.RESOURCE_CONFLICT]: false,
+    [ExceptionKind.UNAUTHENTICATED]: false,
+    [ExceptionKind.ACCESS_DENIED]: false,
+    [ExceptionKind.INVALID_INPUT]: false,
+    [ExceptionKind.RATE_LIMITED]: false,
+    [ExceptionKind.DEPENDENCY_UNAVAILABLE]: false,
+    [ExceptionKind.SYSTEM]: true,
+    [ExceptionKind.TERMINAL_JOB]: true,
+} as const satisfies Readonly<Record<ExceptionKind, boolean>>;
 
 /**
  * Identifies the {@link IJobConsumer} instances registered by a feature module.
@@ -147,7 +162,8 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                 } catch (error) {
                     if (
                         !isExceptionOfKind(translateConnectionFailure(error), ExceptionKind.DEPENDENCY_UNAVAILABLE) &&
-                        !isRedisUnavailable(error)
+                        !isRedisUnavailable(error) &&
+                        (!isAppException(error) || REPORT_CONSUMER_FAILURE_BY_KIND[error.kind])
                     ) {
                         this.errorReporterPort.report(error, {
                             class: JobQueueFeatureModule.name,
