@@ -678,7 +678,12 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
-                context: { class: Admin.name, method: this.confirmEmailChange.name, id: this.id, sub: payload.sub },
+                context: {
+                    class: this.constructor.name,
+                    method: this.confirmEmailChange.name,
+                    id: this.id,
+                    sub: payload.sub,
+                },
             });
         }
 
@@ -935,7 +940,7 @@ export class Admin extends PrincipalAggregateRoot {
     private addInvitationJob() {
         if (this.props.inviteId === null) {
             throw new SystemException('Cannot deliver invitation without a pending request.', {
-                context: { class: Admin.name, method: this.addInvitationJob.name, id: this.id },
+                context: { class: this.constructor.name, method: this.addInvitationJob.name, id: this.id },
             });
         }
 
@@ -971,7 +976,7 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (payload.sub !== this.id) {
             throw new SystemException('Verified token subject does not match the target account.', {
-                context: { class: Admin.name, method: method, id: this.id, sub: payload.sub },
+                context: { class: this.constructor.name, method: method, id: this.id, sub: payload.sub },
             });
         }
 
@@ -990,7 +995,7 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (this.props.avatarKey !== null) {
             throw new SystemException('An inactive admin already has an attached avatar.', {
-                context: { class: Admin.name, method, id: this.id },
+                context: { class: this.constructor.name, method, id: this.id },
             });
         }
 
@@ -1033,13 +1038,13 @@ export class Admin extends PrincipalAggregateRoot {
     } {
         if (this.props.password === null) {
             throw new SystemException('An admin without a password reached a self-service flow.', {
-                context: { class: Admin.name, method, id: this.id },
+                context: { class: this.constructor.name, method, id: this.id },
             });
         }
 
         if (this.props.avatarKey === null) {
             throw new SystemException('An admin without an avatar reached a self-service flow.', {
-                context: { class: Admin.name, method, id: this.id },
+                context: { class: this.constructor.name, method, id: this.id },
             });
         }
     }
@@ -1059,7 +1064,11 @@ export class Admin extends PrincipalAggregateRoot {
 
         if (payload.fileKey !== buildAdminPendingAvatarKey(this.id, payload.jti)) {
             throw new SystemException('The pending avatar key is not in the expected format.', {
-                context: { class: Admin.name, method: this.assertAvatarReplacementAllowed.name, id: this.id },
+                context: {
+                    class: this.constructor.name,
+                    method: this.assertAvatarReplacementAllowed.name,
+                    id: this.id,
+                },
             });
         }
 
@@ -1128,7 +1137,7 @@ export class Admin extends PrincipalAggregateRoot {
     get password(): string {
         if (this.props.password === null) {
             throw new SystemException('An inactive admin reached a self-service flow.', {
-                context: { class: Admin.name, method: 'password', id: this.id },
+                context: { class: this.constructor.name, method: 'password', id: this.id },
             });
         }
 

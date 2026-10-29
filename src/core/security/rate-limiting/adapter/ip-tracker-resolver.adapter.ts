@@ -25,7 +25,7 @@ export class IpTrackerResolverAdapter implements IRateLimitTrackerResolverPort {
         if (!isIP(request.ip)) {
             throw new SystemException('The HTTP adapter did not resolve a valid rate-limit IP.', {
                 context: {
-                    class: IpTrackerResolverAdapter.name,
+                    class: this.constructor.name,
                     method: this.resolve.name,
                 },
             });

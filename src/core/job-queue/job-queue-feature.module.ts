@@ -65,7 +65,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
             try {
                 if (consumer.name === JOB_QUEUE_DEAD_LETTER) {
                     throw new SystemException('The shared dead-letter queue cannot register a worker.', {
-                        context: { class: JobQueueFeatureModule.name, method: this.onApplicationBootstrap.name },
+                        context: { class: this.constructor.name, method: this.onApplicationBootstrap.name },
                     });
                 }
 
@@ -76,7 +76,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
             } catch (error) {
                 if (!isExceptionOfKind(translateConnectionFailure(error), ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                     this.errorReporterPort.report(error, {
-                        class: JobQueueFeatureModule.name,
+                        class: this.constructor.name,
                         method: this.onApplicationBootstrap.name,
                     });
                 }
@@ -166,7 +166,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                         (!isAppException(error) || REPORT_CONSUMER_FAILURE_BY_KIND[error.kind])
                     ) {
                         this.errorReporterPort.report(error, {
-                            class: JobQueueFeatureModule.name,
+                            class: this.constructor.name,
                             method: this.consume.name,
                             data: {
                                 jobId: id,

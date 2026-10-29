@@ -76,7 +76,7 @@ export class RateLimitStageRunner {
             if (!tracker) {
                 throw new SystemException('Rate-limit resolver produced an invalid tracker.', {
                     context: {
-                        class: RateLimitStageRunner.name,
+                        class: this.constructor.name,
                         method: this.run.name,
                         policy,
                         limiter,

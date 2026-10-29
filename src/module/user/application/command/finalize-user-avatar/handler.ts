@@ -172,7 +172,7 @@ export class FinalizeUserAvatarCommandHandler implements ICommandHandler<Finaliz
      */
     private assertNeverDeliveryState(state: never): never {
         throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
-            context: { class: FinalizeUserAvatarCommandHandler.name, method: this.execute.name },
+            context: { class: this.constructor.name, method: this.execute.name },
         });
     }
 

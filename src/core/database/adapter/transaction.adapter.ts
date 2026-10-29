@@ -33,7 +33,7 @@ export class TransactionAdapter implements ITransactionPort {
     async start<T>(work: () => Promise<T>): Promise<T> {
         if (transactionStorage.getStore()) {
             throw new SystemException('Cannot start a transaction while another transaction is active.', {
-                context: { class: TransactionAdapter.name, method: this.start.name },
+                context: { class: this.constructor.name, method: this.start.name },
             });
         }
 
@@ -54,7 +54,7 @@ export class TransactionAdapter implements ITransactionPort {
     async join<T>(work: () => Promise<T>): Promise<T> {
         if (!transactionStorage.getStore()) {
             throw new SystemException('Cannot join a transaction when no transaction is active.', {
-                context: { class: TransactionAdapter.name, method: this.join.name },
+                context: { class: this.constructor.name, method: this.join.name },
             });
         }
 

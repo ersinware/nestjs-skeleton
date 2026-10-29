@@ -66,7 +66,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
             if (limiters.length === 0) {
                 throw new SystemException(`Rate-limit policy has no limiters: ${policy}`, {
                     context: {
-                        class: RateLimitPolicyValidator.name,
+                        class: this.constructor.name,
                         method: this.validatePolicies.name,
                         policy,
                     },
@@ -90,7 +90,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
                 ) {
                     throw new SystemException(`Invalid rate-limit configuration: ${policy}.${limiter.budget}`, {
                         context: {
-                            class: RateLimitPolicyValidator.name,
+                            class: this.constructor.name,
                             method: this.validatePolicies.name,
                             policy,
                             limiter,
@@ -110,7 +110,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
                 ) {
                     throw new SystemException(`Conflicting shared rate-limit counter: ${limiter.budget}`, {
                         context: {
-                            class: RateLimitPolicyValidator.name,
+                            class: this.constructor.name,
                             method: this.validatePolicies.name,
                             policy,
                             budget: limiter.budget,
@@ -142,7 +142,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
             ) {
                 throw new SystemException(`Rate-limit policies must be declared on endpoints: ${controller.name}`, {
                     context: {
-                        class: RateLimitPolicyValidator.name,
+                        class: this.constructor.name,
                         method: this.validateControllers.name,
                         controller: controller.name,
                     },
@@ -177,7 +177,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
         if (exempt !== undefined || policy === undefined || !Object.values(RateLimitPolicy).includes(policy)) {
             throw new SystemException(`Missing or conflicting rate-limit policy: ${handler.name}`, {
                 context: {
-                    class: RateLimitPolicyValidator.name,
+                    class: this.constructor.name,
                     method: this.validateEndpoint.name,
                     handler: handler.name,
                 },
@@ -192,7 +192,7 @@ export class RateLimitPolicyValidator implements OnApplicationBootstrap {
                 `Public endpoint cannot use a principal or post-auth target rate-limit policy: ${controller.name}.${handler.name}`,
                 {
                     context: {
-                        class: RateLimitPolicyValidator.name,
+                        class: this.constructor.name,
                         method: this.validateEndpoint.name,
                         controller: controller.name,
                         handler: handler.name,

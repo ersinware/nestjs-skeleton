@@ -86,7 +86,7 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
 
         if (plan.mode !== 'single') {
             throw new SystemException('Avatar upload requires a single PUT plan.', {
-                context: { class: InitiateUserRegistrationCommandHandler.name, method: this.execute.name },
+                context: { class: this.constructor.name, method: this.execute.name },
             });
         }
 

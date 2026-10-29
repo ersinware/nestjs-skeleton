@@ -175,7 +175,7 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
      */
     private assertNeverDeliveryState(state: never): never {
         throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
-            context: { class: FinalizeAdminAvatarCommandHandler.name, method: this.execute.name },
+            context: { class: this.constructor.name, method: this.execute.name },
         });
     }
 

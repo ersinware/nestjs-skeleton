@@ -181,7 +181,7 @@ export class ReplaceAdminAvatarCommandHandler implements ICommandHandler<Replace
      */
     private assertNeverDeliveryState(state: never): never {
         throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
-            context: { class: ReplaceAdminAvatarCommandHandler.name, method: this.execute.name },
+            context: { class: this.constructor.name, method: this.execute.name },
         });
     }
 

@@ -24,7 +24,7 @@ export class PrincipalTrackerResolverAdapter implements IRateLimitTrackerResolve
         if (!principalId) {
             throw new SystemException('Authentication did not publish a rate-limit principal.', {
                 context: {
-                    class: PrincipalTrackerResolverAdapter.name,
+                    class: this.constructor.name,
                     method: this.resolve.name,
                 },
             });
