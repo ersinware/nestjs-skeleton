@@ -1,5 +1,5 @@
 /**
- * @file admin-session-revocation-logout-all.queue.ts
+ * @file admin-session-revocation-logout-all.consumer.ts
  * @description Dispatches logout-all revocation jobs to the admin command pipeline.
  */
 
@@ -14,7 +14,7 @@ import { SessionRevocationReason } from 'src/shared/domain/principal';
  * Consumes logout-all revocation jobs for admins.
  */
 @Injectable()
-export class AdminSessionRevocationLogoutAllQueue implements IJobConsumer {
+export class AdminSessionRevocationLogoutAllConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */

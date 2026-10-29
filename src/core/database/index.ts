@@ -8,7 +8,7 @@ export { createDatabasePool } from 'src/core/database/database-pool.factory';
 export {
     runInDatabaseTransactionContext,
     runOutsideDatabaseTransaction,
-} from 'src/core/database/database-transaction.storage';
+} from 'src/core/database/database-transaction-context';
 export { isUniqueViolation, translateConnectionFailure } from 'src/core/database/driver-error.util';
 export { DatabaseModule } from 'src/core/database/module';
 export { TOKEN_DATABASE_CLEANER_PORT, type IDatabaseCleanerPort } from 'src/core/database/port/database-cleaner.port';

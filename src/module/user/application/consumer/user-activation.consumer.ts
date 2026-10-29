@@ -1,5 +1,5 @@
 /**
- * @file user-activation.queue.ts
+ * @file user-activation.consumer.ts
  * @description Dispatches user activation jobs to the command pipeline.
  */
 
@@ -13,7 +13,7 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
  * Consumes durable user activation jobs.
  */
 @Injectable()
-export class UserActivationQueue implements IJobConsumer {
+export class UserActivationConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */

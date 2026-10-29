@@ -6,7 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database/database-client.token';
-import { transactionStorage } from 'src/core/database/database-transaction.storage';
+import { transactionStorage } from 'src/core/database/database-transaction-context';
 import { translateConnectionFailure } from 'src/core/database/driver-error.util';
 import type { ITransactionPort } from 'src/core/database/port/transaction.port';
 import { SystemException } from 'src/shared/exception';

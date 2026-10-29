@@ -28,10 +28,10 @@ import {
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { ResendUserActivationCommand } from 'src/module/user/application/command/resend-user-activation/command';
-import { UserActivationQueue } from 'src/module/user/application/queue/user-activation.queue';
-import { UserAvatarFinalizeQueue } from 'src/module/user/application/queue/user-avatar-finalize.queue';
-import { UserAvatarReplaceQueue } from 'src/module/user/application/queue/user-avatar-replace.queue';
-import { UserCacheQueue } from 'src/module/user/application/queue/user-cache.queue';
+import { UserActivationConsumer } from 'src/module/user/application/consumer/user-activation.consumer';
+import { UserAvatarFinalizeConsumer } from 'src/module/user/application/consumer/user-avatar-finalize.consumer';
+import { UserAvatarReplaceConsumer } from 'src/module/user/application/consumer/user-avatar-replace.consumer';
+import { UserCacheConsumer } from 'src/module/user/application/consumer/user-cache.consumer';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
@@ -457,7 +457,7 @@ describe('User registration and activation', () => {
 
         const delivery = (await jobs(row.id))[0]!;
         sendEmail.mockResolvedValue(undefined);
-        await app.get(UserActivationQueue).consume(delivery.data);
+        await app.get(UserActivationConsumer).consume(delivery.data);
         expect(sendEmail).toHaveBeenCalledOnce();
         expect(sendEmail.mock.calls[0]![0].to).toBe(row.email);
         const token = await proof(row);
@@ -580,10 +580,10 @@ describe('User registration and activation', () => {
         expect(replaced!.activationExpiresAt!.getTime()).toBeGreaterThanOrEqual(row.activationExpiresAt!.getTime());
         expect(await jobs(row.id)).toHaveLength(2);
         sendEmail.mockResolvedValue(undefined);
-        await app.get(UserActivationQueue).consume(originalJob.data);
+        await app.get(UserActivationConsumer).consume(originalJob.data);
         expect(sendEmail).not.toHaveBeenCalled();
         const replacementJob = (await jobs(row.id)).find((job) => job.data.deliveryId === replaced!.activationId)!;
-        await app.get(UserActivationQueue).consume(replacementJob.data);
+        await app.get(UserActivationConsumer).consume(replacementJob.data);
         expect(sendEmail).toHaveBeenCalledOnce();
         expect(sendEmail.mock.calls[0]![1]).toEqual({
             queueName: UserJobQueue.ACTIVATION,
@@ -744,7 +744,7 @@ describe('User registration and activation', () => {
             }[scenario];
             await database.update(user).set(changes).where(eq(user.id, row.id));
             sendEmail.mockClear();
-            await app.get(UserActivationQueue).consume(delivery.data);
+            await app.get(UserActivationConsumer).consume(delivery.data);
             expect(sendEmail).not.toHaveBeenCalled();
         },
     );
@@ -758,11 +758,11 @@ describe('User registration and activation', () => {
             .where(eq(user.id, row.id));
         await app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } });
         sendEmail.mockClear();
-        await app.get(UserActivationQueue).consume(firstJob.data);
+        await app.get(UserActivationConsumer).consume(firstJob.data);
         expect(sendEmail).not.toHaveBeenCalled();
         const [current] = await database.select().from(user).where(eq(user.id, row.id));
         const currentJob = (await jobs(row.id)).find((job) => job.data.deliveryId === current!.activationId)!;
-        await app.get(UserActivationQueue).consume(currentJob.data);
+        await app.get(UserActivationConsumer).consume(currentJob.data);
         expect(sendEmail).toHaveBeenCalledOnce();
     });
 
@@ -970,7 +970,7 @@ describe('User registration and activation', () => {
             )[0]!;
             objectKeys.add(buildUserPermanentAvatarKey(initial.id, initialJob.data.deliveryId));
             if (finalizeInitial) {
-                await app.get(UserAvatarFinalizeQueue).consume(initialJob.data);
+                await app.get(UserAvatarFinalizeConsumer).consume(initialJob.data);
             }
             return {
                 id: initial.id,
@@ -1046,7 +1046,7 @@ describe('User registration and activation', () => {
                     const delivery = (
                         await boss.findJobs<Job>(UserJobQueue.AVATAR_REPLACE, { data: { aggregateId: owner.id } })
                     ).find((job) => job.data.deliveryId === upload.deliveryId)!;
-                    await app.get(UserAvatarReplaceQueue).consume(delivery.data);
+                    await app.get(UserAvatarReplaceConsumer).consume(delivery.data);
                     await expect(storageFixture.storage.headObject(before.avatarKey)).rejects.toMatchObject({
                         kind: ExceptionKind.RESOURCE_NOT_FOUND,
                     });
@@ -1183,7 +1183,7 @@ describe('User registration and activation', () => {
             const auditSpy = vi
                 .spyOn(app.get<IAuditPort>(TOKEN_AUDIT_PORT), 'record')
                 .mockRejectedValueOnce(new DependencyUnavailableException());
-            await expect(app.get(UserAvatarReplaceQueue).consume(delivery)).rejects.toMatchObject({
+            await expect(app.get(UserAvatarReplaceConsumer).consume(delivery)).rejects.toMatchObject({
                 kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
             });
             expect(await state(owner.id)).toEqual(before);
@@ -1195,11 +1195,11 @@ describe('User registration and activation', () => {
             vi.spyOn(storageFixture.storage, 'deleteObject').mockRejectedValueOnce(
                 new DependencyUnavailableException(),
             );
-            await expect(app.get(UserAvatarReplaceQueue).consume(delivery)).rejects.toMatchObject({
+            await expect(app.get(UserAvatarReplaceConsumer).consume(delivery)).rejects.toMatchObject({
                 kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
             });
             expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
-            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            await app.get(UserAvatarReplaceConsumer).consume(delivery);
             expect(copy).not.toHaveBeenCalled();
             expect(await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED)).toHaveLength(
                 auditBefore.length + 1,
@@ -1266,7 +1266,7 @@ describe('User registration and activation', () => {
             )[0]!.data;
             await database.update(user).set({ deletedAt: new Date() }).where(eq(user.id, owner.id));
             const before = await state(owner.id);
-            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            await app.get(UserAvatarReplaceConsumer).consume(delivery);
             expect(await state(owner.id)).toEqual(before);
             expect(await storageFixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
             expect(await storageFixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
@@ -1309,12 +1309,12 @@ describe('User registration and activation', () => {
 
                 if (selection === 'permanent') {
                     const current = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
-                    await app.get(UserAvatarReplaceQueue).consume(current.data);
+                    await app.get(UserAvatarReplaceConsumer).consume(current.data);
                 }
 
                 const before = await state(owner.id);
                 const auditBefore = await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED);
-                await app.get(UserAvatarReplaceQueue).consume(stale.data);
+                await app.get(UserAvatarReplaceConsumer).consume(stale.data);
 
                 expect(await state(owner.id)).toEqual(before);
                 expect(await evidence(owner.id, UserAuditAction.USER_AVATAR_FINALIZED)).toEqual(auditBefore);
@@ -1354,13 +1354,13 @@ describe('User registration and activation', () => {
             const firstJob = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
             const secondJob = deliveries.find((job) => job.data.deliveryId === second.deliveryId)!;
             const before = await state(owner.id);
-            await app.get(UserAvatarReplaceQueue).consume(firstJob.data);
+            await app.get(UserAvatarReplaceConsumer).consume(firstJob.data);
             expect(await state(owner.id)).toEqual(before);
             expect(await storageFixture.storage.headObject(second.sourceKey)).toMatchObject({ sizeBytes: 4 });
             await expect(storageFixture.storage.headObject(first.sourceKey)).rejects.toMatchObject({
                 kind: ExceptionKind.RESOURCE_NOT_FOUND,
             });
-            await app.get(UserAvatarReplaceQueue).consume(secondJob.data);
+            await app.get(UserAvatarReplaceConsumer).consume(secondJob.data);
             expect((await state(owner.id)).avatarKey).toBe(second.destinationKey);
             expect((await patch(second.uploadToken)).statusCode).toBe(409);
             expect((await patch(first.uploadToken)).statusCode).toBe(400);
@@ -1390,14 +1390,14 @@ describe('User registration and activation', () => {
                 })
             )[0]!.data;
             expect(delivery.payload).toEqual({ previousAvatarId: owner.id });
-            await app.get(UserAvatarFinalizeQueue).consume(initialJob);
+            await app.get(UserAvatarFinalizeConsumer).consume(initialJob);
             expect((await state(owner.id)).avatarKey).toBe(prepared.sourceKey);
-            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            await app.get(UserAvatarReplaceConsumer).consume(delivery);
             expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
             await expect(storageFixture.storage.headObject(initial.avatarKey)).rejects.toMatchObject({
                 kind: ExceptionKind.RESOURCE_NOT_FOUND,
             });
-            await app.get(UserAvatarFinalizeQueue).consume(initialJob);
+            await app.get(UserAvatarFinalizeConsumer).consume(initialJob);
             expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
         });
 
@@ -1424,12 +1424,12 @@ describe('User registration and activation', () => {
                     data: { aggregateId: owner.id },
                 })
             )[0]!.data;
-            await app.get(UserAvatarReplaceQueue).consume(delivery);
+            await app.get(UserAvatarReplaceConsumer).consume(delivery);
             expect(await cache.get(key)).toBeNull();
             const cacheJobs = await jobs(owner.id, UserJobQueue.CACHE_INVALIDATE);
             expect(cacheJobs).toHaveLength(beforeJobs.length + 2);
             await cache.set(key, { avatarKey: before.avatarKey }, 60);
-            await app.get(UserCacheQueue).consume(cacheJobs.at(-1)!.data);
+            await app.get(UserCacheConsumer).consume(cacheJobs.at(-1)!.data);
             expect(await cache.get(key)).toBeNull();
             const fresh = await app.inject({ method: 'GET', url: '/api/v1/user/me', headers: owner.headers });
             expect(fresh.statusCode).toBe(200);

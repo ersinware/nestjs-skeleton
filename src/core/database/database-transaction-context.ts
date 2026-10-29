@@ -1,5 +1,5 @@
 /**
- * @file database-transaction.storage.ts
+ * @file database-transaction-context.ts
  * @description Provides ambient access to the active Drizzle database executor.
  */
 
@@ -7,14 +7,11 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
- * Database executor available through the primary database proxy.
- */
-type DatabaseTransactionExecutor = NodePgDatabase | Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0];
-
-/**
  * Database executor scoped to the current async call chain.
  */
-export const transactionStorage = new AsyncLocalStorage<DatabaseTransactionExecutor>();
+export const transactionStorage = new AsyncLocalStorage<
+    NodePgDatabase | Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0]
+>();
 
 /**
  * Runs work with the supplied executor in the ambient database context.

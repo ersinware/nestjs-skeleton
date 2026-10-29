@@ -38,6 +38,15 @@ import { SendAdminInviteCommandHandler } from 'src/module/admin/application/comm
 import { SendAdminRefreshReuseNoticeCommandHandler } from 'src/module/admin/application/command/send-admin-refresh-reuse-notice/handler';
 import { UnbanAdminCommandHandler } from 'src/module/admin/application/command/unban-admin/handler';
 import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
+import { AdminAvatarFinalizeConsumer } from 'src/module/admin/application/consumer/admin-avatar-finalize.consumer';
+import { AdminAvatarReplaceConsumer } from 'src/module/admin/application/consumer/admin-avatar-replace.consumer';
+import { AdminEmailChangeNotificationConsumer } from 'src/module/admin/application/consumer/admin-email-change-notification.consumer';
+import { AdminEmailConfirmationConsumer } from 'src/module/admin/application/consumer/admin-email-confirmation.consumer';
+import { AdminInviteConsumer } from 'src/module/admin/application/consumer/admin-invite.consumer';
+import { AdminRefreshReuseNoticeConsumer } from 'src/module/admin/application/consumer/admin-refresh-reuse-notice.consumer';
+import { AdminSessionRevocationLogoutAllConsumer } from 'src/module/admin/application/consumer/admin-session-revocation-logout-all.consumer';
+import { AdminSessionRevocationRefreshReuseConsumer } from 'src/module/admin/application/consumer/admin-session-revocation-refresh-reuse.consumer';
+import { AdminSessionConsumer } from 'src/module/admin/application/consumer/admin-session.consumer';
 import { GetAdminByIdQueryHandler } from 'src/module/admin/application/query/get-admin-by-id/handler';
 import { TOKEN_GET_ADMIN_BY_ID_PORT } from 'src/module/admin/application/query/get-admin-by-id/port';
 import { GetAdminCredentialsByEmailQueryHandler } from 'src/module/admin/application/query/get-admin-credentials-by-email/handler';
@@ -55,15 +64,6 @@ import { TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT } from 'src/module/admin/application/q
 import { ListAdminPermissionCatalogQueryHandler } from 'src/module/admin/application/query/list-admin-permission-catalog/handler';
 import { ListAdminsQueryHandler } from 'src/module/admin/application/query/list-admins/handler';
 import { TOKEN_LIST_ADMINS_PORT } from 'src/module/admin/application/query/list-admins/port';
-import { AdminAvatarFinalizeQueue } from 'src/module/admin/application/queue/admin-avatar-finalize.queue';
-import { AdminAvatarReplaceQueue } from 'src/module/admin/application/queue/admin-avatar-replace.queue';
-import { AdminEmailChangeNotificationQueue } from 'src/module/admin/application/queue/admin-email-change-notification.queue';
-import { AdminEmailConfirmationQueue } from 'src/module/admin/application/queue/admin-email-confirmation.queue';
-import { AdminInviteQueue } from 'src/module/admin/application/queue/admin-invite.queue';
-import { AdminRefreshReuseNoticeQueue } from 'src/module/admin/application/queue/admin-refresh-reuse-notice.queue';
-import { AdminSessionRevocationLogoutAllQueue } from 'src/module/admin/application/queue/admin-session-revocation-logout-all.queue';
-import { AdminSessionRevocationRefreshReuseQueue } from 'src/module/admin/application/queue/admin-session-revocation-refresh-reuse.queue';
-import { AdminSessionQueue } from 'src/module/admin/application/queue/admin-session.queue';
 import { AdminEmailChangeNotificationWriterAdapter } from 'src/module/admin/infrastructure/adapter/admin-email-change-notification-writer.adapter';
 import { AdminReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-reader.adapter';
 import { AdminReplicaReaderAdapter } from 'src/module/admin/infrastructure/adapter/admin-replica-reader.adapter';
@@ -87,15 +87,15 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         CqrsPipelineModule,
         JobQueueModule.forFeature(
             [
-                AdminEmailConfirmationQueue,
-                AdminEmailChangeNotificationQueue,
-                AdminInviteQueue,
-                AdminAvatarFinalizeQueue,
-                AdminAvatarReplaceQueue,
-                AdminRefreshReuseNoticeQueue,
-                AdminSessionQueue,
-                AdminSessionRevocationLogoutAllQueue,
-                AdminSessionRevocationRefreshReuseQueue,
+                AdminEmailConfirmationConsumer,
+                AdminEmailChangeNotificationConsumer,
+                AdminInviteConsumer,
+                AdminAvatarFinalizeConsumer,
+                AdminAvatarReplaceConsumer,
+                AdminRefreshReuseNoticeConsumer,
+                AdminSessionConsumer,
+                AdminSessionRevocationLogoutAllConsumer,
+                AdminSessionRevocationRefreshReuseConsumer,
             ],
             [CqrsPipelineModule],
         ),

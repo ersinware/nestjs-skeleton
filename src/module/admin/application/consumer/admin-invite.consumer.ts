@@ -1,5 +1,5 @@
 /**
- * @file admin-invite.queue.ts
+ * @file admin-invite.consumer.ts
  * @description Dispatches admin invitation jobs to the command pipeline.
  */
 
@@ -13,7 +13,7 @@ import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum'
  * Consumes durable admin invitation jobs.
  */
 @Injectable()
-export class AdminInviteQueue implements IJobConsumer {
+export class AdminInviteConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */

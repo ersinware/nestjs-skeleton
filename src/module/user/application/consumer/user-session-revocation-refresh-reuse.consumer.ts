@@ -1,6 +1,6 @@
 /**
- * @file user-session-revocation-logout-all.queue.ts
- * @description Dispatches logout-all revocation jobs to the user command pipeline.
+ * @file user-session-revocation-refresh-reuse.consumer.ts
+ * @description Dispatches refresh-token reuse revocation jobs to the user command pipeline.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -11,14 +11,14 @@ import { SessionRevocationReason } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 
 /**
- * Consumes logout-all revocation jobs for users.
+ * Consumes refresh-token reuse revocation jobs for users.
  */
 @Injectable()
-export class UserSessionRevocationLogoutAllQueue implements IJobConsumer {
+export class UserSessionRevocationRefreshReuseConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
-    readonly name = UserSessionRevocationJobQueue.LOGOUT_ALL;
+    readonly name = UserSessionRevocationJobQueue.REFRESH_REUSE;
 
     /**
      * Revocation state, audit, produced jobs, and job completion must commit together.
@@ -26,7 +26,7 @@ export class UserSessionRevocationLogoutAllQueue implements IJobConsumer {
     readonly transactional = true;
 
     /**
-     * Keeps revocation polling prompt without grouping transactional effects.
+     * Keeps reuse revocation polling prompt without grouping transactional effects.
      */
     readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 } as const;
 
@@ -38,13 +38,13 @@ export class UserSessionRevocationLogoutAllQueue implements IJobConsumer {
     constructor(private readonly commandPipeline: CommandPipeline) {}
 
     /**
-     * Dispatches a logout-all revocation command for the referenced user.
+     * Dispatches a refresh-token reuse revocation command for the referenced user.
      *
-     * @param job Logout-all revocation job
+     * @param job Refresh-token reuse revocation job
      */
     async consume(job: Job) {
         await this.commandPipeline.execute(
-            new RevokeUserSessionsCommand(job.aggregateId, SessionRevocationReason.LOGOUT_ALL, job.deliveryId),
+            new RevokeUserSessionsCommand(job.aggregateId, SessionRevocationReason.REFRESH_REUSE, job.deliveryId),
         );
     }
 }

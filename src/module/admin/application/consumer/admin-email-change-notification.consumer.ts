@@ -1,23 +1,23 @@
 /**
- * @file user-email-change-notification.queue.ts
- * @description Dispatches committed user email-change notices through the command pipeline.
+ * @file admin-email-change-notification.consumer.ts
+ * @description Dispatches committed admin email-change notices through the command pipeline.
  */
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
 import { IJobConsumer, Job } from 'src/core/job-queue';
-import { SendUserEmailChangeNotificationCommand } from 'src/module/user/application/command/send-user-email-change-notification/command';
-import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
+import { SendAdminEmailChangeNotificationCommand } from 'src/module/admin/application/command/send-admin-email-change-notification/command';
+import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 
 /**
  * Consumes durable old-address notifications.
  */
 @Injectable()
-export class UserEmailChangeNotificationQueue implements IJobConsumer {
+export class AdminEmailChangeNotificationConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
-    readonly name = UserJobQueue.EMAIL_CHANGE_NOTIFICATION;
+    readonly name = AdminJobQueue.EMAIL_CHANGE_NOTIFICATION;
 
     /**
      * Email delivery takes place outside the job transaction.
@@ -42,6 +42,6 @@ export class UserEmailChangeNotificationQueue implements IJobConsumer {
      * @param job Committed notification delivery
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new SendUserEmailChangeNotificationCommand(job.deliveryId, this.name));
+        await this.commandPipeline.execute(new SendAdminEmailChangeNotificationCommand(job.deliveryId, this.name));
     }
 }

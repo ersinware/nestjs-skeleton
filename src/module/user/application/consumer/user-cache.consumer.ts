@@ -1,5 +1,5 @@
 /**
- * @file user-cache.queue.ts
+ * @file user-cache.consumer.ts
  * @description Invalidates cached user projections from durable jobs.
  */
 
@@ -13,7 +13,7 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
  * Consumes durable user cache invalidation jobs.
  */
 @Injectable()
-export class UserCacheQueue implements IJobConsumer {
+export class UserCacheConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */

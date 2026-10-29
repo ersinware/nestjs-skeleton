@@ -1,23 +1,23 @@
 /**
- * @file user-avatar-finalize.queue.ts
- * @description Dispatches initial user avatar finalization through the owning command pipeline.
+ * @file admin-avatar-finalize.consumer.ts
+ * @description Dispatches initial admin avatar finalization through the owning command pipeline.
  */
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
 import { type IJobConsumer, type Job } from 'src/core/job-queue';
-import { FinalizeUserAvatarCommand } from 'src/module/user/application/command/finalize-user-avatar/command';
-import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
+import { FinalizeAdminAvatarCommand } from 'src/module/admin/application/command/finalize-admin-avatar/command';
+import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 
 /**
  * Uses the existing retry defaults and shared DLQ for storage reconciliation.
  */
 @Injectable()
-export class UserAvatarFinalizeQueue implements IJobConsumer {
+export class AdminAvatarFinalizeConsumer implements IJobConsumer {
     /**
-     * Queue owned by the registered user's avatar workflow.
+     * Queue owned by the activated admin's avatar workflow.
      */
-    readonly name = UserJobQueue.AVATAR_FINALIZE;
+    readonly name = AdminJobQueue.AVATAR_FINALIZE;
 
     /**
      * Storage network calls cannot share the pg-boss transaction.
@@ -39,9 +39,9 @@ export class UserAvatarFinalizeQueue implements IJobConsumer {
     /**
      * Dispatches work using only durable aggregate and delivery identities.
      *
-     * @param job Initial registration avatar delivery
+     * @param job Initial activation avatar delivery
      */
     async consume(job: Job) {
-        await this.commandPipeline.execute(new FinalizeUserAvatarCommand(job.aggregateId, job.deliveryId));
+        await this.commandPipeline.execute(new FinalizeAdminAvatarCommand(job.aggregateId, job.deliveryId));
     }
 }

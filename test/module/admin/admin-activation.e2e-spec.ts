@@ -21,9 +21,9 @@ import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT } from 'src/core/storage';
 import { InviteAdminCommand } from 'src/module/admin/application/command/invite-admin/command';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
-import { AdminAvatarFinalizeQueue } from 'src/module/admin/application/queue/admin-avatar-finalize.queue';
-import { AdminAvatarReplaceQueue } from 'src/module/admin/application/queue/admin-avatar-replace.queue';
-import { AdminInviteQueue } from 'src/module/admin/application/queue/admin-invite.queue';
+import { AdminAvatarFinalizeConsumer } from 'src/module/admin/application/consumer/admin-avatar-finalize.consumer';
+import { AdminAvatarReplaceConsumer } from 'src/module/admin/application/consumer/admin-avatar-replace.consumer';
+import { AdminInviteConsumer } from 'src/module/admin/application/consumer/admin-invite.consumer';
 import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
@@ -178,7 +178,7 @@ describe('Admin invitation with avatar', () => {
         expect(row.avatarKey).toBeNull();
         const deliveries = await boss.findJobs<Job>(AdminJobQueue.INVITE, { data: { aggregateId: row.id } });
         expect(deliveries).toHaveLength(1);
-        await app.get(AdminInviteQueue).consume(deliveries[0]!.data);
+        await app.get(AdminInviteConsumer).consume(deliveries[0]!.data);
         const emailPayload = sendEmail.mock.calls.at(-1)![0];
         expect(emailPayload.to).toBe(email);
         const href = /href="([^"]+)"/.exec(emailPayload.body)![1]!.replaceAll('&amp;', '&');
@@ -293,7 +293,7 @@ describe('Admin invitation with avatar', () => {
                 .statusCode,
         ).toBe(409);
         expect(await jobs(prepared.id)).toHaveLength(1);
-        await app.get(AdminAvatarFinalizeQueue).consume(deliveries[0]!.data);
+        await app.get(AdminAvatarFinalizeConsumer).consume(deliveries[0]!.data);
         const finalized = await state(prepared.id);
         expect(finalized.avatarKey).toBe(prepared.destinationKey);
         expect(await fixture.readCacheControl(prepared.destinationKey)).toBe(
@@ -302,7 +302,7 @@ describe('Admin invitation with avatar', () => {
         await expect(fixture.storage.headObject(prepared.sourceKey)).rejects.toMatchObject({
             kind: ExceptionKind.RESOURCE_NOT_FOUND,
         });
-        await app.get(AdminAvatarFinalizeQueue).consume(deliveries[0]!.data);
+        await app.get(AdminAvatarFinalizeConsumer).consume(deliveries[0]!.data);
         expect(await state(prepared.id)).toEqual(finalized);
         expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
         const login = await app.inject({
@@ -427,7 +427,7 @@ describe('Admin invitation with avatar', () => {
         const auditSpy = vi
             .spyOn(app.get<IAuditPort>(TOKEN_AUDIT_PORT), 'record')
             .mockRejectedValueOnce(new DependencyUnavailableException());
-        await expect(app.get(AdminAvatarFinalizeQueue).consume(job)).rejects.toMatchObject({
+        await expect(app.get(AdminAvatarFinalizeConsumer).consume(job)).rejects.toMatchObject({
             kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
         });
         expect(await state(prepared.id)).toEqual(before);
@@ -437,12 +437,12 @@ describe('Admin invitation with avatar', () => {
         auditSpy.mockRestore();
         const copy = vi.spyOn(fixture.storage, 'copyObject');
         vi.spyOn(fixture.storage, 'deleteObject').mockRejectedValueOnce(new DependencyUnavailableException());
-        await expect(app.get(AdminAvatarFinalizeQueue).consume(job)).rejects.toMatchObject({
+        await expect(app.get(AdminAvatarFinalizeConsumer).consume(job)).rejects.toMatchObject({
             kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
         });
         const committed = await state(prepared.id);
         expect(committed.avatarKey).toBe(prepared.destinationKey);
-        await app.get(AdminAvatarFinalizeQueue).consume(job);
+        await app.get(AdminAvatarFinalizeConsumer).consume(job);
         expect(copy).not.toHaveBeenCalled();
         expect(await state(prepared.id)).toEqual(committed);
         expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
@@ -525,7 +525,7 @@ describe('Admin invitation with avatar', () => {
             const initialJob = (
                 await boss.findJobs<Job>(AdminJobQueue.AVATAR_FINALIZE, { data: { aggregateId: initial.id } })
             )[0]!;
-            await app.get(AdminAvatarFinalizeQueue).consume(initialJob.data);
+            await app.get(AdminAvatarFinalizeConsumer).consume(initialJob.data);
             const login = await app.inject({
                 method: 'POST',
                 url: '/api/v1/auth/admin/login',
@@ -606,7 +606,7 @@ describe('Admin invitation with avatar', () => {
                     const delivery = (
                         await boss.findJobs<Job>(AdminJobQueue.AVATAR_REPLACE, { data: { aggregateId: owner.id } })
                     ).find((job) => job.data.deliveryId === upload.deliveryId)!;
-                    await app.get(AdminAvatarReplaceQueue).consume(delivery.data);
+                    await app.get(AdminAvatarReplaceConsumer).consume(delivery.data);
                     await expect(fixture.storage.headObject(before.avatarKey!)).rejects.toMatchObject({
                         kind: ExceptionKind.RESOURCE_NOT_FOUND,
                     });
@@ -743,7 +743,7 @@ describe('Admin invitation with avatar', () => {
             const auditSpy = vi
                 .spyOn(app.get<IAuditPort>(TOKEN_AUDIT_PORT), 'record')
                 .mockRejectedValueOnce(new DependencyUnavailableException());
-            await expect(app.get(AdminAvatarReplaceQueue).consume(delivery)).rejects.toMatchObject({
+            await expect(app.get(AdminAvatarReplaceConsumer).consume(delivery)).rejects.toMatchObject({
                 kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
             });
             expect(await state(owner.id)).toEqual(before);
@@ -753,11 +753,11 @@ describe('Admin invitation with avatar', () => {
             auditSpy.mockRestore();
             const copy = vi.spyOn(fixture.storage, 'copyObject');
             vi.spyOn(fixture.storage, 'deleteObject').mockRejectedValueOnce(new DependencyUnavailableException());
-            await expect(app.get(AdminAvatarReplaceQueue).consume(delivery)).rejects.toMatchObject({
+            await expect(app.get(AdminAvatarReplaceConsumer).consume(delivery)).rejects.toMatchObject({
                 kind: ExceptionKind.DEPENDENCY_UNAVAILABLE,
             });
             expect((await state(owner.id)).avatarKey).toBe(prepared.destinationKey);
-            await app.get(AdminAvatarReplaceQueue).consume(delivery);
+            await app.get(AdminAvatarReplaceConsumer).consume(delivery);
             expect(copy).not.toHaveBeenCalled();
             expect(await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(
                 auditBefore.length + 1,
@@ -824,7 +824,7 @@ describe('Admin invitation with avatar', () => {
             )[0]!.data;
             await database.update(admin).set({ deletedAt: new Date() }).where(eq(admin.id, owner.id));
             const before = await state(owner.id);
-            await app.get(AdminAvatarReplaceQueue).consume(delivery);
+            await app.get(AdminAvatarReplaceConsumer).consume(delivery);
             expect(await state(owner.id)).toEqual(before);
             expect(await fixture.storage.headObject(previous)).toMatchObject({ sizeBytes: 4 });
             expect(await fixture.storage.headObject(prepared.sourceKey)).toMatchObject({ sizeBytes: 4 });
@@ -867,12 +867,12 @@ describe('Admin invitation with avatar', () => {
 
                 if (selection === 'permanent') {
                     const current = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
-                    await app.get(AdminAvatarReplaceQueue).consume(current.data);
+                    await app.get(AdminAvatarReplaceConsumer).consume(current.data);
                 }
 
                 const before = await state(owner.id);
                 const auditBefore = await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED);
-                await app.get(AdminAvatarReplaceQueue).consume(stale.data);
+                await app.get(AdminAvatarReplaceConsumer).consume(stale.data);
 
                 expect(await state(owner.id)).toEqual(before);
                 expect(await evidence(owner.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toEqual(auditBefore);
@@ -912,13 +912,13 @@ describe('Admin invitation with avatar', () => {
             const firstJob = deliveries.find((job) => job.data.deliveryId === first.deliveryId)!;
             const secondJob = deliveries.find((job) => job.data.deliveryId === second.deliveryId)!;
             const before = await state(owner.id);
-            await app.get(AdminAvatarReplaceQueue).consume(firstJob.data);
+            await app.get(AdminAvatarReplaceConsumer).consume(firstJob.data);
             expect(await state(owner.id)).toEqual(before);
             expect(await fixture.storage.headObject(second.sourceKey)).toMatchObject({ sizeBytes: 4 });
             await expect(fixture.storage.headObject(first.sourceKey)).rejects.toMatchObject({
                 kind: ExceptionKind.RESOURCE_NOT_FOUND,
             });
-            await app.get(AdminAvatarReplaceQueue).consume(secondJob.data);
+            await app.get(AdminAvatarReplaceConsumer).consume(secondJob.data);
             expect((await state(owner.id)).avatarKey).toBe(second.destinationKey);
             expect((await patch(second.uploadToken)).statusCode).toBe(409);
             expect((await patch(first.uploadToken)).statusCode).toBe(400);

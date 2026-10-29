@@ -1,5 +1,5 @@
 /**
- * @file dead-letter-redrive.queue.ts
+ * @file dead-letter-redrive.consumer.ts
  * @description Dispatches exclusive dead-letter redrive jobs to the command pipeline.
  */
 
@@ -16,7 +16,7 @@ import { RedriveDeadLetterJobsCommand } from 'src/module/job-queue-operations/ap
  * Consumes one exclusive, non-transactional orchestration job.
  */
 @Injectable()
-export class DeadLetterRedriveQueue implements IJobConsumer {
+export class DeadLetterRedriveConsumer implements IJobConsumer {
     /**
      * Technical queue coordinating redrive across application replicas.
      */

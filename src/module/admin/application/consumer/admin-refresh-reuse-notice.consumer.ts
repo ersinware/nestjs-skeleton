@@ -1,5 +1,5 @@
 /**
- * @file admin-refresh-reuse-notice.queue.ts
+ * @file admin-refresh-reuse-notice.consumer.ts
  * @description Dispatches admin refresh-token reuse notice jobs to the command pipeline.
  */
 
@@ -13,7 +13,7 @@ import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum'
  * Consumes durable refresh-token reuse notice jobs.
  */
 @Injectable()
-export class AdminRefreshReuseNoticeQueue implements IJobConsumer {
+export class AdminRefreshReuseNoticeConsumer implements IJobConsumer {
     /**
      * Queue handled by this consumer.
      */
