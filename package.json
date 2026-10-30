@@ -38,7 +38,7 @@
         "test:debug": "vitest --inspect-brk --no-file-parallelism",
         "test:e2e": "vitest run --config ./vitest.config.e2e.mts",
         "prepare": "husky",
-        "ci:start:wait": "node dist/src/main.js & wait-on http://localhost:3000/api/health/ready -t 30000",
+        "start:test:contract:wait": "NODE_ENV=test TS_NODE_BASEURL=./dist ts-node --transpile-only -r tsconfig-paths/register test/contract/start-contract-app.ts & wait-on http://localhost:3000/api/health/ready -t 30000",
         "check:shadow-api": "if grep -rE --exclude-dir=node_modules --exclude-dir=dist \"(@ApiExcludeEndpoint\\(true\\)|@Controller\\('_dev'\\))\" .; then echo \"Shadow API found!\"; exit 1; else echo \"No Shadow API found.\"; fi",
         "format": "prettier --write --cache --cache-location .prettiercache --ignore-unknown .",
         "format:check": "prettier --check --cache --cache-location .prettiercache .",

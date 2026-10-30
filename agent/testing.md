@@ -11,5 +11,6 @@
 - SeaweedFS tests validate application storage behavior, not AWS parity. Real S3 acceptance requires explicit opt-in and an isolated test target; default suites must not reach AWS.
 - Keep tests order-independent; clean up resources and isolate external test state from non-test data.
 - Isolate rate-limit budgets per application and test case, including reused apps; share namespaces explicitly when testing cross-instance budgets. Keep fixture endpoint declarations and production guards; never raise production limits to pass tests. Verify limiter guarantees through the real counter adapter/Redis.
+- Schemathesis alone may bypass rate-limit counters through a test-only entry point excluded from production builds; retain guards, policy validation and readiness. `not_a_server_error` accepts 429s.
 - `test/` architectural boundaries remain TODO; direct writer imports remain allowed. Remind the user during test structure/import work until boundaries are defined. Existing import restrictions: [Layer Isolation](architecture.md#layer-isolation), [Jobs & Messaging](jobs-and-messaging.md#jobs--messaging).
 - Colocate `*.spec.ts` tests with their implementation or configuration, including dependency-free Nest module tests. Reserve `test/` for E2E tests and support.
