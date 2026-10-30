@@ -130,7 +130,7 @@ jobs:
 
             - name: Run dynamic contract tests
               run: |
-                  npm run ci:start:wait
+                  npm run start:test:contract:wait
                   npm run test:contract
 
             - name: Remove S3 test container
