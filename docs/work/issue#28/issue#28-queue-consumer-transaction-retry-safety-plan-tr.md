@@ -33,10 +33,10 @@ Her consumer için aşağıdakileri kaydet:
 - kullandığı logical identity (`deliveryId`, job ID vb.)
 - queue'nun latency / workload sınıfı (`critical`, `normal`, `deferred / maintenance` gibi)
 - `workerOptions` gerekçesi ve ölçekleme etkisi:
-  - beklenen queue sıklığı ve throughput
-  - PostgreSQL / pg-boss ve connection-pool baskısı
-  - external dependency kapasitesi / rate limit'i
-  - replica sayısıyla oluşan toplam concurrency
+    - beklenen queue sıklığı ve throughput
+    - PostgreSQL / pg-boss ve connection-pool baskısı
+    - external dependency kapasitesi / rate limit'i
+    - replica sayısıyla oluşan toplam concurrency
 - mevcut `workerOptions` ayarının değerlendirmesi (`appropriate`, `review`, `change recommended`)
 - gerekiyorsa önerilen `workerOptions` değişikliği
 - dispatch stratejisi değerlendirmesi ve `LISTEN/NOTIFY` hedef durumu
@@ -143,10 +143,10 @@ Hedef davranış:
 - pg-boss instance `useListenNotify: true` ile çalışmalı.
 - Worker'ı bulunan immediately-available application queue'ları notify-enabled olmalı.
 - Polling cadence değerleri tek global sayı yerine standart workload profillerinden seçilmeli:
-  - `critical`: `pollingIntervalSeconds: 1`, `notifyPollingIntervalSeconds: 5`
-  - `high`: `pollingIntervalSeconds: 5`, `notifyPollingIntervalSeconds: 10`
-  - `medium`: `pollingIntervalSeconds: 15`, `notifyPollingIntervalSeconds: 30`
-  - `low`: `pollingIntervalSeconds: 30`, `notifyPollingIntervalSeconds: 60`
+    - `critical`: `pollingIntervalSeconds: 1`, `notifyPollingIntervalSeconds: 5`
+    - `high`: `pollingIntervalSeconds: 5`, `notifyPollingIntervalSeconds: 10`
+    - `medium`: `pollingIntervalSeconds: 15`, `notifyPollingIntervalSeconds: 30`
+    - `low`: `pollingIntervalSeconds: 30`, `notifyPollingIntervalSeconds: 60`
 - `pollingIntervalSeconds` listener unavailable olduğunda fallback cadence; `notifyPollingIntervalSeconds` listener sağlıklıyken retry / delayed / redrive backstop cadence'i olmalı.
 - Future / delayed job'lar runnable olduklarında polling correctness path'iyle bulunabilmeli.
 - NOTIFY yalnız wake-up hint olmalı; job ownership normal PostgreSQL claim / locking semantics ile belirlenmeli.
@@ -473,11 +473,11 @@ Gerekirse:
 - custom job-queue database adapter'a gerekli listener desteğini ekle
 - worker'ı bulunan immediately-available queue'ları notify-enabled hale getir
 - Adım 2'de kararlaştırılan standart polling profillerini uygula:
-  - `critical`: `1s / 5s`
-  - `high`: `5s / 10s`
-  - `medium`: `15s / 30s`
-  - `low`: `30s / 60s`
-  (`pollingIntervalSeconds / notifyPollingIntervalSeconds`)
+    - `critical`: `1s / 5s`
+    - `high`: `5s / 10s`
+    - `medium`: `15s / 30s`
+    - `low`: `30s / 60s`
+      (`pollingIntervalSeconds / notifyPollingIntervalSeconds`)
 - her consumer'ı Adım 2'deki workload profiline bağla; mevcut `2s` / `3s` gibi ara fallback değerlerini profil standardına normalize et
 - `pollingIntervalSeconds` değerini listener-unavailable fallback, `notifyPollingIntervalSeconds` değerini healthy-listener retry / delayed / redrive backstop olarak kullan
 - generic batch parallelization ekleme; yalnız audit ile doğrulanan consumer-specific bounded parallelism gerekiyorsa uygula

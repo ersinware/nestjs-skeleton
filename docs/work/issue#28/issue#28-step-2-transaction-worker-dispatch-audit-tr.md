@@ -233,28 +233,28 @@ incorrect non-transactional mode:     0
 
 # C. Consumer bazında transaction-mode sonucu
 
-| # | Consumer | Current mode | Step 2 sonucu | Justification |
-|---:|---|---|---|---|
-| 1 | `UserCacheConsumer` | Non-transactional | **keep** | Redis `DEL` external effect; atomic PostgreSQL mutation yok |
-| 2 | `UserSessionConsumer` | Non-transactional | **keep** | Primary DB read + monotonic Redis version update; business DB write yok |
-| 3 | `AdminInviteConsumer` | Non-transactional | **keep** | DB eligibility read + email provider external effect |
-| 4 | `AdminSessionConsumer` | Non-transactional | **keep** | Primary DB read + monotonic Redis update |
-| 5 | `UserActivationConsumer` | Non-transactional | **keep** | DB eligibility read + email provider external effect |
-| 6 | `UserAvatarReplaceConsumer` | Non-transactional | **keep** | S3 reconciliation dışarıda; related DB writes gerektiğinde local `start()` transaction'ında |
-| 7 | `UserAvatarFinalizeConsumer` | Non-transactional | **keep** | S3 reconciliation + local DB transaction; worker tx uygun değil |
-| 8 | `AdminAvatarReplaceConsumer` | Non-transactional | **keep** | S3 external effect + local DB transaction |
-| 9 | `AdminAvatarFinalizeConsumer` | Non-transactional | **keep** | S3 external effect + local DB transaction |
-| 10 | `UserEmailConfirmationConsumer` | Non-transactional | **keep** | DB eligibility read + external email |
-| 11 | `UserRefreshReuseNoticeConsumer` | Non-transactional | **keep** | DB contact read + external email |
-| 12 | `AdminEmailConfirmationConsumer` | Non-transactional | **keep** | DB eligibility read + external email |
-| 13 | `AdminRefreshReuseNoticeConsumer` | Non-transactional | **keep** | DB contact read + external email |
-| 14 | `UserEmailChangeNotificationConsumer` | Non-transactional | **keep** | Immutable notification row read + external email |
-| 15 | `AdminEmailChangeNotificationConsumer` | Non-transactional | **keep** | Immutable notification row read + external email |
-| 16 | `UserSessionRevocationLogoutAllConsumer` | Transactional | **keep — required** | Revocation mutation + audit + session reconcile job + completion atomic olmalı |
-| 17 | `DeadLetterRedriveConsumer` | Non-transactional | **keep** | Bounded independently committed redrive batches; long worker tx istenmiyor |
-| 18 | `AdminSessionRevocationLogoutAllConsumer` | Transactional | **keep — required** | Revocation mutation + audit + session reconcile job + completion atomic olmalı |
-| 19 | `UserSessionRevocationRefreshReuseConsumer` | Transactional | **keep — required** | Revocation + audit + reconcile + notice job + completion atomic olmalı |
-| 20 | `AdminSessionRevocationRefreshReuseConsumer` | Transactional | **keep — required** | Revocation + audit + reconcile + notice job + completion atomic olmalı |
+|   # | Consumer                                     | Current mode      | Step 2 sonucu       | Justification                                                                               |
+| --: | -------------------------------------------- | ----------------- | ------------------- | ------------------------------------------------------------------------------------------- |
+|   1 | `UserCacheConsumer`                          | Non-transactional | **keep**            | Redis `DEL` external effect; atomic PostgreSQL mutation yok                                 |
+|   2 | `UserSessionConsumer`                        | Non-transactional | **keep**            | Primary DB read + monotonic Redis version update; business DB write yok                     |
+|   3 | `AdminInviteConsumer`                        | Non-transactional | **keep**            | DB eligibility read + email provider external effect                                        |
+|   4 | `AdminSessionConsumer`                       | Non-transactional | **keep**            | Primary DB read + monotonic Redis update                                                    |
+|   5 | `UserActivationConsumer`                     | Non-transactional | **keep**            | DB eligibility read + email provider external effect                                        |
+|   6 | `UserAvatarReplaceConsumer`                  | Non-transactional | **keep**            | S3 reconciliation dışarıda; related DB writes gerektiğinde local `start()` transaction'ında |
+|   7 | `UserAvatarFinalizeConsumer`                 | Non-transactional | **keep**            | S3 reconciliation + local DB transaction; worker tx uygun değil                             |
+|   8 | `AdminAvatarReplaceConsumer`                 | Non-transactional | **keep**            | S3 external effect + local DB transaction                                                   |
+|   9 | `AdminAvatarFinalizeConsumer`                | Non-transactional | **keep**            | S3 external effect + local DB transaction                                                   |
+|  10 | `UserEmailConfirmationConsumer`              | Non-transactional | **keep**            | DB eligibility read + external email                                                        |
+|  11 | `UserRefreshReuseNoticeConsumer`             | Non-transactional | **keep**            | DB contact read + external email                                                            |
+|  12 | `AdminEmailConfirmationConsumer`             | Non-transactional | **keep**            | DB eligibility read + external email                                                        |
+|  13 | `AdminRefreshReuseNoticeConsumer`            | Non-transactional | **keep**            | DB contact read + external email                                                            |
+|  14 | `UserEmailChangeNotificationConsumer`        | Non-transactional | **keep**            | Immutable notification row read + external email                                            |
+|  15 | `AdminEmailChangeNotificationConsumer`       | Non-transactional | **keep**            | Immutable notification row read + external email                                            |
+|  16 | `UserSessionRevocationLogoutAllConsumer`     | Transactional     | **keep — required** | Revocation mutation + audit + session reconcile job + completion atomic olmalı              |
+|  17 | `DeadLetterRedriveConsumer`                  | Non-transactional | **keep**            | Bounded independently committed redrive batches; long worker tx istenmiyor                  |
+|  18 | `AdminSessionRevocationLogoutAllConsumer`    | Transactional     | **keep — required** | Revocation mutation + audit + session reconcile job + completion atomic olmalı              |
+|  19 | `UserSessionRevocationRefreshReuseConsumer`  | Transactional     | **keep — required** | Revocation + audit + reconcile + notice job + completion atomic olmalı                      |
+|  20 | `AdminSessionRevocationRefreshReuseConsumer` | Transactional     | **keep — required** | Revocation + audit + reconcile + notice job + completion atomic olmalı                      |
 
 ---
 
@@ -355,28 +355,28 @@ Assessment anlamı:
 - **review** — mevcut değer doğrudan yanlış görünmüyor ancak sonraki retry/idempotency audit sonucu olmadan final kabul edilmemeli.
 - **change recommended** — Adım 2'de açık mismatch saptandı.
 
-| # | Consumer | Current `(LC / poll / batch)` | Workload / pressure | Assessment | Step 2 workerOptions kararı |
-|---:|---|---:|---|---|---|
-| 1 | `UserCacheConsumer` | `1 / 5s / 20` | Cheap/idempotent Redis delete; DB business write yok | **appropriate** | Koru. Batch 20 repeated-safe Redis `DEL` için makul |
-| 2 | `UserSessionConsumer` | `2 / 1s / 5` | Primary DB read + Redis Lua; security/session latency-sensitive | **appropriate** | Koru. LC2 explicit bounded throughput sağlar; batch5 monotonic effect için güvenli baseline |
-| 3 | `AdminInviteConsumer` | `1 / 15s / 5` | Low-frequency email + DB read | **appropriate** | Koru. LC1 provider pressure'ı sınırlar; batch5 deterministic/idempotency-supported delivery için makul |
-| 4 | `AdminSessionConsumer` | `2 / 1s / 5` | Primary DB read + Redis Lua | **appropriate** | User session ile aynı |
-| 5 | `UserActivationConsumer` | `2 / 2s / 5` | Interactive email; LC2 provider throughput'u artırır | **appropriate** | Koru. LC2 modest ve explicit; provider capacity production'da doğrulanmalı |
-| 6 | `UserAvatarReplaceConsumer` | `1 / 5s / 1` | S3 + DB/audit; comparatively expensive | **appropriate** | Koru. Batch1 storage/reconciliation blast radius'ını sınırlar |
-| 7 | `UserAvatarFinalizeConsumer` | `1 / 5s / 1` | S3 + DB/audit + durable cache repair | **appropriate** | Koru |
-| 8 | `AdminAvatarReplaceConsumer` | `1 / 5s / 1` | S3 + DB/audit | **appropriate** | Koru |
-| 9 | `AdminAvatarFinalizeConsumer` | `1 / 5s / 1` | S3 + DB/audit | **appropriate** | Koru |
-| 10 | `UserEmailConfirmationConsumer` | `1 / 3s / 5` | Interactive email; deterministic token/provider key | **appropriate** | Koru. LC1 bounds provider concurrency |
-| 11 | `UserRefreshReuseNoticeConsumer` | `1 / 15s / 10` | Security notice; recipient/content current account state'ten gelir | **review** | Batch10 final kararı Adım 6–8'e bağlı. Payload değişirse provider idempotency key değişebilir |
-| 12 | `AdminEmailConfirmationConsumer` | `1 / 3s / 5` | Interactive email; deterministic token/provider key | **appropriate** | Koru |
-| 13 | `AdminRefreshReuseNoticeConsumer` | `1 / 15s / 10` | User refresh notice ile aynı | **review** | Batch10 final kararı Adım 6–8'e bağlı |
-| 14 | `UserEmailChangeNotificationConsumer` | `1 / 30s / 10` | Immutable notification row + stable provider key | **appropriate** | LISTEN/NOTIFY yeni delivery latency'sini kaldırır; batch10 stable idempotency evidence nedeniyle savunulabilir |
-| 15 | `AdminEmailChangeNotificationConsumer` | `1 / 30s / 10` | User email-change ile aynı | **appropriate** | Koru |
-| 16 | `UserSessionRevocationLogoutAllConsumer` | `1 / 1s / 1` | Transactional/security-critical | **appropriate** | Koru. Transactional batch1 invariant doğru |
-| 17 | `DeadLetterRedriveConsumer` | `1 / 30s / 1` | Exclusive orchestration; handler internal batch100 drain | **appropriate** | Koru. Notify ile operator request prompt olacak; worker batch1 doğru |
-| 18 | `AdminSessionRevocationLogoutAllConsumer` | `1 / 1s / 1` | Transactional/security-critical | **appropriate** | Koru |
-| 19 | `UserSessionRevocationRefreshReuseConsumer` | `1 / 1s / 1` | Transactional/security-critical + two follow-ups | **appropriate** | Koru |
-| 20 | `AdminSessionRevocationRefreshReuseConsumer` | `1 / 1s / 1` | Transactional/security-critical + two follow-ups | **appropriate** | Koru |
+|   # | Consumer                                     | Current `(LC / poll / batch)` | Workload / pressure                                                | Assessment      | Step 2 workerOptions kararı                                                                                    |
+| --: | -------------------------------------------- | ----------------------------: | ------------------------------------------------------------------ | --------------- | -------------------------------------------------------------------------------------------------------------- |
+|   1 | `UserCacheConsumer`                          |                 `1 / 5s / 20` | Cheap/idempotent Redis delete; DB business write yok               | **appropriate** | Koru. Batch 20 repeated-safe Redis `DEL` için makul                                                            |
+|   2 | `UserSessionConsumer`                        |                  `2 / 1s / 5` | Primary DB read + Redis Lua; security/session latency-sensitive    | **appropriate** | Koru. LC2 explicit bounded throughput sağlar; batch5 monotonic effect için güvenli baseline                    |
+|   3 | `AdminInviteConsumer`                        |                 `1 / 15s / 5` | Low-frequency email + DB read                                      | **appropriate** | Koru. LC1 provider pressure'ı sınırlar; batch5 deterministic/idempotency-supported delivery için makul         |
+|   4 | `AdminSessionConsumer`                       |                  `2 / 1s / 5` | Primary DB read + Redis Lua                                        | **appropriate** | User session ile aynı                                                                                          |
+|   5 | `UserActivationConsumer`                     |                  `2 / 2s / 5` | Interactive email; LC2 provider throughput'u artırır               | **appropriate** | Koru. LC2 modest ve explicit; provider capacity production'da doğrulanmalı                                     |
+|   6 | `UserAvatarReplaceConsumer`                  |                  `1 / 5s / 1` | S3 + DB/audit; comparatively expensive                             | **appropriate** | Koru. Batch1 storage/reconciliation blast radius'ını sınırlar                                                  |
+|   7 | `UserAvatarFinalizeConsumer`                 |                  `1 / 5s / 1` | S3 + DB/audit + durable cache repair                               | **appropriate** | Koru                                                                                                           |
+|   8 | `AdminAvatarReplaceConsumer`                 |                  `1 / 5s / 1` | S3 + DB/audit                                                      | **appropriate** | Koru                                                                                                           |
+|   9 | `AdminAvatarFinalizeConsumer`                |                  `1 / 5s / 1` | S3 + DB/audit                                                      | **appropriate** | Koru                                                                                                           |
+|  10 | `UserEmailConfirmationConsumer`              |                  `1 / 3s / 5` | Interactive email; deterministic token/provider key                | **appropriate** | Koru. LC1 bounds provider concurrency                                                                          |
+|  11 | `UserRefreshReuseNoticeConsumer`             |                `1 / 15s / 10` | Security notice; recipient/content current account state'ten gelir | **review**      | Batch10 final kararı Adım 6–8'e bağlı. Payload değişirse provider idempotency key değişebilir                  |
+|  12 | `AdminEmailConfirmationConsumer`             |                  `1 / 3s / 5` | Interactive email; deterministic token/provider key                | **appropriate** | Koru                                                                                                           |
+|  13 | `AdminRefreshReuseNoticeConsumer`            |                `1 / 15s / 10` | User refresh notice ile aynı                                       | **review**      | Batch10 final kararı Adım 6–8'e bağlı                                                                          |
+|  14 | `UserEmailChangeNotificationConsumer`        |                `1 / 30s / 10` | Immutable notification row + stable provider key                   | **appropriate** | LISTEN/NOTIFY yeni delivery latency'sini kaldırır; batch10 stable idempotency evidence nedeniyle savunulabilir |
+|  15 | `AdminEmailChangeNotificationConsumer`       |                `1 / 30s / 10` | User email-change ile aynı                                         | **appropriate** | Koru                                                                                                           |
+|  16 | `UserSessionRevocationLogoutAllConsumer`     |                  `1 / 1s / 1` | Transactional/security-critical                                    | **appropriate** | Koru. Transactional batch1 invariant doğru                                                                     |
+|  17 | `DeadLetterRedriveConsumer`                  |                 `1 / 30s / 1` | Exclusive orchestration; handler internal batch100 drain           | **appropriate** | Koru. Notify ile operator request prompt olacak; worker batch1 doğru                                           |
+|  18 | `AdminSessionRevocationLogoutAllConsumer`    |                  `1 / 1s / 1` | Transactional/security-critical                                    | **appropriate** | Koru                                                                                                           |
+|  19 | `UserSessionRevocationRefreshReuseConsumer`  |                  `1 / 1s / 1` | Transactional/security-critical + two follow-ups                   | **appropriate** | Koru                                                                                                           |
+|  20 | `AdminSessionRevocationRefreshReuseConsumer` |                  `1 / 1s / 1` | Transactional/security-critical + two follow-ups                   | **appropriate** | Koru                                                                                                           |
 
 ## WorkerOptions sonucu
 
@@ -662,12 +662,12 @@ Adım 2 sonunda polling cadence değerleri consumer bazında serbest sayı olara
 
 Kararlaştırılan hedef:
 
-| Profile | `pollingIntervalSeconds` | `notifyPollingIntervalSeconds` | Kullanım amacı |
-|---|---:|---:|---|
-| `critical` | `1s` | `5s` | Session / security remediation; listener arızasında agresif fallback, healthy LISTEN modunda kısa retry / delayed / redrive backstop |
-| `high` | `5s` | `10s` | Interactive veya hızlı eventual-reconciliation işleri |
-| `medium` | `15s` | `30s` | Interactive fakat retry gecikmesine toleranslı işler; LISTEN healthy iken initial delivery immediate |
-| `low` | `30s` | `60s` | Non-blocking notification / deferred / maintenance işleri |
+| Profile    | `pollingIntervalSeconds` | `notifyPollingIntervalSeconds` | Kullanım amacı                                                                                                                       |
+| ---------- | -----------------------: | -----------------------------: | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `critical` |                     `1s` |                           `5s` | Session / security remediation; listener arızasında agresif fallback, healthy LISTEN modunda kısa retry / delayed / redrive backstop |
+| `high`     |                     `5s` |                          `10s` | Interactive veya hızlı eventual-reconciliation işleri                                                                                |
+| `medium`   |                    `15s` |                          `30s` | Interactive fakat retry gecikmesine toleranslı işler; LISTEN healthy iken initial delivery immediate                                 |
+| `low`      |                    `30s` |                          `60s` | Non-blocking notification / deferred / maintenance işleri                                                                            |
 
 Semantics:
 
@@ -1021,28 +1021,28 @@ Adım 9 için yalnız consumer-specific, capacity-justified optimization adayıd
 
 # N. Consumer bazında dispatch / LISTEN-NOTIFY sonucu
 
-| Consumer | Profile | Target poll | Target notify-poll | Step 2 dispatch sonucu |
-|---|---|---:|---:|---|
-| `UserCacheConsumer` | `high` | `5s` | `10s` | Notify immediate; cache repair için bounded backstop |
-| `UserSessionConsumer` | `critical` | `1s` | `5s` | Security/session latency; listener failure'da 1s fallback |
-| `AdminInviteConsumer` | `low` | `30s` | `60s` | Initial invite NOTIFY ile immediate; fallback/retry non-critical |
-| `AdminSessionConsumer` | `critical` | `1s` | `5s` | User session ile aynı |
-| `UserActivationConsumer` | `medium` | `15s` | `30s` | Initial activation NOTIFY ile immediate; retry/fallback latency tolerable |
-| `UserAvatarReplaceConsumer` | `medium` | `15s` | `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority |
-| `UserAvatarFinalizeConsumer` | `medium` | `15s` | `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority |
-| `AdminAvatarReplaceConsumer` | `medium` | `15s` | `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority |
-| `AdminAvatarFinalizeConsumer` | `medium` | `15s` | `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority |
-| `UserEmailConfirmationConsumer` | `medium` | `15s` | `30s` | Initial confirmation NOTIFY ile immediate; retry/fallback medium priority |
-| `UserRefreshReuseNoticeConsumer` | `low` | `30s` | `60s` | Critical revocation ayrı path'te; notice non-blocking, `batchSize: 10` review devam ediyor |
-| `AdminEmailConfirmationConsumer` | `medium` | `15s` | `30s` | Initial confirmation NOTIFY ile immediate; retry/fallback medium priority |
-| `AdminRefreshReuseNoticeConsumer` | `low` | `30s` | `60s` | Critical revocation ayrı path'te; notice non-blocking, `batchSize: 10` review devam ediyor |
-| `UserEmailChangeNotificationConsumer` | `low` | `30s` | `60s` | Notify initial delivery'yi prompt yapar; non-blocking retry backstop |
-| `AdminEmailChangeNotificationConsumer` | `low` | `30s` | `60s` | User ile aynı |
-| `UserSessionRevocationLogoutAllConsumer` | `critical` | `1s` | `5s` | Security-critical remediation |
-| `DeadLetterRedriveConsumer` | `low` | `30s` | `60s` | Operator request notify ile immediate; maintenance retry backstop |
-| `AdminSessionRevocationLogoutAllConsumer` | `critical` | `1s` | `5s` | Security-critical remediation |
-| `UserSessionRevocationRefreshReuseConsumer` | `critical` | `1s` | `5s` | Security-critical remediation |
-| `AdminSessionRevocationRefreshReuseConsumer` | `critical` | `1s` | `5s` | Security-critical remediation |
+| Consumer                                     | Profile    | Target poll | Target notify-poll | Step 2 dispatch sonucu                                                                     |
+| -------------------------------------------- | ---------- | ----------: | -----------------: | ------------------------------------------------------------------------------------------ |
+| `UserCacheConsumer`                          | `high`     |        `5s` |              `10s` | Notify immediate; cache repair için bounded backstop                                       |
+| `UserSessionConsumer`                        | `critical` |        `1s` |               `5s` | Security/session latency; listener failure'da 1s fallback                                  |
+| `AdminInviteConsumer`                        | `low`      |       `30s` |              `60s` | Initial invite NOTIFY ile immediate; fallback/retry non-critical                           |
+| `AdminSessionConsumer`                       | `critical` |        `1s` |               `5s` | User session ile aynı                                                                      |
+| `UserActivationConsumer`                     | `medium`   |       `15s` |              `30s` | Initial activation NOTIFY ile immediate; retry/fallback latency tolerable                  |
+| `UserAvatarReplaceConsumer`                  | `medium`   |       `15s` |              `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority                |
+| `UserAvatarFinalizeConsumer`                 | `medium`   |       `15s` |              `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority                |
+| `AdminAvatarReplaceConsumer`                 | `medium`   |       `15s` |              `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority                |
+| `AdminAvatarFinalizeConsumer`                | `medium`   |       `15s` |              `30s` | Initial reconciliation NOTIFY ile immediate; fallback/retry medium priority                |
+| `UserEmailConfirmationConsumer`              | `medium`   |       `15s` |              `30s` | Initial confirmation NOTIFY ile immediate; retry/fallback medium priority                  |
+| `UserRefreshReuseNoticeConsumer`             | `low`      |       `30s` |              `60s` | Critical revocation ayrı path'te; notice non-blocking, `batchSize: 10` review devam ediyor |
+| `AdminEmailConfirmationConsumer`             | `medium`   |       `15s` |              `30s` | Initial confirmation NOTIFY ile immediate; retry/fallback medium priority                  |
+| `AdminRefreshReuseNoticeConsumer`            | `low`      |       `30s` |              `60s` | Critical revocation ayrı path'te; notice non-blocking, `batchSize: 10` review devam ediyor |
+| `UserEmailChangeNotificationConsumer`        | `low`      |       `30s` |              `60s` | Notify initial delivery'yi prompt yapar; non-blocking retry backstop                       |
+| `AdminEmailChangeNotificationConsumer`       | `low`      |       `30s` |              `60s` | User ile aynı                                                                              |
+| `UserSessionRevocationLogoutAllConsumer`     | `critical` |        `1s` |               `5s` | Security-critical remediation                                                              |
+| `DeadLetterRedriveConsumer`                  | `low`      |       `30s` |              `60s` | Operator request notify ile immediate; maintenance retry backstop                          |
+| `AdminSessionRevocationLogoutAllConsumer`    | `critical` |        `1s` |               `5s` | Security-critical remediation                                                              |
+| `UserSessionRevocationRefreshReuseConsumer`  | `critical` |        `1s` |               `5s` | Security-critical remediation                                                              |
+| `AdminSessionRevocationRefreshReuseConsumer` | `critical` |        `1s` |               `5s` | Security-critical remediation                                                              |
 
 Bu değerler Adım 2'de **target policy** olarak kesinleştirilmiştir; source/config değişikliği Adım 9'da yapılacaktır. Production load/SLO testi profile seçiminin yeniden değerlendirilmesine neden olabilir, ancak canonical profile süreleri tek noktadan değiştirilmelidir.
 
@@ -1058,12 +1058,12 @@ Worker execution / dispatch için aşağıdaki correction'lar doğrulanmıştır
 
 1. `JobQueueDatabaseAdapter` custom pg-boss `listen()` capability'sini implemente et.
 2. Listener için dedicated session-pinned connection lifecycle:
-   - subscribe,
-   - reconnect,
-   - `onReconnect`,
-   - close,
-   - pool error handling
-   davranışını ekle.
+    - subscribe,
+    - reconnect,
+    - `onReconnect`,
+    - close,
+    - pool error handling
+      davranışını ekle.
 3. `PgBoss` instance'ını `useListenNotify: true` ile başlat.
 4. Worker'ı olan application queue'larda `notify: true` reconcile et.
 5. Shared storage-only `application-dead-letter` queue'sunu notify-required olarak işaretleme.
@@ -1077,7 +1077,7 @@ Worker execution / dispatch için aşağıdaki correction'lar doğrulanmıştır
     - `high`: `5s / 10s`
     - `medium`: `15s / 30s`
     - `low`: `30s / 60s`
-    (`pollingIntervalSeconds / notifyPollingIntervalSeconds`)
+      (`pollingIntervalSeconds / notifyPollingIntervalSeconds`)
 12. Consumer → profile eşlemesini Section I / N ile aynı tut; mevcut ara değerleri canonical profile fallback değerlerine normalize et (`2s` / `3s` → `medium 15s`, ilgili `15s` queue'lar → `low 30s`).
 13. `pollingIntervalSeconds` değerini listener-unavailable fallback, `notifyPollingIntervalSeconds` değerini healthy-listener retry / delayed / redrive backstop olarak kullan.
 14. Generic batch `Promise.all()` parallelization ekleme.
