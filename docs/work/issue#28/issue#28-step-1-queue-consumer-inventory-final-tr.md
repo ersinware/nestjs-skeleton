@@ -196,7 +196,7 @@ only successfully claimed jobs are processed
 
 ### Polling davranışı
 
-Kararlaştırılan davranış:
+Step 1 sırasında kararlaştırılan başlangıç davranışı (Adım 2 tarafından supersede edilmiştir):
 
 ```text
 LISTEN/NOTIFY healthy + queue notify-enabled
@@ -212,12 +212,14 @@ future / delayed / henüz runnable olmayan job
 
 Buna göre mevcut consumer `pollingIntervalSeconds` değerleri kaldırılmayacaktır. Bunlar **listener unavailable olduğunda fallback cadence** olarak korunacaktır.
 
-İlk baseline:
+İlk Step 1 baseline'ı:
 
 ```text
 useListenNotify: true
 notifyPollingIntervalSeconds: 30
 ```
+
+> **Adım 2 refinement:** Bu universal `30s` varsayımı sonradan revize edilmiştir. Retry / delayed / redrive maturity her zaman NOTIFY üretmediği için hedef model artık standart workload profilleridir: `critical 1s/5s`, `high 5s/10s`, `medium 15s/30s`, `low 30s/60s` (`pollingIntervalSeconds / notifyPollingIntervalSeconds`). Step 1'deki `30s` yalnız tarihsel başlangıç varsayımıdır.
 
 Worker'ı bulunan immediately-available application queue'ları `notify: true` olacaktır. Worker'ı olmayan shared application dead-letter storage queue'su notification üretmek zorunda değildir. `application-dead-letter-redrive` worker'ı bulunduğu için notify-enabled olmalıdır.
 
@@ -321,8 +323,8 @@ Step 1 kararı olarak aşağıdakiler implementation backlog'una kaydedilir:
 - pg-boss instance'ını `useListenNotify: true` ile başlat;
 - custom `JobQueueDatabaseAdapter` için gerekli `listen` desteğini ekle;
 - worker'ı bulunan application queue'larını `notify: true` olarak provision / reconcile et;
-- `notifyPollingIntervalSeconds: 30` başlangıç backstop değerini kullan;
-- mevcut `pollingIntervalSeconds` değerlerini listener-unavailable fallback cadence olarak koru;
+- Adım 2'de kesinleştirilen `critical / high / medium / low` polling profillerini kullan;
+- `pollingIntervalSeconds` değerini listener-unavailable fallback, `notifyPollingIntervalSeconds` değerini healthy-listener retry / delayed / redrive backstop olarak uygula;
 - `listen_notify_unavailable` durumunu observable hale getir;
 - multi-node claim davranışı, missed notification recovery ve listener fallback için regression / integration test ekle;
 - queue pool capacity testinde pinned listener connection'ını hesaba kat;
@@ -554,7 +556,7 @@ Step 1 sırasında ayrıca şu architecture direction kararlaştırılmıştır:
 
 - immediately-available application jobs için pg-boss `LISTEN/NOTIFY` primary wake-up mechanism olacaktır;
 - mevcut `pollingIntervalSeconds` değerleri listener-unavailable fallback cadence olarak kalacaktır;
-- listener sağlıklıyken başlangıç safety-net polling değeri `notifyPollingIntervalSeconds: 30` olacaktır;
+- Step 1'de başlangıçta düşünülen universal `notifyPollingIntervalSeconds: 30` varsayımı Adım 2'de workload-profili yaklaşımıyla supersede edilmiştir;
 - ayrı queue topology'si korunacaktır;
 - generic batch parallelization uygulanmayacak; parallelism `localConcurrency` ile bounded tutulacaktır;
 - transactional consumer'larda `batchSize: 1` korunacaktır;
