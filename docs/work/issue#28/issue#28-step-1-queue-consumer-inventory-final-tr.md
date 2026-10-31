@@ -114,9 +114,9 @@ Dead-letter redrive orchestration özel durumdur:
 |   7 | `UserAvatarFinalizeConsumer` — `user.avatar-finalize.queue.v1`                                   |   No    | `1 / 5s / 1`                         | `FinalizeUserAvatarCommand` → `FinalizeUserAvatarCommandHandler`                             | `start()` yalnız state değişecekse           | User avatar key/version/update + audit insert; aggregate follow-up job aynı tx'de                                                                                | Command pipeline user cache best-effort evict eder                                  | S3 `HEAD`, copy, source delete                               | State değiştiyse `user.cache-invalidate.queue.v1`                          | `USER_AVATAR_FINALIZED` success audit tx içinde; auditable refusal bağımsız                                                            | Authoritative state + destination probe; finalized state no-op; immutable destination; repeated delete safe; optimistic lock                                                                              | `deliveryId` avatar identity                                                                           |
 |   8 | `AdminAvatarReplaceConsumer` — `admin.avatar-replace.queue.v1`                                   |   No    | `1 / 5s / 1`                         | `ReplaceAdminAvatarCommand` → `ReplaceAdminAvatarCommandHandler`                             | `start()` yalnız state değişecekse           | Admin avatar key/version/update + audit insert                                                                                                                   | Yok                                                                                 | S3 `HEAD`, copy, obsolete/source delete                      | Yok                                                                        | `ADMIN_AVATAR_FINALIZED` success audit tx içinde; auditable refusal bağımsız                                                           | User avatar path ile aynı reconciliation modeli: authoritative state, immutable destination, copy reuse, optimistic lock, repeated delete safe                                                            | `deliveryId` avatar identity; `previousAvatarId` payload                                               |
 |   9 | `AdminAvatarFinalizeConsumer` — `admin.avatar-finalize.queue.v1`                                 |   No    | `1 / 5s / 1`                         | `FinalizeAdminAvatarCommand` → `FinalizeAdminAvatarCommandHandler`                           | `start()` yalnız state değişecekse           | Admin avatar key/version/update + audit insert                                                                                                                   | Yok                                                                                 | S3 `HEAD`, copy, source delete                               | Yok                                                                        | `ADMIN_AVATAR_FINALIZED` success audit tx içinde; auditable refusal bağımsız                                                           | Authoritative state + destination probe; finalized state no-op; immutable destination; repeated delete safe; optimistic lock                                                                              | `deliveryId` avatar identity                                                                           |
-|  10 | `UserEmailConfirmationConsumer` — `user.email-confirmation.queue.v1`                             |   No    | `1 / 3s / 5`                         | `SendUserEmailConfirmationCommand` → `SendUserEmailConfirmationCommandHandler`               | Yok                                          | Yok; exact pending-email request eligibility read                                                                                                                | Yok                                                                                 | Resend email + deterministic confirmation JWT                | Yok                                                                        | Yok                                                                                                                                    | Current request ID / revocation / expiry re-read; stale job skip; deterministic token; provider idempotency key                                                                                           | `deliveryId == pendingEmailRequestId`                                                                  |
+|  10 | `UserEmailConfirmationConsumer` — `user.email-confirmation.queue.v1`                             |   No    | `1 / 3s / 5`                         | `SendUserEmailConfirmationCommand` → `SendUserEmailConfirmationCommandHandler`               | Yok                                          | Yok; exact pending-email request eligibility read                                                                                                                | Yok                                                                                 | Resend email + deterministic confirmation JWT                | Yok                                                                        | Yok                                                                                                                                    | Current request ID / revocation / expiry re-read; stale job skip; token deterministic. Current `user.name` HTML'e girdiği için retry payload'ı değişebilir; mevcut provider key content hash içerdiğinden aynı logical delivery farklı key üretebilir. Adım 7/8'de düzeltilecek                                                                                           | `deliveryId == pendingEmailRequestId`                                                                  |
 |  11 | `UserRefreshReuseNoticeConsumer` — `user.refresh-reuse-notice.queue.v1`                          |   No    | `1 / 15s / 10`                       | `SendUserRefreshReuseNoticeCommand` → `SendUserRefreshReuseNoticeCommandHandler`             | Yok                                          | Yok; current non-deleted user contact read                                                                                                                       | Yok                                                                                 | Resend security email                                        | Yok                                                                        | Yok                                                                                                                                    | Stable delivery ID provider key'e girer, fakat payload hash de key'e dahildir; current email/name değişirse retry farklı provider key üretebilir. Step 6/8'de ayrıca incelenmeli                          | `deliveryId`; recipient current account state'ten gelir                                                |
-|  12 | `AdminEmailConfirmationConsumer` — `admin.email-confirmation.queue.v1`                           |   No    | `1 / 3s / 5`                         | `SendAdminEmailConfirmationCommand` → `SendAdminEmailConfirmationCommandHandler`             | Yok                                          | Yok; exact pending-email request eligibility read                                                                                                                | Yok                                                                                 | Resend email + deterministic confirmation JWT                | Yok                                                                        | Yok                                                                                                                                    | User confirmation ile aynı: exact request re-read + deterministic token + provider idempotency                                                                                                            | `deliveryId == pendingEmailRequestId`                                                                  |
+|  12 | `AdminEmailConfirmationConsumer` — `admin.email-confirmation.queue.v1`                           |   No    | `1 / 3s / 5`                         | `SendAdminEmailConfirmationCommand` → `SendAdminEmailConfirmationCommandHandler`             | Yok                                          | Yok; exact pending-email request eligibility read                                                                                                                | Yok                                                                                 | Resend email + deterministic confirmation JWT                | Yok                                                                        | Yok                                                                                                                                    | Exact request re-read + deterministic token; ancak current `admin.name` HTML'e girdiği için retry payload drift mümkündür ve mevcut content-hash key yeni provider identity üretebilir. Adım 7/8'de düzeltilecek                                                                                                            | `deliveryId == pendingEmailRequestId`                                                                  |
 |  13 | `AdminRefreshReuseNoticeConsumer` — `admin.refresh-reuse-notice.queue.v1`                        |   No    | `1 / 15s / 10`                       | `SendAdminRefreshReuseNoticeCommand` → `SendAdminRefreshReuseNoticeCommandHandler`           | Yok                                          | Yok; current non-deleted admin contact read                                                                                                                      | Yok                                                                                 | Resend security email                                        | Yok                                                                        | Yok                                                                                                                                    | Stable delivery ID var; current contact/content değişirse content hash nedeniyle provider idempotency key değişebilir. Step 6/8 review gerekli                                                            | `deliveryId`; recipient current account state'ten gelir                                                |
 |  14 | `UserEmailChangeNotificationConsumer` — `user.email-change-notification.queue.v1`                |   No    | `1 / 30s / 10`                       | `SendUserEmailChangeNotificationCommand` → `SendUserEmailChangeNotificationCommandHandler`   | Yok                                          | Yok; immutable notification row read                                                                                                                             | Yok                                                                                 | Resend old-address security notification                     | Yok                                                                        | Yok                                                                                                                                    | Recipient/content committed immutable row'dan okunur; provider key stable queue + notification ID + stable content hash                                                                                   | `deliveryId == notification row ID`                                                                    |
 |  15 | `AdminEmailChangeNotificationConsumer` — `admin.email-change-notification.queue.v1`              |   No    | `1 / 30s / 10`                       | `SendAdminEmailChangeNotificationCommand` → `SendAdminEmailChangeNotificationCommandHandler` | Yok                                          | Yok; immutable notification row read                                                                                                                             | Yok                                                                                 | Resend old-address security notification                     | Yok                                                                        | Yok                                                                                                                                    | User notification ile aynı; immutable recipient evidence + stable provider key                                                                                                                            | `deliveryId == notification row ID`                                                                    |
@@ -385,14 +385,9 @@ Bu sekiz consumer için mevcut değerlerin yanlış olduğu sonucuna varılmadı
 
 Bunlar Adım 1'de bulunan observation'lardır; correction kararı değildir. Ayrıntılı karar ilgili sonraki audit adımlarında verilmelidir.
 
-## 1. Refresh-reuse notice payload'ı retry arasında değişebilir
+## 1. Email provider identity / payload stability Adım 7–8'de refine edilmelidir
 
-Şu consumer'lar recipient bilgisini current account state'ten yeniden okur:
-
-- `UserRefreshReuseNoticeConsumer`
-- `AdminRefreshReuseNoticeConsumer`
-
-Email provider idempotency key şu öğelerden oluşur:
+Current source provider idempotency key'i şu şekilde üretir:
 
 ```text
 queueName
@@ -402,15 +397,44 @@ deliveryId
 contentHash(from, to, subject, html)
 ```
 
-Bu nedenle ilk provider request başarılı olup job completion başarısız olduktan sonra account email/name değişirse retry farklı payload ve dolayısıyla farklı provider idempotency key üretebilir.
+Bu modelde aynı logical delivery retry sırasında payload değiştirirse provider key de değişir ve provider retry'ı yeni physical send olarak kabul edebilir.
 
-Bu durum:
+Mutable-payload riski doğrulanan path'ler:
+
+- `UserEmailConfirmationConsumer`: pending request / token stabil olabilir, fakat current `user.name` body'yi değiştirebilir;
+- `AdminEmailConfirmationConsumer`: current `admin.name` body'yi değiştirebilir;
+- `UserRefreshReuseNoticeConsumer`: current email + current name yeniden okunur;
+- `AdminRefreshReuseNoticeConsumer`: current email + current name yeniden okunur.
+
+Daha stabil path'ler:
+
+- `UserEmailChangeNotificationConsumer` / `AdminEmailChangeNotificationConsumer`: immutable notification row;
+- `UserActivationConsumer` / `AdminInviteConsumer`: normal domain flow'da aynı delivery boyunca contact/profile mutation'ı engellenmektedir; Adım 8'de tekrar doğrulanmalıdır.
+
+Sonradan alınan target architecture kararı:
+
+```text
+provider idempotency key = queueName/deliveryId
+
+same deliveryId
+→ same logical email delivery
+→ payload stable olmalı
+
+same deliveryId + different payload
+→ invariant violation / provider conflict
+→ yeni provider identity üretilmemeli
+
+different logical email
+→ new deliveryId
+```
+
+Bu karar:
 
 - Adım 6 retry failure-window analizinde,
 - Adım 7 authoritative-state / duplicate-effect analizinde,
-- Adım 8 email delivery guarantee analizinde
+- Adım 8 email delivery guarantee ve provider-error classification analizinde
 
-özellikle ele alınmalıdır.
+ayrıntılı doğrulanmalıdır. Source correction Adım 9'a aittir.
 
 ## 2. Transactional session-revocation consumer'larında ayrı inbox/dedup yok
 

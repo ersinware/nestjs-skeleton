@@ -399,9 +399,30 @@ explicitly safe to repeat
 
 Stable `deliveryId` veya başka logical operation identity kullanılıyorsa bunun doğru semantiğe sahip olduğunu doğrula.
 
+### Email logical-delivery invariant
+
+Email delivery için hedef identity şu olmalıdır:
+
+```text
+deliveryId
+→ logical email delivery identity
+
+provider idempotency key
+→ `${queueName}/${deliveryId}`
+```
+
+Kurallar:
+
+- aynı logical email delivery retry edildiğinde aynı `deliveryId` kullanılmalı;
+- provider idempotency key'e payload / body hash eklenmemeli;
+- aynı `deliveryId` altında üretilen email payload'ı semantik olarak stabil olmalı;
+- aynı `deliveryId` + farklı payload yeni bir logical delivery sayılmamalı; invariant violation olarak ele alınmalı;
+- gerçekten farklı bir email gönderilecekse yeni `deliveryId` ve dolayısıyla yeni provider idempotency key üretilmeli;
+- payload değişikliği provider identity'yi sessizce değiştirmemeli.
+
 ### Çıktı
 
-Retry / dedup guarantee tablosu.
+Retry / dedup guarantee tablosu; email path'leri için logical delivery identity ve payload-stability sonucu dahil.
 
 ### İlgili acceptance criterion
 
@@ -425,11 +446,59 @@ exactly-once email delivery
 → garanti edilmez
 ```
 
+Tüm email consumer'larda aynı `deliveryId` retry'ının aynı `from / to / subject / html` semantics'ini üretip üretmediğini doğrula.
+
+Özellikle mevcut audit bulgusunu tek tek doğrula:
+
+- `UserEmailConfirmationConsumer`: token / pending request identity stabil olsa da body current `user.name` içerdiği için retry payload'ı değişebilir;
+- `AdminEmailConfirmationConsumer`: aynı nedenle current `admin.name` payload drift üretebilir;
+- `UserRefreshReuseNoticeConsumer`: current email + current name yeniden okunduğu için recipient ve body değişebilir;
+- `AdminRefreshReuseNoticeConsumer`: user refresh-reuse path'iyle aynı risk;
+- `UserEmailChangeNotificationConsumer` / `AdminEmailChangeNotificationConsumer`: immutable notification row üzerinden payload stability'yi doğrula;
+- `UserActivationConsumer` / `AdminInviteConsumer`: normal domain flow'da current contact/profile alanlarının aynı delivery boyunca değişemediği varsayımını doğrula.
+
+### Provider idempotency key kararı
+
+Hedef provider key:
+
+```text
+${queueName}/${deliveryId}
+```
+
+Mevcut `contentHash` provider idempotency key'den kaldırılmalıdır.
+
+Resend davranışı application semantics'ine açıkça çevrilmelidir:
+
+```text
+same key + same payload
+→ previous/cached provider result
+→ duplicate physical send yok
+
+same key + different payload
+→ 409 invalid_idempotent_request
+→ logical-delivery payload drift
+→ non-retryable / terminal
+
+409 concurrent_idempotent_requests
+→ transient provider concurrency condition
+→ retryable
+```
+
+`invalid_idempotent_request` normal retry döngüsüne bırakılmamalıdır. Bunun queue-layer exception'ını doğrudan email adapter'a sızdırmadan hangi application-level error classification ile terminal disposition'a çevrileceği bu adımda kesinleştirilmelidir.
+
+Provider idempotency retention süresinin sınırlı olduğu dikkate alınmalı; provider key tek başına sınırsız exactly-once guarantee olarak kabul edilmemelidir.
+
 Kod veya dokümantasyonda yanlış bir exactly-once varsayımı varsa işaretle.
 
 ### Çıktı
 
-Email retry / delivery guarantee özeti.
+Email retry / delivery guarantee özeti:
+
+- consumer bazında payload-stability classification,
+- provider key invariant,
+- retryable / terminal provider-error classification,
+- 24 saatlik provider retention etkisi,
+- Adım 9 correction listesi.
 
 ### İlgili acceptance criterion
 
@@ -470,6 +539,9 @@ wrong post-commit ordering
 unsafe retry
 missing idempotency
 missing deduplication
+email logical-delivery payload drift
+incorrect provider idempotency identity
+incorrect provider retry classification
 incorrect authoritative-state handling
 unjustified workerOptions
 missing / incorrect LISTEN-NOTIFY dispatch
@@ -486,6 +558,11 @@ Gerekirse:
 - external effect'i ayrı consumer'a taşı
 - idempotency / dedup mekanizması ekle
 - authoritative-state handling'i düzelt
+- email provider idempotency key'i `${queueName}/${deliveryId}` olarak uygula; `contentHash`'i provider key'den kaldır
+- Adım 8 sonucuna göre mutable-payload email path'lerini aynı logical delivery için stabil payload üretecek şekilde düzelt
+- `invalid_idempotent_request` sonucunu non-retryable / terminal olarak sınıflandır; normal retry döngüsüne bırakma
+- `concurrent_idempotent_requests` sonucunu retryable transient provider failure olarak koru
+- yeni logical email için yeni `deliveryId` üretildiğini ve aynı `deliveryId` altında payload drift'in yeni provider identity üretmediğini garanti et
 - `workerOptions` değerlerini workload ve kapasite gerekçesine göre güncelle
 - pg-boss `LISTEN/NOTIFY` wake-up path'ini implemente et
 - custom job-queue database adapter'a gerekli listener desteğini ekle
@@ -526,6 +603,10 @@ LISTEN/NOTIFY immediate wake-up
 missed notification → safety-net polling recovery
 listener unavailable → pollingIntervalSeconds fallback
 multi-node notification → single successful job claim
+same email delivery + same payload → same provider key / duplicate send yok
+same email delivery + different payload → 409 invalid_idempotent_request → terminal
+409 concurrent_idempotent_requests → retryable
+new logical email delivery → new deliveryId / new provider key
 ```
 
 Transactional consumer için ayrıca:
@@ -543,6 +624,8 @@ atomicity'sini doğrula.
 Non-transactional consumer için commit-dependent external effect'in commit öncesinde gerçekleşmediğini test et.
 
 Worker settlement için ayrıca non-transactional batch'te bir job failure'ının diğer job disposition'larını topluca fail ettirmediğini doğrula. Generic batch parallelization eklenmediğini ve transactional consumer'ların `batchSize: 1` invariant'ını koruduğunu test et.
+
+Email regression testlerinde provider key'in yalnız `queueName/deliveryId` ile üretildiğini; payload drift'in yeni key üretmek yerine terminal conflict'e dönüştüğünü; concurrent idempotency conflict'in ise retry edildiğini doğrula.
 
 ### İlgili acceptance criterion
 
@@ -563,6 +646,9 @@ Dokümante edilmesi gereken temel kurallar:
 - external effect nasıl ve ne zaman yapılır?
 - retry guarantee nedir?
 - logical delivery identity nasıl kullanılır?
+- email provider idempotency key neden `queueName/deliveryId` olur ve payload drift nasıl invariant violation olarak ele alınır?
+- Resend `invalid_idempotent_request` ile `concurrent_idempotent_requests` nasıl farklı sınıflandırılır?
+- provider idempotency retention sınırı exactly-once guarantee'i nasıl etkiler?
 - `workerOptions` nasıl workload, latency, replica sayısı ve dependency kapasitesine göre ayarlanır?
 - `critical / high / medium / low` polling profilleri ve consumer-profile eşlemesi nasıl uygulanır?
 - `LISTEN/NOTIFY`, safety-net polling ve listener-unavailable fallback nasıl çalışır?

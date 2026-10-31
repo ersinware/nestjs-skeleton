@@ -366,9 +366,9 @@ Assessment anlamı:
 |   7 | `UserAvatarFinalizeConsumer`                 |                  `1 / 5s / 1` | S3 + DB/audit + durable cache repair                               | **appropriate** | Koru                                                                                                           |
 |   8 | `AdminAvatarReplaceConsumer`                 |                  `1 / 5s / 1` | S3 + DB/audit                                                      | **appropriate** | Koru                                                                                                           |
 |   9 | `AdminAvatarFinalizeConsumer`                |                  `1 / 5s / 1` | S3 + DB/audit                                                      | **appropriate** | Koru                                                                                                           |
-|  10 | `UserEmailConfirmationConsumer`              |                  `1 / 3s / 5` | Interactive email; deterministic token/provider key                | **appropriate** | Koru. LC1 bounds provider concurrency                                                                          |
+|  10 | `UserEmailConfirmationConsumer`              |                  `1 / 3s / 5` | Interactive email; deterministic token, current name payload'a girer | **appropriate** | WorkerOptions uygun. Payload-stability / provider-key semantiği Adım 7–8 konusu                                |
 |  11 | `UserRefreshReuseNoticeConsumer`             |                `1 / 15s / 10` | Security notice; recipient/content current account state'ten gelir | **review**      | Batch10 final kararı Adım 6–8'e bağlı. Payload değişirse provider idempotency key değişebilir                  |
-|  12 | `AdminEmailConfirmationConsumer`             |                  `1 / 3s / 5` | Interactive email; deterministic token/provider key                | **appropriate** | Koru                                                                                                           |
+|  12 | `AdminEmailConfirmationConsumer`             |                  `1 / 3s / 5` | Interactive email; deterministic token, current name payload'a girer | **appropriate** | WorkerOptions uygun. Payload-stability / provider-key semantiği Adım 7–8 konusu                                |
 |  13 | `AdminRefreshReuseNoticeConsumer`            |                `1 / 15s / 10` | User refresh notice ile aynı                                       | **review**      | Batch10 final kararı Adım 6–8'e bağlı                                                                          |
 |  14 | `UserEmailChangeNotificationConsumer`        |                `1 / 30s / 10` | Immutable notification row + stable provider key                   | **appropriate** | LISTEN/NOTIFY yeni delivery latency'sini kaldırır; batch10 stable idempotency evidence nedeniyle savunulabilir |
 |  15 | `AdminEmailChangeNotificationConsumer`       |                `1 / 30s / 10` | User email-change ile aynı                                         | **appropriate** | Koru                                                                                                           |
@@ -1115,10 +1115,34 @@ Worker execution / dispatch için aşağıdaki correction'lar doğrulanmıştır
 
 ## Pending later audit
 
+### WorkerOptions / batch
+
 Adım 6–8 tamamlanana kadar aşağıdaki iki consumer'ın `batchSize: 10` final kararı bekletilmeli:
 
 - `UserRefreshReuseNoticeConsumer`
 - `AdminRefreshReuseNoticeConsumer`
+
+Bu nedenle WorkerOptions assessment sonucu **18 appropriate / 2 review** olarak kalır.
+
+### Email logical-delivery / provider idempotency
+
+WorkerOptions assessment'tan ayrı olarak Adım 7–8'de şu dört email path'i payload stability açısından incelenmelidir:
+
+- `UserEmailConfirmationConsumer` — current `user.name`;
+- `AdminEmailConfirmationConsumer` — current `admin.name`;
+- `UserRefreshReuseNoticeConsumer` — current email + name;
+- `AdminRefreshReuseNoticeConsumer` — current email + name.
+
+Current provider key `queueName/deliveryId/contentHash` olduğundan payload drift aynı logical delivery için yeni provider identity üretebilir.
+
+Target karar:
+
+```text
+provider key = queueName/deliveryId
+same logical delivery + changed payload = invariant violation
+```
+
+Resend `invalid_idempotent_request` terminal/non-retryable, `concurrent_idempotent_requests` retryable olarak Adım 8'de kesinleştirilmeli; source correction Adım 9'a bırakılmalıdır.
 
 ---
 
@@ -1181,6 +1205,8 @@ Sonuç:
 ```
 
 İki refresh-reuse notice consumer'ın `batchSize: 10` değeri Adım 6–8 retry/email idempotency analizi tamamlanmadan final kabul edilmemelidir.
+
+Email-confirmation path'lerinde bulunan mutable-name/provider-key riski workerOptions problemi değildir; ayrı Adım 7–8 retry/idempotency bulgusudur ve bu 18/2 assessment sayısını değiştirmez.
 
 Bu nedenle criterion henüz final olarak kapatılmamıştır.
 
@@ -1284,6 +1310,19 @@ low      → poll 30s / notify-poll 60s
 `pollingIntervalSeconds` listener-unavailable fallback'tir; `notifyPollingIntervalSeconds` healthy-listener retry / delayed / redrive backstop'udur.
 
 Bu ayrımın nedeni LISTEN/NOTIFY'ın retry/deferred/redrive maturity event'lerini tek başına wake-up garantisiyle kapsamamasıdır. Standardization source/config'e Adım 9'da uygulanacaktır.
+
+### Adım 7–8'e taşınan email-idempotency bulgusu
+
+Worker/dispatch audit sonucunu değiştirmeyen ayrı bir retry-safety bulgusu vardır:
+
+```text
+UserEmailConfirmationConsumer
+AdminEmailConfirmationConsumer
+UserRefreshReuseNoticeConsumer
+AdminRefreshReuseNoticeConsumer
+```
+
+retry sırasında mutable account state'ten payload üretebilir. Current `queueName/deliveryId/contentHash` provider key modeli bu drift'i yeni provider identity'ye çevirebilir. Target identity `queueName/deliveryId` olarak belirlenmiştir; ayrıntılı payload-stability ve provider `409` davranışı Adım 7–8'de doğrulanacaktır.
 
 ### Source/config değişikliği
 
