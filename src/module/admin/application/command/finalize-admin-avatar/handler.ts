@@ -85,10 +85,8 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
         switch (deliveryState) {
             case AvatarDeliveryState.MISSING:
                 throw new TerminalJobException('The admin has no attached avatar.');
-
             case AvatarDeliveryState.SUPERSEDED:
                 return;
-
             case AvatarDeliveryState.FINALIZED:
                 // Never recopy a source recreated through a still-valid PUT URL after cleanup.
                 if ((await this.findObject(destinationKey)) === null) {
@@ -98,10 +96,8 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
                 await this.storagePort.deleteObject(sourceKey);
 
                 return;
-
             case AvatarDeliveryState.PENDING:
                 break;
-
             default:
                 this.assertNeverDeliveryState(deliveryState);
         }
