@@ -439,6 +439,24 @@ Email retry / delivery guarantee özeti.
 
 # Implementation Aşaması
 
+## Implementation ön koşulu — Adım dokümanlarını yeniden incele
+
+Source/config implementation'a başlamadan önce Adım 1–8 için üretilen tüm çalışma dokümanları **tek tek ve dikkatle yeniden okunmalıdır**.
+
+Bu dokümanlar yalnız audit çıktısı değildir; implementation sırasında uygulanması gereken:
+
+- doğrulanmış architecture kararlarını,
+- consumer bazındaki transaction / retry değerlendirmelerini,
+- worker profile ve dispatch kararlarını,
+- açık riskleri ve sonraki adıma bırakılmış review noktalarını,
+- correction ve regression-test gereksinimlerini
+
+taşır.
+
+Implementation yalnız ana plandaki özet maddelere dayanarak yapılmamalıdır. Adım dosyalarındaki daha ayrıntılı veya daha sonra refine edilmiş kararlar implementation için authoritative çalışma girdisi olarak ele alınmalı; birbirleriyle ve mevcut source ile birlikte yeniden doğrulanmalıdır.
+
+Her implementation değişikliği için ilgili kararın hangi adım dokümanından geldiği anlaşılır olmalı ve önceki audit kararları sessizce değiştirilmemelidir. Yeni bir bulgu mevcut kararı geçersiz kılıyorsa önce ilgili audit sonucu / çalışma dokümanı güncellenmeli, ardından implementation yapılmalıdır.
+
 ## Adım 9 — Audit sonucundaki hataları sınıflandır ve düzelt
 
 İlk sekiz adımdan çıkan problemleri şu kategorilerde sınıflandır:
