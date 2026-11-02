@@ -478,6 +478,27 @@ Dört avatar consumer path'i retry sırasında:
 
 Bu mevcut retry-safety mekanizmasının önemli bir parçasıdır; Adım 6'da crash windows tek tek test edilmelidir.
 
+### Sonradan güncelleme notu — Adım 6 / Issue #30
+
+Yukarıdaki Adım 1 satırları ilk snapshot'ın observation'ları olarak korunmuştur. Daha sonraki Adım 6 concurrency incelemesi retry-safety interpretation'ını şu şekilde refine etmiştir:
+
+- `UserAvatarReplaceConsumer` → **unsafe — #30**
+- `AdminAvatarReplaceConsumer` → **unsafe — #30**
+- `UserAvatarFinalizeConsumer` → **safe-to-repeat for the failure windows verified in #28; broader lifecycle review remains in #30**
+- `AdminAvatarFinalizeConsumer` → **safe-to-repeat for the failure windows verified in #28; broader lifecycle review remains in #30**
+
+Replace consumer'larda normal same-delivery copy / commit / cleanup reconciliation güvenlidir; ancak `SUPERSEDED` kararı sonrası destructive cleanup, hâlâ geçerli eski profile-avatar upload proof ile aynı avatarın tekrar seçilmesiyle yarışabilir. Bu cross-cutting defect **Issue #30** altında takip edilir.
+
+Finalize consumer'larda aynı somut race mevcut source üzerinde doğrulanmadı:
+
+- `SUPERSEDED` state'te S3 cleanup yapmadan return ederler;
+- user initial registration identity'si mevcut hesaba profile-avatar proof replay'iyle yeniden bağlanamaz;
+- admin initial activation/invite state'i activation sırasında tüketildiğinden aynı initial avatar delivery'si replay ile tekrar selected hale getirilemez.
+
+Bu nedenle Step 6 kapsamında `safe-to-repeat` kalırlar; ancak bu sonuç yalnız #28'de doğrulanan retry/crash/DLQ-redrive failure window'ları içindir. **Issue #30 tüm user/admin avatar lifecycle'ını, finalize path'leri dahil, yeniden inceleyecek ve gerekirse bu sonucu supersede edecektir.**
+
+Bu güncelleme yalnız retry-safety classification'ını refine eder; Adım 1'deki transaction mode, workerOptions ve effect-ordering değerlendirmelerini değiştirmez.
+
 ## 5. LISTEN/NOTIFY dispatch kararı correctness semantics'i değiştirmiyor
 
 Step 1 sırasında alınan `LISTEN/NOTIFY` kararı latency / polling optimizasyonudur; retry correctness mekanizması değildir.

@@ -337,16 +337,22 @@ Non-transactional transaction/effect ordering audit sonucu.
 
 ## Adım 6 — Her consumer için retry failure-window analizi yap
 
-Her consumer için özellikle şu senaryoyu incele:
+Her consumer için yalnız normal retry'ı değil, şu zincirin tamamını incele:
 
 ```text
-business work succeeds
+business work / external effect succeeds
         ↓
 process crashes / job completion fails
         ↓
 pg-boss delivery retries
         ↓
-consumer runs again
+retry'lar tükenir
+        ↓
+shared DLQ
+        ↓
+daha sonra redrive
+        ↓
+aynı logical delivery tekrar çalışır
 ```
 
 İki ana vaka:
@@ -363,7 +369,14 @@ external effect başarılı
 job completion başarısız
 ```
 
-Her consumer'ın tekrar delivery geldiğinde nasıl davrandığını belirle.
+Ayrıca DLQ/redrive sırasında:
+
+- physical pg-boss job ID değişebilir;
+- payload içindeki `deliveryId` / logical identity'nin korunup korunmadığını doğrula;
+- redrive gecikmesinin external idempotency/dedup retention süresini aşabileceğini hesaba kat;
+- normal retry'da güvenli görünen bir effect'in geç redrive'da tekrar üretilebildiği durumları `unsafe` olarak işaretle.
+
+Her consumer'ın normal retry ve DLQ/redrive sonrasında nasıl davrandığını belirle.
 
 ### Çıktı
 
@@ -377,9 +390,11 @@ safe-to-repeat
 unsafe
 ```
 
+`deduplicated` classification yalnız bounded provider retention'a dayanıyorsa bunu kalıcı/unbounded guarantee gibi kullanma.
+
 ### İlgili acceptance criterion
 
-- [ ] Every consumer is safe when committed work or an external effect succeeds but job completion fails and the delivery is retried.
+- [ ] Every consumer is classified for normal retry and DLQ/redrive safety; defects owned by Issue #28 are corrected, and cross-cutting defects intentionally outside this issue are linked to dedicated follow-up issues.
 
 ---
 
@@ -399,6 +414,8 @@ explicitly safe to repeat
 
 Stable `deliveryId` veya başka logical operation identity kullanılıyorsa bunun doğru semantiğe sahip olduğunu doğrula.
 
+DLQ/redrive sırasında physical job identity değişse bile logical delivery identity'nin korunması gereken path'lerde bunu ayrıca doğrula.
+
 ### Email logical-delivery invariant
 
 Email delivery için hedef identity şu olmalıdır:
@@ -413,7 +430,7 @@ provider idempotency key
 
 Kurallar:
 
-- aynı logical email delivery retry edildiğinde aynı `deliveryId` kullanılmalı;
+- aynı logical email delivery retry/redrive edildiğinde aynı `deliveryId` kullanılmalı;
 - provider idempotency key'e payload / body hash eklenmemeli;
 - aynı `deliveryId` altında üretilen email payload'ı semantik olarak stabil olmalı;
 - aynı `deliveryId` + farklı payload yeni bir logical delivery sayılmamalı; invariant violation olarak ele alınmalı;
@@ -422,11 +439,11 @@ Kurallar:
 
 ### Çıktı
 
-Retry / dedup guarantee tablosu; email path'leri için logical delivery identity ve payload-stability sonucu dahil.
+Retry / dedup guarantee tablosu; email path'leri için logical delivery identity, DLQ/redrive identity ve payload-stability sonucu dahil.
 
 ### İlgili acceptance criterion
 
-- [ ] Repeated external effects are idempotent, deduplicated where supported, or explicitly documented as safely repeatable.
+- [ ] Repeated external effects are idempotent, deduplicated where supported, or explicitly documented as safely repeatable across retry and DLQ/redrive.
 
 ---
 
@@ -446,7 +463,7 @@ exactly-once email delivery
 → garanti edilmez
 ```
 
-Tüm email consumer'larda aynı `deliveryId` retry'ının aynı `from / to / subject / html` semantics'ini üretip üretmediğini doğrula.
+Tüm email consumer'larda aynı `deliveryId` retry/redrive'ının aynı `from / to / subject / html` semantics'ini üretip üretmediğini doğrula.
 
 Özellikle mevcut audit bulgusunu tek tek doğrula:
 
@@ -472,7 +489,7 @@ Resend davranışı application semantics'ine açıkça çevrilmelidir:
 ```text
 same key + same payload
 → previous/cached provider result
-→ duplicate physical send yok
+→ retention süresi içinde duplicate physical send yok
 
 same key + different payload
 → 409 invalid_idempotent_request
@@ -486,7 +503,18 @@ same key + different payload
 
 `invalid_idempotent_request` normal retry döngüsüne bırakılmamalıdır. Bunun queue-layer exception'ını doğrudan email adapter'a sızdırmadan hangi application-level error classification ile terminal disposition'a çevrileceği bu adımda kesinleştirilmelidir.
 
-Provider idempotency retention süresinin sınırlı olduğu dikkate alınmalı; provider key tek başına sınırsız exactly-once guarantee olarak kabul edilmemelidir.
+Provider idempotency retention süresi sınırlıdır. Bu nedenle:
+
+```text
+same deliveryId
+→ DLQ
+→ retention süresinden daha geç redrive
+→ aynı provider key
+→ provider eski key'i artık hatırlamıyor olabilir
+→ duplicate physical send mümkün
+```
+
+Bu risk tüm email consumer'ları için değerlendirilmelidir; stable payload tek başına unbounded dedup guarantee değildir.
 
 Kod veya dokümantasyonda yanlış bir exactly-once varsayımı varsa işaretle.
 
@@ -497,12 +525,13 @@ Email retry / delivery guarantee özeti:
 - consumer bazında payload-stability classification,
 - provider key invariant,
 - retryable / terminal provider-error classification,
-- 24 saatlik provider retention etkisi,
+- provider retention etkisi,
+- DLQ/redrive sonrası duplicate-send riski,
 - Adım 9 correction listesi.
 
 ### İlgili acceptance criterion
 
-- [ ] Email delivery does not claim exactly-once guarantees beyond the provider-supported idempotency behavior.
+- [ ] Email delivery does not claim exactly-once guarantees beyond the provider-supported idempotency behavior, including delayed DLQ/redrive beyond provider retention.
 
 ---
 
@@ -542,6 +571,7 @@ missing deduplication
 email logical-delivery payload drift
 incorrect provider idempotency identity
 incorrect provider retry classification
+provider-retention / delayed-redrive duplicate risk
 incorrect authoritative-state handling
 unjustified workerOptions
 missing / incorrect LISTEN-NOTIFY dispatch
@@ -563,6 +593,8 @@ Gerekirse:
 - `invalid_idempotent_request` sonucunu non-retryable / terminal olarak sınıflandır; normal retry döngüsüne bırakma
 - `concurrent_idempotent_requests` sonucunu retryable transient provider failure olarak koru
 - yeni logical email için yeni `deliveryId` üretildiğini ve aynı `deliveryId` altında payload drift'in yeni provider identity üretmediğini garanti et
+- Adım 8 sonucuna göre provider retention süresini aşan delayed DLQ/redrive için gerekli duplicate-effect stratejisini uygula veya açıkça sınırlandır
+- `UserAvatarReplaceConsumer` / `AdminAvatarReplaceConsumer` için bulunan `SUPERSEDED` cleanup + replayable upload-proof race'ini Issue #28 içinde düzeltme; remediation Issue #30 scope'undadır
 - `workerOptions` değerlerini workload ve kapasite gerekçesine göre güncelle
 - pg-boss `LISTEN/NOTIFY` wake-up path'ini implemente et
 - custom job-queue database adapter'a gerekli listener desteğini ekle
@@ -593,6 +625,9 @@ Temel senaryolar:
 ```text
 DB work succeeds → completion fails → retry
 external effect succeeds → completion fails → retry
+retry exhaustion → shared DLQ
+DLQ redrive → same logical deliveryId
+physical pg-boss job ID may change across redrive
 transaction rolls back
 duplicate delivery
 worker restart
@@ -603,10 +638,11 @@ LISTEN/NOTIFY immediate wake-up
 missed notification → safety-net polling recovery
 listener unavailable → pollingIntervalSeconds fallback
 multi-node notification → single successful job claim
-same email delivery + same payload → same provider key / duplicate send yok
+same email delivery + same payload → same provider key
 same email delivery + different payload → 409 invalid_idempotent_request → terminal
 409 concurrent_idempotent_requests → retryable
 new logical email delivery → new deliveryId / new provider key
+delayed email redrive beyond provider retention → selected application strategy is enforced
 ```
 
 Transactional consumer için ayrıca:
@@ -625,11 +661,12 @@ Non-transactional consumer için commit-dependent external effect'in commit önc
 
 Worker settlement için ayrıca non-transactional batch'te bir job failure'ının diğer job disposition'larını topluca fail ettirmediğini doğrula. Generic batch parallelization eklenmediğini ve transactional consumer'ların `batchSize: 1` invariant'ını koruduğunu test et.
 
-Email regression testlerinde provider key'in yalnız `queueName/deliveryId` ile üretildiğini; payload drift'in yeni key üretmek yerine terminal conflict'e dönüştüğünü; concurrent idempotency conflict'in ise retry edildiğini doğrula.
+Email regression testlerinde provider key'in yalnız `queueName/deliveryId` ile üretildiğini; payload drift'in yeni key üretmek yerine terminal conflict'e dönüştüğünü; concurrent idempotency conflict'in retry edildiğini; DLQ/redrive'ın logical `deliveryId`'yi koruduğunu doğrula.
 
 ### İlgili acceptance criterion
 
 - [ ] Regression coverage verifies the relevant transaction and retry-safety guarantees for corrected or high-risk consumer paths.
+- [ ] Regression coverage verifies retry exhaustion, DLQ/redrive logical identity, and the selected delayed-redrive external-effect strategy.
 - [ ] Regression coverage verifies notification wake-up, missed-notification recovery, listener fallback, and safe multi-node claiming.
 
 ---
@@ -645,10 +682,12 @@ Dokümante edilmesi gereken temel kurallar:
 - `start()` ne zaman kullanılır?
 - external effect nasıl ve ne zaman yapılır?
 - retry guarantee nedir?
+- retry exhaustion, DLQ ve redrive nasıl çalışır?
+- physical job identity ile logical `deliveryId` arasındaki fark nedir?
 - logical delivery identity nasıl kullanılır?
 - email provider idempotency key neden `queueName/deliveryId` olur ve payload drift nasıl invariant violation olarak ele alınır?
 - Resend `invalid_idempotent_request` ile `concurrent_idempotent_requests` nasıl farklı sınıflandırılır?
-- provider idempotency retention sınırı exactly-once guarantee'i nasıl etkiler?
+- provider idempotency retention sınırı ve delayed redrive exactly-once guarantee'i nasıl etkiler?
 - `workerOptions` nasıl workload, latency, replica sayısı ve dependency kapasitesine göre ayarlanır?
 - `critical / high / medium / low` polling profilleri ve consumer-profile eşlemesi nasıl uygulanır?
 - `LISTEN/NOTIFY`, safety-net polling ve listener-unavailable fallback nasıl çalışır?
@@ -662,9 +701,9 @@ Jobs & Messaging ve Data & State guidance, doğrulanmış implementation ile uyu
 
 ---
 
-## Adım 12 — Final acceptance review
+## Adım 12 — Acceptance review
 
-Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanır:
+Issue kapatılmadan önce acceptance criteria tek tek doğrulanır:
 
 - [ ] Tüm durable queue consumer'lar inventory'de ve handler / pipeline davranışlarıyla birlikte incelendi.
 - [ ] Her transactional consumer için atomic consumer write + job completion gereksiniminin justification'ı mevcut.
@@ -677,12 +716,36 @@ Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanır:
 - [ ] Transactional consumer path'lerinde shared transaction içinde external business effect yok.
 - [ ] Non-transactional consumer path'lerinde gerekli DB transaction'ları `ITransactionPort.start()` kullanıyor.
 - [ ] Commit-dependent external effect'ler commit sonrasında çalışıyor.
-- [ ] Her consumer, committed work veya external effect başarılı olup job completion başarısız olduğunda retry-safe.
-- [ ] Repeated external effect'ler idempotent, deduplicated veya açıkça safe-to-repeat.
+- [ ] Her consumer normal retry ve DLQ/redrive safety açısından sınıflandırıldı; Issue #28 scope'undaki defect'ler düzeltildi, cross-cutting defect'ler dedicated issue'lara bağlandı.
+- [ ] DLQ/redrive sırasında logical delivery identity korunuyor; physical job identity ile karıştırılmıyor.
+- [ ] Repeated external effect'ler idempotent, deduplicated veya açıkça safe-to-repeat; aksi durumda consumer açıkça `unsafe` sınıflandırılıp dedicated follow-up issue'ya bağlanıyor. Bounded provider retention unbounded guarantee olarak kabul edilmiyor.
 - [ ] Email delivery provider idempotency'nin ötesinde exactly-once guarantee iddia etmiyor.
+- [ ] Delayed email redrive'ın provider retention'ı aşma riski için belirlenen application davranışı uygulanmış ve test edilmiş.
 - [ ] Bulunan incorrect transaction mode, transaction-boundary veya retry davranışları düzeltildi.
 - [ ] Corrected veya high-risk consumer path'leri regression testlerle korunuyor.
 - [ ] Jobs & Messaging ve Data & State dokümantasyonu doğrulanmış implementation ile uyumlu.
+
+---
+
+## Adım 13 — `docs/idempotency-retry-inventory.md` dosyasını final durumla güncelle
+
+Bu dosyayı audit/implementation devam ederken parça parça değiştirme. Adım 1–12 sonuçları ve gerçek implementation kesinleştikten sonra tek seferde final davranışla hizala.
+
+Güncellemede özellikle:
+
+- HTTP request retry-safety ile downstream queue consumer retry-safety'yi birbirinden açıkça ayır;
+- endpoint seviyesinde `Retry-safe: Yes` ifadesinin downstream external effect için exactly-once anlamına gelmediğini belirt;
+- Issue Ownership altında `#28` kapsamını queue retry, DLQ/redrive ve external-effect deduplication safety'yi içerecek şekilde güncelle;
+- durable email work üreten ilgili HTTP endpoint'lerin `Tracked by` alanına, final implementation'a göre `#28` ownership'i ekle;
+- physical pg-boss job ID ile logical `deliveryId` farkını ve DLQ/redrive sırasında `deliveryId`'nin korunması gerektiğini belirt;
+- provider idempotency retention'ın sınırlı olduğunu ve delayed redrive'ın duplicate external effect üretebileceğini final davranışa göre dokümante et;
+- Maintenance Rules'a, durable job oluşturan endpoint'lerde HTTP idempotency ile consumer delivery safety'nin ayrı sınıflandırılması gerektiğini ekle;
+- dosyadaki tüm satırları final source ve Adım 1–12 kararlarıyla yeniden doğrula; yalnız yeni email bulgularını patch edip diğer stale satırları bırakma.
+- Issue #30 çözülmemişse avatar upload / downstream consumer safety sınırını final inventory'de yanlışlıkla `retry-safe` / exactly-once gibi göstermeme; gerekli cross-reference'i koru.
+
+### İlgili acceptance criterion
+
+- [ ] `docs/idempotency-retry-inventory.md` final implementation ile uyumludur ve HTTP retry-safety ile downstream queue/DLQ-redrive safety'yi birbirine karıştırmaz.
 
 ---
 
@@ -699,7 +762,7 @@ Adım 4  Transactional external effects
    ↓
 Adım 5  Non-transactional effect ordering
    ↓
-Adım 6  Retry failure windows
+Adım 6  Retry / DLQ / redrive failure windows
    ↓
 Adım 7  Authoritative state / dedup
    ↓
@@ -713,7 +776,45 @@ Adım 10 Regression tests
    ↓
 Adım 11 Documentation
    ↓
-Adım 12 Final acceptance review
+Adım 12 Acceptance review
+   ↓
+Adım 13 Final idempotency/retry inventory update
 ```
 
 Implementation'a **Adım 1–8 tamamlanmadan başlanmamalıdır**.
+
+---
+
+## Takip issue'su — #30 Avatar upload proof lifecycle ve stale cleanup race
+
+Issue #28 audit'i sırasında `UserAvatarReplaceConsumer` ve `AdminAvatarReplaceConsumer` için cross-cutting bir race doğrulandı.
+
+```text
+consumer delivery'yi SUPERSEDED okur
+→ eski upload proof hâlâ geçerlidir
+→ aynı avatar tekrar selected/pending olabilir
+→ stale consumer destructive S3 cleanup yapabilir
+```
+
+Bu nedenle iki consumer Issue #28 içinde koşulsuz `safe-to-repeat` sayılmamalı; classification:
+
+```text
+UserAvatarReplaceConsumer  → unsafe — tracked by #30
+AdminAvatarReplaceConsumer → unsafe — tracked by #30
+```
+
+Normal same-delivery copy/commit/cleanup reconciliation davranışı korunmalıdır; ancak remediation Issue #28 scope'una alınmamalıdır.
+
+`UserAvatarFinalizeConsumer` ve `AdminAvatarFinalizeConsumer` #28'de doğrulanan retry/crash/DLQ-redrive window'larında `safe-to-repeat` kalır. Bu sonuç global avatar-lifecycle safety garantisi değildir; **Issue #30 finalize path'leri de yeniden incelemeli ve gerekirse bu classification'ı supersede etmelidir.**
+
+**Issue #30 kapsamında:**
+
+- user ve admin avatar upload lifecycle gerektiği kadar uçtan uca yeniden incelenmeli;
+- upload initiation, proof validation, profile update, replacement/finalization ve destructive cleanup birlikte değerlendirilmelidir;
+- `UserAvatarFinalizeConsumer` / `AdminAvatarFinalizeConsumer` için #28'de verilen scoped `safe-to-repeat` sonucu broader lifecycle ve concurrency senaryolarına karşı yeniden doğrulanmalıdır;
+- upload proof'ların replayable kalması ile single-use / consumed proof modeline geçilmesi karşılaştırılmalıdır;
+- başka bir authoritative coordination modeli daha uygunsa değerlendirilmelidir;
+- stale cleanup'ın delete anında selected olan pending/permanent avatarı silememesi garanti edilmelidir;
+- user/admin flow'ları için concurrency regression testleri eklenmelidir.
+
+Issue #28 yalnız bulguyu doğru sınıflandırır ve #30'a bağlar; implementation #30'a aittir.
