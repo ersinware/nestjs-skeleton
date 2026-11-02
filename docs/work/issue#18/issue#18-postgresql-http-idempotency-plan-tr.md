@@ -45,9 +45,15 @@ durable coordination
 queue consumer
 transaction correctness
 retry / dedup safety
+
+#30
+avatar upload-proof lifecycle
+stale cleanup / reselection race
 ```
 
 Bu concern'ler aynı flow üzerinde birlikte bulunabilir ancak ayrı sorumluluklar olarak ele alınmalıdır.
+
+#30 tarafından sahiplenilen avatar upload-proof / cleanup lifecycle problemi #18 kapsamında çözülmez. #18 mevcut conditional classification'ı korur ve bu açığı request-level idempotency ile maskelemeye çalışmaz.
 
 ---
 
@@ -106,6 +112,15 @@ Gerçek davranış üzerinden kontrol et:
 - response kaybolduğunda client'ın original logical sonucu yeniden elde etmesi gerekiyor mu?
 
 Retry-safe olması, retry'ın aynı HTTP response'u döndürmesi gerektiği anlamına gelmez.
+
+Ayrı ve açık bir issue tarafından sahiplenilen unresolved bir alt-flow, inventory'de conditional boundary olarak tutulabilir. Bu durum yalnız ilgili alt-flow için istisnadır ve #18 kapsamındaki diğer classification'ları değiştirmez.
+
+Mevcut istisna:
+
+- `PATCH /user/me`: name-only mutation retry-safe; avatar mutation lifecycle #30 tarafından takip edilir.
+- `PATCH /admin/me`: name-only mutation retry-safe; avatar mutation lifecycle #30 tarafından takip edilir.
+- Bu conditional avatar boundary'si Adım 2'nin tamamlanmasını bloke etmez.
+- #18 bu avatar lifecycle açığını request-level idempotency ekleyerek kapatmaya çalışmaz.
 
 ### Çıktı
 
@@ -476,6 +491,7 @@ Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanmalı:
 
 - [ ] Tüm mutating production HTTP endpoint'ler ortak inventory'de ve retry/idempotency açısından sınıflandırılmış.
 - [ ] #18 kapsamındaki PostgreSQL-backed concern'ler doğru şekilde işaretlenmiş.
+- [ ] #30 tarafından sahiplenilen avatar lifecycle riski conditional olarak korunuyor ve #18 tarafından retry-safe / exactly-once olarak yanlış temsil edilmiyor.
 - [ ] PostgreSQL mutation sonrası timeout / connection loss ambiguous outcome olarak ele alınıyor.
 - [ ] Unsafe ambiguous HTTP mutation'lar idempotency protection olmadan otomatik retry edilmiyor.
 - [ ] Aynı idempotent logical operation business mutation'ı birden fazla kez uygulamıyor.
