@@ -22,25 +22,27 @@ import {
     TOKEN_ERROR_REPORTER_PORT,
     type IErrorReporterPort,
 } from 'src/core/observability/error-reporter';
+import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Owns the pg-boss lifecycle and dedicated database pool.
  */
 @Module({
-    imports: [ErrorReporterModule],
+    imports: [ErrorReporterModule, LoggerModule],
     providers: [
         {
             provide: JobQueueDatabaseAdapter,
-            useFactory: (configService: ConfigService): JobQueueDatabaseAdapter =>
+            useFactory: (configService: ConfigService, loggerPort: ILoggerPort): JobQueueDatabaseAdapter =>
                 new JobQueueDatabaseAdapter(
                     createDatabasePool(
                         configService,
                         configService.getOrThrow<string>(ENV.DATABASE_URL),
                         configService.getOrThrow<number>(ENV.JOB_QUEUE_POOL_SIZE),
                     ),
+                    loggerPort,
                 ),
-            inject: [ConfigService],
+            inject: [ConfigService, TOKEN_LOGGER_PORT],
         },
         {
             provide: TOKEN_JOB_QUEUE_CLIENT,
@@ -53,6 +55,7 @@ import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
                     db: jobQueueDatabaseAdapter,
                     migrate: configService.getOrThrow<Environment>(ENV.NODE_ENV) !== Environment.PRODUCTION,
                     schedule: false,
+                    useListenNotify: true,
                 });
 
                 boss.on('error', (error) => {
@@ -63,8 +66,14 @@ import { ExceptionKind, isExceptionOfKind } from 'src/shared/exception';
 
                 try {
                     await boss.start();
-                    await provisionJobQueue(boss, JOB_QUEUE_DEAD_LETTER, JOB_QUEUE_DEAD_LETTER_OPTIONS);
-                    await provisionJobQueue(boss, JOB_QUEUE_DEAD_LETTER_REDRIVE, JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS);
+                    await provisionJobQueue(boss, JOB_QUEUE_DEAD_LETTER, {
+                        ...JOB_QUEUE_DEAD_LETTER_OPTIONS,
+                        notify: false,
+                    });
+                    await provisionJobQueue(boss, JOB_QUEUE_DEAD_LETTER_REDRIVE, {
+                        ...JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS,
+                        notify: true,
+                    });
 
                     return boss;
                 } catch (error) {

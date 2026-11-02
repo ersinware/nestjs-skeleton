@@ -7,13 +7,20 @@ import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
-import { TOKEN_EMAILER_PORT, escapeHtml, type EmailPayload, type IEmailerPort } from 'src/core/email';
+import {
+    EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE,
+    TOKEN_EMAILER_PORT,
+    escapeHtml,
+    type EmailPayload,
+    type IEmailerPort,
+} from 'src/core/email';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { SendUserActivationCommand } from 'src/module/user/application/command/send-user-activation/command';
 import {
     TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT,
     type IGetUserActivationRecipientPort,
 } from 'src/module/user/application/query/get-user-activation-recipient/port';
+import { ExceptionKind, TerminalJobException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Sends activation email only while the persisted request remains eligible. Activation must recheck
@@ -49,20 +56,28 @@ export class SendUserActivationCommandHandler implements ICommandHandler<SendUse
             return;
         }
 
-        await this.emailerPort.sendEmail(
-            this.buildActivationEmail(
-                recipient.email,
-                recipient.name,
-                await this.tokenPort.generateActivationToken({
-                    sub: command.id,
-                    jti: recipient.activationId,
-                    exp: Math.floor(recipient.activationExpiresAt.getTime() / 1000),
-                    activationRevocationVersion: recipient.activationRevocationVersion,
-                }),
-                recipient.activationExpiresAt,
-            ),
-            { queueName: command.queueName, deliveryId: command.deliveryId },
-        );
+        try {
+            await this.emailerPort.sendEmail(
+                this.buildActivationEmail(
+                    recipient.email,
+                    recipient.name,
+                    await this.tokenPort.generateActivationToken({
+                        sub: command.id,
+                        jti: recipient.activationId,
+                        exp: Math.floor(recipient.activationExpiresAt.getTime() / 1000),
+                        activationRevocationVersion: recipient.activationRevocationVersion,
+                    }),
+                    recipient.activationExpiresAt,
+                ),
+                { queueName: command.queueName, deliveryId: command.deliveryId },
+            );
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_CONFLICT)) {
+                throw new TerminalJobException(EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE, { cause: error });
+            }
+
+            throw error;
+        }
     }
 
     /**

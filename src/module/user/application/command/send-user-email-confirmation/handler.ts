@@ -7,7 +7,13 @@ import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
-import { TOKEN_EMAILER_PORT, escapeHtml, type EmailPayload, type IEmailerPort } from 'src/core/email';
+import {
+    EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE,
+    TOKEN_EMAILER_PORT,
+    escapeHtml,
+    type EmailPayload,
+    type IEmailerPort,
+} from 'src/core/email';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { SendUserEmailConfirmationCommand } from 'src/module/user/application/command/send-user-email-confirmation/command';
 import {
@@ -15,6 +21,7 @@ import {
     type IGetUserEmailConfirmationRecipientPort,
 } from 'src/module/user/application/query/get-user-email-confirmation-recipient/port';
 import { PrincipalType } from 'src/shared/domain/principal';
+import { ExceptionKind, TerminalJobException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Skips stale deliveries; confirmation must recheck state because delivery can race with replacement.
@@ -52,27 +59,35 @@ export class SendUserEmailConfirmationCommandHandler implements ICommandHandler<
             return;
         }
 
-        await this.emailerPort.sendEmail(
-            this.buildConfirmationEmail(
-                recipient.pendingEmail,
-                recipient.name,
-                await this.tokenPort.generateEmailConfirmationToken({
-                    sub: command.id,
-                    principalType: PrincipalType.USER,
-                    jti: recipient.pendingEmailRequestId,
-                    exp: Math.floor(recipient.pendingEmailExpiresAt.getTime() / 1000),
-                    emailRevocationVersion: recipient.pendingEmailRevocationVersion,
-                }),
-            ),
-            { queueName: command.queueName, deliveryId: command.deliveryId },
-        );
+        try {
+            await this.emailerPort.sendEmail(
+                this.buildConfirmationEmail(
+                    recipient.pendingEmail,
+                    command.recipientName,
+                    await this.tokenPort.generateEmailConfirmationToken({
+                        sub: command.id,
+                        principalType: PrincipalType.USER,
+                        jti: recipient.pendingEmailRequestId,
+                        exp: Math.floor(recipient.pendingEmailExpiresAt.getTime() / 1000),
+                        emailRevocationVersion: recipient.pendingEmailRevocationVersion,
+                    }),
+                ),
+                { queueName: command.queueName, deliveryId: command.deliveryId },
+            );
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_CONFLICT)) {
+                throw new TerminalJobException(EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE, { cause: error });
+            }
+
+            throw error;
+        }
     }
 
     /**
      * Encodes the token as a URL parameter before escaping the link for HTML.
      *
      * @param to Pending address from the persisted request
-     * @param name Display name used in the greeting
+     * @param name Display name captured when the request was created
      * @param token JWT reproduced from fixed request metadata
      * @returns Confirmation email with the trusted frontend link
      */

@@ -94,6 +94,7 @@ describe('Admin email change invariants', () => {
                 aggregateId: account.id,
                 deliveryId: account.pendingEmailRequestId,
                 queueName: AdminJobQueue.EMAIL_CONFIRMATION,
+                payload: { recipientName: initial.name },
             },
         ]);
     });
@@ -111,6 +112,19 @@ describe('Admin email change invariants', () => {
         expect(() => account.confirmEmailChange(previous, notificationId)).toThrow(InvalidInputException);
         expect(account.toSnapshot()).toEqual(before);
         expect(account.pullJobs()).toEqual([]);
+    });
+
+    it('captures mutable recipient facts and gives each logical reuse notice a new delivery identity', () => {
+        account.revokeSessions(SessionRevocationReason.REFRESH_REUSE);
+        const first = account.pullJobs().find((job) => job.queueName === String(AdminJobQueue.REFRESH_REUSE_NOTICE))!;
+        expect(first.payload).toEqual({ recipientEmail: initial.email, recipientName: initial.name });
+        account.update('Later name');
+        account.pullJobs();
+        account.revokeSessions(SessionRevocationReason.REFRESH_REUSE);
+        const second = account.pullJobs().find((job) => job.queueName === String(AdminJobQueue.REFRESH_REUSE_NOTICE))!;
+        expect(second.deliveryId).not.toBe(first.deliveryId);
+        expect(second.payload).toEqual({ recipientEmail: initial.email, recipientName: 'Later name' });
+        expect(first.payload).toEqual({ recipientEmail: initial.email, recipientName: initial.name });
     });
 
     it('consumes the request once, revokes sessions, and queues the immutable notice identity', () => {

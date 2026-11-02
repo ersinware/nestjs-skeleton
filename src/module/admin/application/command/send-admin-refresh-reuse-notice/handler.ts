@@ -6,15 +6,17 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import type { EmailPayload } from 'src/core/email';
-import { TOKEN_EMAILER_PORT, escapeHtml, type IEmailerPort } from 'src/core/email';
-import { SendAdminRefreshReuseNoticeCommand } from 'src/module/admin/application/command/send-admin-refresh-reuse-notice/command';
 import {
-    TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT,
-    type IGetAdminNoticeRecipientPort,
-} from 'src/module/admin/application/query/get-admin-notice-recipient/port';
+    EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE,
+    TOKEN_EMAILER_PORT,
+    escapeHtml,
+    type IEmailerPort,
+} from 'src/core/email';
+import { SendAdminRefreshReuseNoticeCommand } from 'src/module/admin/application/command/send-admin-refresh-reuse-notice/command';
+import { ExceptionKind, TerminalJobException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
- * Sends the notice using the admin's current contact details.
+ * Sends the notice to the immutable event-time address regardless of later account deletion.
  */
 @CommandHandler(SendAdminRefreshReuseNoticeCommand)
 export class SendAdminRefreshReuseNoticeCommandHandler implements ICommandHandler<
@@ -24,38 +26,35 @@ export class SendAdminRefreshReuseNoticeCommandHandler implements ICommandHandle
     /**
      * Initializes the handler with the required ports.
      *
-     * @param noticeRecipientPort The port used to read the admin's current contact details
      * @param emailerPort The port used to send the security notice
      */
-    constructor(
-        @Inject(TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT)
-        private readonly noticeRecipientPort: IGetAdminNoticeRecipientPort,
-        @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
-    ) {}
+    constructor(@Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort) {}
 
     /**
-     * Sends the notice unless the admin was deleted after the job was created.
+     * Sends the committed security notice to its captured recipient.
      *
      * @param command The command payload
      */
     async execute(command: SendAdminRefreshReuseNoticeCommand) {
-        const recipient = await this.noticeRecipientPort.getNoticeRecipient(command.id);
+        try {
+            await this.emailerPort.sendEmail(this.buildSecurityEmail(command.recipientEmail, command.recipientName), {
+                queueName: command.queueName,
+                deliveryId: command.deliveryId,
+            });
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_CONFLICT)) {
+                throw new TerminalJobException(EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE, { cause: error });
+            }
 
-        if (!recipient) {
-            return;
+            throw error;
         }
-
-        await this.emailerPort.sendEmail(this.buildSecurityEmail(recipient.email, recipient.name), {
-            queueName: command.queueName,
-            deliveryId: command.deliveryId,
-        });
     }
 
     /**
      * Builds the refresh-token reuse security notice.
      *
      * @param to The recipient's email address
-     * @param name The recipient's display name
+     * @param name Display name captured when the notice was created
      * @returns The email payload to send
      */
     private buildSecurityEmail(to: string, name: string): EmailPayload {

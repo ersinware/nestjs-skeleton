@@ -401,6 +401,19 @@ describe.each(CASES)('$route email change', (context) => {
         });
     });
 
+    it('preserves queued confirmation payload and JWT after a profile-name change', async () => {
+        const before = await state();
+        await pending();
+        const job = (await jobs(context.queues.EMAIL_CONFIRMATION))[0]!;
+        expect(job.data.payload).toEqual({ recipientName: before.name });
+        await deliver(job.data);
+        const first = sendEmail.mock.calls[0]!;
+        expect((await http('PATCH', '', { name: 'Changed after enqueue' })).statusCode).toBe(200);
+        await deliver(job.data);
+        expect(sendEmail.mock.calls[1]).toEqual(first);
+        expect(sendEmail.mock.calls[1]![0].body).not.toContain('Changed after enqueue');
+    });
+
     it('requires authentication and rejects unknown fields in both email endpoints', async () => {
         const before = await state();
         expect(

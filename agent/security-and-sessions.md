@@ -31,6 +31,7 @@
 
 - Owning aggregates alone advance DB counters: `sessionVersion` is the access floor/new-token version; `revocationVersion` is the refresh floor. Permission changes call `retireAccessTokens` (session only), preserving refresh with current permissions. Ban/delete/password/email confirmation/reuse/logout-all call `revokeAllSessions` (increment session, copy to revocation), invalidating earlier tokens subject to propagation below.
 - Auth requests owner revocation through shared Admin/User queue contracts, never invents versions. Logout-all and refresh reuse await the request commit, not completed revocation; preserve this distinction in API responses. Request/completion evidence: [Audit](observability.md#audit). `SessionRevocationReason` selects notices only.
+- Refresh-reuse notices use the job's event-time recipient address/name, even after account deletion.
 - Repeated revocation requests advance counters again and may invalidate sessions opened after an earlier attempt.
 - Full revocation leaves session/grace cleanup to TTL; account-wide sweeps can delete new logins.
 - `generateTokens` creates a fresh UUID v4 `sid`; `refreshTokens` preserves `sid` and `sessionExpiresAt`, replacing `jti`. Never reopen an issued session. All session keys, including version floors, use the complete principal hash tag `{type:id}`; Lua keys share that tag.
@@ -69,7 +70,7 @@
 - Profile updates must not change login email. Email-change requests require current-password proof; reject mismatches before returning target-address conflicts.
 - Confirmation pages must not mutate on GET or expose tokens to third-party scripts/analytics. Use `Referrer-Policy: no-referrer` and remove the token from the address bar after capture.
 - Aggregates own pending request identity, target, expiry, and revocation snapshot; persist no JWT or issuance time. New requests replace prior requests, even for the same target; pending addresses are not reserved.
-- Email confirmation requires an authenticated session whose account ID and principal kind match the proof; never make the endpoint public. Delivery retries must preserve the JWT and deadline; signing-key rotation requires a new request.
+- Email confirmation requires an authenticated session whose account ID and principal kind match the proof; never make the endpoint public. Delivery retries preserve the JWT, deadline, and job-captured recipient name; signing-key rotation requires a new request.
 - Audit confirmation refusals for verified-proof ownership mismatches; invalid/expired proofs or pending requests alone require no refusal audit. Ownership-mismatch evidence identifies the proof owner with `targetId` and `detail.targetPrincipalType`; equal IDs across principal kinds are distinct accounts. Preserve refusal kinds ([Exceptions](exceptions.md#exceptions)).
 - Ineligible confirmation deliveries complete without sending or refusal audits; confirmation must independently recheck current account and request state.
 - Keep the current email and sessions until confirmation. Confirmation consumes the matching, unexpired request at the current revocation version and revokes sessions; the email unique constraint resolves address conflicts.

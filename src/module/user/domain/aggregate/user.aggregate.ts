@@ -629,6 +629,7 @@ export class User extends PrincipalAggregateRoot {
                 deliveryId: this.props.pendingEmailRequestId,
                 aggregateId: this.id,
                 queueName: UserJobQueue.EMAIL_CONFIRMATION,
+                payload: { recipientName: this.props.name },
             },
         ]);
     }
@@ -732,6 +733,7 @@ export class User extends PrincipalAggregateRoot {
                         deliveryId: randomUUID(),
                         aggregateId: this.id,
                         queueName: UserJobQueue.REFRESH_REUSE_NOTICE,
+                        payload: { recipientEmail: this.props.email, recipientName: this.props.name },
                     },
                 ]);
 

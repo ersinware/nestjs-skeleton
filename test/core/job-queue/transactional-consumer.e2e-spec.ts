@@ -21,9 +21,11 @@ import {
     JOB_QUEUE_DEAD_LETTER,
     JOB_QUEUE_DEAD_LETTER_REDRIVE,
     JobQueueModule,
+    JobQueueWorkerProfile,
     type IJobConsumer,
     type Job,
 } from 'src/core/job-queue';
+import { JobQueueDatabaseAdapter } from 'src/core/job-queue/adapter/job-queue-database.adapter';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
@@ -63,7 +65,7 @@ class TransactionalProbeConsumer implements IJobConsumer {
     /**
      * Preserves single-job transactions and prompt probe delivery.
      */
-    readonly workerOptions = { localConcurrency: 3, pollingIntervalSeconds: 1, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 3, batchSize: 1 } as const;
 
     /**
      * Initializes the probe with the transaction-aware dependencies under test.
@@ -137,7 +139,7 @@ class SettlementProbeConsumer implements IJobConsumer {
     /**
      * Preserves independent retry and terminal settlement for each probe delivery.
      */
-    readonly workerOptions = { localConcurrency: 5, pollingIntervalSeconds: 1, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 1, batchSize: 4 } as const;
 
     /**
      * Produces the failure requested by the test payload.
@@ -145,6 +147,9 @@ class SettlementProbeConsumer implements IJobConsumer {
      * @param job Delivery selecting retry or terminal disposition
      */
     consume(job: Job): Promise<void> {
+        if (job.aggregateId === 'complete') {
+            return Promise.resolve();
+        }
         if (job.aggregateId === 'terminal') {
             return Promise.reject(new TerminalJobException('Intentional terminal failure.'));
         }
@@ -367,6 +372,43 @@ describe('Transactional pg-boss consumer', () => {
         }
     });
 
+    it('settles a real mixed non-transactional batch without failing successful peers', async () => {
+        const ids = ['first', 'retry', 'terminal', 'last'].map((deliveryId) => ({
+            data: {
+                deliveryId: `mixed-${deliveryId}`,
+                aggregateId: deliveryId === 'first' || deliveryId === 'last' ? 'complete' : deliveryId,
+            },
+        }));
+        const inserted = await boss.insert(SETTLEMENT_QUEUE, ids, { returnId: true });
+        expect(inserted).toHaveLength(4);
+        try {
+            await expect
+                .poll(
+                    async () =>
+                        Promise.all(
+                            inserted!.map(async (id) => (await boss.findJobs(SETTLEMENT_QUEUE, { id }))[0]?.state),
+                        ),
+                    { timeout: 10_000, interval: 50 },
+                )
+                .toEqual(['completed', 'retry', 'failed', 'completed']);
+            const dead = (await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).filter((job) =>
+                inserted!.includes(job.sourceId!),
+            );
+            expect(dead).toHaveLength(1);
+            expect(dead[0]?.data.deliveryId).toBe('mixed-terminal');
+        } finally {
+            const dead = (await boss.findJobs<Job>(JOB_QUEUE_DEAD_LETTER)).filter((job) =>
+                inserted!.includes(job.sourceId!),
+            );
+            if (dead.length) {
+                await boss.deleteJob(
+                    JOB_QUEUE_DEAD_LETTER,
+                    dead.map((job) => job.id),
+                );
+            }
+        }
+    });
+
     it('rolls application writes and child jobs back before retrying a failed job', async () => {
         const deliveryId = '00000000-0000-7000-8000-000000000001';
         const jobId = await boss.send(PROBE_QUEUE, { deliveryId, aggregateId: FAILURE_AGGREGATE_ID });
@@ -390,6 +432,63 @@ describe('Transactional pg-boss consumer', () => {
             expect.objectContaining({ message: 'Intentional transactional consumer failure.' }),
             expect.objectContaining({ class: 'JobQueueFeatureModule' }),
         );
+    });
+
+    it('rolls business writes, follow-up jobs, and completion back when completion fails, then retries atomically', async () => {
+        const deliveryId = 'completion-failure-then-retry';
+        const adapter = module.get(JobQueueDatabaseAdapter);
+        const begin = adapter.beginTransaction.bind(adapter);
+        let completionFailed = false;
+        vi.spyOn(adapter, 'beginTransaction').mockImplementation(async () => {
+            const transaction = await begin();
+            const execute = transaction.executeSql.bind(transaction);
+            vi.spyOn(transaction, 'executeSql').mockImplementation(async (text, values) => {
+                const result = await execute(text, values);
+                if (!completionFailed && values?.[0] === PROBE_QUEUE && text.includes("state = 'completed'")) {
+                    completionFailed = true;
+                    throw new Error('Injected error after transactional completion SQL');
+                }
+                return result;
+            });
+            return transaction;
+        });
+        const id = await boss.send(
+            PROBE_QUEUE,
+            { deliveryId, aggregateId: 'successful-consumer' },
+            {
+                retryDelay: 0,
+                retryBackoff: false,
+            },
+        );
+        await expect
+            .poll(async () => (await boss.findJobs(PROBE_QUEUE, { id: id! }))[0]?.state, {
+                timeout: 5_000,
+                interval: 25,
+            })
+            .toBe('retry');
+        expect(completionFailed).toBe(true);
+        expect(
+            (await database.execute(sql`SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}`))
+                .rows,
+        ).toEqual([]);
+        expect((await boss.findJobs<Job>(CHILD_QUEUE)).filter((job) => job.data.deliveryId === deliveryId)).toEqual([]);
+        for (const worker of boss.getWipData().filter((worker) => worker.name === PROBE_QUEUE)) {
+            boss.notifyWorker(worker.id);
+        }
+        await expect
+            .poll(async () => (await boss.findJobs(PROBE_QUEUE, { id: id! }))[0]?.state, {
+                timeout: 5_000,
+                interval: 25,
+            })
+            .toBe('completed');
+        expect((await boss.findJobs(PROBE_QUEUE, { id: id! }))[0]?.retryCount).toBe(1);
+        expect(
+            (await database.execute(sql`SELECT id FROM public.job_queue_transaction_probe WHERE id = ${deliveryId}`))
+                .rows,
+        ).toEqual([{ id: deliveryId }]);
+        expect(
+            (await boss.findJobs<Job>(CHILD_QUEUE)).filter((job) => job.data.deliveryId === deliveryId),
+        ).toHaveLength(1);
     });
 
     it('commits application writes, child jobs, and job completion together', async () => {

@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
+import { IJobConsumer, Job, JobQueueWorkerProfile } from 'src/core/job-queue';
 import { SendAdminInviteCommand } from 'src/module/admin/application/command/send-admin-invite/command';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 
@@ -27,7 +27,7 @@ export class AdminInviteConsumer implements IJobConsumer {
     /**
      * Polls infrequent invitations less often while accepting small delivery batches.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 15, batchSize: 5 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

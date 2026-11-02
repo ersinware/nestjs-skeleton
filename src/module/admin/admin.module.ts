@@ -54,7 +54,6 @@ import { TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/admin/appl
 import { TOKEN_GET_ADMIN_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-email-change-notification-recipient/port';
 import { TOKEN_GET_ADMIN_EMAIL_CONFIRMATION_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/port';
 import { TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
-import { TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
 import { GetAdminRefreshStateQueryHandler } from 'src/module/admin/application/query/get-admin-refresh-state/handler';
 import { TOKEN_GET_ADMIN_REFRESH_STATE_PORT } from 'src/module/admin/application/query/get-admin-refresh-state/port';
 import { TOKEN_GET_ADMIN_SESSION_VERSION_PORT } from 'src/module/admin/application/query/get-admin-session-version/port';
@@ -145,7 +144,6 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         { provide: TOKEN_GET_FRESH_ADMIN_BY_ID_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
-        { provide: TOKEN_GET_ADMIN_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReplicaReaderAdapter },
         { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useExisting: TOKEN_LIST_ADMINS_PORT },

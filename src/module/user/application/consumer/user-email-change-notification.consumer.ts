@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
+import { IJobConsumer, Job, JobQueueWorkerProfile } from 'src/core/job-queue';
 import { SendUserEmailChangeNotificationCommand } from 'src/module/user/application/command/send-user-email-change-notification/command';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 
@@ -27,7 +27,7 @@ export class UserEmailChangeNotificationConsumer implements IJobConsumer {
     /**
      * Allows delayed old-address notices and amortizes polling across deliveries.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 30, batchSize: 10 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 5 } as const;
 
     /**
      * Initializes the command pipeline.

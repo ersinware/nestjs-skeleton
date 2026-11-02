@@ -8,13 +8,19 @@ import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
 import type { EmailPayload } from 'src/core/email';
-import { TOKEN_EMAILER_PORT, escapeHtml, type IEmailerPort } from 'src/core/email';
+import {
+    EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE,
+    TOKEN_EMAILER_PORT,
+    escapeHtml,
+    type IEmailerPort,
+} from 'src/core/email';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { SendAdminInviteCommand } from 'src/module/admin/application/command/send-admin-invite/command';
 import {
     TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT,
     type IGetAdminInviteRecipientPort,
 } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
+import { ExceptionKind, TerminalJobException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
  * Emails the activation invitation for a pending admin. Re-reads the account and silently skips one
@@ -51,19 +57,27 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
             return;
         }
 
-        await this.emailerPort.sendEmail(
-            this.buildInviteEmail(
-                recipient.email,
-                recipient.name,
-                await this.tokenPort.generateInviteToken({
-                    sub: command.id,
-                    jti: recipient.inviteId,
-                    exp: Math.floor(recipient.inviteExpiresAt.getTime() / 1000),
-                    inviteRevocationVersion: recipient.inviteRevocationVersion,
-                }),
-            ),
-            { queueName: command.queueName, deliveryId: command.deliveryId },
-        );
+        try {
+            await this.emailerPort.sendEmail(
+                this.buildInviteEmail(
+                    recipient.email,
+                    recipient.name,
+                    await this.tokenPort.generateInviteToken({
+                        sub: command.id,
+                        jti: recipient.inviteId,
+                        exp: Math.floor(recipient.inviteExpiresAt.getTime() / 1000),
+                        inviteRevocationVersion: recipient.inviteRevocationVersion,
+                    }),
+                ),
+                { queueName: command.queueName, deliveryId: command.deliveryId },
+            );
+        } catch (error) {
+            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_CONFLICT)) {
+                throw new TerminalJobException(EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE, { cause: error });
+            }
+
+            throw error;
+        }
     }
 
     /**

@@ -15,8 +15,6 @@ import type { IGetAdminEmailConfirmationRecipientPort } from 'src/module/admin/a
 import type { GetAdminEmailConfirmationRecipientResult } from 'src/module/admin/application/query/get-admin-email-confirmation-recipient/query';
 import { type IGetAdminInviteRecipientPort } from 'src/module/admin/application/query/get-admin-invite-recipient/port';
 import { type GetAdminInviteRecipientResult } from 'src/module/admin/application/query/get-admin-invite-recipient/query';
-import { type IGetAdminNoticeRecipientPort } from 'src/module/admin/application/query/get-admin-notice-recipient/port';
-import { type GetAdminNoticeRecipientResult } from 'src/module/admin/application/query/get-admin-notice-recipient/query';
 import { type IGetAdminRefreshStatePort } from 'src/module/admin/application/query/get-admin-refresh-state/port';
 import { type GetAdminRefreshStateResult } from 'src/module/admin/application/query/get-admin-refresh-state/query';
 import { type IGetAdminSessionVersionPort } from 'src/module/admin/application/query/get-admin-session-version/port';
@@ -40,7 +38,6 @@ export class AdminReaderAdapter
         IGetAdminCredentialsByEmailPort,
         IGetFreshAdminByIdPort,
         IGetAdminInviteRecipientPort,
-        IGetAdminNoticeRecipientPort,
         IGetAdminSessionVersionPort
 {
     /**
@@ -143,28 +140,6 @@ export class AdminReaderAdapter
                     )
                     .limit(1)
             )[0] ?? null) as GetAdminInviteRecipientResult | null;
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
-
-    /**
-     * Reads the current recipient details for an admin notice.
-     *
-     * @param id The unique identifier of the target admin
-     * @returns The notice recipient details, or null when no non-deleted admin exists
-     */
-    async getNoticeRecipient(id: string): Promise<GetAdminNoticeRecipientResult | null> {
-        try {
-            return (
-                (
-                    await this.database
-                        .select({ email: admin.email, name: admin.name })
-                        .from(admin)
-                        .where(and(eq(admin.id, id), isNull(admin.deletedAt)))
-                        .limit(1)
-                )[0] ?? null
-            );
         } catch (error) {
             throw translateConnectionFailure(error);
         }

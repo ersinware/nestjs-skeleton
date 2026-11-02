@@ -8,11 +8,21 @@ import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { ENV } from 'src/core/config';
 import { buildEmailIdempotencyKey } from 'src/core/email/email-idempotency-key.util';
-import type { EmailDeliveryIdentity, EmailPayload, IEmailerPort } from 'src/core/email/port/emailer.port';
-import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
+import {
+    EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE,
+    type EmailDeliveryIdentity,
+    type EmailPayload,
+    type IEmailerPort,
+} from 'src/core/email/port/emailer.port';
+import {
+    DependencyUnavailableException,
+    DependencyUnavailableMessage,
+    ResourceConflictException,
+    SystemException,
+} from 'src/shared/exception';
 
 /**
- * Sends transactional email through Resend with a stable key for each outgoing request.
+ * Sends transactional email through Resend with a stable key for each logical delivery.
  */
 @Injectable()
 export class EmailerAdapter implements IEmailerPort {
@@ -22,7 +32,7 @@ export class EmailerAdapter implements IEmailerPort {
     private readonly resend: Resend;
 
     /**
-     * Configured sender address used for delivery and idempotency keys.
+     * Configured sender address used for delivery.
      */
     private readonly from: string;
 
@@ -50,26 +60,32 @@ export class EmailerAdapter implements IEmailerPort {
                 subject: data.subject,
                 html: data.body,
             },
-            { idempotencyKey: buildEmailIdempotencyKey(data, delivery, this.from) },
+            { idempotencyKey: buildEmailIdempotencyKey(delivery) },
         );
 
         if (error) {
             // Match the API's names as strings: its error catalog can precede SDK type updates.
             // A null status is ambiguous: the SDK also uses it for response-decoding failures.
+            const errorName = String(error.name);
+
+            if (error.statusCode === 409 && errorName === 'invalid_idempotent_request') {
+                throw new ResourceConflictException(EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE, { cause: error });
+            }
+
             if (
-                (error.statusCode === 409 &&
-                    ['concurrent_idempotent_requests', 'resource_locked'].includes(error.name)) ||
-                (error.statusCode === 429 && error.name === 'rate_limit_exceeded') ||
+                (error.statusCode === 409 && errorName === 'concurrent_idempotent_requests') ||
+                errorName === 'resource_locked' ||
+                (error.statusCode === 429 && errorName === 'rate_limit_exceeded') ||
                 (error.statusCode !== null &&
                     error.statusCode >= 500 &&
                     error.statusCode < 600 &&
-                    ['application_error', 'service_unavailable', 'internal_server_error'].includes(error.name))
+                    ['application_error', 'service_unavailable', 'internal_server_error'].includes(errorName))
             ) {
                 throw new DependencyUnavailableException(DependencyUnavailableMessage.DEFAULT, { cause: error });
             }
 
             throw new SystemException(
-                `Email provider request failed: ${error.name} (${error.statusCode ?? 'unknown status'}).`,
+                `Email provider request failed: ${errorName} (${error.statusCode ?? 'unknown status'}).`,
                 { cause: error, context: { class: this.constructor.name, method: this.sendEmail.name } },
             );
         }
