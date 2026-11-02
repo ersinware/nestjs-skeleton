@@ -5,9 +5,10 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { type IJobConsumer, type Job } from 'src/core/job-queue';
+import { JobQueueWorkerProfile, type IJobConsumer, type Job } from 'src/core/job-queue';
 import { SendUserRefreshReuseNoticeCommand } from 'src/module/user/application/command/send-user-refresh-reuse-notice/command';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
+import { TerminalJobException } from 'src/shared/exception';
 
 /**
  * Consumes durable refresh-token reuse notice jobs.
@@ -27,7 +28,7 @@ export class UserRefreshReuseNoticeConsumer implements IJobConsumer {
     /**
      * Allows modest notice delay and amortizes polling across deliveries.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 15, batchSize: 10 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 10 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.
@@ -42,8 +43,18 @@ export class UserRefreshReuseNoticeConsumer implements IJobConsumer {
      * @param job Refresh-token reuse notice job
      */
     async consume(job: Job) {
+        const recipientEmail = job.payload?.['recipientEmail'];
+        if (typeof recipientEmail !== 'string') {
+            throw new TerminalJobException('The refresh-reuse notice job has an invalid recipient address.');
+        }
+
+        const recipientName = job.payload?.['recipientName'];
+        if (typeof recipientName !== 'string') {
+            throw new TerminalJobException('The refresh-reuse notice job has an invalid recipient name.');
+        }
+
         await this.commandPipeline.execute(
-            new SendUserRefreshReuseNoticeCommand(job.aggregateId, job.deliveryId, this.name),
+            new SendUserRefreshReuseNoticeCommand(job.deliveryId, this.name, recipientEmail, recipientName),
         );
     }
 }

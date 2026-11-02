@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
+import { IJobConsumer, Job, JobQueueWorkerProfile } from 'src/core/job-queue';
 import { RevokeAdminSessionsCommand } from 'src/module/admin/application/command/revoke-admin-sessions/command';
 import { AdminSessionRevocationJobQueue } from 'src/shared/domain/admin';
 import { SessionRevocationReason } from 'src/shared/domain/principal';
@@ -28,7 +28,7 @@ export class AdminSessionRevocationRefreshReuseConsumer implements IJobConsumer 
     /**
      * Keeps reuse revocation polling prompt without grouping transactional effects.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 1, batchSize: 1 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

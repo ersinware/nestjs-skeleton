@@ -646,6 +646,7 @@ export class Admin extends PrincipalAggregateRoot {
                 deliveryId: this.props.pendingEmailRequestId,
                 aggregateId: this.id,
                 queueName: AdminJobQueue.EMAIL_CONFIRMATION,
+                payload: { recipientName: this.props.name },
             },
         ]);
     }
@@ -750,6 +751,7 @@ export class Admin extends PrincipalAggregateRoot {
                         deliveryId: randomUUID(),
                         aggregateId: this.id,
                         queueName: AdminJobQueue.REFRESH_REUSE_NOTICE,
+                        payload: { recipientEmail: this.props.email, recipientName: this.props.name },
                     },
                 ]);
 

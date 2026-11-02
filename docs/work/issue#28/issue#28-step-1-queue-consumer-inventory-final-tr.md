@@ -1,5 +1,7 @@
 # Issue #28 — Adım 1: Queue Consumer Inventory
 
+> Aşağıdaki çift-aralık/fallback önerileri tarihseldir; güncel dispatch kararı [planda (Adım 2)](issue%2328-queue-consumer-transaction-retry-safety-plan-tr.md) açıklanır.
+
 ## Kapsam ve snapshot
 
 Bu inventory, `issue#28-queue-consumer-transaction-retry-safety` branch'inin aşağıdaki snapshot'ı üzerinden çıkarıldı:

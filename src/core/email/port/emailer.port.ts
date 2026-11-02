@@ -9,6 +9,11 @@
 export const TOKEN_EMAILER_PORT = Symbol();
 
 /**
+ * Describes a payload conflict under an existing logical email delivery identity.
+ */
+export const EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE = 'The logical email delivery payload changed.';
+
+/**
  * Data required to send one email.
  */
 export type EmailPayload = {
@@ -29,8 +34,8 @@ export type EmailPayload = {
 };
 
 /**
- * Identifies one queued email delivery independently of a provider. The sender
- * and payload may distinguish changed requests under this identity.
+ * Identifies one queued email delivery independently of a provider. The complete
+ * payload must retain the same semantics for every retry and redrive of this identity.
  */
 export type EmailDeliveryIdentity = {
     /**
@@ -53,6 +58,7 @@ export interface IEmailerPort {
      *
      * @param data The recipient, subject, and body of the email
      * @param delivery The owning queue and stable delivery identity
+     * @throws {ResourceConflictException} When the provider has already observed different payload under this logical delivery identity.
      * @throws {DependencyUnavailableException} When a recognized provider availability, rate-limit, or concurrent-request failure prevents delivery.
      * @throws {SystemException} When delivery fails for configuration, quota, validation, or ambiguous/unrecognized reasons.
      */

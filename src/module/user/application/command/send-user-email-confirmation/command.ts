@@ -15,11 +15,13 @@ export class SendUserEmailConfirmationCommand extends Command<void> {
      * @param id The unique identifier of the target user
      * @param deliveryId The email request delivery identity retained across retries
      * @param queueName The queue that owns this delivery
+     * @param recipientName Immutable display name captured when the request was created
      */
     constructor(
         readonly id: string,
         readonly deliveryId: string,
         readonly queueName: string,
+        readonly recipientName: string,
     ) {
         super();
     }

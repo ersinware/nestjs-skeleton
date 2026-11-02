@@ -57,7 +57,6 @@ import { GetUserCredentialsByEmailQueryHandler } from 'src/module/user/applicati
 import { TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT } from 'src/module/user/application/query/get-user-credentials-by-email/port';
 import { TOKEN_GET_USER_EMAIL_CHANGE_NOTIFICATION_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-email-change-notification-recipient/port';
 import { TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-email-confirmation-recipient/port';
-import { TOKEN_GET_USER_NOTICE_RECIPIENT_PORT } from 'src/module/user/application/query/get-user-notice-recipient/port';
 import { GetUserRefreshStateQueryHandler } from 'src/module/user/application/query/get-user-refresh-state/handler';
 import { TOKEN_GET_USER_REFRESH_STATE_PORT } from 'src/module/user/application/query/get-user-refresh-state/port';
 import { TOKEN_GET_USER_SESSION_VERSION_PORT } from 'src/module/user/application/query/get-user-session-version/port';
@@ -152,7 +151,6 @@ import { UserFacade } from 'src/module/user/user.facade';
         { provide: TOKEN_GET_USER_SESSION_VERSION_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
-        { provide: TOKEN_GET_USER_NOTICE_RECIPIENT_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_LIST_USERS_PORT, useClass: UserReplicaReaderAdapter },
     ],
     exports: [UserFacade],

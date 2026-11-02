@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { type IJobConsumer, type Job } from 'src/core/job-queue';
+import { JobQueueWorkerProfile, type IJobConsumer, type Job } from 'src/core/job-queue';
 import { ReplaceAdminAvatarCommand } from 'src/module/admin/application/command/replace-admin-avatar/command';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { TerminalJobException } from 'src/shared/exception';
@@ -28,7 +28,7 @@ export class AdminAvatarReplaceConsumer implements IJobConsumer {
     /**
      * Limits storage concurrency without claiming work behind a slow delivery.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 5, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 1, batchSize: 1 } as const;
 
     /**
      * Initializes the owner command dispatcher.

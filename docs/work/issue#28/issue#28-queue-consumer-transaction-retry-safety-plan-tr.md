@@ -19,7 +19,7 @@ Her consumer için aşağıdakileri kaydet:
 
 - consumer / job adı
 - `transactional: true/false`
-- tüm `workerOptions` değerleri (`localConcurrency`, `pollingIntervalSeconds`, `batchSize`)
+- tüm `workerOptions` değerleri (`localConcurrency`, polling aralığı/profili, `batchSize`)
 - mevcut queue / dispatch ayarları (`policy`, `disableDeadLetter`, polling-only / notify-enabled durumu)
 - çağırdığı command
 - command handler
@@ -90,7 +90,7 @@ Her consumer için aşağıdaki değerleri birlikte değerlendir:
 ```ts
 {
     localConcurrency,
-    pollingIntervalSeconds,
+    profile,
     batchSize,
 }
 ```
@@ -114,9 +114,9 @@ workerOptions
 Kontrol et:
 
 - `localConcurrency` process başına concurrency'dir; toplam olası concurrency replica sayısıyla birlikte değerlendirilmelidir.
-- `pollingIntervalSeconds` queue'nun gerçek latency ihtiyacıyla orantılı olmalıdır. Acil olmayan işler gereksiz sıklıkta PostgreSQL / pg-boss polling yapmamalıdır.
+- Polling aralığı/profili queue'nun gerçek latency ihtiyacıyla orantılı olmalıdır. Acil olmayan işler gereksiz sıklıkta PostgreSQL / pg-boss polling yapmamalıdır.
 - `batchSize` throughput'u artırırken bir worker'ın uzun süre iş tutmasına, retry/failure blast radius'ının büyümesine veya job expiry riskine yol açmamalıdır.
-- Transactional consumer'larda varsayılan beklenti `batchSize: 1` olmalıdır; birden fazla logical job'ın aynı transaction'a bağlanması açıkça gerekçelendirilmedikçe kabul edilmemelidir.
+- Transactional consumer'larda `batchSize: 1` zorunludur.
 - External dependency kullanan consumer'larda concurrency ve batch ayarları provider kapasitesi / rate limit'iyle uyumlu olmalıdır.
 - Orta/büyük ölçekli çoklu-replica deployment'ta ayarlar DB connection pool'u, pg-boss polling/completion kapasitesi ve queue backlog throughput'u ile birlikte değerlendirilmelidir.
 - Tek bir evrensel worker profili kullanılmamalıdır; security-critical / latency-sensitive işler ile deferred notification, cleanup veya maintenance işleri aynı polling sıklığına zorlanmamalıdır.
@@ -143,11 +143,11 @@ Hedef davranış:
 - pg-boss instance `useListenNotify: true` ile çalışmalı.
 - Worker'ı bulunan immediately-available application queue'ları notify-enabled olmalı.
 - Polling cadence değerleri tek global sayı yerine standart workload profillerinden seçilmeli:
-    - `critical`: `pollingIntervalSeconds: 1`, `notifyPollingIntervalSeconds: 5`
-    - `high`: `pollingIntervalSeconds: 5`, `notifyPollingIntervalSeconds: 10`
-    - `medium`: `pollingIntervalSeconds: 15`, `notifyPollingIntervalSeconds: 30`
-    - `low`: `pollingIntervalSeconds: 30`, `notifyPollingIntervalSeconds: 60`
-- `pollingIntervalSeconds` listener unavailable olduğunda fallback cadence; `notifyPollingIntervalSeconds` listener sağlıklıyken retry / delayed / redrive backstop cadence'i olmalı.
+    - `critical`: `notifyPollingIntervalSeconds: 5`
+    - `high`: `notifyPollingIntervalSeconds: 10`
+    - `medium`: `notifyPollingIntervalSeconds: 30`
+    - `low`: `notifyPollingIntervalSeconds: 60`
+- Yalnız `notifyPollingIntervalSeconds` configure edilir. Listener kesintisinde de native pg-boss backstop gecikmesi kabul edilir; reconnect korunur, özel outage timer'ı veya ayrı base polling profili eklenmez.
 - Future / delayed job'lar runnable olduklarında polling correctness path'iyle bulunabilmeli.
 - NOTIFY yalnız wake-up hint olmalı; job ownership normal PostgreSQL claim / locking semantics ile belirlenmeli.
 - Multi-node deployment'ta tüm listening instance'lar wake-up alabilse de yalnız job'ı başarıyla claim eden worker execution attempt'i çalıştırmalı.
@@ -599,20 +599,13 @@ Gerekirse:
 - pg-boss `LISTEN/NOTIFY` wake-up path'ini implemente et
 - custom job-queue database adapter'a gerekli listener desteğini ekle
 - worker'ı bulunan immediately-available queue'ları notify-enabled hale getir
-- Adım 2'de kararlaştırılan standart polling profillerini uygula:
-    - `critical`: `1s / 5s`
-    - `high`: `5s / 10s`
-    - `medium`: `15s / 30s`
-    - `low`: `30s / 60s`
-      (`pollingIntervalSeconds / notifyPollingIntervalSeconds`)
-- her consumer'ı Adım 2'deki workload profiline bağla; mevcut `2s` / `3s` gibi ara fallback değerlerini profil standardına normalize et
-- `pollingIntervalSeconds` değerini listener-unavailable fallback, `notifyPollingIntervalSeconds` değerini healthy-listener retry / delayed / redrive backstop olarak kullan
+- Adım 2'deki notify-only workload profillerini ve listener reconnect kararını uygula
 - generic batch parallelization ekleme; yalnız audit ile doğrulanan consumer-specific bounded parallelism gerekiyorsa uygula
 
 ### İlgili acceptance criterion
 
-- [ ] Incorrect transaction modes, transaction-boundary usage, retry behavior, worker settings, or dispatch configuration identified by the review are corrected.
-- [ ] Immediately available application jobs use the verified `LISTEN/NOTIFY` wake-up path with bounded polling fallback.
+- [x] Incorrect transaction modes, transaction-boundary usage, retry behavior, worker settings, or dispatch configuration identified by the review are corrected.
+- [ ] Immediately available application jobs use the verified `LISTEN/NOTIFY` wake-up path with bounded backstop polling.
 
 ---
 
@@ -636,7 +629,7 @@ follow-up job creation + rollback
 follow-up job creation + commit
 LISTEN/NOTIFY immediate wake-up
 missed notification → safety-net polling recovery
-listener unavailable → pollingIntervalSeconds fallback
+listener unavailable → native notify backstop polling + reconnect
 multi-node notification → single successful job claim
 same email delivery + same payload → same provider key
 same email delivery + different payload → 409 invalid_idempotent_request → terminal
@@ -665,9 +658,13 @@ Email regression testlerinde provider key'in yalnız `queueName/deliveryId` ile 
 
 ### İlgili acceptance criterion
 
-- [ ] Regression coverage verifies the relevant transaction and retry-safety guarantees for corrected or high-risk consumer paths.
-- [ ] Regression coverage verifies retry exhaustion, DLQ/redrive logical identity, and the selected delayed-redrive external-effect strategy.
-- [ ] Regression coverage verifies notification wake-up, missed-notification recovery, listener fallback, and safe multi-node claiming.
+- [x] Regression coverage verifies the relevant transaction and retry-safety guarantees for corrected or high-risk consumer paths.
+- [x] Regression coverage verifies retry exhaustion, DLQ/redrive logical identity, and the selected delayed-redrive external-effect strategy.
+- [x] Regression coverage verifies notification wake-up, missed-notification recovery, listener backstop polling, and safe multi-node claiming.
+
+Senaryo eşlemesi, test sınırları ve çalıştırma sonuçları: [Adım 10 regression kanıtı](issue%2328-step-10-regression-coverage-tr.md).
+
+Notify-only revizyonuna uyarlanan unit ve E2E testleri yeniden çalıştırılarak doğrulandı.
 
 ---
 
@@ -690,7 +687,7 @@ Dokümante edilmesi gereken temel kurallar:
 - provider idempotency retention sınırı ve delayed redrive exactly-once guarantee'i nasıl etkiler?
 - `workerOptions` nasıl workload, latency, replica sayısı ve dependency kapasitesine göre ayarlanır?
 - `critical / high / medium / low` polling profilleri ve consumer-profile eşlemesi nasıl uygulanır?
-- `LISTEN/NOTIFY`, safety-net polling ve listener-unavailable fallback nasıl çalışır?
+- `LISTEN/NOTIFY`, native backstop polling ve listener reconnect nasıl çalışır?
 - multi-node notification ile job claim / ownership arasındaki fark nedir?
 - batch size ile execution concurrency neden ayrıdır ve parallelism neden `localConcurrency` ile bounded tutulur?
 - exactly-once nerede garanti edilmez?
@@ -707,9 +704,9 @@ Issue kapatılmadan önce acceptance criteria tek tek doğrulanır:
 
 - [ ] Tüm durable queue consumer'lar inventory'de ve handler / pipeline davranışlarıyla birlikte incelendi.
 - [ ] Her transactional consumer için atomic consumer write + job completion gereksiniminin justification'ı mevcut.
-- [ ] Her consumer'ın `localConcurrency`, `pollingIntervalSeconds` ve `batchSize` değerleri workload, latency, transaction mode, database / pool baskısı, external dependency kapasitesi ve horizontal scaling açısından incelendi.
+- [ ] Her consumer'ın `localConcurrency`, polling aralığı/profili ve `batchSize` değerleri workload, latency, transaction mode, database / pool baskısı, external dependency kapasitesi ve horizontal scaling açısından incelendi.
 - [ ] Gereksiz agresif polling / concurrency / batch ayarları correction aşamasında güncellendi; `critical / high / medium / low` polling profilleri uygulanmış, deferred işler DB'yi gereksiz yere poll etmiyor ve latency-sensitive işler gerekli tepki süresini koruyor.
-- [ ] Immediately-available application jobs `LISTEN/NOTIFY` ile prompt wake-up alıyor; safety-net polling, listener-unavailable fallback ve missed-notification recovery test edildi.
+- [ ] Immediately-available application jobs `LISTEN/NOTIFY` ile prompt wake-up alıyor; listener kesintisinde native backstop polling, reconnect ve missed-notification recovery test edildi.
 - [ ] Multi-node deployment'ta notification broadcast duplicate ownership yaratmıyor; actual execution pg-boss claim / locking ile belirleniyor.
 - [ ] Generic batch parallelization eklenmedi; execution parallelism `localConcurrency` ile bounded ve transactional consumer'larda `batchSize: 1` korunuyor.
 - [ ] Transactional consumer path'leri yalnızca kısa PostgreSQL işi yapıyor ve application-owned transaction'larda `ITransactionPort.join()` kullanıyor.

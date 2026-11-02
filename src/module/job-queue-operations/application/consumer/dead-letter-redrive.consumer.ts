@@ -8,6 +8,7 @@ import { CommandPipeline } from 'src/core/cqrs';
 import {
     JOB_QUEUE_DEAD_LETTER_REDRIVE,
     JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS,
+    JobQueueWorkerProfile,
     type IJobConsumer,
 } from 'src/core/job-queue';
 import { RedriveDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/redrive-dead-letter-jobs/command';
@@ -35,7 +36,7 @@ export class DeadLetterRedriveConsumer implements IJobConsumer {
     /**
      * Polls infrequent orchestration work with one worker for the globally exclusive queue.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 30, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 1 } as const;
 
     /**
      * Initializes the consumer with the command pipeline.

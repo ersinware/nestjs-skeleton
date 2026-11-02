@@ -6,7 +6,9 @@
 import { Injectable } from '@nestjs/common';
 import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import type { Db } from 'pg-boss';
+import { JobQueueNotificationSubscription } from 'src/core/job-queue/job-queue-notification-subscription';
 import { JobQueueTransaction } from 'src/core/job-queue/job-queue-transaction';
+import type { ILoggerPort } from 'src/core/observability/logger';
 import { SystemException } from 'src/shared/exception';
 
 /**
@@ -18,8 +20,34 @@ export class JobQueueDatabaseAdapter implements Db {
      * Initializes the adapter with the dedicated queue pool.
      *
      * @param pool Dedicated job-queue PostgreSQL pool
+     * @param loggerPort Records listener outage transitions
      */
-    constructor(private readonly pool: Pool) {}
+    constructor(
+        private readonly pool: Pool,
+        private readonly loggerPort: ILoggerPort,
+    ) {}
+
+    /**
+     * Holds a dedicated PostgreSQL session for queue wake-up notifications and reconnects after loss.
+     *
+     * @param channel PostgreSQL notification channel selected by pg-boss
+     * @param onNotification Delivers queue-name wake-up hints
+     * @param onReconnect Signals successful subscription so workers recover missed notifications
+     * @returns Handle that stops reconnecting and releases the pinned session
+     */
+    async listen(
+        channel: string,
+        onNotification: (payload: string) => void,
+        onReconnect: () => void,
+    ): Promise<JobQueueNotificationSubscription> {
+        return JobQueueNotificationSubscription.open({
+            pool: this.pool,
+            loggerPort: this.loggerPort,
+            channel,
+            onNotification,
+            onReconnect,
+        });
+    }
 
     /**
      * Executes pg-boss SQL on the queue pool.

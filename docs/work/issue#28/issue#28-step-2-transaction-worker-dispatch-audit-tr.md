@@ -1,5 +1,7 @@
 # Issue #28 — Adım 2: Transaction Mode, WorkerOptions ve Dispatch Audit
 
+> Aşağıdaki çift-aralık/fallback önerileri tarihseldir; güncel dispatch kararı [planda (Adım 2)](issue%2328-queue-consumer-transaction-retry-safety-plan-tr.md) açıklanır.
+
 ## Kapsam ve snapshot
 
 Bu audit, `issue#28-queue-consumer-transaction-retry-safety` branch'inin aşağıdaki head'i üzerinden yapılmıştır:
