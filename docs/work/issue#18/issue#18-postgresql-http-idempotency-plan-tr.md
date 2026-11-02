@@ -4,6 +4,8 @@
 
 PostgreSQL-backed mutating HTTP request'lerde retry, timeout ve connection loss sonrasında oluşabilecek ambiguous outcome durumlarını güvenli şekilde ele almak.
 
+Hedef mutation safety'dir; response snapshot tutulmaz. Mevcut state/proof/uniqueness korumaları yetmiyorsa explicit key gerekir; gerekli operation identity metadata'sı saklanabilir.
+
 Bu issue yalnızca şu boundary'yi kapsar:
 
 ```text
@@ -40,11 +42,6 @@ Redis mutation
     ↓
 mandatory PostgreSQL / pg-boss follow-up
 durable coordination
-
-#28
-queue consumer
-transaction correctness
-retry / dedup safety
 
 #30
 avatar upload-proof lifecycle
@@ -117,7 +114,7 @@ Gerçek davranış üzerinden kontrol et:
 - duplicate audit veya durable job üretilebiliyor mu?
 - response kaybolduğunda client'ın original logical sonucu yeniden elde etmesi gerekiyor mu?
 
-Retry-safe olması, retry'ın aynı HTTP response'u döndürmesi gerektiği anlamına gelmez.
+Retry aynı response'u döndürmek zorunda değildir; ikinci mutation oluşmadan `404`/`409` dönebilir.
 
 Ayrı ve açık bir issue tarafından sahiplenilen unresolved bir alt-flow, inventory'de conditional boundary olarak tutulabilir. Bu durum yalnız ilgili alt-flow için istisnadır ve #18 kapsamındaki diğer classification'ları değiştirmez.
 

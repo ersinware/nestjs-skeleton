@@ -1,5 +1,9 @@
 # HTTP
 
+### Mutation Retry Safety
+
+- Keep the [mutation inventory](../docs/idempotency-retry-inventory.md) current when endpoints or retry behavior change. Separate implemented behavior, planned protection, and downstream delivery safety; mutation retry safety does not require identical responses.
+
 ### Health Probes
 
 Paths are version-neutral and relative to the global prefix.
