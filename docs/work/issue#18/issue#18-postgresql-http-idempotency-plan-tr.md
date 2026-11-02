@@ -63,6 +63,8 @@ Bu concern'ler aynı flow üzerinde birlikte bulunabilir ancak ayrı sorumlulukl
 
 `docs/idempotency-retry-inventory.md` dosyasını source of truth olarak kullan.
 
+Inventory tüm production mutating HTTP endpoint'leri cross-boundary görünürlük ve ownership için listeler. Ancak #18 yalnız `Tracked by` alanında `#18` bulunan endpoint'lerin HTTP → PostgreSQL boundary'sini kesinleştirir. #29, #30 veya başka bir owning issue'ya ait açık boundary'lerde gözlemlenen mevcut davranış kaydedilebilir fakat çözüm kararı #18 tarafından final hale getirilmez.
+
 Production'daki tüm mutating HTTP endpoint'lerin inventory'de bulunduğunu doğrula.
 
 Her PostgreSQL-backed endpoint için en az şu bilgilerin doğru olduğunu kontrol et:
@@ -80,6 +82,8 @@ Her PostgreSQL-backed endpoint için en az şu bilgilerin doğru olduğunu kontr
 
 #18 kapsamındaki kayıtların `Tracked by` alanında `#18` bulunduğunu doğrula.
 
+Cross-boundary bir endpoint hem #18 hem başka açık issue tarafından takip ediliyorsa, #18 kararı yalnız PostgreSQL boundary'si için kesinleştirilir; diğer boundary'nin request-level protection kararı inventory'de owning issue için `Pending` kalır.
+
 ### Çıktı
 
 Doğrulanmış shared inventory.
@@ -92,7 +96,9 @@ Doğrulanmış shared inventory.
 
 ## Adım 2 — PostgreSQL-backed endpoint classification'ını kesinleştir
 
-#18 kapsamındaki her endpoint'i şu kategorilerden biriyle doğrula:
+Bu adım yalnız #18'in sahip olduğu HTTP → PostgreSQL boundary'sini final hale getirir. Redis mutation, avatar lifecycle veya başka bir boundary aynı endpoint'te bulunsa bile onların final retry/idempotency kararı owning issue'ya bırakılır.
+
+#18 kapsamındaki her PostgreSQL boundary'sini şu kategorilerden biriyle doğrula:
 
 ```text
 naturally idempotent
