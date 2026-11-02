@@ -2,7 +2,7 @@
 
 ## Amaç
 
-Projede bulunan tüm durable queue consumer'ları inceleyerek transaction mode, worker execution ayarları, PostgreSQL boundary, external effect ordering ve retry davranışlarının doğru ve bilinçli olduğunu doğrulamak.
+Projede bulunan tüm durable queue consumer'ları inceleyerek transaction mode, worker execution ve dispatch ayarları, PostgreSQL boundary, external effect ordering ve retry davranışlarının doğru ve bilinçli olduğunu doğrulamak.
 
 Bu çalışma iki ana aşamadan oluşur:
 
@@ -20,6 +20,7 @@ Her consumer için aşağıdakileri kaydet:
 - consumer / job adı
 - `transactional: true/false`
 - tüm `workerOptions` değerleri (`localConcurrency`, `pollingIntervalSeconds`, `batchSize`)
+- mevcut queue / dispatch ayarları (`policy`, `disableDeadLetter`, polling-only / notify-enabled durumu)
 - çağırdığı command
 - command handler
 - kullandığı `ITransactionPort.start()` / `join()`
@@ -38,19 +39,21 @@ Her consumer için aşağıdakileri kaydet:
   - replica sayısıyla oluşan toplam concurrency
 - mevcut `workerOptions` ayarının değerlendirmesi (`appropriate`, `review`, `change recommended`)
 - gerekiyorsa önerilen `workerOptions` değişikliği
+- dispatch stratejisi değerlendirmesi ve `LISTEN/NOTIFY` hedef durumu
 
 ### Çıktı
 
-Queue consumer inventory tablosu; tüm `workerOptions` değerlerini ve bunların workload / ölçekleme değerlendirmesini içerir.
+Queue consumer inventory tablosu; tüm `workerOptions` değerlerini, mevcut dispatch modelini ve bunların workload / ölçekleme değerlendirmesini içerir.
 
 ### İlgili acceptance criterion
 
 - [ ] Every durable queue consumer is inventoried and reviewed with the handlers and pipeline behavior it invokes.
 - [ ] Every consumer's `workerOptions` are inventoried and reviewed against latency requirements, workload characteristics, transaction mode, database pressure, external dependency capacity, and horizontal scaling behavior.
+- [ ] Current queue dispatch behavior is inventoried and the target `LISTEN/NOTIFY` model is documented without changing source code during Step 1.
 
 ---
 
-## Adım 2 — Her consumer'ın transaction mode ve workerOptions ayarlarını doğrula
+## Adım 2 — Her consumer'ın transaction mode, workerOptions ve dispatch ayarlarını doğrula
 
 Inventory'deki her consumer için:
 
@@ -121,6 +124,59 @@ Kontrol et:
 
 Adım 2 sırasında değerleri değiştirme; yanlış veya zayıf bulunan ayarları Adım 9'da correction için işaretle.
 
+### LISTEN/NOTIFY dispatch audit
+
+Step 1 sırasında alınan architecture direction'ı doğrula:
+
+```text
+immediately-available application job
+    ↓
+PostgreSQL NOTIFY
+    ↓
+listening pg-boss instance'lar wake-up
+    ↓
+normal pg-boss fetch / claim / locking
+```
+
+Hedef davranış:
+
+- pg-boss instance `useListenNotify: true` ile çalışmalı.
+- Worker'ı bulunan immediately-available application queue'ları notify-enabled olmalı.
+- `notifyPollingIntervalSeconds: 30` başlangıç safety-net cadence'i olarak kullanılmalı.
+- Mevcut `pollingIntervalSeconds` değerleri listener unavailable olduğunda fallback cadence olarak korunmalı.
+- Future / delayed job'lar runnable olduklarında polling correctness path'iyle bulunabilmeli.
+- NOTIFY yalnız wake-up hint olmalı; job ownership normal PostgreSQL claim / locking semantics ile belirlenmeli.
+- Multi-node deployment'ta tüm listening instance'lar wake-up alabilse de yalnız job'ı başarıyla claim eden worker execution attempt'i çalıştırmalı.
+- Listener için process başına session-pinned PostgreSQL connection budget'ı hesaba katılmalı.
+- Custom `JobQueueDatabaseAdapter` listener desteği açısından doğrulanmalı.
+- Queue sayısı yalnız polling yükünü azaltmak amacıyla generic tek queue + type router altında birleştirilmemeli; mevcut execution-isolation boundary'leri korunmalı.
+
+### Batch / parallelism kararı
+
+Generic batch parallelization hedeflenmemeli.
+
+Varsayılan model:
+
+```text
+LISTEN/NOTIFY
+→ dispatch latency
+
+localConcurrency
+→ açık ve bounded execution parallelism
+
+batchSize
+→ fetch / settlement granularity
+```
+
+Kontrol et:
+
+- non-transactional consumer'larda `perJobResults: true` ile job disposition'ları ayrı kalmalı;
+- batch içindeki job'lar varsayılan olarak sequential işlenmeli;
+- generic `Promise.all()` / unbounded batch parallelism eklenmemeli;
+- transactional consumer'larda `batchSize: 1` varsayımı korunmalı;
+- yalnız ucuz, effect-idempotent workload'larda bounded batch parallelism için özel gerekçe varsa ayrıca değerlendirilmelidir;
+- LISTEN/NOTIFY sonrası büyük `batchSize` değerlerinin polling amortization gerekçesi yeniden sorgulanmalıdır.
+
 ### Çıktı
 
 Her consumer için:
@@ -132,6 +188,8 @@ justification
 +
 workerOptions assessment
 +
+dispatch / LISTEN-NOTIFY assessment
++
 change recommendation (if needed)
 ```
 
@@ -139,6 +197,8 @@ change recommendation (if needed)
 
 - [ ] Each transactional consumer has a documented justification for requiring atomic consumer writes and job completion.
 - [ ] Every consumer's `workerOptions` are justified against latency, throughput, transaction mode, database / pool pressure, external dependency capacity, and horizontal scaling.
+- [ ] `LISTEN/NOTIFY` is validated as the primary wake-up model for immediately available jobs, with bounded polling fallback, multi-node claim safety, and listener connection capacity accounted for.
+- [ ] Batch processing remains bounded and explicit; generic batch parallelization does not bypass `localConcurrency` as the primary execution-concurrency control.
 
 ---
 
@@ -390,6 +450,8 @@ missing idempotency
 missing deduplication
 incorrect authoritative-state handling
 unjustified workerOptions
+missing / incorrect LISTEN-NOTIFY dispatch
+unsafe or unbounded batch parallelism
 ```
 
 Yalnızca doğrulanmış problemlere implementation yap.
@@ -403,10 +465,17 @@ Gerekirse:
 - idempotency / dedup mekanizması ekle
 - authoritative-state handling'i düzelt
 - `workerOptions` değerlerini workload ve kapasite gerekçesine göre güncelle
+- pg-boss `LISTEN/NOTIFY` wake-up path'ini implemente et
+- custom job-queue database adapter'a gerekli listener desteğini ekle
+- worker'ı bulunan immediately-available queue'ları notify-enabled hale getir
+- `notifyPollingIntervalSeconds: 30` safety-net baseline'ını uygula
+- mevcut `pollingIntervalSeconds` değerlerini listener-unavailable fallback olarak koru
+- generic batch parallelization ekleme; yalnız audit ile doğrulanan consumer-specific bounded parallelism gerekiyorsa uygula
 
 ### İlgili acceptance criterion
 
-- [ ] Incorrect transaction modes, transaction-boundary usage, or retry behavior identified by the review are corrected.
+- [ ] Incorrect transaction modes, transaction-boundary usage, retry behavior, worker settings, or dispatch configuration identified by the review are corrected.
+- [ ] Immediately available application jobs use the verified `LISTEN/NOTIFY` wake-up path with bounded polling fallback.
 
 ---
 
@@ -425,6 +494,10 @@ worker restart
 consumer retry
 follow-up job creation + rollback
 follow-up job creation + commit
+LISTEN/NOTIFY immediate wake-up
+missed notification → safety-net polling recovery
+listener unavailable → pollingIntervalSeconds fallback
+multi-node notification → single successful job claim
 ```
 
 Transactional consumer için ayrıca:
@@ -441,9 +514,12 @@ atomicity'sini doğrula.
 
 Non-transactional consumer için commit-dependent external effect'in commit öncesinde gerçekleşmediğini test et.
 
+Worker settlement için ayrıca non-transactional batch'te bir job failure'ının diğer job disposition'larını topluca fail ettirmediğini doğrula. Generic batch parallelization eklenmediğini ve transactional consumer'ların `batchSize: 1` invariant'ını koruduğunu test et.
+
 ### İlgili acceptance criterion
 
 - [ ] Regression coverage verifies the relevant transaction and retry-safety guarantees for corrected or high-risk consumer paths.
+- [ ] Regression coverage verifies notification wake-up, missed-notification recovery, listener fallback, and safe multi-node claiming.
 
 ---
 
@@ -460,6 +536,9 @@ Dokümante edilmesi gereken temel kurallar:
 - retry guarantee nedir?
 - logical delivery identity nasıl kullanılır?
 - `workerOptions` nasıl workload, latency, replica sayısı ve dependency kapasitesine göre ayarlanır?
+- `LISTEN/NOTIFY`, safety-net polling ve listener-unavailable fallback nasıl çalışır?
+- multi-node notification ile job claim / ownership arasındaki fark nedir?
+- batch size ile execution concurrency neden ayrıdır ve parallelism neden `localConcurrency` ile bounded tutulur?
 - exactly-once nerede garanti edilmez?
 
 ### Çıktı
@@ -476,6 +555,9 @@ Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanır:
 - [ ] Her transactional consumer için atomic consumer write + job completion gereksiniminin justification'ı mevcut.
 - [ ] Her consumer'ın `localConcurrency`, `pollingIntervalSeconds` ve `batchSize` değerleri workload, latency, transaction mode, database / pool baskısı, external dependency kapasitesi ve horizontal scaling açısından incelendi.
 - [ ] Gereksiz agresif polling / concurrency / batch ayarları correction aşamasında güncellendi; deferred işler DB'yi gereksiz yere poll etmiyor ve latency-sensitive işler gerekli tepki süresini koruyor.
+- [ ] Immediately-available application jobs `LISTEN/NOTIFY` ile prompt wake-up alıyor; safety-net polling, listener-unavailable fallback ve missed-notification recovery test edildi.
+- [ ] Multi-node deployment'ta notification broadcast duplicate ownership yaratmıyor; actual execution pg-boss claim / locking ile belirleniyor.
+- [ ] Generic batch parallelization eklenmedi; execution parallelism `localConcurrency` ile bounded ve transactional consumer'larda `batchSize: 1` korunuyor.
 - [ ] Transactional consumer path'leri yalnızca kısa PostgreSQL işi yapıyor ve application-owned transaction'larda `ITransactionPort.join()` kullanıyor.
 - [ ] Transactional consumer path'lerinde shared transaction içinde external business effect yok.
 - [ ] Non-transactional consumer path'lerinde gerekli DB transaction'ları `ITransactionPort.start()` kullanıyor.
@@ -494,7 +576,7 @@ Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanır:
 ```text
 Adım 1  Inventory
    ↓
-Adım 2  Transaction mode / workerOptions
+Adım 2  Transaction mode / workerOptions / dispatch
    ↓
 Adım 3  Transaction boundaries
    ↓
