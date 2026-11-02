@@ -782,28 +782,58 @@ Hedef LISTEN/NOTIFY:
 1 dedicated listener connection / process
 ```
 
-Transactional workers:
+Transactional worker'lar idle durumda kendilerine dedicated connection ayırmaz.
+
+Connection kullanımı üç ayrı durumda değerlendirilmelidir:
+
+```text
+idle worker
+→ dedicated connection tutmaz
+
+poll / fetch
+→ pool'dan kısa süreli connection alır
+→ query tamamlanınca connection pool'a geri döner
+
+transactional job claimed + running
+→ transaction için bir queue-pool connection pinlenir
+→ handler + job completion aynı transaction içinde tamamlanana kadar tutulur
+→ COMMIT / ROLLBACK sonrası connection pool'a geri döner
+```
+
+Mevcut dört transactional consumer'ın her birinde:
+
+```text
+localConcurrency = 1
+```
+
+olduğu için, **yalnız dört transactional job aynı anda gerçekten execution / transaction içindeyse** worst-case transactional pinning:
 
 ```text
 4 × localConcurrency 1
+=
+4 in-flight transactional connections
 ```
 
-Teorik in-flight pin:
+olabilir.
+
+Bu `+4`, worker'ların idle beklemesi veya polling yapması nedeniyle sürekli pinned kalan dört connection anlamına gelmez. Poll/fetch işlemleri connection'ı yalnız query süresince kısa süreli kullanır.
+
+Teorik worst-case in-flight pin:
 
 ```text
-listener:       1
-transactions:  +4
------------------
-pinned max:     5
+listener:                 1   # sürekli session-pinned
+active transactions:     +4   # yalnız 4 transactional job aynı anda çalışıyorsa
+---------------------------
+pinned max:               5
 ```
 
-Bu statik model:
+Bu worst-case anında statik model:
 
 ```text
 20 - 5 = 15
 ```
 
-connection'ı queue fetch/failure/completion/maintenance gibi diğer işler için bırakır.
+connection'ı queue fetch/failure/completion/maintenance gibi diğer kısa süreli queue operasyonları için bırakır. Normal idle durumda ise transactional consumer'lar bu dört connection'ı pinlemez; sürekli pinned olan connection yalnız LISTEN/NOTIFY listener connection'ıdır.
 
 Dolayısıyla mevcut `JOB_QUEUE_POOL_SIZE=20` ile LISTEN/NOTIFY **statik olarak uygulanabilir görünmektedir**.
 
