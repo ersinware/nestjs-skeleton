@@ -22,16 +22,23 @@ const JOB_QUEUE_MUTABLE_DEFAULTS = {
  *
  * @param boss Shared pg-boss client
  * @param name Queue name
- * @param options Expected queue topology
+ * @param options.policy Expected immutable queue delivery policy
+ * @param options.disableDeadLetter Whether terminal failures bypass the shared dead-letter queue
+ * @param options.notify Whether immediately runnable inserts emit worker wake-up notifications
  * @throws {SystemException} When immutable queue options conflict with the application topology
  */
-export async function provisionJobQueue(boss: PgBoss, name: string, options: JobQueueOptions) {
+export async function provisionJobQueue(
+    boss: PgBoss,
+    name: string,
+    options: JobQueueOptions & { readonly notify: boolean },
+) {
     const deadLetter = options.disableDeadLetter ? null : JOB_QUEUE_DEAD_LETTER;
 
     await boss.createQueue(name, {
         ...JOB_QUEUE_MUTABLE_DEFAULTS,
         policy: options.policy,
         partition: false,
+        notify: options.notify,
         ...(deadLetter === null ? {} : { deadLetter }),
     });
 
@@ -48,6 +55,7 @@ export async function provisionJobQueue(boss: PgBoss, name: string, options: Job
     const mutableOptions = {
         ...JOB_QUEUE_MUTABLE_DEFAULTS,
         deadLetter,
+        notify: options.notify,
     } as const satisfies UpdateQueueOptions;
 
     if (hasMutableOptionMismatch(queue, mutableOptions)) {
@@ -67,6 +75,7 @@ function hasMutableOptionMismatch(queue: Queue, options: UpdateQueueOptions): bo
         queue.retryLimit !== options.retryLimit ||
         queue.retryDelay !== options.retryDelay ||
         queue.retryBackoff !== options.retryBackoff ||
+        queue.notify !== options.notify ||
         (queue.deadLetter ?? null) !== options.deadLetter
     );
 }

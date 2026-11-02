@@ -5,9 +5,10 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
+import { IJobConsumer, Job, JobQueueWorkerProfile } from 'src/core/job-queue';
 import { SendAdminEmailConfirmationCommand } from 'src/module/admin/application/command/send-admin-email-confirmation/command';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
+import { TerminalJobException } from 'src/shared/exception';
 
 /**
  * Consumes durable admin email confirmation jobs.
@@ -27,7 +28,7 @@ export class AdminEmailConfirmationConsumer implements IJobConsumer {
     /**
      * Keeps confirmation delivery responsive with bounded sequential email batches.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 3, batchSize: 5 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 2, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.
@@ -42,8 +43,13 @@ export class AdminEmailConfirmationConsumer implements IJobConsumer {
      * @param job Email confirmation job
      */
     async consume(job: Job) {
+        const recipientName = job.payload?.['recipientName'];
+        if (typeof recipientName !== 'string') {
+            throw new TerminalJobException('The email confirmation job has an invalid recipient name.');
+        }
+
         await this.commandPipeline.execute(
-            new SendAdminEmailConfirmationCommand(job.aggregateId, job.deliveryId, this.name),
+            new SendAdminEmailConfirmationCommand(job.aggregateId, job.deliveryId, this.name, recipientName),
         );
     }
 }

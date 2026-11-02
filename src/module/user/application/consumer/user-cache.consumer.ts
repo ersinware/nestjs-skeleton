@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { TOKEN_CACHE_EVICTION_PORT, type ICacheEvictionPort } from 'src/core/cache';
-import { type IJobConsumer, type Job } from 'src/core/job-queue';
+import { JobQueueWorkerProfile, type IJobConsumer, type Job } from 'src/core/job-queue';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 
@@ -27,7 +27,7 @@ export class UserCacheConsumer implements IJobConsumer {
     /**
      * Amortizes polling across short evictions while tolerating delayed cache repair.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 5, batchSize: 20 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.HIGH, localConcurrency: 2, batchSize: 10 } as const;
 
     /**
      * Initializes the consumer with the cache eviction port.

@@ -14,6 +14,7 @@ import {
 import type { IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { JobQueueFeatureModule, TOKEN_FEATURE_CONSUMERS } from 'src/core/job-queue/job-queue-feature.module';
+import { JobQueueWorkerProfile } from 'src/core/job-queue/job-queue-worker-profile.enum';
 import type { Job } from 'src/core/job-queue/job.type';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
 import { DependencyUnavailableException, SystemException, TerminalJobException } from 'src/shared/exception';
@@ -74,7 +75,7 @@ describe('JobQueueFeatureModule', () => {
                 name: 'avatar-source',
                 transactional: false,
                 consume,
-                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 },
+                workerOptions: { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 1, batchSize: 1 },
             },
         ]);
         try {
@@ -115,13 +116,13 @@ describe('JobQueueFeatureModule', () => {
                 name: 'transactional-source',
                 transactional: true,
                 consume: vi.fn(),
-                workerOptions: { localConcurrency: 3, pollingIntervalSeconds: 1, batchSize: 1 },
+                workerOptions: { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 3, batchSize: 1 },
             },
             {
                 name: 'redis-source',
                 transactional: false,
                 consume: vi.fn(),
-                workerOptions: { localConcurrency: 5, pollingIntervalSeconds: 1, batchSize: 1 },
+                workerOptions: { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 5, batchSize: 1 },
             },
         ]);
         try {
@@ -134,19 +135,21 @@ describe('JobQueueFeatureModule', () => {
                     policy: 'standard',
                     partition: false,
                     deadLetter: JOB_QUEUE_DEAD_LETTER,
+                    notify: true,
                 });
                 expect(boss.updateQueue).toHaveBeenCalledWith(name, {
                     retryLimit: 10,
                     retryDelay: 15,
                     retryBackoff: true,
                     deadLetter: JOB_QUEUE_DEAD_LETTER,
+                    notify: true,
                 });
             }
             expect(boss.work).toHaveBeenCalledWith(
                 'transactional-source',
                 {
                     batchSize: 1,
-                    pollingIntervalSeconds: 1,
+                    notifyPollingIntervalSeconds: 5,
                     localConcurrency: 3,
                     transactional: true,
                 },
@@ -156,7 +159,7 @@ describe('JobQueueFeatureModule', () => {
                 'redis-source',
                 {
                     batchSize: 1,
-                    pollingIntervalSeconds: 1,
+                    notifyPollingIntervalSeconds: 5,
                     localConcurrency: 5,
                     perJobResults: true,
                 },
@@ -173,14 +176,14 @@ describe('JobQueueFeatureModule', () => {
                 name: 'email-source',
                 transactional: false,
                 consume: vi.fn(),
-                workerOptions: { localConcurrency: 2, pollingIntervalSeconds: 2, batchSize: 5 },
+                workerOptions: { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 2, batchSize: 5 },
             },
             {
                 name: JOB_QUEUE_DEAD_LETTER_REDRIVE,
                 transactional: false,
                 consume: vi.fn(),
                 queueOptions: JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS,
-                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 2, batchSize: 1 },
+                workerOptions: { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 1 },
             },
         ]);
         boss.getQueue.mockImplementation((name: string) =>
@@ -200,7 +203,7 @@ describe('JobQueueFeatureModule', () => {
                 'email-source',
                 {
                     batchSize: 5,
-                    pollingIntervalSeconds: 2,
+                    notifyPollingIntervalSeconds: 30,
                     localConcurrency: 2,
                     perJobResults: true,
                 },
@@ -210,7 +213,7 @@ describe('JobQueueFeatureModule', () => {
                 JOB_QUEUE_DEAD_LETTER_REDRIVE,
                 {
                     batchSize: 1,
-                    pollingIntervalSeconds: 2,
+                    notifyPollingIntervalSeconds: 60,
                     localConcurrency: 1,
                     perJobResults: true,
                 },
@@ -222,12 +225,14 @@ describe('JobQueueFeatureModule', () => {
                 retryBackoff: true,
                 policy: 'exclusive',
                 partition: false,
+                notify: true,
             });
             expect(boss.updateQueue).toHaveBeenCalledWith(JOB_QUEUE_DEAD_LETTER_REDRIVE, {
                 retryLimit: 10,
                 retryDelay: 15,
                 retryBackoff: true,
                 deadLetter: null,
+                notify: true,
             });
             expect(boss.createQueue).toHaveBeenCalledWith('email-source', {
                 retryLimit: 10,
@@ -236,6 +241,7 @@ describe('JobQueueFeatureModule', () => {
                 policy: 'standard',
                 partition: false,
                 deadLetter: JOB_QUEUE_DEAD_LETTER,
+                notify: true,
             });
         } finally {
             await module.close();
@@ -248,7 +254,7 @@ describe('JobQueueFeatureModule', () => {
                 name: JOB_QUEUE_DEAD_LETTER,
                 transactional: false,
                 consume: vi.fn(),
-                workerOptions: { localConcurrency: 1, pollingIntervalSeconds: 1, batchSize: 1 },
+                workerOptions: { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 1, batchSize: 1 },
             },
         ]);
         try {
@@ -256,6 +262,97 @@ describe('JobQueueFeatureModule', () => {
             expect(boss.createQueue).not.toHaveBeenCalled();
             expect(boss.work).not.toHaveBeenCalled();
         } finally {
+            await module.close();
+        }
+    });
+
+    it.each([
+        [JobQueueWorkerProfile.CRITICAL, 5],
+        [JobQueueWorkerProfile.HIGH, 10],
+        [JobQueueWorkerProfile.MEDIUM, 30],
+        [JobQueueWorkerProfile.LOW, 60],
+    ])('binds profile %s to its notification backstop', async (profile, backstop) => {
+        const { module, feature, boss } = await setup([
+            {
+                name: 'profile',
+                transactional: false,
+                consume: vi.fn(),
+                workerOptions: { profile, localConcurrency: 1, batchSize: 1 },
+            },
+        ]);
+        try {
+            await feature.onApplicationBootstrap();
+            expect(boss.work).toHaveBeenCalledWith(
+                'profile',
+                expect.objectContaining({
+                    notifyPollingIntervalSeconds: backstop,
+                }),
+                expect.any(Function),
+            );
+            expect(boss.work.mock.calls[0]![1]).not.toHaveProperty('pollingIntervalSeconds');
+        } finally {
+            await module.close();
+        }
+    });
+
+    it('rejects transactional batches larger than one before registering a worker', async () => {
+        const { module, feature, boss } = await setup([
+            {
+                name: 'invalid',
+                transactional: true,
+                consume: vi.fn(),
+                workerOptions: { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 1, batchSize: 2 },
+            },
+        ]);
+        try {
+            await expect(feature.onApplicationBootstrap()).rejects.toThrow('batchSize: 1');
+            expect(boss.work).not.toHaveBeenCalled();
+            expect(boss.createQueue).not.toHaveBeenCalled();
+        } finally {
+            await module.close();
+        }
+    });
+
+    it('processes a batch sequentially and preserves independent dispositions after failures', async () => {
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const transient = new DependencyUnavailableException();
+        const terminal = new TerminalJobException('Invalid delivery');
+        const consume = vi
+            .fn()
+            .mockReturnValueOnce(held)
+            .mockRejectedValueOnce(transient)
+            .mockRejectedValueOnce(terminal)
+            .mockResolvedValueOnce(undefined);
+        const { module, feature, boss } = await setup([
+            {
+                name: 'batch',
+                transactional: false,
+                consume,
+                workerOptions: { profile: JobQueueWorkerProfile.HIGH, localConcurrency: 1, batchSize: 4 },
+            },
+        ]);
+        try {
+            await feature.onApplicationBootstrap();
+            const handler = boss.work.mock.calls[0]![2] as (
+                jobs: { id: string; data: Job }[],
+            ) => Promise<JobResult<Error>[]>;
+            const result = handler(
+                ['first', 'retry', 'terminal', 'last'].map((id) => ({ id, data: { aggregateId: id, deliveryId: id } })),
+            );
+            await vi.waitFor(() => expect(consume).toHaveBeenCalledTimes(1));
+            release();
+            expect(await result).toEqual([
+                { id: 'first', status: 'completed' },
+                { id: 'retry', status: 'failed', output: transient },
+                { id: 'terminal', status: 'deadletter', output: terminal },
+                { id: 'last', status: 'completed' },
+            ]);
+            expect(consume).toHaveBeenCalledTimes(4);
+        } finally {
+            release();
             await module.close();
         }
     });

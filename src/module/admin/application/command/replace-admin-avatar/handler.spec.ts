@@ -57,6 +57,7 @@ describe('ReplaceAdminAvatarCommandHandler', () => {
             writer,
             storage,
             audit,
+            transaction,
             handler,
             command: new ReplaceAdminAvatarCommand(id, deliveryId, previousId),
         };
@@ -160,6 +161,48 @@ describe('ReplaceAdminAvatarCommandHandler', () => {
             expect(f.audit.record).not.toHaveBeenCalled();
         },
     );
+
+    it('waits for the transaction owner to commit before deleting any obsolete object', async () => {
+        const f = fixture();
+        let commit!: () => void;
+        let entered!: () => void;
+        const committed = new Promise<void>((resolve) => {
+            commit = resolve;
+        });
+        const writesCompleted = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        vi.spyOn(f.transaction, 'start').mockImplementation(async (work) => {
+            const result = await work();
+            entered();
+            await committed;
+            return result;
+        });
+        const delivery = f.handler.execute(f.command);
+        try {
+            await writesCompleted;
+            expect(f.writer.save).toHaveBeenCalledTimes(1);
+            expect(f.audit.record).toHaveBeenCalledTimes(1);
+            expect(f.storage.deleteObject).not.toHaveBeenCalled();
+        } finally {
+            commit();
+        }
+        await delivery;
+        expect(f.storage.deleteObject).toHaveBeenCalledTimes(3);
+    });
+
+    it('preserves every cleanup object when commit fails after successful writes', async () => {
+        const f = fixture();
+        const failure = new Error('Commit failed after callback returned');
+        vi.spyOn(f.transaction, 'start').mockImplementation(async (work) => {
+            await work();
+            throw failure;
+        });
+        await expect(f.handler.execute(f.command)).rejects.toBe(failure);
+        expect(f.writer.save).toHaveBeenCalledTimes(1);
+        expect(f.audit.record).toHaveBeenCalledTimes(1);
+        expect(f.storage.deleteObject).not.toHaveBeenCalled();
+    });
 
     it('resumes cleanup without a second copy or mutation after a committed attempt', async () => {
         const f = fixture();

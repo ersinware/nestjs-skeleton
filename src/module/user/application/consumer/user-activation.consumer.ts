@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
+import { IJobConsumer, Job, JobQueueWorkerProfile } from 'src/core/job-queue';
 import { SendUserActivationCommand } from 'src/module/user/application/command/send-user-activation/command';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 
@@ -27,7 +27,7 @@ export class UserActivationConsumer implements IJobConsumer {
     /**
      * Keeps activation delivery responsive with bounded sequential email batches.
      */
-    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 2, batchSize: 5 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 2, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

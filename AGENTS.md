@@ -9,6 +9,22 @@
 - After each change, assess `AGENTS.md` and `agent/`; retain only rules that prevent future decision errors. Omit code-obvious details, progress notes, and change history.
 - Guide edits: use the fewest words that preserve clarity and meaning; state each rule once in its owning section. Cross-reference when useful; use examples/rationale only to resolve ambiguity. Keep ESLint implementation details in configuration comments.
 
+## Commit Messages
+
+Use Conventional Commits:
+
+```text
+<type>(<scope>): <summary>
+
+<optional body>
+
+Refs #<issue>
+```
+
+- Keep issue numbers out of the subject, including trailing `(#N)` references.
+- Reference related issues in the footer with `Refs #N`.
+- Use `Fixes #N` or `Closes #N` only when the commit/merge will actually close the issue.
+
 ## Purpose & Architecture
 
 Production-ready NestJS reference skeleton: strict DDD, Hexagonal Architecture, horizontal scalability, Lift-and-Shift microservice readiness. Correctness, security, and standards outrank convenience. Keep cloning free of project identity/unfinished features and contexts extractable without rewrites.

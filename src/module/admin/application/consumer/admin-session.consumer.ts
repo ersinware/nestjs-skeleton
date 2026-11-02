@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { IJobConsumer, Job } from 'src/core/job-queue';
+import { IJobConsumer, Job, JobQueueWorkerProfile } from 'src/core/job-queue';
 import { ReconcileAdminSessionCommand } from 'src/module/admin/application/command/reconcile-admin-session/command';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 
@@ -27,7 +27,7 @@ export class AdminSessionConsumer implements IJobConsumer {
     /**
      * Keeps version propagation prompt with small sequential reconciliation batches.
      */
-    readonly workerOptions = { localConcurrency: 2, pollingIntervalSeconds: 1, batchSize: 5 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 2, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

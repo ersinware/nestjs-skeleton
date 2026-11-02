@@ -354,6 +354,12 @@ describe('Auth session-revocation jobs', () => {
             expect(sessionJobs).toHaveLength(1);
             expect(sessionJobs[0]?.data.aggregateId).toBe(aggregateId);
             expect(noticeJobs).toHaveLength(cause === 'refresh-reuse' ? 1 : 0);
+            if (cause === 'refresh-reuse') {
+                expect(noticeJobs[0]?.data.payload).toEqual({
+                    recipientEmail: `${aggregateId}@example.test`,
+                    recipientName: 'Auth queue integration test',
+                });
+            }
 
             for (const wrongSourceQueue of SOURCE_QUEUES.filter((queueName) => queueName !== sourceQueue)) {
                 await expect(findJobs(wrongSourceQueue, aggregateId)).resolves.toHaveLength(0);

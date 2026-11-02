@@ -18,8 +18,6 @@ import type { IGetUserEmailChangeNotificationRecipientPort } from 'src/module/us
 import type { GetUserEmailChangeNotificationRecipientResult } from 'src/module/user/application/query/get-user-email-change-notification-recipient/query';
 import type { IGetUserEmailConfirmationRecipientPort } from 'src/module/user/application/query/get-user-email-confirmation-recipient/port';
 import type { GetUserEmailConfirmationRecipientResult } from 'src/module/user/application/query/get-user-email-confirmation-recipient/query';
-import { type IGetUserNoticeRecipientPort } from 'src/module/user/application/query/get-user-notice-recipient/port';
-import { type GetUserNoticeRecipientResult } from 'src/module/user/application/query/get-user-notice-recipient/query';
 import { type IGetUserRefreshStatePort } from 'src/module/user/application/query/get-user-refresh-state/port';
 import { type GetUserRefreshStateResult } from 'src/module/user/application/query/get-user-refresh-state/query';
 import { type IGetUserSessionVersionPort } from 'src/module/user/application/query/get-user-session-version/port';
@@ -46,7 +44,6 @@ export class UserReaderAdapter
         IGetUserRefreshStatePort,
         IGetUserByIdPort,
         IGetUserCredentialsByEmailPort,
-        IGetUserNoticeRecipientPort,
         IGetUserSessionVersionPort
 {
     /**
@@ -148,28 +145,6 @@ export class UserReaderAdapter
                     )
                     .limit(1)
             )[0] ?? null) as GetUserActivationRecipientResult | null;
-        } catch (error) {
-            throw translateConnectionFailure(error);
-        }
-    }
-
-    /**
-     * Reads the current recipient details for a user notice.
-     *
-     * @param id The unique identifier of the target user
-     * @returns The notice recipient details, or null when no non-deleted user exists
-     */
-    async getNoticeRecipient(id: string): Promise<GetUserNoticeRecipientResult | null> {
-        try {
-            return (
-                (
-                    await this.database
-                        .select({ email: user.email, name: user.name })
-                        .from(user)
-                        .where(and(eq(user.id, id), isNull(user.deletedAt)))
-                        .limit(1)
-                )[0] ?? null
-            );
         } catch (error) {
             throw translateConnectionFailure(error);
         }

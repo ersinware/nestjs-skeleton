@@ -7,6 +7,7 @@ export { buildEmailIdempotencyKey } from 'src/core/email/email-idempotency-key.u
 export { escapeHtml } from 'src/core/email/html-escape.util';
 export { EmailModule } from 'src/core/email/module';
 export {
+    EMAIL_DELIVERY_PAYLOAD_CONFLICT_MESSAGE,
     TOKEN_EMAILER_PORT,
     type EmailDeliveryIdentity,
     type EmailPayload,

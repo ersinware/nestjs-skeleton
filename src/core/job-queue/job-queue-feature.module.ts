@@ -8,14 +8,25 @@ import { PgBoss, type JobResult, type Job as PgBossJob } from 'pg-boss';
 import { translateConnectionFailure } from 'src/core/database';
 import { JobQueueDatabaseAdapter } from 'src/core/job-queue/adapter/job-queue-database.adapter';
 import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue/dead-letter-queue.constant';
-import { type IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
+import type { IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { provisionJobQueue } from 'src/core/job-queue/job-queue-provisioner';
+import { JobQueueWorkerProfile } from 'src/core/job-queue/job-queue-worker-profile.enum';
 import { runInJobConsumerSpan } from 'src/core/job-queue/job-trace-context';
 import { Job } from 'src/core/job-queue/job.type';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { isRedisUnavailable } from 'src/core/redis';
 import { ExceptionKind, SystemException, isAppException, isExceptionOfKind, toError } from 'src/shared/exception';
+
+/**
+ * Maps workload profiles to pg-boss backstop polling, including listener outages.
+ */
+const JOB_QUEUE_POLLING_CADENCE = {
+    [JobQueueWorkerProfile.CRITICAL]: { notifyPollingIntervalSeconds: 5 },
+    [JobQueueWorkerProfile.HIGH]: { notifyPollingIntervalSeconds: 10 },
+    [JobQueueWorkerProfile.MEDIUM]: { notifyPollingIntervalSeconds: 30 },
+    [JobQueueWorkerProfile.LOW]: { notifyPollingIntervalSeconds: 60 },
+} as const satisfies Readonly<Record<JobQueueWorkerProfile, { readonly notifyPollingIntervalSeconds: number }>>;
 
 /**
  * Selects actionable taxonomy failures without coupling worker reporting to HTTP statuses.
@@ -63,6 +74,10 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
     async onApplicationBootstrap() {
         for (const consumer of this.consumers) {
             try {
+                if (consumer.transactional && consumer.workerOptions.batchSize !== 1) {
+                    throw new SystemException('Transactional consumers require batchSize: 1.');
+                }
+
                 if (consumer.name === JOB_QUEUE_DEAD_LETTER) {
                     throw new SystemException('The shared dead-letter queue cannot register a worker.', {
                         context: { class: this.constructor.name, method: this.onApplicationBootstrap.name },
@@ -72,6 +87,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
                 await provisionJobQueue(this.boss, consumer.name, {
                     policy: consumer.queueOptions?.policy ?? 'standard',
                     disableDeadLetter: consumer.queueOptions?.disableDeadLetter ?? false,
+                    notify: true,
                 });
             } catch (error) {
                 if (!isExceptionOfKind(translateConnectionFailure(error), ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
@@ -86,7 +102,7 @@ export class JobQueueFeatureModule implements OnApplicationBootstrap {
 
             const options = {
                 batchSize: consumer.workerOptions.batchSize,
-                pollingIntervalSeconds: consumer.workerOptions.pollingIntervalSeconds,
+                ...JOB_QUEUE_POLLING_CADENCE[consumer.workerOptions.profile],
                 localConcurrency: consumer.workerOptions.localConcurrency,
             } as const;
 

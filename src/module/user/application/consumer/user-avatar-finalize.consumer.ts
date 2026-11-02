@@ -5,7 +5,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { CommandPipeline } from 'src/core/cqrs';
-import { type IJobConsumer, type Job } from 'src/core/job-queue';
+import { JobQueueWorkerProfile, type IJobConsumer, type Job } from 'src/core/job-queue';
 import { FinalizeUserAvatarCommand } from 'src/module/user/application/command/finalize-user-avatar/command';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 
@@ -27,7 +27,7 @@ export class UserAvatarFinalizeConsumer implements IJobConsumer {
     /**
      * Limits storage concurrency without claiming work behind a slow delivery.
      */
-    readonly workerOptions = { localConcurrency: 1, pollingIntervalSeconds: 5, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 2, batchSize: 1 } as const;
 
     /**
      * Initializes the owner command dispatcher.

@@ -10,6 +10,7 @@ export {
     JOB_QUEUE_DEAD_LETTER_REDRIVE_OPTIONS,
 } from 'src/core/job-queue/dead-letter-queue.constant';
 export type { IJobConsumer, JobQueueOptions } from 'src/core/job-queue/job-consumer.interface';
+export { JobQueueWorkerProfile } from 'src/core/job-queue/job-queue-worker-profile.enum';
 export type { Job } from 'src/core/job-queue/job.type';
 export { JobQueueModule } from 'src/core/job-queue/module';
 export {

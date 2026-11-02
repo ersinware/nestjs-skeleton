@@ -3,6 +3,7 @@
  * @description Defines the contract and transaction mode for job consumers.
  */
 
+import { JobQueueWorkerProfile } from 'src/core/job-queue/job-queue-worker-profile.enum';
 import { Job } from 'src/core/job-queue/job.type';
 
 /**
@@ -52,12 +53,13 @@ export interface IJobConsumer {
         readonly localConcurrency: number;
 
         /**
-         * Polling interval in seconds.
+         * Workload profile that selects backstop polling, including listener outages.
          */
-        readonly pollingIntervalSeconds: number;
+        readonly profile: JobQueueWorkerProfile;
 
         /**
          * Maximum jobs claimed per fetch and processed sequentially by each worker.
+         * Must be 1 for transactional consumers.
          */
         readonly batchSize: number;
     };
