@@ -83,14 +83,12 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
         switch (deliveryState) {
             case AvatarDeliveryState.MISSING:
                 throw new TerminalJobException('The user has no attached avatar.');
-
             case AvatarDeliveryState.SUPERSEDED:
                 await Promise.all(
                     [sourceKey, destinationKey, ...obsoleteKeys].map((key) => this.storagePort.deleteObject(key)),
                 );
 
                 return;
-
             case AvatarDeliveryState.FINALIZED:
                 // Never recopy a source recreated through a still-valid PUT URL after cleanup.
                 if ((await this.findObject(destinationKey)) === null) {
@@ -100,10 +98,8 @@ export class ReplaceUserAvatarCommandHandler implements ICommandHandler<ReplaceU
                 await Promise.all([...obsoleteKeys, sourceKey].map((key) => this.storagePort.deleteObject(key)));
 
                 return;
-
             case AvatarDeliveryState.PENDING:
                 break;
-
             default:
                 this.assertNeverDeliveryState(deliveryState);
         }
