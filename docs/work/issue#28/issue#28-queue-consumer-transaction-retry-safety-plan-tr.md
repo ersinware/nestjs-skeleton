@@ -157,6 +157,8 @@ Hedef davranış:
 
 ### Batch / parallelism kararı
 
+Final concurrency/batch değerleri: [Adım 9 workerOptions](issue%2328-step-9-audit-corrections-tr.md#final-workeroptions).
+
 Generic batch parallelization hedeflenmemeli.
 
 Varsayılan model:

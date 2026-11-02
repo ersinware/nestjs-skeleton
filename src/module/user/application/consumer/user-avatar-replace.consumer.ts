@@ -28,7 +28,7 @@ export class UserAvatarReplaceConsumer implements IJobConsumer {
     /**
      * Limits storage concurrency without claiming work behind a slow delivery.
      */
-    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 1, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 2, batchSize: 1 } as const;
 
     /**
      * Initializes the owner command dispatcher.

@@ -27,7 +27,7 @@ export class UserCacheConsumer implements IJobConsumer {
     /**
      * Amortizes polling across short evictions while tolerating delayed cache repair.
      */
-    readonly workerOptions = { profile: JobQueueWorkerProfile.HIGH, localConcurrency: 1, batchSize: 20 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.HIGH, localConcurrency: 2, batchSize: 10 } as const;
 
     /**
      * Initializes the consumer with the cache eviction port.

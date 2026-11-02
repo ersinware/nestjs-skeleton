@@ -28,7 +28,7 @@ export class AdminEmailConfirmationConsumer implements IJobConsumer {
     /**
      * Keeps confirmation delivery responsive with bounded sequential email batches.
      */
-    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 1, batchSize: 5 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.MEDIUM, localConcurrency: 2, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

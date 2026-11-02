@@ -2,6 +2,8 @@
 
 > Aşağıdaki çift-aralık/fallback önerileri tarihseldir; güncel dispatch kararı [planda (Adım 2)](issue%2328-queue-consumer-transaction-retry-safety-plan-tr.md) açıklanır.
 
+Güncel concurrency/batch değerleri: [Adım 9 workerOptions](issue%2328-step-9-audit-corrections-tr.md#final-workeroptions). Aşağıdaki sayılar audit snapshot'ıdır.
+
 ## Kapsam ve snapshot
 
 Bu audit, `issue#28-queue-consumer-transaction-retry-safety` branch'inin aşağıdaki head'i üzerinden yapılmıştır:

@@ -21,9 +21,30 @@ Adım 1–8 kararları mevcut source ile yeniden doğrulandı. Yalnız doğrulan
 | `incorrect provider retry classification`             | `invalid_idempotent_request` normal retry'a giriyordu                                     | Adapter conflict'e çevirir; queued email boundary `TerminalJobException` üretir. `concurrent_idempotent_requests` retryable kalır.                |
 | `provider-retention / delayed-redrive duplicate risk` | Sekiz email path'inin tamamında provider retention sonrası duplicate physical send mümkün | Redrive engellenmedi; exactly-once iddiası yapılmadan risk açıkça sınırlandı.                                                                     |
 | `incorrect authoritative-state handling`              | Yok                                                                                       | Aktivasyon/davet/confirmation eligibility read'leri korundu; refresh-reuse bildirimi immutable event-time adresine gönderilir.                    |
-| `unjustified workerOptions`                           | Serbest polling sayıları canonical profile policy'siyle uyumsuzdu                         | 20 consumer `critical/high/medium/low` profile'ına bağlandı; `localConcurrency` ve auditçe gerekçeli batch değerleri korundu.                     |
+| `unjustified workerOptions`                           | Serbest polling sayıları canonical profile policy'siyle uyumsuzdu                         | 20 consumer canonical profile'a bağlandı; final concurrency/batch değerleri aşağıdadır.                                                           |
 | `missing / incorrect LISTEN-NOTIFY dispatch`          | Instance listener, custom DB listener ve queue `notify` reconciliation yoktu              | Listener/reconnect/close desteği, `useListenNotify`, queue drift reconciliation ve notify backstop eklendi; listener observability #31'e ayrıldı. |
 | `unsafe or unbounded batch parallelism`               | Yok                                                                                       | Sequential batch processing korundu; generic parallelism eklenmedi; transactional batch değeri `1` kaldı.                                         |
+
+## Final workerOptions
+
+Değerler process başınadır; batch içi execution sequential kalır.
+
+| Consumer grubu                         | `localConcurrency` | `batchSize` | Profile    |
+| -------------------------------------- | -----------------: | ----------: | ---------- |
+| User/Admin Session                     |                  2 |           5 | `critical` |
+| Dört transactional Revocation consumer |                  2 |           1 | `critical` |
+| User Cache                             |                  2 |          10 | `high`     |
+| User Activation                        |                  2 |           5 | `medium`   |
+| Dört Avatar consumer                   |                  2 |           1 | `medium`   |
+| User/Admin EmailConfirmation           |                  2 |           5 | `medium`   |
+| Admin Invite                           |                  1 |           5 | `low`      |
+| User/Admin RefreshReuseNotice          |                  1 |           5 | `low`      |
+| User/Admin EmailChangeNotification     |                  1 |           5 | `low`      |
+| DeadLetterRedrive                      |                  1 |           1 | `low`      |
+
+Toplam 34 worker/process; transactional üst sınır `8 × replica sayısı`dır. Mevcut `JOB_QUEUE_POOL_SIZE=20` içinde listener için bir bağlantı ayrılır; polling/completion/maintenance ve diğer DB işleri de kapasite kullanır. Bu ayarlar üretim kapasitesi veya provider rate-limit garantisi değildir; peak replica/deploy overlap ile yük testi gerekir.
+
+Profile/polling, LISTEN/NOTIFY, transaction mode ve retry/idempotency sözleşmeleri değişmez. Avatar tuning'i Issue #30 remediation'ı değildir.
 
 ## Dispatch sonucu
 

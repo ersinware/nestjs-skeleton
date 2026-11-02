@@ -28,7 +28,7 @@ export class UserRefreshReuseNoticeConsumer implements IJobConsumer {
     /**
      * Allows modest notice delay and amortizes polling across deliveries.
      */
-    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 10 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 5 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

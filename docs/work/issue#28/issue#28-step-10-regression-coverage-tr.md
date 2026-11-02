@@ -17,7 +17,7 @@ Unit testleri port sınırlarını; E2E testleri gerçek PostgreSQL, pg-boss ve 
 | DLQ/redrive logical identity, değişen physical ID, worker restart         | Email-delivery retry E2E: worker durdurulur, DLQ redrive edilir, yeni physical ID ve aynı `deliveryId`/payload doğrulanır; production worker yeniden başlatılır.                                                                                     |
 | Commit-dependent cleanup                                                  | Admin/User `replace-*-avatar/handler.spec.ts`: başarılı callback sonrası commit bekletilir; commit öncesinde silme yoktur. Commit hatasında da cleanup başlamaz. Gerçek transaction commit/rollback davranışı transactional consumer E2E'de sınanır. |
 | Bağımsız batch settlement ve sequential execution                         | `job-queue-feature.module.spec.ts`: ilk job beklerken sonraki başlamaz; completed/failed/deadletter/completed sonuçları korunur. Transactional consumer E2E aynı mixed batch'in kalıcı state'lerini doğrular.                                        |
-| Transactional `batchSize: 1` ve notify topology                           | Feature unit testi geçersiz batch'i worker başlamadan reddeder. Email-delivery E2E gerçek DI kaydındaki 20 consumer'ı, dört transactional batch'i ve queue `notify` değerlerini denetler.                                                            |
+| Transactional `batchSize: 1` ve notify topology                           | Feature unit testi geçersiz transactional batch'i reddeder. Email-delivery E2E 20 consumer'ın final profile/concurrency/batch/mode değerlerini, gerçek 34 worker kaydını ve queue notify ayarlarını denetler.                                        |
 | LISTEN/NOTIFY immediate wake-up                                           | `test/core/job-queue/notification-dispatch.e2e-spec.ts`: idle fetch sonrasında 30s backstop beklenmeden teslim.                                                                                                                                      |
 | Missed notification → safety-net polling                                  | Aynı E2E dosyasında notification callback'i düşürülür; healthy listener base timer üretmez, backstop teslimi kurtarır.                                                                                                                               |
 | Initial listener unavailable ve sonradan listener kaybı → native backstop | Aynı E2E dosyasında gerçek LISTEN SQL hatası ve `pg_terminate_backend`; notify backstop teslimi kurtarır, reconnect session'ı yeniler.                                                                                                               |
@@ -53,3 +53,14 @@ E2E çalışması gerçek Resend veya AWS acceptance yerine geçmez. Mevcut Seaw
 - [x] Corrected/high-risk transaction ve retry-safety path'leri regression kapsamındadır.
 - [x] Retry exhaustion, DLQ/redrive logical identity ve seçilen delayed-redrive davranışı doğrulandı.
 - [x] Notify-only revizyonunda immediate notification, missed-notification backstop, initial/live listener backstop ve multi-node claim yeniden doğrulandı.
+
+## WorkerOptions tuning doğrulaması
+
+Final değerler [Adım 9](issue%2328-step-9-audit-corrections-tr.md#final-workeroptions) tablosundadır. 2026-11-02 tuning sonrası sonuçları:
+
+- `npm test`: 90 dosya, 1.144 test başarılı.
+- `npm run ci:local`: exit `0`; quality/security, format check, type check, lint, unit coverage, build ve E2E başarılı; publish çalışmadı.
+- E2E: 22 dosya, 432 test başarılı; final 20 consumer ayarı, 34 gerçek worker kaydı ve transactional `batchSize: 1` doğrulandı.
+- Spectral başarılı; Schemathesis 6.854 case başarılı, 1 skipped; authentication/test-data/schema-mismatch uyarıları sürdü.
+
+Bu doğrulama yük testi değildir; profile/polling, LISTEN/NOTIFY, transaction mode ve retry/idempotency davranışları korunmuştur. Issue #30 remediation'ı ve `docs/idempotency-retry-inventory.md` kapsam dışıdır.

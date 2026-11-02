@@ -28,7 +28,7 @@ export class AdminSessionRevocationRefreshReuseConsumer implements IJobConsumer 
     /**
      * Keeps reuse revocation polling prompt without grouping transactional effects.
      */
-    readonly workerOptions = { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 1, batchSize: 1 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.CRITICAL, localConcurrency: 2, batchSize: 1 } as const;
 
     /**
      * Initializes the consumer with the required pipeline.

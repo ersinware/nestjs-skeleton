@@ -27,7 +27,7 @@ export class AdminEmailChangeNotificationConsumer implements IJobConsumer {
     /**
      * Allows delayed old-address notices and amortizes polling across deliveries.
      */
-    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 10 } as const;
+    readonly workerOptions = { profile: JobQueueWorkerProfile.LOW, localConcurrency: 1, batchSize: 5 } as const;
 
     /**
      * Initializes the command pipeline.

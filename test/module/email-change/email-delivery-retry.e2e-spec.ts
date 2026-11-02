@@ -24,6 +24,7 @@ describe.each([AdminRefreshReuseNoticeConsumer, UserRefreshReuseNoticeConsumer])
     (Consumer) => {
         let app: NestFastifyApplication;
         let boss: PgBoss;
+        let startupWorkers: ReturnType<PgBoss['getWipData']>;
         let adapter: JobQueueDatabaseAdapter;
         let queue: string;
         const aggregateId = randomUUID();
@@ -42,6 +43,7 @@ describe.each([AdminRefreshReuseNoticeConsumer, UserRefreshReuseNoticeConsumer])
             app = await createTestApp({ overrides: [{ provide: TOKEN_EMAILER_PORT, useValue: port }] });
             boss = app.get(TOKEN_JOB_QUEUE_CLIENT);
             adapter = app.get(JobQueueDatabaseAdapter);
+            startupWorkers = boss.getWipData();
             for (const existing of await boss.getQueues()) {
                 await boss.offWork(existing.name, { wait: true });
             }
@@ -149,7 +151,7 @@ describe.each([AdminRefreshReuseNoticeConsumer, UserRefreshReuseNoticeConsumer])
             }
         }
 
-        it('keeps every application worker notify-enabled and every transactional batch at one', async () => {
+        it('registers final worker tuning while preserving profiles, modes, and notifications', async () => {
             const consumers = [...app.get(ModulesContainer).values()].flatMap(
                 (module) =>
                     (module.providers.get(TOKEN_FEATURE_CONSUMERS)?.instance as IJobConsumer[] | undefined) ?? [],
@@ -158,8 +160,51 @@ describe.each([AdminRefreshReuseNoticeConsumer, UserRefreshReuseNoticeConsumer])
             const transactional = consumers.filter((consumer) => consumer.transactional);
             expect(transactional).toHaveLength(4);
             expect(transactional.every((consumer) => consumer.workerOptions.batchSize === 1)).toBe(true);
+            expect(
+                Object.fromEntries(
+                    consumers.map((consumer) => [
+                        consumer.constructor.name,
+                        [
+                            consumer.workerOptions.profile,
+                            consumer.workerOptions.localConcurrency,
+                            consumer.workerOptions.batchSize,
+                            consumer.transactional,
+                        ],
+                    ]),
+                ),
+            ).toEqual({
+                UserSessionConsumer: ['critical', 2, 5, false],
+                AdminSessionConsumer: ['critical', 2, 5, false],
+                UserSessionRevocationLogoutAllConsumer: ['critical', 2, 1, true],
+                UserSessionRevocationRefreshReuseConsumer: ['critical', 2, 1, true],
+                AdminSessionRevocationLogoutAllConsumer: ['critical', 2, 1, true],
+                AdminSessionRevocationRefreshReuseConsumer: ['critical', 2, 1, true],
+                UserCacheConsumer: ['high', 2, 10, false],
+                UserActivationConsumer: ['medium', 2, 5, false],
+                UserAvatarReplaceConsumer: ['medium', 2, 1, false],
+                UserAvatarFinalizeConsumer: ['medium', 2, 1, false],
+                AdminAvatarReplaceConsumer: ['medium', 2, 1, false],
+                AdminAvatarFinalizeConsumer: ['medium', 2, 1, false],
+                UserEmailConfirmationConsumer: ['medium', 2, 5, false],
+                AdminEmailConfirmationConsumer: ['medium', 2, 5, false],
+                AdminInviteConsumer: ['low', 1, 5, false],
+                UserRefreshReuseNoticeConsumer: ['low', 1, 5, false],
+                AdminRefreshReuseNoticeConsumer: ['low', 1, 5, false],
+                UserEmailChangeNotificationConsumer: ['low', 1, 5, false],
+                AdminEmailChangeNotificationConsumer: ['low', 1, 5, false],
+                DeadLetterRedriveConsumer: ['low', 1, 1, false],
+            });
+            expect(startupWorkers).toHaveLength(34);
             const persisted = await boss.getQueues();
             for (const consumer of consumers) {
+                const workers = startupWorkers.filter((worker) => worker.name === consumer.name);
+                expect(workers).toHaveLength(consumer.workerOptions.localConcurrency);
+                for (const worker of workers) {
+                    expect(worker.options).toMatchObject({
+                        localConcurrency: consumer.workerOptions.localConcurrency,
+                        batchSize: consumer.workerOptions.batchSize,
+                    });
+                }
                 expect(persisted.find((existing) => existing.name === consumer.name)?.notify).toBe(true);
             }
             expect(persisted.find((existing) => existing.name === JOB_QUEUE_DEAD_LETTER)?.notify).toBe(false);
