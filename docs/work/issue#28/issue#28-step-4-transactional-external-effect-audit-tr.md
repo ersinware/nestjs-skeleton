@@ -101,12 +101,12 @@ Bu window içinde commit-dependent bir business external effect çalışması da
 
 Dört transactional consumer'ın `consume()` implementasyonu yalnız command dispatch eder.
 
-| Consumer | Dispatched command | Consumer içinde direct external effect | Sonuç |
-| --- | --- | --- | --- |
-| `UserSessionRevocationLogoutAllConsumer` | `RevokeUserSessionsCommand(..., LOGOUT_ALL, ...)` | Yok | **safe** |
-| `UserSessionRevocationRefreshReuseConsumer` | `RevokeUserSessionsCommand(..., REFRESH_REUSE, ...)` | Yok | **safe** |
-| `AdminSessionRevocationLogoutAllConsumer` | `RevokeAdminSessionsCommand(..., LOGOUT_ALL, ...)` | Yok | **safe** |
-| `AdminSessionRevocationRefreshReuseConsumer` | `RevokeAdminSessionsCommand(..., REFRESH_REUSE, ...)` | Yok | **safe** |
+| Consumer                                     | Dispatched command                                    | Consumer içinde direct external effect | Sonuç    |
+| -------------------------------------------- | ----------------------------------------------------- | -------------------------------------- | -------- |
+| `UserSessionRevocationLogoutAllConsumer`     | `RevokeUserSessionsCommand(..., LOGOUT_ALL, ...)`     | Yok                                    | **safe** |
+| `UserSessionRevocationRefreshReuseConsumer`  | `RevokeUserSessionsCommand(..., REFRESH_REUSE, ...)`  | Yok                                    | **safe** |
+| `AdminSessionRevocationLogoutAllConsumer`    | `RevokeAdminSessionsCommand(..., LOGOUT_ALL, ...)`    | Yok                                    | **safe** |
+| `AdminSessionRevocationRefreshReuseConsumer` | `RevokeAdminSessionsCommand(..., REFRESH_REUSE, ...)` | Yok                                    | **safe** |
 
 Consumer constructor dependency'si yalnız `CommandPipeline`'dır.
 
@@ -658,22 +658,22 @@ refusal audit finding: appropriate established exception
 
 # N. Consumer bazında external-effect matrisi
 
-| Transactional consumer | PostgreSQL mutation | Durable follow-up | Direct Redis | Direct email | Direct S3 | Direct business HTTP / provider | `join()` sonrası business effect | Sonuç |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `UserSessionRevocationLogoutAllConsumer` | Evet | `SESSION_RECONCILE` | Yok | Yok | Yok | Yok | Yok | **safe** |
-| `UserSessionRevocationRefreshReuseConsumer` | Evet | `SESSION_RECONCILE` + `REFRESH_REUSE_NOTICE` | Yok | Yok | Yok | Yok | Yok | **safe** |
-| `AdminSessionRevocationLogoutAllConsumer` | Evet | `SESSION_RECONCILE` | Yok | Yok | Yok | Yok | Yok | **safe** |
-| `AdminSessionRevocationRefreshReuseConsumer` | Evet | `SESSION_RECONCILE` + `REFRESH_REUSE_NOTICE` | Yok | Yok | Yok | Yok | Yok | **safe** |
+| Transactional consumer                       | PostgreSQL mutation | Durable follow-up                            | Direct Redis | Direct email | Direct S3 | Direct business HTTP / provider | `join()` sonrası business effect | Sonuç    |
+| -------------------------------------------- | ------------------- | -------------------------------------------- | ------------ | ------------ | --------- | ------------------------------- | -------------------------------- | -------- |
+| `UserSessionRevocationLogoutAllConsumer`     | Evet                | `SESSION_RECONCILE`                          | Yok          | Yok          | Yok       | Yok                             | Yok                              | **safe** |
+| `UserSessionRevocationRefreshReuseConsumer`  | Evet                | `SESSION_RECONCILE` + `REFRESH_REUSE_NOTICE` | Yok          | Yok          | Yok       | Yok                             | Yok                              | **safe** |
+| `AdminSessionRevocationLogoutAllConsumer`    | Evet                | `SESSION_RECONCILE`                          | Yok          | Yok          | Yok       | Yok                             | Yok                              | **safe** |
+| `AdminSessionRevocationRefreshReuseConsumer` | Evet                | `SESSION_RECONCILE` + `REFRESH_REUSE_NOTICE` | Yok          | Yok          | Yok       | Yok                             | Yok                              | **safe** |
 
 Operational exceptions ayrı tutulur:
 
-| Operational effect | Transaction açıkken olabilir mi? | Business effect mi? | Değerlendirme |
-| --- | --- | --- | --- |
-| CQRS tracing span | Evet | Hayır | Established tracing exception |
-| Job producer/consumer span | Evet | Hayır | Established tracing exception |
-| Pino failure logging | Evet, failure path | Hayır | Established logging exception |
-| Sentry exception capture | Evet, failure path | Hayır | Operational error-reporting / logging concern; safe |
-| Refusal audit independent commit | Evet, refusal path | Hayır; durable refusal evidence | Established refusal-audit exception |
+| Operational effect               | Transaction açıkken olabilir mi? | Business effect mi?             | Değerlendirme                                       |
+| -------------------------------- | -------------------------------- | ------------------------------- | --------------------------------------------------- |
+| CQRS tracing span                | Evet                             | Hayır                           | Established tracing exception                       |
+| Job producer/consumer span       | Evet                             | Hayır                           | Established tracing exception                       |
+| Pino failure logging             | Evet, failure path               | Hayır                           | Established logging exception                       |
+| Sentry exception capture         | Evet, failure path               | Hayır                           | Operational error-reporting / logging concern; safe |
+| Refusal audit independent commit | Evet, refusal path               | Hayır; durable refusal evidence | Established refusal-audit exception                 |
 
 ---
 

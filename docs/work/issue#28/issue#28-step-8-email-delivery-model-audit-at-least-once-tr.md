@@ -27,16 +27,16 @@ exactly-once email   → garanti edilmez
 
 `from`, bütün path'lerde process başında okunan `EMAIL_FROM_ADDRESS` değeridir. Aşağıdaki stability, aynı deployment config/template/signing secret altında normal domain flow içindir.
 
-| Consumer | `deliveryId` | `to / subject / html` kaynağı | Sonuç |
-| --- | --- | --- | --- |
-| `AdminInviteConsumer` | persisted `inviteId` | Pending admin email/name + fixed invitation claims | **stable** — pending admin profile/email değiştiremez; re-invite yeni ID üretir. |
-| `UserActivationConsumer` | persisted `activationId` | Pending user email/name + fixed activation claims | **stable** — pending user profile/email değiştiremez; resend yeni ID üretir. |
-| `UserEmailConfirmationConsumer` | `pendingEmailRequestId` | Stable target/token + current `user.name` | **unstable** — name değişirse HTML değişir. |
-| `AdminEmailConfirmationConsumer` | `pendingEmailRequestId` | Stable target/token + current `admin.name` | **unstable** — name değişirse HTML değişir. |
-| `UserRefreshReuseNoticeConsumer` | committed notice UUID | Current user email + current name | **unstable** — recipient ve HTML değişebilir. |
-| `AdminRefreshReuseNoticeConsumer` | committed notice UUID | Current admin email + current name | **unstable** — recipient ve HTML değişebilir. |
-| `UserEmailChangeNotificationConsumer` | immutable notification row ID | Immutable previous email + `createdAt` | **stable** — insert-only historical row okunur. |
-| `AdminEmailChangeNotificationConsumer` | immutable notification row ID | Immutable previous email + `createdAt` | **stable** — user path'iyle aynı. |
+| Consumer                               | `deliveryId`                  | `to / subject / html` kaynağı                      | Sonuç                                                                            |
+| -------------------------------------- | ----------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `AdminInviteConsumer`                  | persisted `inviteId`          | Pending admin email/name + fixed invitation claims | **stable** — pending admin profile/email değiştiremez; re-invite yeni ID üretir. |
+| `UserActivationConsumer`               | persisted `activationId`      | Pending user email/name + fixed activation claims  | **stable** — pending user profile/email değiştiremez; resend yeni ID üretir.     |
+| `UserEmailConfirmationConsumer`        | `pendingEmailRequestId`       | Stable target/token + current `user.name`          | **unstable** — name değişirse HTML değişir.                                      |
+| `AdminEmailConfirmationConsumer`       | `pendingEmailRequestId`       | Stable target/token + current `admin.name`         | **unstable** — name değişirse HTML değişir.                                      |
+| `UserRefreshReuseNoticeConsumer`       | committed notice UUID         | Current user email + current name                  | **unstable** — recipient ve HTML değişebilir.                                    |
+| `AdminRefreshReuseNoticeConsumer`      | committed notice UUID         | Current admin email + current name                 | **unstable** — recipient ve HTML değişebilir.                                    |
+| `UserEmailChangeNotificationConsumer`  | immutable notification row ID | Immutable previous email + `createdAt`             | **stable** — insert-only historical row okunur.                                  |
+| `AdminEmailChangeNotificationConsumer` | immutable notification row ID | Immutable previous email + `createdAt`             | **stable** — user path'iyle aynı.                                                |
 
 Invite, activation ve email-confirmation token'ları fixed claim order + `noTimestamp: true` ile yeniden üretildiğinden aynı secret altında deterministiktir.
 
@@ -69,12 +69,12 @@ Kurallar:
 
 Resend davranışı:
 
-| Provider sonucu | Application classification | Queue disposition |
-| --- | --- | --- |
-| Same key + same payload, retention içinde | success / cached provider result | complete |
-| `409 invalid_idempotent_request` | `ResourceConflictException` — logical-delivery payload conflict | email-send use-case sınırında `TerminalJobException`; normal retry yok, DLQ |
-| `409 concurrent_idempotent_requests` | `DependencyUnavailableException` | retryable |
-| `429 rate_limit_exceeded`, recognized `5xx`, `resource_locked` | `DependencyUnavailableException` | retryable |
+| Provider sonucu                                                | Application classification                                      | Queue disposition                                                           |
+| -------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Same key + same payload, retention içinde                      | success / cached provider result                                | complete                                                                    |
+| `409 invalid_idempotent_request`                               | `ResourceConflictException` — logical-delivery payload conflict | email-send use-case sınırında `TerminalJobException`; normal retry yok, DLQ |
+| `409 concurrent_idempotent_requests`                           | `DependencyUnavailableException`                                | retryable                                                                   |
+| `429 rate_limit_exceeded`, recognized `5xx`, `resource_locked` | `DependencyUnavailableException`                                | retryable                                                                   |
 
 `EmailerAdapter` doğrudan `TerminalJobException` throw etmemelidir. Provider-specific `invalid_idempotent_request` adapter'da transport-neutral `ResourceConflictException`'a çevrilmeli; send command handler yalnız email port çağrısından gelen bu conflict'i queue terminal disposition'ına çevirmelidir.
 

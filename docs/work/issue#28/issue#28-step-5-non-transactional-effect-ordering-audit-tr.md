@@ -20,13 +20,13 @@ Production'daki **16 non-transactional consumer** için PostgreSQL mutation ile 
 
 ## A. Genel sonuç
 
-| Grup | Sayı | DB davranışı | External effect | Sonuç |
-| --- | ---: | --- | --- | --- |
-| Cache invalidation | 1 | PostgreSQL yok | Redis `DEL` | **appropriate** |
-| Session reconciliation | 2 | Yalnız `SELECT` | Redis version update | **appropriate** |
-| Email delivery | 8 | Yalnız `SELECT` | Email | **appropriate** |
-| Avatar reconciliation | 4 | `start()` içinde save + audit | S3; user path'inde Redis eviction | **appropriate** |
-| Dead-letter redrive | 1 | Application aggregate mutation yok | pg-boss queue mutation | **appropriate** |
+| Grup                   | Sayı | DB davranışı                       | External effect                   | Sonuç           |
+| ---------------------- | ---: | ---------------------------------- | --------------------------------- | --------------- |
+| Cache invalidation     |    1 | PostgreSQL yok                     | Redis `DEL`                       | **appropriate** |
+| Session reconciliation |    2 | Yalnız `SELECT`                    | Redis version update              | **appropriate** |
+| Email delivery         |    8 | Yalnız `SELECT`                    | Email                             | **appropriate** |
+| Avatar reconciliation  |    4 | `start()` içinde save + audit      | S3; user path'inde Redis eviction | **appropriate** |
+| Dead-letter redrive    |    1 | Application aggregate mutation yok | pg-boss queue mutation            | **appropriate** |
 
 ```text
 unsafe ordering findings: 0
