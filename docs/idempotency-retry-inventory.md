@@ -2,16 +2,31 @@
 
 ## Purpose
 
-This document is the living inventory of production HTTP mutation endpoints and their idempotency / retry-safety characteristics.
+This document is the living inventory of production HTTP mutation endpoints and their request-level idempotency / retry-safety characteristics, together with the downstream durable-work safety boundaries that matter to those endpoints.
 
-Update it whenever a mutating production endpoint is added, removed, or changes behavior.
+Update it whenever a mutating production endpoint, its durable jobs, or its retry / redrive behavior changes.
+
+## Boundary: HTTP retry-safety vs downstream delivery safety
+
+`HTTP retry-safe` describes the HTTP request boundary only. It answers whether replaying the same logical request can apply the same request-level business mutation more than once.
+
+It does **not** mean that:
+
+- a durable pg-boss job executes exactly once;
+- a queue consumer cannot retry;
+- a DLQ redrive reuses the same physical pg-boss job ID;
+- an external provider effect is exactly-once;
+- an email cannot be physically sent again after the provider's idempotency retention expires.
+
+For endpoints that create durable work, HTTP idempotency and downstream consumer delivery safety are classified separately.
 
 ## Issue Ownership
 
 - **#18** — HTTP → PostgreSQL idempotency and ambiguous outcomes.
 - **#29** — HTTP → Redis idempotency and ambiguous outcomes.
 - **#16** — Redis mutation → mandatory PostgreSQL / pg-boss durable follow-up.
-- **#28** — Queue consumer transaction, retry, and deduplication safety.
+- **#28** — Durable queue consumer transaction / retry safety, retry exhaustion, DLQ/redrive behavior, logical delivery identity, and external-effect deduplication / repeatability safety.
+- **#30** — Avatar upload-proof lifecycle and stale cleanup / reselection race. While open, avatar HTTP and downstream rows must not imply global retry-safe or exactly-once avatar lifecycle behavior.
 
 An endpoint may be tracked by more than one issue when it crosses more than one boundary.
 
@@ -21,80 +36,117 @@ An endpoint may be tracked by more than one issue when it crosses more than one 
 
 Repeating the same logical request leaves the authoritative state equivalent to applying it once.
 
-### Retry-safe
+### HTTP retry-safe
 
-Repeating the same logical request does not apply the same business mutation or effect more than once, even if the retry may return a different response.
+Repeating the same logical HTTP request does not apply the same request-level business mutation more than once, even if the retry may return a different response.
+
+`HTTP retry-safe: Yes` is **not** a downstream exactly-once guarantee.
 
 ### Explicit idempotency required
 
-Repeating the same logical request can create another valid mutation, delivery, job, operation, or other business effect and therefore requires request-level idempotency protection.
+Repeating the same logical request can create another valid request-level mutation, delivery request, operation, or other business effect and therefore requires request-level idempotency protection.
+
+An HTTP `Idempotency-Key` is distinct from a queue job's logical `deliveryId`.
+
+## Durable delivery identity and redrive semantics
+
+pg-boss has two different identities that must not be conflated:
+
+- **Physical job ID** — identifies one persisted pg-boss job row / attempt. A DLQ redrive can create a new physical job ID.
+- **Logical `deliveryId`** — identifies the logical application delivery / operation carried in job data. When the same logical work is retried or redriven, this identity must remain stable where the consumer contract requires it.
+
+For queued email delivery:
+
+```text
+provider idempotency key = ${queueName}/${deliveryId}
+```
+
+The same logical email retry / redrive therefore keeps the same `deliveryId`, provider key, and semantic payload. A different logical email gets a new `deliveryId`. Same `deliveryId` with different provider payload is an invariant violation, not a new delivery.
+
+Provider idempotency retention is bounded. The application intentionally does not add a permanent email-send ledger or block redrive after the provider retention window. Therefore a delayed retry / DLQ redrive can send the same logical email physically more than once after provider deduplication expires. Email delivery is **at-least-once**, not exactly-once.
+
+## Avatar safety boundary
+
+Issue #28 verified specific avatar consumer retry / crash / DLQ-redrive windows, but Issue #30 remains open for the broader upload-proof and stale-cleanup lifecycle.
+
+In particular:
+
+- replayable upload proofs must not be described as consumed / single-use until #30 implements that guarantee;
+- `UserAvatarReplaceConsumer` and `AdminAvatarReplaceConsumer` are not globally retry-safe while the stale `SUPERSEDED` cleanup / reselection race remains open;
+- finalize-path repeatability verified by #28 is limited to the audited failure windows and is not a global avatar-lifecycle exactly-once guarantee.
 
 ## Inventory
 
 ### Auth
 
-| Endpoint                 | Command / Handler                                      | PostgreSQL mutation                       | Redis mutation / effect  | Natural idempotency | Retry-safe                 | Explicit `Idempotency-Key` | Replay / retry behavior                                    | Tracked by   |
-| ------------------------ | ------------------------------------------------------ | ----------------------------------------- | ------------------------ | ------------------- | -------------------------- | -------------------------- | ---------------------------------------------------------- | ------------ |
-| `POST /auth/user/login`  | `LoginUserCommand` / `LoginUserCommandHandler`         | Login audit                               | Session open             | No                  | No                         | No                         | A retry may create a new session                           | `#29`        |
-| `POST /auth/admin/login` | `LoginAdminCommand` / `LoginAdminCommandHandler`       | Login audit                               | Session open             | No                  | No                         | No                         | A retry may create a new session                           | `#29`        |
-| `POST /auth/refresh`     | `RefreshTokensCommand` / `RefreshTokensCommandHandler` | On reuse: audit + pg-boss remediation job | Token rotation           | No                  | Depends on Redis semantics | No                         | Existing refresh replay / reuse semantics apply            | `#29`, `#16` |
-| `POST /auth/logout`      | `LogoutCommand` / `LogoutCommandHandler`               | None                                      | Session delete           | Yes                 | Yes                        | No                         | Repeated close is safe; response remains `204`             | `#29`        |
-| `POST /auth/logout-all`  | `LogoutAllCommand` / `LogoutAllCommandHandler`         | Audit + pg-boss revocation job            | None in the request path | No                  | No                         | **Yes**                    | Same key replays `204` without another revocation delivery | `#18`        |
+| Endpoint | Command / Handler | PostgreSQL mutation | Redis mutation / effect | Natural idempotency | HTTP retry-safe | Explicit `Idempotency-Key` | HTTP replay / retry behavior | Downstream durable work / safety | Tracked by |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `POST /auth/user/login` | `LoginUserCommand` / `LoginUserCommandHandler` | Login audit | Session open | No | No | No | A retry may create a new session | None | `#29` |
+| `POST /auth/admin/login` | `LoginAdminCommand` / `LoginAdminCommandHandler` | Login audit | Session open | No | No | No | A retry may create a new session | None | `#29` |
+| `POST /auth/refresh` | `RefreshTokensCommand` / `RefreshTokensCommandHandler` | On reuse: audit + pg-boss remediation job | Token rotation | No | Depends on Redis semantics | No | Existing refresh replay / reuse semantics apply | On detected reuse, #28 owns transactional revocation and follow-up delivery safety. Refresh-reuse notice email is at-least-once with provider-bounded deduplication. | `#29`, `#16`, `#28` |
+| `POST /auth/logout` | `LogoutCommand` / `LogoutCommandHandler` | None | Session delete | Yes | Yes | No | Repeated close is safe; response remains `204` | None | `#29` |
+| `POST /auth/logout-all` | `LogoutAllCommand` / `LogoutAllCommandHandler` | Audit + pg-boss revocation job | None in the request path | No | No | **Yes** | Same key replays `204` without another revocation delivery | #28 transactional revocation keeps consumer mutation, child jobs, audit, and completion atomic. | `#18`, `#28` |
 
 ### User
 
-| Endpoint                           | Command / Handler                                                            | PostgreSQL mutation                                              | Redis mutation / effect                  | Other external effect             | Natural idempotency | Retry-safe | Explicit `Idempotency-Key` | Replay / retry behavior                                                                 | Tracked by   |
-| ---------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------- | --------------------------------- | ------------------- | ---------- | -------------------------- | --------------------------------------------------------------------------------------- | ------------ |
-| `DELETE /user/me`                  | `DeleteUserCommand` / `DeleteUserCommandHandler`                             | Soft delete + audit + durable jobs                               | Best-effort version update after commit  | None                              | State-idempotent    | Yes        | No                         | A later retry may return `404`; duplicate mutation is not applied                       | `#18`, `#29` |
-| `PATCH /user/me`                   | `UpdateUserCommand` / `UpdateUserCommandHandler`                             | Profile / avatar state + audit + durable jobs                    | None                                     | S3 `HEAD` read before transaction | Partially           | Yes        | No                         | Name replay becomes a no-op; consumed avatar proof cannot apply twice                   | `#18`        |
-| `POST /user/me/avatar/initiate`    | `InitiateUserAvatarChangeCommand` / `InitiateUserAvatarChangeCommandHandler` | None                                                             | None                                     | S3 upload authorization / signing | No                  | Yes        | No                         | Retry may return a fresh upload plan / proof; no business mutation is duplicated        | —            |
-| `POST /user/me/email/initiate`     | `InitiateUserEmailChangeCommand` / `InitiateUserEmailChangeCommandHandler`   | Pending email request + audit + email delivery job               | None                                     | None                              | No                  | No         | **Yes**                    | Same key replays `204`; no replacement pending request or duplicate delivery is created | `#18`        |
-| `POST /user/me/email/confirm`      | `ConfirmUserEmailChangeCommand` / `ConfirmUserEmailChangeCommandHandler`     | Email change + immutable notification row + audit + durable jobs | Replacement session attempt after commit | None                              | No                  | Yes        | No                         | Proof is consumed by committed state; the same mutation cannot be applied again         | `#18`, `#29` |
-| `PATCH /user/me/password`          | `ChangeUserPasswordCommand` / `ChangeUserPasswordCommandHandler`             | Password / session-version change + audit + durable jobs         | Replacement session attempt after commit | None                              | No                  | Yes        | No                         | Previous current-password proof becomes invalid; mutation cannot apply twice            | `#18`, `#29` |
-| `POST /user/registration/initiate` | `InitiateUserRegistrationCommand` / `InitiateUserRegistrationCommandHandler` | None; primary email availability read only                       | None                                     | S3 upload authorization / signing | No                  | Yes        | No                         | Retry may return a fresh registration / upload identity; no account is created          | —            |
-| `POST /user/registration/complete` | `RegisterUserCommand` / `RegisterUserCommandHandler`                         | User insert + audit + durable jobs                               | None                                     | S3 `HEAD` read before transaction | No                  | Yes        | No                         | Existing identity / email uniqueness prevents a second account commit                   | `#18`        |
-| `POST /user/activation/complete`   | `ActivateUserCommand` / `ActivateUserCommandHandler`                         | Activation + audit + durable jobs                                | Replacement session attempt after commit | None                              | No                  | Yes        | No                         | Already-active state prevents a second activation                                       | `#18`, `#29` |
-| `POST /user/activation/resend`     | `ResendUserActivationCommand` / `ResendUserActivationCommandHandler`         | New activation identity + audit + delivery job                   | None                                     | None                              | No                  | No         | **Yes**                    | Same key replays `204`; no second activation identity / delivery is created             | `#18`        |
-| `POST /user/:id/ban`               | `BanUserCommand` / `BanUserCommandHandler`                                   | Ban + audit + durable jobs                                       | Best-effort version update after commit  | None                              | Yes                 | Yes        | No                         | Repeated ban is a no-op and returns `204`                                               | `#18`, `#29` |
-| `POST /user/:id/unban`             | `UnbanUserCommand` / `UnbanUserCommandHandler`                               | Unban + audit                                                    | None                                     | None                              | Yes                 | Yes        | No                         | Repeated unban is a no-op and returns `204`                                             | `#18`        |
-| `PUT /user/:id/permissions`        | `ReplaceUserPermissionsCommand` / `ReplaceUserPermissionsCommandHandler`     | Permission-set replacement + audit + durable jobs                | Best-effort version update after commit  | None                              | Yes                 | Yes        | No                         | Reapplying the same complete set is a no-op and returns `204`                           | `#18`, `#29` |
+| Endpoint | Command / Handler | PostgreSQL mutation | Redis mutation / effect | Other external effect | Natural idempotency | HTTP retry-safe | Explicit `Idempotency-Key` | HTTP replay / retry behavior | Downstream durable work / safety | Tracked by |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `DELETE /user/me` | `DeleteUserCommand` / `DeleteUserCommandHandler` | Soft delete + audit + durable jobs | Best-effort version update after commit | None | State-idempotent | Yes | No | A later retry may return `404`; duplicate account deletion is not applied | Durable session / cache work is audited under #28 and does not inherit an exactly-once guarantee from the HTTP row. | `#18`, `#29`, `#28` |
+| `PATCH /user/me` | `UpdateUserCommand` / `UpdateUserCommandHandler` | Profile / avatar state + audit + durable jobs | None | S3 `HEAD` read before transaction | Partially | **Conditional — name-only Yes; avatar replay tracked by #30** | No | Name replay becomes a no-op. Reusing an avatar upload proof is not globally retry-safe while #30 remains open. | Avatar replacement / cleanup is #28-audited for specific failure windows but the stale cleanup / reselection race remains owned by #30. | `#18`, `#28`, `#30` |
+| `POST /user/me/avatar/initiate` | `InitiateUserAvatarChangeCommand` / `InitiateUserAvatarChangeCommandHandler` | None | None | S3 upload authorization / signing | No | Yes | No | Retry may return a fresh upload plan / proof; no account mutation is committed | No durable consumer is created here. The returned proof's broader lifecycle / replay safety is tracked by #30. | `#30` |
+| `POST /user/me/email/initiate` | `InitiateUserEmailChangeCommand` / `InitiateUserEmailChangeCommandHandler` | Pending email request + audit + email delivery job | None | None | No | No | **Yes** | Same key replays `204`; no replacement pending request or second logical delivery is created | Email confirmation delivery is at-least-once. Same logical delivery preserves `deliveryId`; provider deduplication is bounded and delayed redrive can physically resend. | `#18`, `#28` |
+| `POST /user/me/email/confirm` | `ConfirmUserEmailChangeCommand` / `ConfirmUserEmailChangeCommandHandler` | Email change + immutable notification row + audit + durable jobs | Replacement session attempt after commit | None | No | Yes | No | Committed confirmation state prevents the same email-change mutation from applying again | Email-change notification is at-least-once with stable logical identity; other durable reconciliation work is audited under #28. | `#18`, `#29`, `#28` |
+| `PATCH /user/me/password` | `ChangeUserPasswordCommand` / `ChangeUserPasswordCommandHandler` | Password / session-version change + audit + durable jobs | Replacement session attempt after commit | None | No | Yes | No | Previous current-password proof becomes invalid; the same password mutation cannot apply twice | Durable session / cache reconciliation is independently retryable under #28; HTTP `Yes` does not mean exactly-once job execution. | `#18`, `#29`, `#28` |
+| `POST /user/registration/initiate` | `InitiateUserRegistrationCommand` / `InitiateUserRegistrationCommandHandler` | None; primary email availability read only | None | S3 upload authorization / signing | No | Yes | No | Retry may return a fresh registration / upload identity; no account is created | No durable consumer is created here. Avatar upload-proof lifecycle remains relevant to #30. | `#30` |
+| `POST /user/registration/complete` | `RegisterUserCommand` / `RegisterUserCommandHandler` | User insert + audit + durable jobs | None | S3 `HEAD` read before transaction | No | Yes | No | Existing identity / email uniqueness prevents a second account commit | Activation email is at-least-once under #28. Avatar durable work keeps the #30 lifecycle boundary; no global avatar exactly-once claim is made. | `#18`, `#28`, `#30` |
+| `POST /user/activation/complete` | `ActivateUserCommand` / `ActivateUserCommandHandler` | Activation + audit + durable jobs | Replacement session attempt after commit | None | No | Yes | No | Already-active state prevents a second activation | Durable reconciliation is audited under #28. Avatar finalization is repeatable only within the verified #28 failure windows; broader lifecycle safety remains #30. | `#18`, `#29`, `#28`, `#30` |
+| `POST /user/activation/resend` | `ResendUserActivationCommand` / `ResendUserActivationCommandHandler` | New activation identity + audit + delivery job | None | None | No | No | **Yes** | Same key replays `204`; no second activation identity / logical delivery is created | Activation email is at-least-once; same `deliveryId` is preserved across retry / redrive, but provider retention does not provide unbounded deduplication. | `#18`, `#28` |
+| `POST /user/:id/ban` | `BanUserCommand` / `BanUserCommandHandler` | Ban + audit + durable jobs | Best-effort version update after commit | None | Yes | Yes | No | Repeated ban is a no-op and returns `204` | Session / cache durable work is independently retryable under #28. | `#18`, `#29`, `#28` |
+| `POST /user/:id/unban` | `UnbanUserCommand` / `UnbanUserCommandHandler` | Unban + audit | None | None | Yes | Yes | No | Repeated unban is a no-op and returns `204` | None | `#18` |
+| `PUT /user/:id/permissions` | `ReplaceUserPermissionsCommand` / `ReplaceUserPermissionsCommandHandler` | Permission-set replacement + audit + durable jobs | Best-effort version update after commit | None | Yes | Yes | No | Reapplying the same complete set is a no-op and returns `204` | Session / cache durable work is independently retryable under #28. | `#18`, `#29`, `#28` |
 
 ### Admin
 
-| Endpoint                          | Command / Handler                                                              | PostgreSQL mutation                                              | Redis mutation / effect                  | Other external effect             | Natural idempotency | Retry-safe | Explicit `Idempotency-Key` | Replay / retry behavior                                                                 | Tracked by   |
-| --------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------- | --------------------------------- | ------------------- | ---------- | -------------------------- | --------------------------------------------------------------------------------------- | ------------ |
-| `DELETE /admin/:id`               | `DeleteAdminCommand` / `DeleteAdminCommandHandler`                             | Soft delete + audit + durable jobs                               | Best-effort version update after commit  | None                              | State-idempotent    | Yes        | No                         | A later retry may return `404`; duplicate mutation is not applied                       | `#18`, `#29` |
-| `PATCH /admin/me`                 | `UpdateAdminCommand` / `UpdateAdminCommandHandler`                             | Profile / avatar state + audit + durable jobs                    | None                                     | S3 `HEAD` read before transaction | Partially           | Yes        | No                         | Name replay becomes a no-op; consumed avatar proof cannot apply twice                   | `#18`        |
-| `POST /admin/me/avatar/initiate`  | `InitiateAdminAvatarChangeCommand` / `InitiateAdminAvatarChangeCommandHandler` | None                                                             | None                                     | S3 upload authorization / signing | No                  | Yes        | No                         | Retry may return a fresh upload plan / proof; no business mutation is duplicated        | —            |
-| `POST /admin/me/email/initiate`   | `InitiateAdminEmailChangeCommand` / `InitiateAdminEmailChangeCommandHandler`   | Pending email request + audit + email delivery job               | None                                     | None                              | No                  | No         | **Yes**                    | Same key replays `204`; no replacement pending request or duplicate delivery is created | `#18`        |
-| `POST /admin/me/email/confirm`    | `ConfirmAdminEmailChangeCommand` / `ConfirmAdminEmailChangeCommandHandler`     | Email change + immutable notification row + audit + durable jobs | Replacement session attempt after commit | None                              | No                  | Yes        | No                         | Proof is consumed by committed state; the same mutation cannot be applied again         | `#18`, `#29` |
-| `PATCH /admin/me/password`        | `ChangeAdminPasswordCommand` / `ChangeAdminPasswordCommandHandler`             | Password / session-version change + audit + durable jobs         | Replacement session attempt after commit | None                              | No                  | Yes        | No                         | Previous current-password proof becomes invalid; mutation cannot apply twice            | `#18`, `#29` |
-| `POST /admin/invite`              | `InviteAdminCommand` / `InviteAdminCommandHandler`                             | New pending admin + audit + invitation job                       | None                                     | None                              | No                  | Yes        | No                         | Email uniqueness prevents a second admin creation for the same logical invite           | `#18`        |
-| `POST /admin/activation/initiate` | `InitiateAdminActivationCommand` / `InitiateAdminActivationCommandHandler`     | None                                                             | None                                     | S3 upload authorization / signing | No                  | Yes        | No                         | Retry may return a fresh upload proof; no account mutation is duplicated                | —            |
-| `POST /admin/activation/complete` | `ActivateAdminCommand` / `ActivateAdminCommandHandler`                         | Activation + audit + durable jobs                                | None                                     | S3 `HEAD` read before transaction | No                  | Yes        | No                         | Already-active state prevents a second activation                                       | `#18`        |
-| `POST /admin/:id/re-invite`       | `ReInviteAdminCommand` / `ReInviteAdminCommandHandler`                         | New invitation identity + audit + delivery job                   | None                                     | None                              | No                  | No         | **Yes**                    | Same key replays `204`; no second invitation / delivery is created                      | `#18`        |
-| `POST /admin/:id/ban`             | `BanAdminCommand` / `BanAdminCommandHandler`                                   | Ban + audit + durable jobs                                       | Best-effort version update after commit  | None                              | Yes                 | Yes        | No                         | Repeated ban is a no-op and returns `204`                                               | `#18`, `#29` |
-| `POST /admin/:id/unban`           | `UnbanAdminCommand` / `UnbanAdminCommandHandler`                               | Unban + audit                                                    | None                                     | None                              | Yes                 | Yes        | No                         | Repeated unban is a no-op and returns `204`                                             | `#18`        |
-| `PUT /admin/:id/permissions`      | `ReplaceAdminPermissionsCommand` / `ReplaceAdminPermissionsCommandHandler`     | Permission-set replacement + audit + durable jobs                | Best-effort version update after commit  | None                              | Yes                 | Yes        | No                         | Reapplying the same complete set is a no-op and returns `204`                           | `#18`, `#29` |
+| Endpoint | Command / Handler | PostgreSQL mutation | Redis mutation / effect | Other external effect | Natural idempotency | HTTP retry-safe | Explicit `Idempotency-Key` | HTTP replay / retry behavior | Downstream durable work / safety | Tracked by |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `DELETE /admin/:id` | `DeleteAdminCommand` / `DeleteAdminCommandHandler` | Soft delete + audit + durable jobs | Best-effort version update after commit | None | State-idempotent | Yes | No | A later retry may return `404`; duplicate account deletion is not applied | Durable session / cache work is audited under #28 and does not inherit an exactly-once guarantee from the HTTP row. | `#18`, `#29`, `#28` |
+| `PATCH /admin/me` | `UpdateAdminCommand` / `UpdateAdminCommandHandler` | Profile / avatar state + audit + durable jobs | None | S3 `HEAD` read before transaction | Partially | **Conditional — name-only Yes; avatar replay tracked by #30** | No | Name replay becomes a no-op. Reusing an avatar upload proof is not globally retry-safe while #30 remains open. | Avatar replacement / cleanup is #28-audited for specific failure windows but the stale cleanup / reselection race remains owned by #30. | `#18`, `#28`, `#30` |
+| `POST /admin/me/avatar/initiate` | `InitiateAdminAvatarChangeCommand` / `InitiateAdminAvatarChangeCommandHandler` | None | None | S3 upload authorization / signing | No | Yes | No | Retry may return a fresh upload plan / proof; no account mutation is committed | No durable consumer is created here. The returned proof's broader lifecycle / replay safety is tracked by #30. | `#30` |
+| `POST /admin/me/email/initiate` | `InitiateAdminEmailChangeCommand` / `InitiateAdminEmailChangeCommandHandler` | Pending email request + audit + email delivery job | None | None | No | No | **Yes** | Same key replays `204`; no replacement pending request or second logical delivery is created | Email confirmation delivery is at-least-once. Same logical delivery preserves `deliveryId`; provider deduplication is bounded and delayed redrive can physically resend. | `#18`, `#28` |
+| `POST /admin/me/email/confirm` | `ConfirmAdminEmailChangeCommand` / `ConfirmAdminEmailChangeCommandHandler` | Email change + immutable notification row + audit + durable jobs | Replacement session attempt after commit | None | No | Yes | No | Committed confirmation state prevents the same email-change mutation from applying again | Email-change notification is at-least-once with stable logical identity; other durable reconciliation work is audited under #28. | `#18`, `#29`, `#28` |
+| `PATCH /admin/me/password` | `ChangeAdminPasswordCommand` / `ChangeAdminPasswordCommandHandler` | Password / session-version change + audit + durable jobs | Replacement session attempt after commit | None | No | Yes | No | Previous current-password proof becomes invalid; the same password mutation cannot apply twice | Durable session / cache reconciliation is independently retryable under #28; HTTP `Yes` does not mean exactly-once job execution. | `#18`, `#29`, `#28` |
+| `POST /admin/invite` | `InviteAdminCommand` / `InviteAdminCommandHandler` | New pending admin + audit + invitation job | None | None | No | Yes | No | Email uniqueness prevents a second admin creation for the same logical invite | Invitation email is at-least-once; its logical `deliveryId` is stable across retry / redrive, while provider deduplication remains retention-bounded. | `#18`, `#28` |
+| `POST /admin/activation/initiate` | `InitiateAdminActivationCommand` / `InitiateAdminActivationCommandHandler` | None | None | S3 upload authorization / signing | No | Yes | No | Retry may return a fresh upload proof; no account mutation is committed | No durable consumer is created here. Avatar upload-proof lifecycle remains relevant to #30. | `#30` |
+| `POST /admin/activation/complete` | `ActivateAdminCommand` / `ActivateAdminCommandHandler` | Activation + audit + durable jobs | None | S3 `HEAD` read before transaction | No | Yes | No | Already-active state prevents a second activation | Durable reconciliation is audited under #28. Avatar finalization is repeatable only within the verified #28 failure windows; broader lifecycle safety remains #30. | `#18`, `#28`, `#30` |
+| `POST /admin/:id/re-invite` | `ReInviteAdminCommand` / `ReInviteAdminCommandHandler` | New invitation identity + audit + delivery job | None | None | No | No | **Yes** | Same key replays `204`; no second invitation identity / logical delivery is created | Invitation email is at-least-once; same `deliveryId` is preserved across retry / redrive, but provider retention does not provide unbounded deduplication. | `#18`, `#28` |
+| `POST /admin/:id/ban` | `BanAdminCommand` / `BanAdminCommandHandler` | Ban + audit + durable jobs | Best-effort version update after commit | None | Yes | Yes | No | Repeated ban is a no-op and returns `204` | Session / cache durable work is independently retryable under #28. | `#18`, `#29`, `#28` |
+| `POST /admin/:id/unban` | `UnbanAdminCommand` / `UnbanAdminCommandHandler` | Unban + audit | None | None | Yes | Yes | No | Repeated unban is a no-op and returns `204` | None | `#18` |
+| `PUT /admin/:id/permissions` | `ReplaceAdminPermissionsCommand` / `ReplaceAdminPermissionsCommandHandler` | Permission-set replacement + audit + durable jobs | Best-effort version update after commit | None | Yes | Yes | No | Reapplying the same complete set is a no-op and returns `204` | Session / cache durable work is independently retryable under #28. | `#18`, `#29`, `#28` |
 
 ### Job Queue Operations
 
-| Endpoint                                   | Command / Handler                                                        | PostgreSQL mutation               | Redis mutation / effect | Natural idempotency | Retry-safe | Explicit `Idempotency-Key` | Replay / retry behavior                                                       | Tracked by |
-| ------------------------------------------ | ------------------------------------------------------------------------ | --------------------------------- | ----------------------- | ------------------- | ---------- | -------------------------- | ----------------------------------------------------------------------------- | ---------- |
-| `POST /job-operations/dead-letter/redrive` | `StartDeadLetterRedriveCommand` / `StartDeadLetterRedriveCommandHandler` | pg-boss redrive operation + audit | None                    | No                  | No         | **Yes**                    | Same key replays `202 Accepted` and returns the original operation identifier | `#18`      |
-| `POST /job-operations/dead-letter/discard` | `DiscardDeadLetterJobsCommand` / `DiscardDeadLetterJobsCommandHandler`   | Dead-letter deletion + audit      | None                    | Effect-idempotent   | Yes        | No                         | A later retry may return `404`; the same jobs cannot be discarded twice       | `#18`      |
+| Endpoint | Command / Handler | PostgreSQL mutation | Redis mutation / effect | Natural idempotency | HTTP retry-safe | Explicit `Idempotency-Key` | HTTP replay / retry behavior | Downstream durable work / safety | Tracked by |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `POST /job-operations/dead-letter/redrive` | `StartDeadLetterRedriveCommand` / `StartDeadLetterRedriveCommandHandler` | pg-boss redrive operation + audit | None | No | No | **Yes** | Same key replays `202 Accepted` and returns the original operation identifier | #28 redrive preserves logical application job data / `deliveryId` while physical pg-boss job IDs may change. External effects retain their own retry / dedup safety classification. | `#18`, `#28` |
+| `POST /job-operations/dead-letter/discard` | `DiscardDeadLetterJobsCommand` / `DiscardDeadLetterJobsCommandHandler` | Dead-letter deletion + audit | None | Effect-idempotent | Yes | No | A later retry may return `404`; the same jobs cannot be discarded twice | No consumer redrive occurs; the selected DLQ rows are removed. | `#18` |
 
 ## Maintenance Rules
 
 When a mutating production endpoint is added or changed:
 
-1. Add or update its inventory row.
-2. Inspect its actual command, handler, database writes, Redis mutations, durable jobs, and external effects.
-3. Classify its idempotency and retry-safety behavior from implementation semantics, not from the HTTP method alone.
-4. Record any required request-level idempotency protection.
-5. Record the issue responsible for the identified concern:
-    - `#18` for HTTP → PostgreSQL.
-    - `#29` for HTTP → Redis.
-    - `#16` for Redis → mandatory PostgreSQL / pg-boss follow-up.
-    - `#28` for queue consumer retry / transaction safety when applicable.
-6. Update this document when the endpoint behavior or issue ownership changes.
+1. Add or update its inventory row from the actual controller, command, handler, persistence, Redis, durable-job, and external-effect behavior.
+2. Classify **HTTP request idempotency / retry-safety separately from downstream durable delivery safety**.
+3. Never infer queue exactly-once behavior from `HTTP retry-safe: Yes`.
+4. If the endpoint creates durable work, classify the consumer for both normal retry and DLQ/redrive behavior.
+5. For external effects, record whether repeated execution is naturally idempotent, application/provider-deduplicated, safe-to-repeat, or explicitly unsafe with a follow-up issue.
+6. Treat provider idempotency retention as bounded capability, never as an unbounded exactly-once guarantee.
+7. Keep physical pg-boss job identity separate from logical application identity. Preserve `deliveryId` through retry / DLQ/redrive when it represents the same logical delivery.
+8. Record required request-level `Idempotency-Key` protection independently of queue `deliveryId` / provider idempotency.
+9. Record issue ownership:
+   - `#18` for HTTP → PostgreSQL.
+   - `#29` for HTTP → Redis.
+   - `#16` for Redis → mandatory PostgreSQL / pg-boss follow-up.
+   - `#28` for queue consumer transaction / retry, DLQ/redrive, logical identity, and external-effect deduplication / repeatability safety.
+   - `#30` for unresolved avatar upload-proof / stale-cleanup lifecycle safety.
+10. While #30 is unresolved, do not describe avatar upload / replacement lifecycle as globally retry-safe, deduplicated, or exactly-once merely because the HTTP request or a specific consumer failure window is safe.
+11. Revalidate the entire inventory whenever endpoint behavior, durable-job topology, consumer semantics, or issue ownership changes; do not patch only the newly discovered rows.
