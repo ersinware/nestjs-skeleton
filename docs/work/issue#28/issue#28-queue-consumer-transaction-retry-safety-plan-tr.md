@@ -142,8 +142,12 @@ Hedef davranış:
 
 - pg-boss instance `useListenNotify: true` ile çalışmalı.
 - Worker'ı bulunan immediately-available application queue'ları notify-enabled olmalı.
-- `notifyPollingIntervalSeconds: 30` başlangıç safety-net cadence'i olarak kullanılmalı.
-- Mevcut `pollingIntervalSeconds` değerleri listener unavailable olduğunda fallback cadence olarak korunmalı.
+- Polling cadence değerleri tek global sayı yerine standart workload profillerinden seçilmeli:
+  - `critical`: `pollingIntervalSeconds: 1`, `notifyPollingIntervalSeconds: 5`
+  - `high`: `pollingIntervalSeconds: 5`, `notifyPollingIntervalSeconds: 10`
+  - `medium`: `pollingIntervalSeconds: 15`, `notifyPollingIntervalSeconds: 30`
+  - `low`: `pollingIntervalSeconds: 30`, `notifyPollingIntervalSeconds: 60`
+- `pollingIntervalSeconds` listener unavailable olduğunda fallback cadence; `notifyPollingIntervalSeconds` listener sağlıklıyken retry / delayed / redrive backstop cadence'i olmalı.
 - Future / delayed job'lar runnable olduklarında polling correctness path'iyle bulunabilmeli.
 - NOTIFY yalnız wake-up hint olmalı; job ownership normal PostgreSQL claim / locking semantics ile belirlenmeli.
 - Multi-node deployment'ta tüm listening instance'lar wake-up alabilse de yalnız job'ı başarıyla claim eden worker execution attempt'i çalıştırmalı.
@@ -468,8 +472,14 @@ Gerekirse:
 - pg-boss `LISTEN/NOTIFY` wake-up path'ini implemente et
 - custom job-queue database adapter'a gerekli listener desteğini ekle
 - worker'ı bulunan immediately-available queue'ları notify-enabled hale getir
-- `notifyPollingIntervalSeconds: 30` safety-net baseline'ını uygula
-- mevcut `pollingIntervalSeconds` değerlerini listener-unavailable fallback olarak koru
+- Adım 2'de kararlaştırılan standart polling profillerini uygula:
+  - `critical`: `1s / 5s`
+  - `high`: `5s / 10s`
+  - `medium`: `15s / 30s`
+  - `low`: `30s / 60s`
+  (`pollingIntervalSeconds / notifyPollingIntervalSeconds`)
+- her consumer'ı Adım 2'deki workload profiline bağla; mevcut `2s` / `3s` gibi ara fallback değerlerini profil standardına normalize et
+- `pollingIntervalSeconds` değerini listener-unavailable fallback, `notifyPollingIntervalSeconds` değerini healthy-listener retry / delayed / redrive backstop olarak kullan
 - generic batch parallelization ekleme; yalnız audit ile doğrulanan consumer-specific bounded parallelism gerekiyorsa uygula
 
 ### İlgili acceptance criterion
@@ -536,6 +546,7 @@ Dokümante edilmesi gereken temel kurallar:
 - retry guarantee nedir?
 - logical delivery identity nasıl kullanılır?
 - `workerOptions` nasıl workload, latency, replica sayısı ve dependency kapasitesine göre ayarlanır?
+- `critical / high / medium / low` polling profilleri ve consumer-profile eşlemesi nasıl uygulanır?
 - `LISTEN/NOTIFY`, safety-net polling ve listener-unavailable fallback nasıl çalışır?
 - multi-node notification ile job claim / ownership arasındaki fark nedir?
 - batch size ile execution concurrency neden ayrıdır ve parallelism neden `localConcurrency` ile bounded tutulur?
@@ -554,7 +565,7 @@ Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanır:
 - [ ] Tüm durable queue consumer'lar inventory'de ve handler / pipeline davranışlarıyla birlikte incelendi.
 - [ ] Her transactional consumer için atomic consumer write + job completion gereksiniminin justification'ı mevcut.
 - [ ] Her consumer'ın `localConcurrency`, `pollingIntervalSeconds` ve `batchSize` değerleri workload, latency, transaction mode, database / pool baskısı, external dependency kapasitesi ve horizontal scaling açısından incelendi.
-- [ ] Gereksiz agresif polling / concurrency / batch ayarları correction aşamasında güncellendi; deferred işler DB'yi gereksiz yere poll etmiyor ve latency-sensitive işler gerekli tepki süresini koruyor.
+- [ ] Gereksiz agresif polling / concurrency / batch ayarları correction aşamasında güncellendi; `critical / high / medium / low` polling profilleri uygulanmış, deferred işler DB'yi gereksiz yere poll etmiyor ve latency-sensitive işler gerekli tepki süresini koruyor.
 - [ ] Immediately-available application jobs `LISTEN/NOTIFY` ile prompt wake-up alıyor; safety-net polling, listener-unavailable fallback ve missed-notification recovery test edildi.
 - [ ] Multi-node deployment'ta notification broadcast duplicate ownership yaratmıyor; actual execution pg-boss claim / locking ile belirleniyor.
 - [ ] Generic batch parallelization eklenmedi; execution parallelism `localConcurrency` ile bounded ve transactional consumer'larda `batchSize: 1` korunuyor.
