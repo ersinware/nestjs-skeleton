@@ -116,7 +116,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
                 id: payload.sub,
                 email: command.email,
                 name: command.name,
-                password: await this.hashingPort.hash(command.password),
+                password: await this.hashingPort.hashPassword(command.password),
                 avatarKey: payload.fileKey,
             });
         } catch (error) {

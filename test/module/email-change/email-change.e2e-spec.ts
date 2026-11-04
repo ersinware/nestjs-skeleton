@@ -142,7 +142,7 @@ describe.each(CASES)('$route email change', (context) => {
         tokenPort = app.get(TOKEN_TOKEN_PORT);
         sessionPort = app.get(TOKEN_SESSION_PORT);
         hashingPort = app.get(TOKEN_HASHING_PORT);
-        hash = await hashingPort.hash(password);
+        hash = await hashingPort.hashPassword(password);
         // Control delivery timing without replacing queue persistence or production consumers.
         for (const queue of await boss.getQueues()) {
             await boss.offWork(queue.name);
@@ -761,8 +761,8 @@ describe.each(CASES)('$route email change', (context) => {
     it.each(['password', 'ban', 'revocation'] as const)(
         'rejects request writes decided before a concurrent %s change',
         async (change) => {
-            const originalVerify = hashingPort.verify.bind(hashingPort);
-            vi.spyOn(hashingPort, 'verify').mockImplementationOnce(async (stored, supplied) => {
+            const originalVerify = hashingPort.verifyPassword.bind(hashingPort);
+            vi.spyOn(hashingPort, 'verifyPassword').mockImplementationOnce(async (stored, supplied) => {
                 const result = await originalVerify(stored, supplied);
                 await database
                     .update(context.table)

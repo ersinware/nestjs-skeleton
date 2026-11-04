@@ -31,7 +31,7 @@ describe('RegisterUserCommandHandler', () => {
         const token = { verifyUploadToken: vi.fn().mockResolvedValue(claims) };
         const storage = { headObject: vi.fn().mockResolvedValue({ sizeBytes: 4, contentType: 'image/png' }) };
         const writer = { insert: vi.fn() };
-        const hashing = { hash: vi.fn().mockResolvedValue('hash') };
+        const hashing = { hashPassword: vi.fn().mockResolvedValue('hash') };
         const transaction = {
             start: vi.fn(async (callback: () => Promise<void>) => callback()),
             join: vi.fn(),
@@ -78,7 +78,7 @@ describe('RegisterUserCommandHandler', () => {
                     break;
             }
             await expect(fixture.handler.execute(command)).rejects.toMatchObject({ kind });
-            expect(fixture.hashing.hash).not.toHaveBeenCalled();
+            expect(fixture.hashing.hashPassword).not.toHaveBeenCalled();
             expect(fixture.writer.insert).not.toHaveBeenCalled();
             expect(fixture.transaction.start).not.toHaveBeenCalled();
             expect(fixture.audit.record).not.toHaveBeenCalled();

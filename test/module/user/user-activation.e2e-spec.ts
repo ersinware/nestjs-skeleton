@@ -235,7 +235,7 @@ describe('User registration and activation', () => {
             id,
             email,
             name: 'Active Admin',
-            password: await hashingPort.hash(password),
+            password: await hashingPort.hashPassword(password),
         });
         const response = await app.inject({
             method: 'POST',
@@ -526,7 +526,7 @@ describe('User registration and activation', () => {
 
     it('counts successful login responses and prevents later credential and audit effects after exhaustion', async () => {
         const row = await register();
-        const hashing = vi.spyOn(hashingPort, 'verify');
+        const hashing = vi.spyOn(hashingPort, 'verifyPassword');
         for (let i = 0; i < 3; i++) {
             const response = await app.inject({
                 method: 'POST',
@@ -769,7 +769,7 @@ describe('User registration and activation', () => {
     it.each(['ban', 'delete'] as const)('rejects activation saved after a concurrent %s', async (scenario) => {
         const row = await register();
         const token = await proof(row);
-        const originalVerify = hashingPort.verify.bind(hashingPort);
+        const originalVerify = hashingPort.verifyPassword.bind(hashingPort);
         let enter!: () => void;
         let release!: () => void;
         const entered = new Promise<void>((resolve) => {
@@ -778,7 +778,7 @@ describe('User registration and activation', () => {
         const gate = new Promise<void>((resolve) => {
             release = resolve;
         });
-        vi.spyOn(hashingPort, 'verify').mockImplementationOnce(async (hash, candidate) => {
+        vi.spyOn(hashingPort, 'verifyPassword').mockImplementationOnce(async (hash, candidate) => {
             enter();
             await gate;
             return originalVerify(hash, candidate);

@@ -32,7 +32,7 @@ Replay current rate-limit, authentication ve authorization kurallarını bypass 
 
 ## Fingerprint
 
-Fingerprint doğrudan feature kodunda hash'lenmez. Mevcut core hashing concern reusable HMAC-SHA-256 capability ile genişletilir:
+Fingerprint doğrudan feature kodunda hash'lenmez. Core hashing concern reusable HMAC-SHA-256 capability sunar:
 
 ```text
 fingerprint =
@@ -58,7 +58,7 @@ HMAC-SHA-256(
 
 `IHashingPort` / `HashingAdapter` idempotency'ye özel olmamalıdır.
 
-Planlanan reusable API:
+Reusable API:
 
 ```text
 hmacSha256(context: string, value: string): string
@@ -66,6 +66,7 @@ hmacSha256(context: string, value: string): string
 
 Kurallar:
 
+- çıktı 64 karakter lowercase hex digest olur;
 - tek proje-geneli server-held key kullanılır: `HASHING_KEY`;
 - idempotency için ayrı `IDEMPOTENCY_*_SECRET` oluşturulmaz;
 - farklı use-case'ler aynı key'i farklı `context` ile güvenli şekilde reuse eder;
@@ -150,7 +151,6 @@ Aşağıdaki `Fingerprint semantics` blokları yalnız endpoint-specific semanti
   ...fingerprint semantics
 ]
 ```
-
 
 ## Auth
 

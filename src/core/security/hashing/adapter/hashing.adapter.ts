@@ -1,17 +1,17 @@
 /**
  * @file hashing.adapter.ts
- * @description Argon2 adapter implementing the hashing port.
+ * @description Password hashing and context-separated HMAC adapter.
  */
 
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { ENV, Environment } from 'src/core/config';
 import type { IHashingPort } from 'src/core/security/hashing/port/hashing.port';
 
 /**
- * Hashes and verifies passwords with Argon2id.
+ * Hashes passwords with Argon2id and produces keyed HMAC-SHA-256 digests.
  */
 @Injectable()
 export class HashingAdapter implements IHashingPort, OnModuleInit {
@@ -28,7 +28,12 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
     private readonly hashOptions: argon2.Options;
 
     /**
-     * Hash of a random secret, verified against by `simulateVerify`.
+     * Server-held UTF-8 key shared by context-separated HMAC operations.
+     */
+    private readonly hashingKey: string;
+
+    /**
+     * Hash of a random secret, verified against by `simulatePasswordVerify`.
      *
      * Built here rather than hard-coded so it always carries the current cost parameters: Argon2
      * reads them from the encoded hash, so only a hash produced with the same options costs the same
@@ -37,11 +42,12 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
     private placeholderHash!: string;
 
     /**
-     * Selects the password hashing cost for the configured environment.
+     * Loads the HMAC key and selects the environment-specific password hashing cost.
      *
-     * @param configService Source of the environment deciding the Argon2 cost parameters.
+     * @param configService Source of the validated hashing key and runtime environment.
      */
     constructor(configService: ConfigService) {
+        this.hashingKey = configService.getOrThrow<string>(ENV.HASHING_KEY);
         this.hashOptions =
             configService.getOrThrow<Environment>(ENV.NODE_ENV) === Environment.TEST
                 ? { timeCost: 1, memoryCost: 8, parallelism: 1 }
@@ -61,7 +67,7 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
      * @param plainText The string to hash.
      * @returns The Argon2 hash string.
      */
-    async hash(plainText: string): Promise<string> {
+    async hashPassword(plainText: string): Promise<string> {
         return argon2.hash(plainText, this.hashOptions);
     }
 
@@ -72,7 +78,7 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
      * @param plainText The plain text to verify.
      * @returns Whether the plain text matches the hash.
      */
-    async verify(hash: string, plainText: string): Promise<boolean> {
+    async verifyPassword(hash: string, plainText: string): Promise<boolean> {
         return argon2.verify(hash, plainText);
     }
 
@@ -81,7 +87,20 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
      *
      * @param plainText The plain text the caller would have verified.
      */
-    async simulateVerify(plainText: string) {
+    async simulatePasswordVerify(plainText: string) {
         await argon2.verify(this.placeholderHash, plainText);
+    }
+
+    /**
+     * Separates digest purposes using an unambiguous context/value encoding.
+     *
+     * @param context Caller-owned digest purpose.
+     * @param value Canonical UTF-8 value.
+     * @returns The lowercase hexadecimal HMAC-SHA-256 digest.
+     */
+    hmacSha256(context: string, value: string): string {
+        return createHmac('sha256', this.hashingKey)
+            .update(JSON.stringify([context, value]), 'utf8')
+            .digest('hex');
     }
 }

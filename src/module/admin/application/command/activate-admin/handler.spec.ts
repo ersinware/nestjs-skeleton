@@ -33,7 +33,7 @@ describe('ActivateAdminCommandHandler', () => {
         record = vi.fn<IAuditPort['record']>(),
         verifyInviteToken = vi.fn<ITokenPort['verifyInviteToken']>(),
         verifyUploadToken = vi.fn<ITokenPort['verifyUploadToken']>(),
-        hash = vi.fn<IHashingPort['hash']>(),
+        hash = vi.fn<IHashingPort['hashPassword']>(),
         transaction: ITransactionPort = { start: (work) => work(), join: vi.fn() },
         command = new ActivateAdminCommand(
             'invitation',
@@ -82,7 +82,7 @@ describe('ActivateAdminCommandHandler', () => {
                 verifyInviteToken,
                 verifyUploadToken,
             } as unknown as ITokenPort,
-            { hash } as unknown as IHashingPort,
+            { hashPassword: hash } as unknown as IHashingPort,
             { record },
             {
                 headObject: vi

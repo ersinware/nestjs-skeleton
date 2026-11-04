@@ -1,5 +1,10 @@
 # Security & Sessions
 
+### Hashing
+
+- Use `IHashingPort` for Argon2id password operations and HMAC-SHA-256 digests; features never own HMAC keys or crypto primitives. Callers own canonical values and distinct purpose contexts.
+- `HASHING_KEY` is independent of JWT secrets and identical across instances/restarts; rotation must preserve comparisons for retained digests.
+
 ### Authentication & Authorization
 
 - JWT signing disables automatic `iat`; signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
@@ -16,7 +21,7 @@
 - `PrincipalType` identifies the context owning `sub`, not authority. For actor-dependent business rules, pass verified `Principal` from `@CurrentPrincipal()` to commands, never HTTP/JWT objects. Audit context: [Audit](observability.md#audit).
 - Account activation and email confirmation receive verified claims for the target aggregate; a `sub` mismatch throws `SystemException`. Email confirmation handlers must reject session/token ownership mismatches before calling the aggregate.
 - Admin self-service mutations require a password and avatar; missing either is a `SystemException`. Pending accounts remain administrable.
-- Both principal kinds share `login.util.ts`. Credential checks use uniform `CREDENTIALS` refusals and one Argon2 verification per refusal. Unknown/banned/passwordless accounts use `simulateVerify` with a boot-generated, current-cost hash. Only a pending user with a correct password receives audited `session: activation_required`, without tokens or a session.
+- Both principal kinds share `login.util.ts`. Credential checks use uniform `CREDENTIALS` refusals and one Argon2 verification per refusal. Unknown/banned/passwordless accounts use `simulatePasswordVerify` with a boot-generated, current-cost hash. Only a pending user with a correct password receives audited `session: activation_required`, without tokens or a session.
 
 ### Administration
 

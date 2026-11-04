@@ -142,7 +142,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
 
         try {
-            admin.activate(await this.hashingPort.hash(command.password), payload, payloadUpload.fileKey);
+            admin.activate(await this.hashingPort.hashPassword(command.password), payload, payloadUpload.fileKey);
         } catch (error) {
             if (isExceptionWithAudit(error)) {
                 await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });

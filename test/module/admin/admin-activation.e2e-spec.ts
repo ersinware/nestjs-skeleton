@@ -273,7 +273,7 @@ describe('Admin invitation with avatar', () => {
         expect(response.body).toBe('');
         expect(openSession).not.toHaveBeenCalled();
         const row = await state(prepared.id);
-        expect(await app.get<IHashingPort>(TOKEN_HASHING_PORT).verify(row.password!, password)).toBe(true);
+        expect(await app.get<IHashingPort>(TOKEN_HASHING_PORT).verifyPassword(row.password!, password)).toBe(true);
         expect(row).toMatchObject({
             avatarKey: prepared.sourceKey,
             inviteId: null,
@@ -345,7 +345,7 @@ describe('Admin invitation with avatar', () => {
             if (scenario === 'wrong-purpose') {
                 payload.uploadToken = payload.token;
             }
-            const hash = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'hash');
+            const hash = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'hashPassword');
             const response = await app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload });
             expect(response.statusCode).toBe(400);
             expect(hash).not.toHaveBeenCalled();

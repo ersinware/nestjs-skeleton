@@ -63,7 +63,7 @@ export class InitiateAdminEmailChangeCommandHandler implements ICommandHandler<I
         try {
             admin.requestEmailChange(
                 command.newEmail,
-                await this.hashingPort.verify(admin.password, command.password),
+                await this.hashingPort.verifyPassword(admin.password, command.password),
                 (await this.emailInUsePort.isEmailInUse(command.newEmail)).isInUse,
             );
         } catch (error) {

@@ -81,9 +81,11 @@ Bu nedenle `Required Idempotency-Key` kararı yalnız **`#18: Yes`** olarak kesi
 ### Final #18 `Yes` listesi
 
 **Auth**
+
 - `POST /auth/logout-all`
 
 **User**
+
 - `DELETE /user/me`
 - `POST /user/me/email/initiate`
 - `POST /user/me/email/confirm`
@@ -93,6 +95,7 @@ Bu nedenle `Required Idempotency-Key` kararı yalnız **`#18: Yes`** olarak kesi
 - `POST /user/activation/resend`
 
 **Admin**
+
 - `DELETE /admin/:id`
 - `POST /admin/me/email/initiate`
 - `POST /admin/me/email/confirm`
@@ -102,6 +105,7 @@ Bu nedenle `Required Idempotency-Key` kararı yalnız **`#18: Yes`** olarak kesi
 - `POST /admin/:id/re-invite`
 
 **Job Queue Operations**
+
 - `POST /job-operations/dead-letter/redrive`
 - `POST /job-operations/dead-letter/discard`
 
@@ -127,7 +131,7 @@ Kurallar:
 - same key + same fingerprint → replay;
 - same key + different fingerprint → `409 Conflict`;
 - fingerprint HMAC-SHA-256 ile üretilir;
-- HMAC doğrudan feature kodunda `createHmac` ile üretilmez; mevcut `IHashingPort` / `HashingAdapter` reusable HMAC-SHA-256 capability ile genişletilir;
+- HMAC doğrudan feature kodunda `createHmac` ile üretilmez; `IHashingPort` / `HashingAdapter` reusable HMAC-SHA-256 capability sunar;
 - adapter proje-geneli tek bir server-held `HASHING_KEY` kullanır;
 - reusable HMAC API bir `context` / `purpose` alır; aynı key başka concern'lerde kullanılsa bile hash domain'leri ayrılır;
 - idempotency fingerprint için context örneği: `idempotency-fingerprint`;
@@ -146,7 +150,7 @@ Current authentication/authorization/rate-limit replay'de bypass edilmez.
 
 Idempotency fingerprint üretimi core hashing concern üzerinden yapılmalıdır.
 
-Planlanan reusable contract:
+Mevcut reusable contract:
 
 ```text
 IHashingPort.hmacSha256(context, value)
@@ -163,8 +167,9 @@ HMAC-SHA-256(
 
 Kurallar:
 
+- çıktı 64 karakter lowercase hex digest olur;
 - `HASHING_KEY` proje-geneli keyed hashing key'idir; idempotency'ye özel secret eklenmez;
-- key runtime config üzerinden okunur ve boot sırasında güçlü bir secret olarak validate edilir;
+- key runtime config üzerinden okunur; boot validation en az 32 UTF-8 byte ve whitespace dışı içerik gerektirir; yüksek entropi güvenli key üretimiyle sağlanır;
 - idempotency caller'ı `context = "idempotency-fingerprint"` kullanır;
 - future HMAC use-case'leri aynı adapter/key'i farklı context ile reuse edebilir;
 - idempotency feature kodu `node:crypto.createHmac` çağırmaz;
@@ -250,7 +255,7 @@ key=A, fingerprint=Y
 
 ### Concurrency
 
-Same-key concurrent requests tek logical operation'a çözülmelidir. PostgreSQL uniqueness/transaction coordination yeterlidir; distributed lock eklenmez.
+Same-key concurrent requests tek logical operation'a çözülmelidir. PostgreSQL uniqueness/transaction coordination yeterlidir; distributed lock eklenmez. İkinci request ilk transaction sonucunu bekler: commit sonrası fingerprint karşılaştırmasıyla replay/409 kararı verir; rollback sonrası claim alıp mutation çalıştırabilir.
 
 ## Adım 7 — Seçilen endpoint'lere dependency-aware entegre et
 
