@@ -1,170 +1,177 @@
 # Issue #18 — PostgreSQL-backed HTTP Mutation Idempotency ve Retry Safety Planı
 
+> Durum: Güncellenmiş tasarım önerisi. Repository'ye uygulanmadı.
+
 ## Amaç
 
-PostgreSQL-backed mutating HTTP request'lerde retry, timeout ve connection loss sonrasında oluşabilecek ambiguous outcome durumlarını güvenli şekilde ele almak.
+PostgreSQL-backed mutating HTTP request'lerde timeout, connection loss veya response loss sonrası ambiguous outcome'u güvenli ele almak.
 
-Hedef mutation safety'dir; response snapshot tutulmaz. Mevcut state/proof/uniqueness korumaları yetmiyorsa explicit key gerekir; gerekli operation identity metadata'sı saklanabilir.
+#18 için hedef artık iki parçadır:
 
-Bu issue yalnızca şu boundary'yi kapsar:
+1. aynı logical operation'ın business mutation'ı birden fazla kez uygulamasını önlemek;
+2. seçilen PostgreSQL mutation'larında ilk request başarıyla commit olduysa, `same key + same fingerprint` retry'ında **original success response semantics**'ini geri vermek.
 
-```text
-HTTP request
-    ↓
-PostgreSQL-backed mutation
-```
+Full response snapshot tutulmaz. Yalnız response'u yeniden kurmak için gereken minimum stable metadata saklanır.
 
-Ortak endpoint envanteri:
-
-```text
-docs/idempotency-retry-inventory.md
-```
-
-dosyasında tutulur. #18 bu envanterde `Tracked by` alanında `#18` ile işaretlenen PostgreSQL-backed HTTP concern'lerini ele alır.
-
-## Issue sınırları
-
-```text
-#18
-HTTP → PostgreSQL
-idempotency
-retry safety
-ambiguous outcome
-
-#29
-HTTP → Redis
-idempotency
-retry safety
-ambiguous outcome
-
-#16
-Redis mutation
-    ↓
-mandatory PostgreSQL / pg-boss follow-up
-durable coordination
-
-#30
-avatar upload-proof lifecycle
-stale cleanup / reselection race
-```
-
-Bu concern'ler aynı flow üzerinde birlikte bulunabilir ancak ayrı sorumluluklar olarak ele alınmalıdır.
-
-#30 tarafından sahiplenilen avatar upload-proof / cleanup lifecycle problemi #18 kapsamında çözülmez. #18 mevcut conditional classification'ı korur ve bu açığı request-level idempotency ile maskelemeye çalışmaz.
+Bu issue yalnız HTTP → PostgreSQL boundary'sini final hale getirir. Redis/session (#29), Redis → PostgreSQL handoff (#16) ve avatar lifecycle (#30) bağımsız kalır.
 
 ---
 
 # Audit / Design Aşaması
 
-## Adım 1 — Ortak inventory'yi #18 açısından doğrula
+## Adım 1 — Shared inventory'yi doğrula
 
-`docs/idempotency-retry-inventory.md` dosyasını source of truth olarak kullan.
+`docs/idempotency-retry-inventory.md` source of truth'tur.
 
-Inventory tüm production mutating HTTP endpoint'leri cross-boundary görünürlük ve ownership için listeler. Ancak #18 yalnız `Tracked by` alanında `#18` bulunan endpoint'lerin HTTP → PostgreSQL boundary'sini kesinleştirir. #29, #30 veya başka bir owning issue'ya ait açık boundary'lerde gözlemlenen mevcut davranış kaydedilebilir fakat çözüm kararı #18 tarafından final hale getirilmez.
+Her mutating production endpoint için:
 
-Production'daki tüm mutating HTTP endpoint'lerin inventory'de bulunduğunu doğrula.
+- PostgreSQL / Redis / external effect;
+- natural idempotency;
+- current mutation retry-safety;
+- `Idempotency-Key` gereksinimi;
+- success replay davranışı;
+- owning issue
 
-Her PostgreSQL-backed endpoint için en az şu bilgilerin doğru olduğunu kontrol et:
+doğrulanır.
 
-- HTTP method / route
-- command / handler
-- PostgreSQL mutation
-- Redis mutation / effect varsa bunun ayrı boundary olarak kaydı
-- diğer external effect'ler
-- natural idempotency
-- retry safety
-- explicit request-level idempotency gereksinimi
-- replay / retry davranışı
-- `Tracked by` ownership
+#18 yalnız `Tracked by` içinde `#18` bulunan HTTP → PostgreSQL concern'lerini kesinleştirir.
 
-#18 kapsamındaki kayıtların `Tracked by` alanında `#18` bulunduğunu doğrula.
+## Adım 2 — #18 endpoint kararlarını kesinleştir
 
-Cross-boundary bir endpoint hem #18 hem başka açık issue tarafından takip ediliyorsa, #18 kararı yalnız PostgreSQL boundary'si için kesinleştirilir; diğer boundary'nin request-level protection kararı inventory'de owning issue için `Pending` kalır.
+Bir #18 endpoint'i için şu sorular sorulur:
 
-### Çıktı
+1. Retry ikinci business mutation/audit/job oluşturabilir mi?
+2. İlk PostgreSQL mutation commit olup response kaybolursa retry original success outcome'u kaybedebilir mi?
+3. Original success semantics full response snapshot olmadan, no/minimum stable metadata ile replay edilebilir mi?
 
-Doğrulanmış shared inventory.
+### Karar
 
-### İlgili acceptance criterion
+`Idempotency-Key` gerekir, eğer:
 
-- [ ] All mutating HTTP endpoints are inventoried and classified by their retry and idempotency requirements.
+- duplicate request-level mutation/delivery/operation riski varsa; veya
+- mutation commit olduktan sonra retry `404`/`409` gibi farklı bir sonuç verebiliyor ve original success semantics düşük karmaşıklıkla replay edilebiliyorsa.
 
----
+### Key gerekmeyen gruplar
 
-## Adım 2 — PostgreSQL-backed endpoint classification'ını kesinleştir
+- Retry zaten aynı success semantics'i doğal olarak veriyorsa: ban, unban, permission replacement.
+- Avatar profile update boundary'si #30 tarafından açık tutuluyorsa: `PATCH /user/me`, `PATCH /admin/me`.
 
-Bu adım yalnız #18'in sahip olduğu HTTP → PostgreSQL boundary'sini final hale getirir. Redis mutation, avatar lifecycle veya başka bir boundary aynı endpoint'te bulunsa bile onların final retry/idempotency kararı owning issue'ya bırakılır.
+### #29 ile birlikte uygulanacak cross-boundary grup
 
-#18 kapsamındaki her PostgreSQL boundary'sini şu kategorilerden biriyle doğrula:
+`#18: Yes, #29: Pending` olan endpoint'lerde #18 key/fingerprint kararı şimdi kesinleşir; ancak implementation #29 çalışmasına kadar ertelenir. Sebep, PostgreSQL mutation/proof state'i ile post-commit Redis/session sonucu birlikte ele alınmadan partial replay uygulamamak.
 
-```text
-naturally idempotent
-retry-safe
-explicit idempotency required
-```
+Bu grupta:
 
-Classification yalnız HTTP method'a göre yapılmamalı.
+- `DELETE /user/me`
+- `POST /user/me/email/confirm`
+- `PATCH /user/me/password`
+- `POST /user/activation/complete`
+- `DELETE /admin/:id`
+- `POST /admin/me/email/confirm`
+- `PATCH /admin/me/password`
 
-Gerçek davranış üzerinden kontrol et:
+bulunur.
 
-- aynı logical request ikinci kez geldiğinde ikinci business mutation oluşuyor mu?
-- uniqueness constraint ikinci mutation'ı engelliyor mu?
-- domain state ikinci uygulamayı no-op veya invalid hale getiriyor mu?
-- proof/token consumption ikinci mutation'ı engelliyor mu?
-- duplicate audit veya durable job üretilebiliyor mu?
-- response kaybolduğunda client'ın original logical sonucu yeniden elde etmesi gerekiyor mu?
+### #30 ile ilişkili #18 endpoint'leri
 
-Retry aynı response'u döndürmek zorunda değildir; ikinci mutation oluşmadan `404`/`409` dönebilir.
+`POST /user/registration/complete` ve `POST /admin/activation/complete` için request path'inde S3 mutation yoktur; yalnız `HEAD` read yapılır.
 
-Ayrı ve açık bir issue tarafından sahiplenilen unresolved bir alt-flow, inventory'de conditional boundary olarak tutulabilir. Bu durum yalnız ilgili alt-flow için istisnadır ve #18 kapsamındaki diğer classification'ları değiştirmez.
+Bu nedenle `Required Idempotency-Key` kararı yalnız **`#18: Yes`** olarak kesinleşir. #30 bu endpoint'lerde key kararını bloke etmez; avatar proof / cleanup lifecycle riski nedeniyle yalnız `Tracked by` ve limitation tarafında kalır.
 
-Mevcut istisna:
+### Final #18 `Yes` listesi
 
-- `PATCH /user/me`: name-only mutation retry-safe; avatar mutation lifecycle #30 tarafından takip edilir.
-- `PATCH /admin/me`: name-only mutation retry-safe; avatar mutation lifecycle #30 tarafından takip edilir.
-- Bu conditional avatar boundary'si Adım 2'nin tamamlanmasını bloke etmez.
-- #18 bu avatar lifecycle açığını request-level idempotency ekleyerek kapatmaya çalışmaz.
+**Auth**
+- `POST /auth/logout-all`
 
-### Çıktı
+**User**
+- `DELETE /user/me`
+- `POST /user/me/email/initiate`
+- `POST /user/me/email/confirm`
+- `PATCH /user/me/password`
+- `POST /user/registration/complete`
+- `POST /user/activation/complete`
+- `POST /user/activation/resend`
 
-Her #18 endpoint'i için kesin idempotency / retry-safety classification.
+**Admin**
+- `DELETE /admin/:id`
+- `POST /admin/me/email/initiate`
+- `POST /admin/me/email/confirm`
+- `PATCH /admin/me/password`
+- `POST /admin/invite`
+- `POST /admin/activation/complete`
+- `POST /admin/:id/re-invite`
+
+**Job Queue Operations**
+- `POST /job-operations/dead-letter/redrive`
+- `POST /job-operations/dead-letter/discard`
+
+Toplam: **17 endpoint**.
 
 ---
 
 ## Adım 3 — Explicit idempotency kontratını kesinleştir
 
-Yalnızca `explicit idempotency required` olarak doğrulanan endpoint'lerde request-level idempotency uygula.
-
 Client contract:
 
 ```http
-Idempotency-Key: <random UUID>
+Idempotency-Key: <random UUID v4>
 ```
 
 Kurallar:
 
-- Client aynı logical operation'ın retry'ında aynı key'i kullanır.
-- Yeni logical operation yeni key kullanır.
-- Key global unique olur.
-- `scope` kullanılmaz.
-- Server request semantics üzerinden deterministic fingerprint üretir.
-- Operation / endpoint identity fingerprint'e dahil edilir.
-- Same key + same fingerprint = replay.
-- Same key + different fingerprint = conflict.
+- aynı logical operation retry → aynı key;
+- yeni logical operation → yeni key;
+- key global unique;
+- `scope` yok;
+- server deterministic endpoint-specific fingerprint üretir;
+- same key + same fingerprint → replay;
+- same key + different fingerprint → `409 Conflict`;
+- fingerprint HMAC-SHA-256 ile üretilir;
+- HMAC doğrudan feature kodunda `createHmac` ile üretilmez; mevcut `IHashingPort` / `HashingAdapter` reusable HMAC-SHA-256 capability ile genişletilir;
+- adapter proje-geneli tek bir server-held `HASHING_KEY` kullanır;
+- reusable HMAC API bir `context` / `purpose` alır; aynı key başka concern'lerde kullanılsa bile hash domain'leri ayrılır;
+- idempotency fingerprint için context örneği: `idempotency-fingerprint`;
+- raw password/token/payload veya unkeyed secret digest persist edilmez.
 
-Endpoint bazında fingerprint semantics'i inventory veya kalıcı teknik dokümantasyonda açıkça tanımla.
+Replay:
 
-Secret değerler plaintext veya unkeyed hash olarak persist edilmemelidir.
+- business mutation tekrar çalışmaz;
+- duplicate audit/job oluşmaz;
+- endpoint'in original success semantics'i döner;
+- full response snapshot kullanılmaz.
 
-### İlgili acceptance criterion
+Current authentication/authorization/rate-limit replay'de bypass edilmez.
 
-- [ ] Reusing an idempotency identity with different request semantics or payload is rejected.
+### Hashing abstraction kararı
 
----
+Idempotency fingerprint üretimi core hashing concern üzerinden yapılmalıdır.
 
-## Adım 4 — Persisted idempotency modelini kesinleştir
+Planlanan reusable contract:
 
-Persisted model yalnız mevcut endpoint gereksinimleri kadar geniş olmalı.
+```text
+IHashingPort.hmacSha256(context, value)
+```
+
+Adapter davranışı:
+
+```text
+HMAC-SHA-256(
+  HASHING_KEY,
+  JSON.stringify([context, value])
+)
+```
+
+Kurallar:
+
+- `HASHING_KEY` proje-geneli keyed hashing key'idir; idempotency'ye özel secret eklenmez;
+- key runtime config üzerinden okunur ve boot sırasında güçlü bir secret olarak validate edilir;
+- idempotency caller'ı `context = "idempotency-fingerprint"` kullanır;
+- future HMAC use-case'leri aynı adapter/key'i farklı context ile reuse edebilir;
+- idempotency feature kodu `node:crypto.createHmac` çağırmaz;
+- persisted fingerprint yalnız HMAC sonucudur; key veya raw semantic input persist edilmez;
+- `HASHING_KEY` rotation, retention içindeki persisted fingerprint'lerin doğrulanabilirliğini etkilediği için key rotation policy ayrıca dikkate alınmalıdır.
+
+## Adım 4 — Minimum persistence modelini kesinleştir
 
 Başlangıç modeli:
 
@@ -173,371 +180,187 @@ idempotency.operation
 ├── key UUID PRIMARY KEY
 ├── fingerprint TEXT NOT NULL
 ├── created_at TIMESTAMPTZ NOT NULL
-└── optional replay metadata
+└── replay_operation_id UUID NULL
 ```
 
-Inventory'deki gerçek replay ihtiyacına göre gerekirse:
+`replay_operation_id` yalnız redrive gibi stable response identity gereken endpoint için kullanılır.
 
-```text
-resource_id UUID NULL
-```
+Gereksiz alanlar:
 
-gibi sınırlı metadata ekle.
+- `scope`;
+- generic `status`;
+- generic response/result JSON/blob;
+- raw payload;
+- credentials/tokens;
+- row başına gereksiz expiry alanı.
 
-Gereksiz alan ekleme:
-
-- `scope`
-- işlem state'i için gereksiz `status`
-- row başına gereksiz `expires_at`
-- generic response/result blob
-
-Retention merkezi olarak `created_at` üzerinden yönetilebilir.
-
-### Çıktı
-
-Migration'a hazır final idempotency persistence modeli.
+`204` replay endpoint'lerinde committed idempotency row yeterlidir; ayrı response metadata gerekmez.
 
 ---
 
 # Implementation Aşaması
 
-## Adım 5 — HTTP idempotency application abstraction'ını ekle
+## Adım 5 — Idempotency abstraction
 
-PostgreSQL-backed HTTP idempotency için application-level bir abstraction oluştur.
+Application-level abstraction şu invariant'ları korur:
 
-Exact interface mevcut architecture/style ile uyumlu olmalı; ancak şu invariant'ları korumalı:
-
-- key ve fingerprint ile operation claim edilir
-- replay business callback'i tekrar çalıştırmaz
-- persisted idempotency state ile business mutation aynı PostgreSQL transaction'ını paylaşır
-- replay metadata gerekiyorsa aynı transaction içinde persist edilir
-
-Tüm `CommandPipeline` idempotency transaction'ı içine alınmamalıdır.
-
-Transaction yalnız PostgreSQL commit boundary'sini kapsamalıdır.
-
-Transaction dışında kalması gereken işler olabilir:
-
-- authentication / authorization hazırlığı
-- token verification
-- hashing
-- S3 read
-- Redis operation
-- diğer external I/O
-
-### Transaction invariant
+- fingerprint, injected `IHashingPort` üzerinden reusable `hmacSha256("idempotency-fingerprint", canonicalValue)` çağrısıyla üretilir;
+- idempotency implementation doğrudan crypto primitive veya secret yönetmez;
+- key + fingerprint operation claim;
+- replay callback'i/business mutation'ı tekrar çalıştırmaz;
+- idempotency state ile PostgreSQL business mutation aynı transaction'da commit/rollback olur;
+- gerekli replay metadata aynı transaction'da persist edilir.
 
 ```text
 BEGIN
-
 idempotency operation
 business mutation
 audit
 pg-boss jobs
 optional replay metadata
-
 COMMIT
 ```
 
-Bunlardan biri rollback olursa idempotency operation da rollback olmalıdır.
-
-### İlgili acceptance criterion
-
-- [ ] For PostgreSQL-backed operations, persisted idempotency state and the corresponding business mutation commit or roll back together.
-
----
-
-## Adım 6 — Replay ve same-key concurrency davranışını uygula
+## Adım 6 — Replay ve concurrency
 
 ### İlk request
 
 ```text
-key = A
-fingerprint = X
+key=A, fingerprint=X
+→ claim
+→ business mutation
+→ commit
 ```
 
-Operation claim edilir ve business mutation aynı transaction içinde uygulanır.
-
-### Lost response sonrası retry
-
-Transaction commit olur ancak HTTP response client'a ulaşmaz:
+### Lost response retry
 
 ```text
-key = A
-fingerprint = X
+key=A, fingerprint=X
+→ replay
+→ business mutation/audit/job tekrar yok
+→ original success semantics
 ```
 
-Retry durumunda:
-
-- business mutation tekrar çalıştırılmaz
-- duplicate audit oluşturulmaz
-- duplicate pg-boss job oluşturulmaz
-- endpoint'in tanımlı success semantics'i replay edilir
-- gerekiyorsa persisted replay metadata döndürülür
-
-### Aynı key farklı logical request
+### Conflict
 
 ```text
-key = A
-fingerprint = Y
+key=A, fingerprint=Y
+→ 409
 ```
 
-Stored fingerprint farklıysa request conflict olarak reddedilir.
+### Concurrency
 
-### Concurrent same-key request'ler
+Same-key concurrent requests tek logical operation'a çözülmelidir. PostgreSQL uniqueness/transaction coordination yeterlidir; distributed lock eklenmez.
 
-İki request aynı key ile eşzamanlı gelebilir.
+## Adım 7 — Seçilen endpoint'lere dependency-aware entegre et
 
-Concurrency control PostgreSQL operation key uniqueness üzerinden yapılmalı.
+Implementation iki gruptur:
 
-Beklenen invariant:
+- **#18-only / #30-independent seçili endpoint'ler:** #18 kapsamında uygulanır.
+- **`#18: Yes, #29: Pending` endpoint'ler:** tasarım/fingerprint şimdi kesinleşir, implementation #29 çalışmasına ertelenir ve Redis/session result replay ile birlikte tamamlanır.
+
+Uygulanacak her endpoint için:
+
+1. `Idempotency-Key` validation;
+2. endpoint-specific fingerprint;
+3. atomic idempotency + business transaction;
+4. same-key replay;
+5. different-fingerprint `409`;
+6. minimum replay metadata;
+7. OpenAPI update;
+8. mevcut auth/audit guarantees korunur.
+
+## Adım 8 — Ambiguous outcome policy
+
+PostgreSQL write attempt sonrası timeout/connection loss/response loss:
 
 ```text
-same key
-    ↓
-tek logical operation
-    ↓
-tek business mutation
+outcome unknown → ambiguous outcome
 ```
 
-Unique violation sonrasında aborted transaction içinde query yapmaya dayalı tasarım kullanılmamalıdır.
+Unsafe operation yeni logical operation olarak otomatik retry edilmez.
 
-Winner rollback olursa contender normal şekilde operation'ı claim edebilmelidir.
+Explicit idempotency endpoint'inde client aynı key ile retry eder.
 
-Distributed lock eklenmemelidir; PostgreSQL coordination yeterli olmalıdır.
+## Adım 9 — Retention / cleanup
 
-### İlgili acceptance criteria
+Idempotency rows `created_at` üzerinden merkezi retention policy ile temizlenir.
 
-- [ ] Repeating the same idempotent HTTP operation does not apply the underlying business mutation more than once.
-- [ ] Concurrent requests for the same idempotent HTTP operation resolve to one consistent logical outcome.
+Retention window:
 
----
-
-## Adım 7 — Yalnız inventory'nin seçtiği endpoint'lere entegre et
-
-Global olarak tüm command veya mutating endpoint'lere `Idempotency-Key` zorunluluğu getirme.
-
-Yalnız inventory'de `explicit idempotency required` olarak doğrulanmış #18 endpoint'lerine uygula.
-
-Her endpoint için:
-
-1. `Idempotency-Key` header validation ekle.
-2. Endpoint-specific fingerprint üret.
-3. PostgreSQL mutation boundary'sini idempotency abstraction üzerinden çalıştır.
-4. Replay sırasında business mutation / audit / durable job üretme.
-5. Same-key different-fingerprint conflict davranışını uygula.
-6. Gerekli replay metadata'yı persist et ve geri döndür.
-7. OpenAPI contract'ını güncelle.
-8. Mevcut authorization, audit ve transaction invariant'larını koru.
-
-### İlgili acceptance criteria
-
-- [ ] Unsafe ambiguous HTTP mutations are not automatically retried without idempotency protection.
-- [ ] Preserve existing application guarantees when idempotency and retry handling are introduced.
-
----
-
-## Adım 8 — Ambiguous outcome ve retry politikasını uygula
-
-PostgreSQL write attempt sonrasında:
-
-- timeout
-- connection loss
-- response loss
-
-durumları mutation'ın gerçekleşmediğinin kanıtı olarak değerlendirilmemelidir.
-
-```text
-write attempt
-    ↓
-outcome unknown
-    ↓
-ambiguous outcome
-```
-
-Unsafe mutation otomatik olarak yeni operation gibi retry edilmemelidir.
-
-Explicit idempotency kullanılan endpoint'te aynı logical operation aynı key ile retry edilmelidir.
-
-Naturally idempotent veya retry-safe endpoint'lerde mevcut verified semantics korunmalıdır.
-
-HTTP retry davranışı observability tarafından görünür olmalı; repeated veya ambiguous PostgreSQL failure'lar gizlenmemelidir.
-
-### İlgili acceptance criteria
-
-- [ ] A timeout or connection loss after a PostgreSQL mutation is treated as an ambiguous outcome, not as evidence that the mutation failed.
-- [ ] Unsafe ambiguous HTTP mutations are not automatically retried without idempotency protection.
-- [ ] HTTP retry behavior is observable and does not hide repeated or ambiguous PostgreSQL failures.
-
----
-
-## Adım 9 — Retention ve cleanup politikasını uygula
-
-Persisted idempotency operation kayıtları için retention window belirle ve dokümante et.
-
-Retention kaynağı:
-
-```text
-created_at
-```
-
-Cleanup merkezi bir policy ile yapılmalı.
-
-Örnek:
-
-```sql
-DELETE FROM idempotency.operation
-WHERE created_at < now() - interval '<retention>';
-```
-
-Retention süresi belirlenirken:
-
-- gerçekçi maksimum client retry penceresi
-- operasyonel recovery ihtiyaçları
-- table growth
+- gerçek client retry window;
+- recovery ihtiyacı;
+- table growth;
 - replay guarantee süresi
 
-dikkate alınmalıdır.
+ile belirlenir.
 
-Cleanup sonrası aynı key'in artık protected replay window dışında olduğu açıkça dokümante edilmelidir.
+Retention sonrası same-key replay garantisinin sona erdiği dokümante edilir.
 
-### İlgili acceptance criterion
+## Adım 10 — Tests
 
-- [ ] Idempotency records and operation identifiers have a documented retention and cleanup policy.
+En az:
 
----
+- same key + same fingerprint → replay;
+- same key + different fingerprint → `409`;
+- concurrent same-key → tek mutation;
+- rollback → idempotency row da rollback;
+- lost response → second mutation yok;
+- selected `204` endpoints → retry yine `204`;
+- redrive → retry aynı `operationId`;
+- duplicate audit/job yok;
+- raw credential/token/payload persist edilmiyor;
+- HMAC fingerprint `IHashingPort` üzerinden üretiliyor;
+- aynı value + aynı context aynı HMAC'ı, farklı context farklı HMAC'ı üretiyor;
+- idempotency kodu ayrı bir idempotency secret veya doğrudan `createHmac` kullanmıyor.
 
-## Adım 10 — Regression, concurrency ve failure-path testlerini ekle
+## Adım 11 — Kalıcı dokümantasyon
 
-En az şu senaryolar doğrulanmalı:
+Implementation sonrası inventory ve architecture/HTTP/data-state dokümantasyonu şu konularla hizalanır:
 
-### Core idempotency
-
-- ilk request başarılı olur
-- same key + same fingerprint replay olur
-- same key + different fingerprint conflict olur
-- concurrent same-key request'ler logical mutation'ı yalnız bir kez uygular
-- winner rollback olursa contender ilerleyebilir
-
-### Atomicity
-
-- business mutation rollback olduğunda idempotency operation da rollback olur
-- idempotency operation business mutation'dan bağımsız commit olmaz
-- audit replay sırasında duplicate olmaz
-- pg-boss job replay sırasında duplicate olmaz
-
-### Ambiguous outcome
-
-- DB commit başarılı ancak HTTP response kayıp
-- client aynı key ile retry eder
-- ikinci business mutation oluşmaz
-- endpoint'in tanımlı success semantics'i geri döner
-
-### Replay metadata
-
-- gerekiyorsa original resource / operation identity replay edilir
-- replay yeni resource / operation üretmez
-
-### Retention
-
-- retention dışındaki kayıtlar cleanup edilir
-- retention içindeki kayıtlar korunur
-
-### İlgili acceptance criteria
-
-- [ ] Repeating the same idempotent HTTP operation does not apply the underlying business mutation more than once.
-- [ ] Concurrent requests for the same idempotent HTTP operation resolve to one consistent logical outcome.
-- [ ] For PostgreSQL-backed operations, persisted idempotency state and the corresponding business mutation commit or roll back together.
-
----
-
-## Adım 11 — Inventory ve kalıcı dokümantasyonu güncelle
-
-Implementation doğrulandıktan sonra:
-
-```text
-docs/idempotency-retry-inventory.md
-```
-
-dosyasını gerçek final behavior ile uyumlu hale getir.
-
-Her endpoint için:
-
-- classification
-- explicit idempotency requirement
-- replay / retry behavior
-- issue ownership
-
-güncel olmalı.
-
-Kalıcı architecture / HTTP / data-state dokümantasyonunda şu garantileri açıkla:
-
-- ambiguous PostgreSQL outcome
-- request-level idempotency contract
-- replay semantics
-- same-key conflict behavior
-- concurrency guarantee
-- retention window
-- exactly-once sınırları
-
-#18'e özel geçici `docs/work/issue-18/` dosyaları merge öncesinde gözden geçirilmeli; kalıcı değeri olmayan çalışma dokümanları main'e taşınmamalıdır.
-
-### İlgili acceptance criterion
-
-- [ ] Cases where request idempotency cannot provide exactly-once effects are documented.
-
----
+- ambiguous outcome;
+- request-level idempotency;
+- same-key success replay;
+- fingerprint/conflict;
+- concurrency;
+- retention;
+- minimum replay metadata;
+- core hashing adapter üzerinden reusable HMAC-SHA-256 kullanımı;
+- proje-geneli `HASHING_KEY` config/validation contract'ı;
+- exactly-once sınırları.
 
 ## Adım 12 — Final acceptance review
 
-Issue kapatılmadan önce tüm acceptance criteria tek tek doğrulanmalı:
+Issue kapanmadan önce:
 
-- [ ] Tüm mutating production HTTP endpoint'ler ortak inventory'de ve retry/idempotency açısından sınıflandırılmış.
-- [ ] #18 kapsamındaki PostgreSQL-backed concern'ler doğru şekilde işaretlenmiş.
-- [ ] #30 tarafından sahiplenilen avatar lifecycle riski conditional olarak korunuyor ve #18 tarafından retry-safe / exactly-once olarak yanlış temsil edilmiyor.
-- [ ] PostgreSQL mutation sonrası timeout / connection loss ambiguous outcome olarak ele alınıyor.
-- [ ] Unsafe ambiguous HTTP mutation'lar idempotency protection olmadan otomatik retry edilmiyor.
-- [ ] Aynı idempotent logical operation business mutation'ı birden fazla kez uygulamıyor.
-- [ ] Same key + different request semantics / payload conflict olarak reddediliyor.
-- [ ] Concurrent same-key request'ler tek consistent logical outcome'a ulaşıyor.
-- [ ] Persisted idempotency state ile business mutation atomik commit / rollback oluyor.
-- [ ] Audit ve pg-boss jobs replay sırasında duplicate üretilmiyor.
-- [ ] Retention ve cleanup policy dokümante edilmiş ve uygulanmış.
-- [ ] Retry / ambiguous failure davranışı observable.
-- [ ] Request idempotency'nin exactly-once effect garanti edemediği sınırlar dokümante edilmiş.
-- [ ] `docs/idempotency-retry-inventory.md` final implementation ile uyumlu.
-- [ ] Regression, concurrency, rollback ve lost-response testleri geçiyor.
+- inventory implementation ile uyumlu;
+- 17 seçili endpoint'in key contract kararı dokümante edilmiş;
+- #18-only seçili endpoint'lerde implementation tamamlanmış;
+- `#18: Yes, #29: Pending` endpoint'ler #29 ile birlikte tamamlanmış;
+- same-key retry original success semantics'i veriyor;
+- full response snapshot yok;
+- yalnız gerekli minimum metadata persist ediliyor;
+- mutation/audit/job replay'de tekrarlanmıyor;
+- `#18: Yes, #29: Pending` endpoint'ler #29 final contract'ı olmadan partial olarak uygulanmıyor;
+- #29/#30 boundary'leri korunuyor ve cross-boundary implementation dependency açık;
+- regression/concurrency/rollback/lost-response testleri geçiyor.
 
 ---
 
 ## Çalışma Sırası
 
 ```text
-Adım 1   Shared inventory doğrulama
-   ↓
-Adım 2   Endpoint classification
-   ↓
-Adım 3   Explicit idempotency contract
-   ↓
-Adım 4   Persistence modeli
-   ↓
-──────────── Design tamamlandı ────────────
-   ↓
-Adım 5   Application abstraction
-   ↓
-Adım 6   Replay / concurrency
-   ↓
+Adım 1   Inventory
+Adım 2   Endpoint decisions
+Adım 3   Explicit contract
+Adım 4   Persistence model
+         ── design complete ──
+Adım 5   Abstraction
+Adım 6   Replay/concurrency
 Adım 7   Endpoint integration
-   ↓
-Adım 8   Ambiguous outcome / retry policy
-   ↓
-Adım 9   Retention / cleanup
-   ↓
+Adım 8   Ambiguous outcome
+Adım 9   Retention
 Adım 10  Tests
-   ↓
-Adım 11  Inventory / documentation
-   ↓
-Adım 12  Final acceptance review
+Adım 11  Documentation
+Adım 12  Final review
 ```
-
-Implementation'a **Adım 1–4 tamamlanmadan başlanmamalıdır**.
