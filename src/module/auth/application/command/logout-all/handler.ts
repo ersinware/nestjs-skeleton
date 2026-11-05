@@ -6,7 +6,7 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
@@ -34,12 +34,12 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * Initializes the handler with the required ports.
      *
      * @param jobQueueWriterPort The port used to persist the logout-all job
-     * @param transactionPort Commits the job and audit together
+     * @param idempotencyPort Commits the job and audit together
      * @param auditPort The port used to record the logout
      */
     constructor(
         @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
@@ -52,9 +52,9 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * @throws {SystemException} When the revocation job is not accepted
      */
     async execute(command: LogoutAllCommand) {
-        const deliveryId = randomUUID();
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
+            const deliveryId = randomUUID();
 
-        await this.transactionPort.start(async () => {
             await this.jobQueueWriterPort.enqueue([
                 {
                     deliveryId,
@@ -64,6 +64,8 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
             ]);
             // The verified principal already identifies the actor in the audit context.
             await this.auditPort.record({ action: AuthAuditAction.LOGOUT_ALL, detail: { deliveryId } });
+
+            return { replayResultId: null };
         });
     }
 }

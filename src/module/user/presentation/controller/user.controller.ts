@@ -3,7 +3,20 @@
  * @description HTTP endpoints of the user bounded context: public registration, self-service profile management, and the permission-gated admin operations (lookup, ban/unban, permissions).
  */
 
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    HttpCode,
+    HttpStatus,
+    Param,
+    Patch,
+    Post,
+    Put,
+    Query,
+    Req,
+} from '@nestjs/common';
 import {
     ApiBearerAuth,
     ApiExtraModels,
@@ -14,6 +27,7 @@ import {
     getSchemaPath,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
@@ -26,10 +40,12 @@ import {
     ApiDefaultResourceConflictResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
+    ApiIdempotencyKey,
 } from 'src/core/doc';
 import {
     HttpCache,
     HttpCachePolicy,
+    IdempotencyKey,
     ParamIdDto,
     QuerySearchDto,
     RequestValidationMessage,
@@ -83,7 +99,7 @@ import {
 } from 'src/module/user/presentation/dto/response-user-password.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
 import { Permission, PrincipalAuditAction, PrincipalType, type Principal } from 'src/shared/domain/principal';
-import { ResourceConflictMessage } from 'src/shared/exception';
+import { InvalidInputMessage, ResourceConflictMessage } from 'src/shared/exception';
 
 /**
  * User endpoints: public registration, self-scoped profile routes (`me`) pinned to user principals,
@@ -113,10 +129,13 @@ export class UserController {
     /**
      * Soft-deletes the currently authenticated user's account.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical deletion
      * @param principal The verified principal of the current request
      * @throws {ResourceNotFoundException} When the user does not exist
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {ResourceConflictException} When the key belongs to a different request or persistence rejects a concurrent modification
+     * @throws {InvalidInputException} When the idempotency key is missing or invalid
      * @throws {SystemException} When the delivery queue does not accept every required job
      */
     @Delete('me')
@@ -126,15 +145,30 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Delete current user account',
-        description: 'Soft deletes the currently authenticated user account and revokes all active sessions.',
+        description:
+            'Soft deletes the currently authenticated user account and revokes all active sessions. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests that pass authentication return 204 without repeating the deletion, audit, or jobs. Revoked credentials may be rejected before replay.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'User account successfully deleted.' })
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.IDEMPOTENCY_KEY)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
-    async deleteMe(@CurrentPrincipal() principal: Principal) {
-        await this.commandPipeline.execute(new DeleteUserCommand(principal.id));
+    @ApiDefaultResourceConflictResponse()
+    async deleteMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+    ) {
+        await this.commandPipeline.execute(
+            new DeleteUserCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([request.method, request.routeOptions.url!, principal.id]),
+                },
+                principal.id,
+            ),
+        );
     }
 
     /**
@@ -332,12 +366,14 @@ export class UserController {
     /**
      * Initiates email verification without changing the current address or sessions.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param principal The verified principal requesting the change
      * @param postUserEmailChangeInitiateDto The new address and current password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
      * @throws {SystemException} When a deleted account reaches this authenticated flow, or the queue does not accept every required job
-     * @throws {InvalidInputException} When the password is wrong or the address is unchanged
-     * @throws {ResourceConflictException} When the address is in use or the loaded account changed
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or the password is wrong or the address is unchanged
+     * @throws {ResourceConflictException} When the key belongs to a different request or the address is in use or the loaded account changed
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
@@ -349,8 +385,9 @@ export class UserController {
     @ApiOperation({
         summary: 'Initiate current user email change',
         description:
-            'Verifies the current password and queues a confirmation link to the new address. Each request replaces the previous link, even for the same address; the current email and sessions remain unchanged.',
+            'Verifies the current password and queues a confirmation link to the new address. Each new keyed operation replaces the previous link, even for the same address; the current email and sessions remain unchanged. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({
         description: 'Confirmation request and delivery job committed; email delivery is asynchronous.',
     })
@@ -360,11 +397,23 @@ export class UserController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async initiateEmailChangeMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
         @Body() postUserEmailChangeInitiateDto: PostUserEmailChangeInitiateDto,
     ) {
         await this.commandPipeline.execute(
             new InitiateUserEmailChangeCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        postUserEmailChangeInitiateDto.newEmail,
+                        postUserEmailChangeInitiateDto.currentPassword,
+                    ]),
+                },
                 principal.id,
                 postUserEmailChangeInitiateDto.newEmail,
                 postUserEmailChangeInitiateDto.currentPassword,
@@ -543,9 +592,11 @@ export class UserController {
      * Registers a pending user account with its uploaded avatar and queues activation. The 204 response confirms
      * the request was committed, not that the email was delivered; sign-in requires activation.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param postUserRegistrationDto The registration payload
-     * @throws {InvalidInputException} When the upload proof is invalid or expired, or the form or uploaded avatar differs from the proof
-     * @throws {ResourceConflictException} When the identity or email already exists
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or the upload proof is invalid or expired, or the form or uploaded avatar differs from the proof
+     * @throws {ResourceConflictException} When the key belongs to a different request or the identity or email already exists
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
      * @throws {SystemException} When storage authorization fails or the queue does not accept every job
      */
@@ -556,14 +607,32 @@ export class UserController {
     @ApiOperation({
         summary: 'Register user',
         description:
-            'Verifies the registration proof, matching form, and uploaded avatar, then commits a pending account with activation and avatar finalization jobs. Sign-in requires email activation. An existing identity or email returns 409.',
+            'Verifies the registration proof, matching form, and uploaded avatar, then commits a pending account with activation and avatar finalization jobs. Sign-in requires email activation. An existing identity or email returns 409. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Pending account created, avatar attached, and delivery requests queued.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceConflictResponse()
-    async register(@Body() postUserRegistrationDto: PostUserRegistrationDto) {
+    async register(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @Body() postUserRegistrationDto: PostUserRegistrationDto,
+    ) {
         await this.commandPipeline.execute(
             new RegisterUserCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        postUserRegistrationDto.email,
+                        postUserRegistrationDto.name,
+                        postUserRegistrationDto.password,
+                        postUserRegistrationDto.avatar.sizeBytes,
+                        postUserRegistrationDto.avatar.contentType,
+                        postUserRegistrationDto.uploadToken,
+                    ]),
+                },
                 postUserRegistrationDto.email,
                 postUserRegistrationDto.name,
                 postUserRegistrationDto.password,
@@ -634,8 +703,11 @@ export class UserController {
      * this public route to discover account existence or activation status. A 204 confirms only
      * request handling, not email delivery; validation, concurrency, and infrastructure errors propagate.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param postUserActivationResendDto The account email address
-     * @throws {ResourceConflictException} When the account changed concurrently
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or request validation fails
+     * @throws {ResourceConflictException} When the key belongs to a different request or the account changed concurrently
      * @throws {DependencyUnavailableException} When database, queue, or audit persistence is unavailable
      * @throws {SystemException} When pending metadata is incomplete or required jobs are not accepted
      */
@@ -646,13 +718,30 @@ export class UserController {
     @ApiOperation({
         summary: 'Resend user activation email',
         description:
-            'Requests another activation email without revealing account status. Each accepted request replaces the previous link and starts a new three-day deadline.',
+            'Requests another activation email without revealing account status. Each new eligible keyed operation replaces the previous link and starts a new three-day deadline. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Request accepted regardless of account existence or activation status.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
-    async resendActivation(@Body() postUserActivationResendDto: PostUserActivationResendDto) {
-        await this.commandPipeline.execute(new ResendUserActivationCommand(postUserActivationResendDto.email));
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultResourceConflictResponse()
+    async resendActivation(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @Body() postUserActivationResendDto: PostUserActivationResendDto,
+    ) {
+        await this.commandPipeline.execute(
+            new ResendUserActivationCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        postUserActivationResendDto.email,
+                    ]),
+                },
+                postUserActivationResendDto.email,
+            ),
+        );
     }
 
     /**

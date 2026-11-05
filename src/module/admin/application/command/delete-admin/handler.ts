@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
@@ -32,14 +32,14 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the business write and audit
+     * @param idempotencyPort The commit boundary for the request claim, deletion, jobs, and audit
      * @param adminWriterPort The port used to load and persist the admin aggregate
      * @param sessionPort The port used to revoke the admin's sessions
      * @param auditPort The port used to record the deletion
      * @param errorReporterPort The port used to report unexpected background session failures
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -53,34 +53,47 @@ export class DeleteAdminCommandHandler implements ICommandHandler<DeleteAdminCom
      * @throws {ResourceNotFoundException} When the target admin does not exist.
      * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {ResourceConflictException} When the key belongs to a different request or persistence rejects a concurrent modification
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: DeleteAdminCommand) {
-        const admin = await this.adminWriterPort.load(command.id);
+        let committed: { readonly id: string; readonly sessionVersion: number } | undefined;
 
-        if (!admin) {
-            throw new ResourceNotFoundException();
-        }
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
+            const admin = await this.adminWriterPort.load(command.id);
 
-        try {
-            admin.markAsDeleted(command.actor);
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            if (!admin) {
+                throw new ResourceNotFoundException();
             }
 
-            throw error;
-        }
-        await this.transactionPort.start(async () => {
+            try {
+                admin.markAsDeleted(command.actor);
+            } catch (error) {
+                if (isExceptionWithAudit(error)) {
+                    await this.auditPort.record(
+                        { ...error.audit, targetId: admin.id },
+                        { markExceptionAsAudited: error },
+                    );
+                }
+
+                throw error;
+            }
+
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AdminAuditAction.ADMIN_DELETED, targetId: admin.id });
+            committed = { id: admin.id, sessionVersion: admin.sessionVersion };
+
+            return { replayResultId: null };
         });
+
+        if (!committed) {
+            return;
+        }
 
         // Best-effort instant eviction, fire-and-forget: the DB version already denies the next
         // refresh, so the response does not wait on Redis.
         void this.sessionPort
-            .setVersion(admin.id, PrincipalType.ADMIN, admin.sessionVersion)
+            .setVersion(committed.id, PrincipalType.ADMIN, committed.sessionVersion)
             .catch((error: unknown) => {
                 if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
                     return;

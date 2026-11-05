@@ -8,11 +8,13 @@ import { eq, or } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { LightMyRequestResponse } from 'fastify';
 import type Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import { PgBoss } from 'pg-boss';
 import { TOKEN_CACHE_PORT, type ICachePort } from 'src/core/cache';
 import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { operation } from 'src/core/idempotency/idempotency.schema';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
@@ -175,7 +177,12 @@ describe('User registration and activation', () => {
 
     async function register() {
         const payload = await prepareRegistration();
-        const response = await app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload });
+        const response = await app.inject({
+            headers: { 'idempotency-key': randomUUID() },
+            method: 'POST',
+            url: '/api/v1/user/registration/complete',
+            payload,
+        });
         expect(response.statusCode).toBe(204);
         expect(response.body).toBe('');
         const [row] = await database.select().from(user).where(eq(user.email, payload.email));
@@ -251,6 +258,7 @@ describe('User registration and activation', () => {
         const payload = await prepareRegistration(email);
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
+            headers: { 'idempotency-key': randomUUID() },
             method: 'POST',
             url: '/api/v1/user/registration/complete',
             payload,
@@ -264,6 +272,7 @@ describe('User registration and activation', () => {
         const payload = await prepareRegistration(email);
         vi.spyOn(jobWriterPort, 'enqueue').mockRejectedValueOnce(new DependencyUnavailableException());
         const response = await app.inject({
+            headers: { 'idempotency-key': randomUUID() },
             method: 'POST',
             url: '/api/v1/user/registration/complete',
             payload,
@@ -282,6 +291,39 @@ describe('User registration and activation', () => {
         });
         expect(response.statusCode).toBe(401);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
+    });
+
+    it('replays registration 204 after avatar finalization without checking consumed upload proof or repeating jobs', async () => {
+        const payload = await prepareRegistration();
+        const key = randomUUID();
+        try {
+            const call = () =>
+                app.inject({
+                    method: 'POST',
+                    url: '/api/v1/user/registration/complete',
+                    headers: { 'idempotency-key': key },
+                    payload,
+                });
+            expect((await call()).statusCode).toBe(204);
+            const [row] = await database.select().from(user).where(eq(user.email, payload.email));
+            const deliveries = await jobs(row!.id, UserJobQueue.AVATAR_FINALIZE);
+            await app.get(UserAvatarFinalizeConsumer).consume(deliveries[0]!.data);
+            const verify = vi.spyOn(tokenPort, 'verifyUploadToken');
+            const head = vi.spyOn(storageFixture.storage, 'headObject');
+            const hash = vi.spyOn(hashingPort, 'hashPassword');
+            const response = await call();
+            expect(response.statusCode).toBe(204);
+            expect(response.body).toBe('');
+            expect(verify).not.toHaveBeenCalled();
+            expect(head).not.toHaveBeenCalled();
+            expect(hash).not.toHaveBeenCalled();
+            expect(await jobs(row!.id)).toHaveLength(1);
+            expect(
+                (await actions(row!.id)).filter((entry) => entry.action === String(UserAuditAction.USER_REGISTERED)),
+            ).toHaveLength(1);
+        } finally {
+            await database.delete(operation).where(eq(operation.key, key));
+        }
     });
 
     it('commits one pending account, one job, and one audit; duplicate registration is 409', async () => {
@@ -307,8 +349,18 @@ describe('User registration and activation', () => {
         const payload = await prepareRegistration(email);
         const otherPayload = await prepareRegistration(email);
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload }),
-            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload: otherPayload }),
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/registration/complete',
+                payload,
+            }),
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/registration/complete',
+                payload: otherPayload,
+            }),
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         const rows = await database.select().from(user).where(eq(user.email, email));
@@ -324,6 +376,7 @@ describe('User registration and activation', () => {
         const payload = await prepareRegistration(undefined, false);
         for (const candidate of [payload, { ...payload, name: 'Changed' }]) {
             const response = await app.inject({
+                headers: { 'idempotency-key': randomUUID() },
                 method: 'POST',
                 url: '/api/v1/user/registration/complete',
                 payload: candidate,
@@ -352,7 +405,12 @@ describe('User registration and activation', () => {
         });
         expect(put.ok).toBe(true);
         for (const payload of [wrongSize, wrongType]) {
-            const response = await app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload });
+            const response = await app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/registration/complete',
+                payload,
+            });
             expect(response.statusCode).toBe(400);
             expect(await database.select().from(user).where(eq(user.email, payload.email))).toEqual([]);
         }
@@ -361,12 +419,27 @@ describe('User registration and activation', () => {
     it('preserves a committed account and its jobs on upload token replay', async () => {
         const payload = await prepareRegistration();
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload }),
-            app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload }),
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/registration/complete',
+                payload,
+            }),
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/registration/complete',
+                payload,
+            }),
         ]);
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         const [row] = await database.select().from(user).where(eq(user.email, payload.email));
-        const replay = await app.inject({ method: 'POST', url: '/api/v1/user/registration/complete', payload });
+        const replay = await app.inject({
+            headers: { 'idempotency-key': randomUUID() },
+            method: 'POST',
+            url: '/api/v1/user/registration/complete',
+            payload,
+        });
         expect(replay.statusCode).toBe(409);
         expect((await database.select().from(user).where(eq(user.id, row!.id)))[0]).toEqual(row);
         expect(await jobs(row!.id)).toHaveLength(1);
@@ -552,7 +625,12 @@ describe('User registration and activation', () => {
     it('limits pending-account resend without additional proof, job or audit mutations', async () => {
         const row = await register();
         const request = () =>
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } });
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/activation/resend',
+                payload: { email: row.email },
+            });
         expect((await request()).statusCode).toBe(204);
         const [before] = await database.select().from(user).where(eq(user.id, row.id));
         const beforeJobs = await jobs(row.id);
@@ -573,7 +651,12 @@ describe('User registration and activation', () => {
         const oldToken = await proof(row);
         const originalJob = (await jobs(row.id))[0]!;
         const resend = () =>
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } });
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/activation/resend',
+                payload: { email: row.email },
+            });
         expect((await resend()).statusCode).toBe(204);
         const [replaced] = await database.select().from(user).where(eq(user.id, row.id));
         expect(replaced!.activationId).not.toBe(row.activationId);
@@ -604,7 +687,14 @@ describe('User registration and activation', () => {
             .set({ activationExpiresAt: new Date(Date.now() - 1_000) })
             .where(eq(user.id, row.id));
         // Exercise proof renewal independently of the HTTP resend cooldown already consumed above.
-        await app.get(CommandPipeline).execute(new ResendUserActivationCommand(row.email));
+        await app
+            .get(CommandPipeline)
+            .execute(
+                new ResendUserActivationCommand(
+                    { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/ResendUserActivation']) },
+                    row.email,
+                ),
+            );
         const [renewed] = await database.select().from(user).where(eq(user.id, row.id));
         expect(renewed!.activationId).not.toBe(replaced!.activationId);
         expect(renewed!.activationExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 60 * 60 * 1000 - 5_000);
@@ -648,8 +738,22 @@ describe('User registration and activation', () => {
         });
         // Race authoritative writes through the production pipeline; HTTP admission permits only one resend.
         const results = await Promise.allSettled([
-            app.get(CommandPipeline).execute(new ResendUserActivationCommand(row.email)),
-            app.get(CommandPipeline).execute(new ResendUserActivationCommand(row.email)),
+            app
+                .get(CommandPipeline)
+                .execute(
+                    new ResendUserActivationCommand(
+                        { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/ResendUserActivation']) },
+                        row.email,
+                    ),
+                ),
+            app
+                .get(CommandPipeline)
+                .execute(
+                    new ResendUserActivationCommand(
+                        { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/ResendUserActivation']) },
+                        row.email,
+                    ),
+                ),
         ]);
         expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
         expect(results.find((result) => result.status === 'rejected')).toMatchObject({
@@ -666,7 +770,12 @@ describe('User registration and activation', () => {
     it('returns indistinguishable 204 for unknown and active accounts', async () => {
         const row = await register();
         const request = (email: string) =>
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email } });
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/activation/resend',
+                payload: { email },
+            });
         expect((await request(`${uuidv7()}@example.test`)).statusCode).toBe(204);
         await app.inject({
             method: 'POST',
@@ -719,7 +828,12 @@ describe('User registration and activation', () => {
         });
         const responses = await Promise.all([
             app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } }),
+            app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/user/activation/resend',
+                payload: { email: row.email },
+            }),
         ]);
         expect(responses.filter((response) => response.statusCode === 409)).toHaveLength(1);
         expect(responses.some((response) => response.statusCode === 200 || response.statusCode === 204)).toBe(true);
@@ -756,7 +870,12 @@ describe('User registration and activation', () => {
             .update(user)
             .set({ activationExpiresAt: new Date(Date.now() - 1_000) })
             .where(eq(user.id, row.id));
-        await app.inject({ method: 'POST', url: '/api/v1/user/activation/resend', payload: { email: row.email } });
+        await app.inject({
+            headers: { 'idempotency-key': randomUUID() },
+            method: 'POST',
+            url: '/api/v1/user/activation/resend',
+            payload: { email: row.email },
+        });
         sendEmail.mockClear();
         await app.get(UserActivationConsumer).consume(firstJob.data);
         expect(sendEmail).not.toHaveBeenCalled();

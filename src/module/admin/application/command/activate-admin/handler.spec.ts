@@ -4,8 +4,9 @@
  */
 
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
 import { ENV } from 'src/core/config';
-import type { ITransactionPort } from 'src/core/database';
+import type { IIdempotencyPort } from 'src/core/idempotency';
 import type { IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
 import { AuthTokenType, type ITokenPort } from 'src/core/security/token';
@@ -34,8 +35,12 @@ describe('ActivateAdminCommandHandler', () => {
         verifyInviteToken = vi.fn<ITokenPort['verifyInviteToken']>(),
         verifyUploadToken = vi.fn<ITokenPort['verifyUploadToken']>(),
         hash = vi.fn<IHashingPort['hashPassword']>(),
-        transaction: ITransactionPort = { start: (work) => work(), join: vi.fn() },
+        idempotency: IIdempotencyPort = {
+            execute: (_request, work) => work(),
+            executePrepared: async (_request, prepare, work) => work(await prepare()),
+        },
         command = new ActivateAdminCommand(
+            { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/ActivateAdmin']) },
             'invitation',
             'new-password',
             { sizeBytes: 1024, contentType: 'image/png' },
@@ -76,7 +81,7 @@ describe('ActivateAdminCommandHandler', () => {
             }),
         );
         handler = new ActivateAdminCommandHandler(
-            transaction,
+            idempotency,
             { load, save },
             {
                 verifyInviteToken,

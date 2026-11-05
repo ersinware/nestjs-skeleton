@@ -4,6 +4,8 @@
  */
 
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
+import type { IIdempotencyPort } from 'src/core/idempotency';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
@@ -14,6 +16,7 @@ import { describe, expect, it, vi } from 'vitest';
 describe('RegisterUserCommandHandler', () => {
     const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
     const command = new RegisterUserCommand(
+        { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/RegisterUser']) },
         'avatar@example.test',
         'Avatar',
         'Password!123',
@@ -32,13 +35,17 @@ describe('RegisterUserCommandHandler', () => {
         const storage = { headObject: vi.fn().mockResolvedValue({ sizeBytes: 4, contentType: 'image/png' }) };
         const writer = { insert: vi.fn() };
         const hashing = { hashPassword: vi.fn().mockResolvedValue('hash') };
-        const transaction = {
-            start: vi.fn(async (callback: () => Promise<void>) => callback()),
-            join: vi.fn(),
-        };
+        const execute = vi.fn<IIdempotencyPort['execute']>().mockImplementation((_request, work) => work());
+        const idempotency = {
+            execute,
+            executePrepared: async (request, prepare, work) => {
+                const prepared = await prepare();
+                return execute(request, () => work(prepared));
+            },
+        } satisfies IIdempotencyPort;
         const audit = { record: vi.fn() };
         const handler = new RegisterUserCommandHandler(
-            transaction as never,
+            idempotency,
             writer as never,
             hashing as never,
             audit,
@@ -46,7 +53,7 @@ describe('RegisterUserCommandHandler', () => {
             storage as never,
             new ConfigService({ JWT_UPLOAD_SECRET: secret }),
         );
-        return { handler, claims, token, storage, writer, hashing, transaction, audit };
+        return { handler, claims, token, storage, writer, hashing, idempotency, audit };
     }
 
     it.each(['identity', 'key', 'missing', 'size', 'type', 'proof'] as const)(
@@ -80,7 +87,7 @@ describe('RegisterUserCommandHandler', () => {
             await expect(fixture.handler.execute(command)).rejects.toMatchObject({ kind });
             expect(fixture.hashing.hashPassword).not.toHaveBeenCalled();
             expect(fixture.writer.insert).not.toHaveBeenCalled();
-            expect(fixture.transaction.start).not.toHaveBeenCalled();
+            expect(fixture.idempotency.execute).not.toHaveBeenCalled();
             expect(fixture.audit.record).not.toHaveBeenCalled();
         },
     );

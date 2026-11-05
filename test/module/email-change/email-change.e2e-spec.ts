@@ -15,6 +15,7 @@ import { symbols, type DestinationStream } from 'pino';
 import { TOKEN_CACHE_PORT, type ICachePort } from 'src/core/cache';
 import { TOKEN_DATABASE_CLIENT, TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { operation } from 'src/core/idempotency/idempotency.schema';
 import {
     JOB_QUEUE_DEAD_LETTER,
     TOKEN_JOB_QUEUE_WRITER_PORT,
@@ -125,6 +126,7 @@ describe.each(CASES)('$route email change', (context) => {
     let hash: string;
     let account: Account;
     const ids: string[] = [];
+    const idempotencyKeys = new Set<string>();
     const sendEmail = vi.fn<IEmailerPort['sendEmail']>();
     const report = vi.fn<IErrorReporterPort['report']>();
     const password = 'Email-phase7!Test123';
@@ -209,6 +211,9 @@ describe.each(CASES)('$route email change', (context) => {
                 } while (cursor !== '0');
             }
         }
+        for (const key of idempotencyKeys) {
+            await database.delete(operation).where(eq(operation.key, key));
+        }
         await app.close();
     }, 30_000);
 
@@ -250,6 +255,7 @@ describe.each(CASES)('$route email change', (context) => {
      * @param path Relative self endpoint
      * @param payload JSON request body
      * @param bearer Optional authenticated credential
+     * @param key Logical request identity
      * @returns Fastify's fully serialized HTTP response
      */
     async function http(
@@ -257,12 +263,14 @@ describe.each(CASES)('$route email change', (context) => {
         path: string,
         payload?: Record<string, unknown>,
         bearer: string | null = account.accessToken,
+        key: string = randomUUID(),
     ): Promise<LightMyRequestResponse> {
+        idempotencyKeys.add(key);
         return app.inject({
             method,
             url: `${base}${path}`,
             ...(payload ? { payload } : {}),
-            ...(bearer ? { headers: { authorization: `Bearer ${bearer}` } } : {}),
+            headers: { 'idempotency-key': key, ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
         });
     }
 
@@ -331,6 +339,26 @@ describe.each(CASES)('$route email change', (context) => {
             .from(audit)
             .where(and(eq(audit.actorId, account.id), eq(audit.action, action)));
     }
+
+    it('replays email initiation 204 without replacing proof, repeating password verification, audit, or delivery', async () => {
+        const key = randomUUID();
+        const payload = { newEmail: `${uuidv7()}@example.test`, currentPassword: password };
+        const call = (body = payload) => http('POST', '/email/initiate', body, account.accessToken, key);
+        expect((await call()).statusCode).toBe(204);
+        const before = await state();
+        const deliveries = await jobs(context.queues.EMAIL_CONFIRMATION);
+        expect(deliveries).toHaveLength(1);
+        const verify = vi.spyOn(hashingPort, 'verifyPassword');
+        const replay = await call();
+        expect(replay.statusCode).toBe(204);
+        expect(replay.body).toBe('');
+        expect(verify).not.toHaveBeenCalled();
+        expect(await state()).toStrictEqual(before);
+        expect(await jobs(context.queues.EMAIL_CONFIRMATION)).toHaveLength(deliveries.length);
+        expect((await call({ ...payload, currentPassword: 'Different-password!123' })).statusCode).toBe(409);
+        expect(verify).not.toHaveBeenCalled();
+        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGE_REQUESTED)).toHaveLength(1);
+    });
 
     /**
      * Calls the real consumer with the persisted job payload.

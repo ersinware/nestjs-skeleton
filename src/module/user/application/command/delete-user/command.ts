@@ -5,6 +5,7 @@
 
 import { Command } from '@nestjs/cqrs';
 import type { ICacheInvalidatingCommand } from 'src/core/cqrs';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
 
 /**
@@ -15,9 +16,13 @@ export class DeleteUserCommand extends Command<void> implements ICacheInvalidati
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Validated client key and canonical endpoint and principal semantics
      * @param id The unique identifier of the user to delete
      */
-    constructor(readonly id: string) {
+    constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
+        readonly id: string,
+    ) {
         super();
     }
 

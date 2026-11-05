@@ -7,6 +7,7 @@ export { HttpCache } from 'src/core/http/caching/decorator/http-cache.decorator'
 export { httpCacheHook } from 'src/core/http/caching/hook/http-cache.hook';
 export { HttpCachePolicy } from 'src/core/http/caching/http-cache-policy.enum';
 export { HttpCacheInterceptor } from 'src/core/http/caching/interceptor/http-cache.interceptor';
+export { IdempotencyKey } from 'src/core/http/idempotency/decorator/idempotency-key.decorator';
 export { ResponseInterceptor } from 'src/core/http/interceptor/response.interceptor';
 export { QueryPaginationDto } from 'src/core/http/pagination/dto/query-pagination.dto';
 export { ResponsePaginationDto } from 'src/core/http/pagination/dto/response-pagination.dto';

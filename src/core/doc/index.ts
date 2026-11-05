@@ -12,6 +12,7 @@ export { ApiDefaultRateLimitedResponse } from 'src/core/doc/decorator/api-defaul
 export { ApiDefaultResourceConflictResponse } from 'src/core/doc/decorator/api-default-resource-conflict-response.decorator';
 export { ApiDefaultResourceNotFoundResponse } from 'src/core/doc/decorator/api-default-resource-not-found-response.decorator';
 export { ApiDefaultUnauthenticatedResponse } from 'src/core/doc/decorator/api-default-unauthenticated-response.decorator';
+export { ApiIdempotencyKey } from 'src/core/doc/decorator/api-idempotency-key.decorator';
 export { VERSION_CONFIG } from 'src/core/doc/doc.config';
 export { generateStaticScalarHtml } from 'src/core/doc/scalar-static-page.util';
 export { createSwaggerDocument } from 'src/core/doc/swagger-document.factory';

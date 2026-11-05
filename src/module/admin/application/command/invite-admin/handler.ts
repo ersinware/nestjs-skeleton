@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { InviteAdminCommand } from 'src/module/admin/application/command/invite-admin/command';
 import {
@@ -25,12 +25,12 @@ export class InviteAdminCommandHandler implements ICommandHandler<InviteAdminCom
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the business write and audit
+     * @param idempotencyPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to persist the admin aggregate
      * @param auditPort The port used to record the pending account creation for the audit trail
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -44,27 +44,27 @@ export class InviteAdminCommandHandler implements ICommandHandler<InviteAdminCom
      * @throws {SystemException} When the delivery queue does not accept every required job
      */
     async execute(command: InviteAdminCommand) {
-        const id = uuidv7();
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
+            let admin;
 
-        let admin;
+            try {
+                admin = Admin.create({
+                    id: uuidv7(),
+                    email: command.email,
+                    name: command.name,
+                });
+            } catch (error) {
+                if (isExceptionWithAudit(error)) {
+                    await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                }
 
-        try {
-            admin = Admin.create({
-                id,
-                email: command.email,
-                name: command.name,
-            });
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                throw error;
             }
 
-            throw error;
-        }
-
-        await this.transactionPort.start(async () => {
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AdminAuditAction.ADMIN_CREATED, targetId: admin.id });
+
+            return { replayResultId: null };
         });
     }
 }

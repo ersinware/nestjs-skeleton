@@ -3,7 +3,7 @@
  * @description Exposes the session lifecycle endpoints: login, token refresh, and logout.
  */
 
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
 import {
     ApiBearerAuth,
     ApiExtraModels,
@@ -14,6 +14,7 @@ import {
     getSchemaPath,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline } from 'src/core/cqrs';
 import {
@@ -23,8 +24,9 @@ import {
     ApiDefaultRateLimitedResponse,
     ApiDefaultResourceConflictResponse,
     ApiDefaultUnauthenticatedResponse,
+    ApiIdempotencyKey,
 } from 'src/core/doc';
-import { RequestValidationMessage } from 'src/core/http';
+import { IdempotencyKey, RequestValidationMessage } from 'src/core/http';
 import { Authenticated, CurrentPrincipal, Public } from 'src/core/security/auth';
 import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { SessionOutcome } from 'src/core/security/session';
@@ -44,7 +46,7 @@ import {
     ResponseUserLoginSessionDto,
 } from 'src/module/auth/presentation/dto/response-user-login.dto';
 import type { Principal } from 'src/shared/domain/principal';
-import { UnauthenticatedMessage } from 'src/shared/exception';
+import { InvalidInputMessage, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
  * Controller for the session lifecycle: issuing, rotating, and revoking JWT token pairs.
@@ -192,7 +194,11 @@ export class AuthController {
     /**
      * Commits an account-wide revocation request; the owning context revokes sessions asynchronously.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param principal The verified principal of the current request
+     * @throws {ResourceConflictException} When the key belongs to a different request
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or request validation fails
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the revocation job is not accepted
      */
@@ -204,11 +210,32 @@ export class AuthController {
     @ApiOperation({
         summary: 'Log out all sessions',
         description:
-            'Commits an account-wide revocation request and its audit record. The owning context processes it asynchronously; this response does not guarantee that all sessions are already revoked.',
+            'Commits an account-wide revocation request and its audit record. The owning context processes it asynchronously; this response does not guarantee that all sessions are already revoked. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Session revocation request and audit record committed.' })
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.IDEMPOTENCY_KEY)
     @ApiDefaultUnauthenticatedResponse()
-    async logoutAll(@CurrentPrincipal() principal: Principal) {
-        await this.commandPipeline.execute(new LogoutAllCommand(principal.id, principal.type));
+    @ApiDefaultResourceConflictResponse()
+    async logoutAll(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+    ) {
+        await this.commandPipeline.execute(
+            new LogoutAllCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.type,
+                        principal.id,
+                    ]),
+                },
+                principal.id,
+                principal.type,
+            ),
+        );
     }
 }

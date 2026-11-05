@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
 /**
@@ -13,10 +14,12 @@ export class LogoutAllCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Validated client key and canonical endpoint semantics
      * @param id The principal identifier whose sessions are all terminated
      * @param principalType The kind of principal, which selects the module that owns its session counters
      */
     constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
         readonly id: string,
         readonly principalType: PrincipalType,
     ) {

@@ -8,10 +8,12 @@ import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { eq, or } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { randomUUID } from 'node:crypto';
 import { PgBoss } from 'pg-boss';
 import { resolveEnvFilePath, validateConfig } from 'src/core/config';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule, TOKEN_DATABASE_CLIENT } from 'src/core/database';
+import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { AuditModule, audit } from 'src/core/observability/audit';
@@ -91,7 +93,7 @@ const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
  * Test composition retaining the production application handlers and persistence adapters.
  */
 @Module({
-    imports: [DatabaseModule, JobQueueModule, AuditModule, CqrsPipelineModule],
+    imports: [IdempotencyModule, DatabaseModule, JobQueueModule, AuditModule, CqrsPipelineModule],
     providers: [
         LogoutAllCommandHandler,
         RefreshTokensCommandHandler,
@@ -263,7 +265,14 @@ describe('Auth session-revocation jobs', () => {
                         route: '/test/auth/logout-all',
                         method: 'POST',
                     },
-                    () => logoutAllHandler.execute(new LogoutAllCommand(aggregateId, principalType)),
+                    () =>
+                        logoutAllHandler.execute(
+                            new LogoutAllCommand(
+                                { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/LogoutAll']) },
+                                aggregateId,
+                                principalType,
+                            ),
+                        ),
                 );
             } else {
                 verifyRefreshToken.mockResolvedValueOnce({

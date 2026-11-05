@@ -7,7 +7,7 @@ import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -45,7 +45,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the account, delivery jobs, and audit
+     * @param idempotencyPort The commit boundary for the account, delivery jobs, and audit
      * @param userWriterPort The port used to persist the user aggregate and its jobs
      * @param hashingPort The port used to hash passwords
      * @param auditPort The port used to record the pending registration
@@ -54,7 +54,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      * @param configService Provides the validated form binding secret
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -75,61 +75,77 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      * @throws {SystemException} When verified upload claims violate registration invariants, storage authorization fails, or the queue does not accept every job
      */
     async execute(command: RegisterUserCommand) {
-        let payload;
+        await this.idempotencyPort.executePrepared(
+            command.idempotencyRequest,
+            async () => {
+                let payload;
 
-        try {
-            payload = await this.tokenPort.verifyUploadToken(command.uploadToken, UserUploadPurpose.REGISTRATION);
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
-            }
+                try {
+                    payload = await this.tokenPort.verifyUploadToken(
+                        command.uploadToken,
+                        UserUploadPurpose.REGISTRATION,
+                    );
+                } catch (error) {
+                    if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                        throw new InvalidInputException('The upload proof is invalid or has expired.', {
+                            cause: error,
+                        });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        if (payload.fileKey !== buildUserPendingAvatarKey(payload.sub, payload.sub)) {
-            throw new SystemException('Verified upload file key does not match the registration pending avatar key.', {
-                context: { class: this.constructor.name, method: this.execute.name },
-            });
-        }
+                if (payload.fileKey !== buildUserPendingAvatarKey(payload.sub, payload.sub)) {
+                    throw new SystemException(
+                        'Verified upload file key does not match the registration pending avatar key.',
+                        {
+                            context: { class: this.constructor.name, method: this.execute.name },
+                        },
+                    );
+                }
 
-        assertUserRegistrationFormHashMatches(command, this.uploadSecret, payload.formHash);
+                assertUserRegistrationFormHashMatches(command, this.uploadSecret, payload.formHash);
 
-        let avatar;
+                let avatar;
 
-        try {
-            avatar = await this.storagePort.headObject(payload.fileKey);
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
-                throw new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: error });
-            }
+                try {
+                    avatar = await this.storagePort.headObject(payload.fileKey);
+                } catch (error) {
+                    if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
+                        throw new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
+                assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
 
-        let user;
+                return { payload, passwordHash: await this.hashingPort.hashPassword(command.password) };
+            },
+            async ({ payload, passwordHash }) => {
+                let user;
 
-        try {
-            user = User.create({
-                id: payload.sub,
-                email: command.email,
-                name: command.name,
-                password: await this.hashingPort.hashPassword(command.password),
-                avatarKey: payload.fileKey,
-            });
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
-            }
+                try {
+                    user = User.create({
+                        id: payload.sub,
+                        email: command.email,
+                        name: command.name,
+                        password: passwordHash,
+                        avatarKey: payload.fileKey,
+                    });
+                } catch (error) {
+                    if (isExceptionWithAudit(error)) {
+                        await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        await this.transactionPort.start(async () => {
-            await this.userWriterPort.insert(user);
-            await this.auditPort.record({ action: UserAuditAction.USER_REGISTERED, targetId: user.id });
-        });
+                await this.userWriterPort.insert(user);
+                await this.auditPort.record({ action: UserAuditAction.USER_REGISTERED, targetId: user.id });
+
+                return { replayResultId: null };
+            },
+        );
     }
 }

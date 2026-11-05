@@ -3,7 +3,7 @@
 ### Hashing
 
 - Use `IHashingPort` for Argon2id password operations and HMAC-SHA-256 digests; features never own HMAC keys or crypto primitives. Callers own canonical values and distinct purpose contexts.
-- `HASHING_KEY` is independent of JWT secrets and identical across instances/restarts; rotation must preserve comparisons for retained digests.
+- `HashingAdapter.hmacSha256(context, value)` hashes UTF-8 `JSON.stringify([context, value])` to 64-character lowercase hex. `HASHING_KEY` is required at boot: a string of at least 32 UTF-8 bytes with non-whitespace content, used as text, not hex-decoded. Generate high entropy independently of JWT secrets; keep it identical across instances/restarts and preserve retained digest comparisons during rotation.
 
 ### Authentication & Authorization
 

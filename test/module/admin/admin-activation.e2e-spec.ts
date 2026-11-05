@@ -7,10 +7,12 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { eq, or } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
+import { operation } from 'src/core/idempotency/idempotency.schema';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
@@ -171,7 +173,13 @@ describe('Admin invitation with avatar', () => {
         }
     > {
         const email = `${uuidv7()}@example.test`;
-        await pipeline.execute(new InviteAdminCommand(email, 'Invited Admin'));
+        await pipeline.execute(
+            new InviteAdminCommand(
+                { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/InviteAdmin']) },
+                email,
+                'Invited Admin',
+            ),
+        );
         const row = (await database.select().from(admin).where(eq(admin.email, email)))[0]!;
         ids.push(row.id);
         expect(row.password).toBeNull();
@@ -263,8 +271,10 @@ describe('Admin invitation with avatar', () => {
 
     it('commits activation once, opens no session, and finalizes the immutable avatar repeat-safely', async () => {
         const prepared = await prepare();
+        const idempotencyKey = randomUUID();
         const openSession = vi.spyOn(app.get<ISessionPort>(TOKEN_SESSION_PORT), 'openSession');
         const response = await app.inject({
+            headers: { 'idempotency-key': idempotencyKey },
             method: 'POST',
             url: '/api/v1/admin/activation/complete',
             payload: prepared.payload,
@@ -289,8 +299,14 @@ describe('Admin invitation with avatar', () => {
         expect(deliveries[0]!.data).toMatchObject({ deliveryId: prepared.deliveryId, aggregateId: prepared.id });
         expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
         expect(
-            (await app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload: prepared.payload }))
-                .statusCode,
+            (
+                await app.inject({
+                    headers: { 'idempotency-key': randomUUID() },
+                    method: 'POST',
+                    url: '/api/v1/admin/activation/complete',
+                    payload: prepared.payload,
+                })
+            ).statusCode,
         ).toBe(409);
         expect(await jobs(prepared.id)).toHaveLength(1);
         await app.get(AdminAvatarFinalizeConsumer).consume(deliveries[0]!.data);
@@ -305,6 +321,20 @@ describe('Admin invitation with avatar', () => {
         await app.get(AdminAvatarFinalizeConsumer).consume(deliveries[0]!.data);
         expect(await state(prepared.id)).toEqual(finalized);
         expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
+        const verify = vi.spyOn(app.get<ITokenPort>(TOKEN_TOKEN_PORT), 'verifyUploadToken');
+        const replay = await app.inject({
+            method: 'POST',
+            url: '/api/v1/admin/activation/complete',
+            headers: { 'idempotency-key': idempotencyKey },
+            payload: prepared.payload,
+        });
+        expect(replay.statusCode).toBe(204);
+        expect(replay.body).toBe('');
+        expect(verify).not.toHaveBeenCalled();
+        expect(openSession).not.toHaveBeenCalled();
+        expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
+        expect(await jobs(prepared.id)).toHaveLength(1);
+        await database.delete(operation).where(eq(operation.key, idempotencyKey));
         const login = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/admin/login',
@@ -346,7 +376,12 @@ describe('Admin invitation with avatar', () => {
                 payload.uploadToken = payload.token;
             }
             const hash = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'hashPassword');
-            const response = await app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload });
+            const response = await app.inject({
+                headers: { 'idempotency-key': randomUUID() },
+                method: 'POST',
+                url: '/api/v1/admin/activation/complete',
+                payload,
+            });
             expect(response.statusCode).toBe(400);
             expect(hash).not.toHaveBeenCalled();
             expect(await state(prepared.id)).toEqual(before);
@@ -359,7 +394,11 @@ describe('Admin invitation with avatar', () => {
         const prepared = await prepare();
         if (change === 'reinvite') {
             await pipeline.execute(
-                new ReInviteAdminCommand(prepared.id, { id: uuidv7(), type: PrincipalType.ADMIN, permissions: [] }),
+                new ReInviteAdminCommand(
+                    { key: randomUUID(), canonicalValue: JSON.stringify(['POST', '/test/ReInviteAdmin']) },
+                    prepared.id,
+                    { id: uuidv7(), type: PrincipalType.ADMIN, permissions: [] },
+                ),
             );
         } else {
             await database
@@ -369,6 +408,7 @@ describe('Admin invitation with avatar', () => {
         }
         const before = await state(prepared.id);
         const response = await app.inject({
+            headers: { 'idempotency-key': randomUUID() },
             method: 'POST',
             url: '/api/v1/admin/activation/complete',
             payload: prepared.payload,
@@ -393,8 +433,14 @@ describe('Admin invitation with avatar', () => {
             );
         }
         expect(
-            (await app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload: prepared.payload }))
-                .statusCode,
+            (
+                await app.inject({
+                    headers: { 'idempotency-key': randomUUID() },
+                    method: 'POST',
+                    url: '/api/v1/admin/activation/complete',
+                    payload: prepared.payload,
+                })
+            ).statusCode,
         ).toBe(503);
         expect(await state(prepared.id)).toEqual(before);
         expect(await jobs(prepared.id)).toEqual([]);
@@ -406,7 +452,12 @@ describe('Admin invitation with avatar', () => {
         const prepared = await prepare();
         const responses = await Promise.all(
             [1, 2].map(() =>
-                app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload: prepared.payload }),
+                app.inject({
+                    headers: { 'idempotency-key': randomUUID() },
+                    method: 'POST',
+                    url: '/api/v1/admin/activation/complete',
+                    payload: prepared.payload,
+                }),
             ),
         );
         expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
@@ -417,8 +468,14 @@ describe('Admin invitation with avatar', () => {
     it('reuses a copied object after audit rollback and retries source cleanup after commit', async () => {
         const prepared = await prepare();
         expect(
-            (await app.inject({ method: 'POST', url: '/api/v1/admin/activation/complete', payload: prepared.payload }))
-                .statusCode,
+            (
+                await app.inject({
+                    headers: { 'idempotency-key': randomUUID() },
+                    method: 'POST',
+                    url: '/api/v1/admin/activation/complete',
+                    payload: prepared.payload,
+                })
+            ).statusCode,
         ).toBe(204);
         const job = (
             await boss.findJobs<Job>(AdminJobQueue.AVATAR_FINALIZE, { data: { aggregateId: prepared.id } })
@@ -516,6 +573,7 @@ describe('Admin invitation with avatar', () => {
             expect(
                 (
                     await app.inject({
+                        headers: { 'idempotency-key': randomUUID() },
                         method: 'POST',
                         url: '/api/v1/admin/activation/complete',
                         payload: initial.payload,

@@ -7,7 +7,7 @@ import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { ENV } from 'src/core/config';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
@@ -46,7 +46,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the business write and audit
+     * @param idempotencyPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param tokenPort The port used to verify the invite token
      * @param hashingPort The port used to hash the initial password
@@ -55,7 +55,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * @param configService Provides the validated upload secret
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
@@ -78,82 +78,103 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: ActivateAdminCommand) {
-        let payload;
+        await this.idempotencyPort.executePrepared(
+            command.idempotencyRequest,
+            async () => {
+                let payload;
 
-        try {
-            payload = await this.tokenPort.verifyInviteToken(command.token);
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The invitation is invalid or has expired.', { cause: error });
-            }
+                try {
+                    payload = await this.tokenPort.verifyInviteToken(command.token);
+                } catch (error) {
+                    if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                        throw new InvalidInputException('The invitation is invalid or has expired.', { cause: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        const admin = await this.adminWriterPort.load(payload.sub);
+                const admin = await this.adminWriterPort.load(payload.sub);
 
-        if (!admin) {
-            throw new ResourceNotFoundException();
-        }
+                if (!admin) {
+                    throw new ResourceNotFoundException();
+                }
 
-        let payloadUpload;
+                let payloadUpload;
 
-        try {
-            payloadUpload = await this.tokenPort.verifyUploadToken(command.uploadToken, AdminUploadPurpose.ACTIVATION);
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
-            }
+                try {
+                    payloadUpload = await this.tokenPort.verifyUploadToken(
+                        command.uploadToken,
+                        AdminUploadPurpose.ACTIVATION,
+                    );
+                } catch (error) {
+                    if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                        throw new InvalidInputException('The upload proof is invalid or has expired.', {
+                            cause: error,
+                        });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        if (
-            payloadUpload.sub !== payload.sub ||
-            payloadUpload.fileKey !== buildAdminPendingAvatarKey(payload.sub, payload.jti) ||
-            payloadUpload.exp > payload.exp
-        ) {
-            throw new InvalidInputException();
-        }
+                if (
+                    payloadUpload.sub !== payload.sub ||
+                    payloadUpload.fileKey !== buildAdminPendingAvatarKey(payload.sub, payload.jti) ||
+                    payloadUpload.exp > payload.exp
+                ) {
+                    throw new InvalidInputException();
+                }
 
-        assertAdminActivationFormHashMatches(
-            {
-                id: payload.sub,
-                inviteId: payload.jti,
-                password: command.password,
-                avatar: command.avatar,
+                assertAdminActivationFormHashMatches(
+                    {
+                        id: payload.sub,
+                        inviteId: payload.jti,
+                        password: command.password,
+                        avatar: command.avatar,
+                    },
+                    this.uploadSecret,
+                    payloadUpload.formHash,
+                );
+
+                let avatar;
+
+                try {
+                    avatar = await this.storagePort.headObject(payloadUpload.fileKey);
+                } catch (error) {
+                    if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
+                        throw new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: error });
+                    }
+
+                    throw error;
+                }
+
+                assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
+
+                return {
+                    admin,
+                    passwordHash: await this.hashingPort.hashPassword(command.password),
+                    payload,
+                    payloadUpload,
+                };
             },
-            this.uploadSecret,
-            payloadUpload.formHash,
+            async ({ admin, passwordHash, payload, payloadUpload }) => {
+                try {
+                    admin.activate(passwordHash, payload, payloadUpload.fileKey);
+                } catch (error) {
+                    if (isExceptionWithAudit(error)) {
+                        await this.auditPort.record(
+                            { ...error.audit, targetId: admin.id },
+                            { markExceptionAsAudited: error },
+                        );
+                    }
+
+                    throw error;
+                }
+
+                await this.adminWriterPort.save(admin);
+                await this.auditPort.record({ action: AdminAuditAction.ADMIN_ACTIVATED, targetId: admin.id });
+
+                return { replayResultId: null };
+            },
         );
-
-        let avatar;
-
-        try {
-            avatar = await this.storagePort.headObject(payloadUpload.fileKey);
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
-                throw new InvalidInputException(InvalidInputMessage.DEFAULT, { cause: error });
-            }
-
-            throw error;
-        }
-
-        assertAvatarUploadMatchesDescriptor(avatar, command.avatar);
-
-        try {
-            admin.activate(await this.hashingPort.hashPassword(command.password), payload, payloadUpload.fileKey);
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
-            }
-
-            throw error;
-        }
-
-        await this.transactionPort.start(async () => {
-            await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: AdminAuditAction.ADMIN_ACTIVATED, targetId: admin.id });
-        });
     }
 }
