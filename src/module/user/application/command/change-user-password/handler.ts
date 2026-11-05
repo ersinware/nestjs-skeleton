@@ -78,9 +78,9 @@ export class ChangeUserPasswordCommandHandler implements ICommandHandler<
 
         try {
             user.changePassword(
-                await this.hashingPort.hash(newPassword),
-                await this.hashingPort.verify(hashedPassword, command.currentPassword),
-                await this.hashingPort.verify(hashedPassword, newPassword),
+                await this.hashingPort.hashPassword(newPassword),
+                await this.hashingPort.verifyPassword(hashedPassword, command.currentPassword),
+                await this.hashingPort.verifyPassword(hashedPassword, newPassword),
             );
         } catch (error) {
             if (isExceptionWithAudit(error)) {

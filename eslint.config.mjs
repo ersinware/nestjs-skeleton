@@ -94,6 +94,7 @@ export default tseslint.config(
                  */
                 { type: 'coreCqrs', pattern: 'src/core/cqrs' },
                 { type: 'core', pattern: 'src/core/database' },
+                { type: 'core', pattern: 'src/core/idempotency' },
                 { type: 'core', pattern: 'src/core/doc' },
                 { type: 'core', pattern: 'src/core/email' },
                 { type: 'core', pattern: 'src/core/exception' },

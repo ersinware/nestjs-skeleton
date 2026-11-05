@@ -54,6 +54,7 @@ describe('Target-account policies with production HTTP and Redis', () => {
                     method: 'POST',
                     url,
                     remoteAddress: `192.0.2.${i + 1}`,
+                    headers: { 'idempotency-key': randomUUID() },
                     payload: { email: ` ${email} `, ...(status === 401 ? { password: 'Wrong-password-123!' } : {}) },
                 });
                 expect(response.statusCode).toBe(status);
@@ -224,8 +225,9 @@ describe('Target-account policies with production HTTP and Redis', () => {
     it('keeps login kinds and resend independent for the same email and IP', async () => {
         const email = `${randomUUID()}@example.test`;
         const url = endpoints[2].url;
-        expect((await app.inject({ method: 'POST', url, payload: { email } })).statusCode).toBe(204);
-        expect((await app.inject({ method: 'POST', url, payload: { email } })).statusCode).toBe(429);
+        const headers = { 'idempotency-key': randomUUID() };
+        expect((await app.inject({ method: 'POST', url, headers, payload: { email } })).statusCode).toBe(204);
+        expect((await app.inject({ method: 'POST', url, headers, payload: { email } })).statusCode).toBe(429);
         for (const login of endpoints.slice(0, 2)) {
             expect(
                 (
@@ -238,7 +240,14 @@ describe('Target-account policies with production HTTP and Redis', () => {
             ).toBe(401);
         }
         expect(
-            (await app.inject({ method: 'POST', url, payload: { email: `${randomUUID()}@example.test` } })).statusCode,
+            (
+                await app.inject({
+                    method: 'POST',
+                    url,
+                    headers: { 'idempotency-key': randomUUID() },
+                    payload: { email: `${randomUUID()}@example.test` },
+                })
+            ).statusCode,
         ).toBe(204);
     });
 });

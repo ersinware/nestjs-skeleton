@@ -21,11 +21,15 @@ if (!fs.existsSync('/.dockerenv') && databaseUrl.includes('@postgres:')) {
 
 export default defineConfig({
     // Discover application-owned tables only; pg-boss manages its own pgboss schema.
-    schema: ['./src/module/*/infrastructure/*.schema.ts', './src/core/observability/audit/audit.schema.ts'],
+    schema: [
+        './src/module/*/infrastructure/*.schema.ts',
+        './src/core/observability/audit/audit.schema.ts',
+        './src/core/idempotency/idempotency.schema.ts',
+    ],
     out: './drizzle',
     dialect: 'postgresql',
     // push only touches schemas listed here (default: public only); every bounded context's logical schema must be listed.
-    schemaFilter: ['public', 'admin', 'audit', 'user'],
+    schemaFilter: ['public', 'admin', 'audit', 'idempotency', 'user'],
     dbCredentials: {
         url: databaseUrl,
     },

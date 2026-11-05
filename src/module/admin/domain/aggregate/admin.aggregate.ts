@@ -667,9 +667,7 @@ export class Admin extends PrincipalAggregateRoot {
         payload: {
             readonly sub: string;
             readonly jti: string;
-
             readonly emailRevocationVersion: number;
-
             readonly exp: number;
         },
         notificationId: string,

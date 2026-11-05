@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { InitiateAdminEmailChangeCommand } from 'src/module/admin/application/command/initiate-admin-email-change/command';
@@ -28,14 +28,14 @@ export class InitiateAdminEmailChangeCommandHandler implements ICommandHandler<I
     /**
      * Initializes the request dependencies.
      *
-     * @param transactionPort Commits account state, delivery, and audit together
+     * @param idempotencyPort Commits account state, delivery, and audit together
      * @param adminWriterPort Loads and saves authoritative account state
      * @param hashingPort Verifies the current password outside the transaction
      * @param emailInUsePort Checks the target against existing account addresses
      * @param auditPort Records the request or failed password proof
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_IS_ADMIN_EMAIL_IN_USE_PORT) private readonly emailInUsePort: IIsAdminEmailInUsePort,
@@ -54,29 +54,37 @@ export class InitiateAdminEmailChangeCommandHandler implements ICommandHandler<I
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: InitiateAdminEmailChangeCommand) {
-        const admin = await this.adminWriterPort.load(command.id);
+        await this.idempotencyPort.executePrepared(
+            command.idempotencyRequest,
+            async () => {
+                const admin = await this.adminWriterPort.load(command.id);
 
-        if (!admin) {
-            throw new ResourceNotFoundException();
-        }
+                if (!admin) {
+                    throw new ResourceNotFoundException();
+                }
 
-        try {
-            admin.requestEmailChange(
-                command.newEmail,
-                await this.hashingPort.verify(admin.password, command.password),
-                (await this.emailInUsePort.isEmailInUse(command.newEmail)).isInUse,
-            );
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
-            }
+                return {
+                    admin,
+                    passwordMatches: await this.hashingPort.verifyPassword(admin.password, command.password),
+                    emailInUse: (await this.emailInUsePort.isEmailInUse(command.newEmail)).isInUse,
+                };
+            },
+            async ({ admin, passwordMatches, emailInUse }) => {
+                try {
+                    admin.requestEmailChange(command.newEmail, passwordMatches, emailInUse);
+                } catch (error) {
+                    if (isExceptionWithAudit(error)) {
+                        await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        await this.transactionPort.start(async () => {
-            await this.adminWriterPort.save(admin);
-            await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
-        });
+                await this.adminWriterPort.save(admin);
+                await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
+
+                return { replayResultId: null };
+            },
+        );
     }
 }

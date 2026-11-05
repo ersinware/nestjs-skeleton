@@ -52,6 +52,8 @@ describe('env.validation.config', () => {
         REDIS_RATE_LIMIT_CONNECT_TIMEOUT: 1,
         REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 1,
 
+        HASHING_KEY: 'test-only-hashing-key-not-for-production',
+
         SESSION_ABSOLUTE_TTL_ADMIN: '8h',
         SESSION_ABSOLUTE_TTL_USER: '7d',
         SESSION_ROTATION_GRACE_TTL: '30s',
@@ -100,16 +102,19 @@ describe('env.validation.config', () => {
         },
     );
 
-    it.each(['JWT_UPLOAD_SECRET', 'JWT_EMAIL_CONFIRM_SECRET', 'ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(
-        'requires %s at startup',
-        (key) => {
-            const config: Record<string, unknown> = { ...validConfig };
-            delete config[key];
-            expect(() => validateConfig(config)).toThrow();
-        },
-    );
+    it.each([
+        'HASHING_KEY',
+        'JWT_UPLOAD_SECRET',
+        'JWT_EMAIL_CONFIRM_SECRET',
+        'ADMIN_EMAIL_CONFIRM_URL',
+        'USER_EMAIL_CONFIRM_URL',
+    ])('requires %s at startup', (key) => {
+        const config: Record<string, unknown> = { ...validConfig };
+        delete config[key];
+        expect(() => validateConfig(config)).toThrow();
+    });
 
-    it.each(['JWT_UPLOAD_SECRET', 'JWT_EMAIL_CONFIRM_SECRET'])('rejects an invalid %s', (key) => {
+    it.each(['HASHING_KEY', 'JWT_UPLOAD_SECRET', 'JWT_EMAIL_CONFIRM_SECRET'])('rejects an invalid %s', (key) => {
         for (const secret of ['', ' '.repeat(32), 'short', 123]) {
             expect(() => validateConfig({ ...validConfig, [key]: secret })).toThrow();
         }

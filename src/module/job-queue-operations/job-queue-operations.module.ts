@@ -6,6 +6,7 @@
 import { Module } from '@nestjs/common';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
+import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { DiscardDeadLetterJobsCommandHandler } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/handler';
@@ -29,6 +30,7 @@ import { JobQueueOperationsController } from 'src/module/job-queue-operations/pr
         AuditModule,
         CqrsPipelineModule,
         DatabaseModule,
+        IdempotencyModule,
         JobQueueModule,
         JobQueueModule.forFeature([DeadLetterRedriveConsumer], [CqrsPipelineModule]),
     ],

@@ -29,6 +29,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 - Facades expose queries/read-only prechecks and return flat query read-models, never Drizzle objects, aggregates, or presentation DTOs. Omit facades without cross-context readers.
 - Cross-context mutations use durable jobs with owner-defined shared contracts ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - No `forwardRef()`; redesign cyclic dependencies.
+- `core/idempotency` coordinates technical claims/replay; controllers own request semantics, handlers own business work ([Request Idempotency](data-and-state.md#request-idempotency)).
 
 ## Object Storage
 

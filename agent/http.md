@@ -1,5 +1,11 @@
 # HTTP
 
+### Mutation Retry Safety
+
+- Explicit idempotency endpoints require a single UUID v4 `Idempotency-Key` via `@IdempotencyKey()`. Build fixed-order fingerprints after validation from `request.method`, matched `request.routeOptions.url` (never the raw URL or a manually assembled path), and semantic fields, including verified actor identity where applicable; preserve UUID values without changing case. Same-key/same-fingerprint success replays without mutation; conflicting fingerprints return 409. Replay retains current guards and rate limits; document the header with `@ApiIdempotencyKey()`.
+- Timeout/connection/response loss after a write means outcome unknown, not rollback. Never automatically retry an ambiguous mutation; clients retry protected endpoints with the same key, using a new key only for new work.
+- Keep the [mutation inventory](../docs/idempotency-retry-inventory.md) current when endpoints or retry behavior change. Separate implemented behavior, planned protection, and downstream delivery safety; mutation retry safety does not require identical responses.
+
 ### Health Probes
 
 Paths are version-neutral and relative to the global prefix.

@@ -9,6 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
+import { operation } from 'src/core/idempotency/idempotency.schema';
 import {
     JOB_QUEUE_DEAD_LETTER,
     JOB_QUEUE_DEAD_LETTER_REDRIVE,
@@ -104,11 +105,13 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     /**
      * Starts an operation and captures its identifier for status checks and cleanup.
      *
+     * @param key Client request identity
      * @returns Accepted operation identifier
      */
-    async function startRedrive(): Promise<string> {
+    async function startRedrive(key: string = randomUUID()): Promise<string> {
         const response = await request(app.getHttpServer())
             .post(REDRIVE_PATH)
+            .set('Idempotency-Key', key)
             .auth('redrive', { type: 'bearer' })
             .expect(202);
         const body = response.body as { data: { operationId: string } };
@@ -227,6 +230,30 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         }
     });
 
+    it('returns the original operationId after completion without another orchestration job or request audit', async () => {
+        const key = randomUUID();
+        try {
+            const id = await startRedrive(key);
+            await waitForOperation(id, 'completed');
+            expect(await startRedrive(key)).toBe(id);
+            expect(await requestAudit(id)).toHaveLength(1);
+            const retained = await database.select().from(operation).where(eq(operation.key, key));
+            expect(retained).toMatchObject([{ replayResultId: id }]);
+            const requests = await database
+                .select()
+                .from(audit)
+                .where(
+                    and(
+                        eq(audit.actorId, ACTOR_ID),
+                        eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED),
+                    ),
+                );
+            expect(requests).toHaveLength(1);
+        } finally {
+            await database.delete(operation).where(eq(operation.key, key));
+        }
+    });
+
     it('commits an exclusive request and audit, then exposes a sanitized completed status', async () => {
         const operationId = await startRedrive();
         await waitForOperation(operationId, 'completed');
@@ -272,7 +299,11 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
                     { provide: TOKEN_SESSION_PORT, useValue: sessionPort },
                 ],
             });
-            await request(secondApp.getHttpServer()).post(REDRIVE_PATH).auth('redrive', { type: 'bearer' }).expect(409);
+            await request(secondApp.getHttpServer())
+                .post(REDRIVE_PATH)
+                .set('Idempotency-Key', randomUUID())
+                .auth('redrive', { type: 'bearer' })
+                .expect(409);
             const records = await database
                 .select()
                 .from(audit)
@@ -301,7 +332,11 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         const before = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort();
         vi.spyOn(auditPort, 'record').mockRejectedValueOnce(new Error('Intentional audit failure.'));
 
-        await request(app.getHttpServer()).post(REDRIVE_PATH).auth('redrive', { type: 'bearer' }).expect(500);
+        await request(app.getHttpServer())
+            .post(REDRIVE_PATH)
+            .set('Idempotency-Key', randomUUID())
+            .auth('redrive', { type: 'bearer' })
+            .expect(500);
 
         const operations = await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE);
         expect(operations.map((job) => job.id).sort()).toEqual(before);
@@ -438,9 +473,17 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
 
     it('enforces permissions and validates status IDs without starting or disclosing an operation', async () => {
         const before = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort();
-        await request(app.getHttpServer()).post(REDRIVE_PATH).expect(401);
-        await request(app.getHttpServer()).post(REDRIVE_PATH).auth('read', { type: 'bearer' }).expect(403);
-        await request(app.getHttpServer()).post(REDRIVE_PATH).auth('none', { type: 'bearer' }).expect(403);
+        await request(app.getHttpServer()).post(REDRIVE_PATH).set('Idempotency-Key', randomUUID()).expect(401);
+        await request(app.getHttpServer())
+            .post(REDRIVE_PATH)
+            .set('Idempotency-Key', randomUUID())
+            .auth('read', { type: 'bearer' })
+            .expect(403);
+        await request(app.getHttpServer())
+            .post(REDRIVE_PATH)
+            .set('Idempotency-Key', randomUUID())
+            .auth('none', { type: 'bearer' })
+            .expect(403);
         expect((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort()).toEqual(before);
 
         await request(app.getHttpServer())

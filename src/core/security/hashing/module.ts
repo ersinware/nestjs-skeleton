@@ -8,7 +8,7 @@ import { HashingAdapter } from 'src/core/security/hashing/adapter/hashing.adapte
 import { TOKEN_HASHING_PORT } from 'src/core/security/hashing/port/hashing.port';
 
 /**
- * Binds the hashing port to its Argon2 adapter and exports the token.
+ * Binds the hashing port to its password and HMAC adapter and exports the token.
  */
 @Module({
     providers: [

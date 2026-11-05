@@ -84,7 +84,7 @@ export class ActivateUserCommandHandler implements ICommandHandler<ActivateUserC
         }
 
         try {
-            user.activate(payload, await this.hashingPort.verify(user.password, command.password));
+            user.activate(payload, await this.hashingPort.verifyPassword(user.password, command.password));
         } catch (error) {
             if (isExceptionWithAudit(error)) {
                 await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });

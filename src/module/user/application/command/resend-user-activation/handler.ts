@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_USER_WRITER_PORT,
@@ -23,12 +23,12 @@ export class ResendUserActivationCommandHandler implements ICommandHandler<Resen
     /**
      * Initializes the handler with persistence and audit dependencies.
      *
-     * @param transactionPort Commits state, delivery, and audit together
+     * @param idempotencyPort Commits state, delivery, and audit together
      * @param userWriterPort Loads and persists the authoritative account
      * @param auditPort Records accepted requests and banned-account refusals
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -44,40 +44,45 @@ export class ResendUserActivationCommandHandler implements ICommandHandler<Resen
      * @throws {SystemException} When account metadata is incomplete or required jobs are not accepted
      */
     async execute(command: ResendUserActivationCommand) {
-        const user = await this.userWriterPort.loadByEmail(command.email);
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
+            const user = await this.userWriterPort.loadByEmail(command.email);
 
-        if (!user) {
-            return;
-        }
-
-        let requested: boolean;
-
-        try {
-            requested = user.resendActivation();
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit, targetId: user.id }, { markExceptionAsAudited: error });
+            if (!user) {
+                return { replayResultId: null };
             }
 
-            // Preserve the public anti-enumeration response after recording the banned-account refusal.
-            if (isExceptionOfKind(error, ExceptionKind.ACCESS_DENIED)) {
-                return;
+            let requested: boolean;
+
+            try {
+                requested = user.resendActivation();
+            } catch (error) {
+                if (isExceptionWithAudit(error)) {
+                    await this.auditPort.record(
+                        { ...error.audit, targetId: user.id },
+                        { markExceptionAsAudited: error },
+                    );
+                }
+
+                // Preserve the public anti-enumeration response after recording the banned-account refusal.
+                if (isExceptionOfKind(error, ExceptionKind.ACCESS_DENIED)) {
+                    return { replayResultId: null };
+                }
+
+                throw error;
             }
 
-            throw error;
-        }
+            if (!requested) {
+                return { replayResultId: null };
+            }
 
-        if (!requested) {
-            return;
-        }
-
-        await this.transactionPort.start(async () => {
             await this.userWriterPort.save(user);
             await this.auditPort.record({
                 action: UserAuditAction.USER_ACTIVATION_REQUESTED,
                 targetId: user.id,
                 detail: { deliveryId: user.activationId! },
             });
+
+            return { replayResultId: null };
         });
     }
 }

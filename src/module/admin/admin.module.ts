@@ -7,6 +7,7 @@ import { Module } from '@nestjs/common';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
+import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
@@ -77,6 +78,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         AuditModule,
         ErrorReporterModule,
         DatabaseModule,
+        IdempotencyModule,
         JobQueueModule,
         HashingModule,
         SessionModule,
