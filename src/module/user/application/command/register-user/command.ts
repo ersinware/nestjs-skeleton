@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 
 /**
@@ -13,6 +14,7 @@ export class RegisterUserCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Validated client key and canonical endpoint semantics
      * @param email The email address of the new user
      * @param name The name of the new user
      * @param password The plain-text password for the new user
@@ -20,6 +22,7 @@ export class RegisterUserCommand extends Command<void> {
      * @param uploadToken Proof authorizing this form and its pending avatar
      */
     constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
         readonly email: string,
         readonly name: string,
         readonly password: string,

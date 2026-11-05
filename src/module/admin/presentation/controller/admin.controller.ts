@@ -3,7 +3,20 @@
  * @description HTTP endpoints for managing admin accounts, each gated by the permission it exercises.
  */
 
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    HttpCode,
+    HttpStatus,
+    Param,
+    Patch,
+    Post,
+    Put,
+    Query,
+    Req,
+} from '@nestjs/common';
 import {
     ApiBearerAuth,
     ApiExtraModels,
@@ -14,6 +27,7 @@ import {
     getSchemaPath,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
@@ -26,10 +40,12 @@ import {
     ApiDefaultResourceConflictResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
+    ApiIdempotencyKey,
 } from 'src/core/doc';
 import {
     HttpCache,
     HttpCachePolicy,
+    IdempotencyKey,
     ParamIdDto,
     QuerySearchDto,
     RequestValidationMessage,
@@ -109,12 +125,15 @@ export class AdminController {
     /**
      * Soft-deletes an admin account. Nobody deletes themselves or root; only root deletes a manager.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical deletion
      * @param principal The verified principal performing the deletion
      * @param params The path parameters carrying the target admin ID
+     * @throws {InvalidInputException} When the path parameters or idempotency key are invalid
      * @throws {ResourceNotFoundException} When the target admin does not exist.
      * @throws {AccessDeniedException} When the actor targets themselves or root, or a manager without being root.
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {ResourceConflictException} When the key belongs to a different request or persistence rejects a concurrent modification
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     @Delete(ROUTE_PARAM_ID)
@@ -124,18 +143,38 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Delete admin',
-        description: `Soft deletes an admin account. Requires the '${Permission.ADMIN_ACCOUNT_DELETE}' permission; the target may be neither the caller nor root, and a manager only when the caller is root.`,
+        description: `Soft deletes an admin account. Requires the '${Permission.ADMIN_ACCOUNT_DELETE}' permission; the target may be neither the caller nor root, and a manager only when the caller is root. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests return 204 without repeating the deletion, audit, or jobs.`,
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Admin account successfully deleted.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     // Generic 403 on purpose: a missing permission, self-deletion, root and a manager target all share
     // the status, so naming one cause would document the endpoint as if the others did not exist.
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
-    async delete(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
-        await this.commandPipeline.execute(new DeleteAdminCommand(params.id, principal));
+    @ApiDefaultResourceConflictResponse()
+    async delete(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Param() params: ParamIdDto,
+    ) {
+        await this.commandPipeline.execute(
+            new DeleteAdminCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        params.id,
+                    ]),
+                },
+                params.id,
+                principal,
+            ),
+        );
     }
 
     /**
@@ -333,12 +372,14 @@ export class AdminController {
     /**
      * Initiates email verification without changing the current address or sessions.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param principal The verified principal requesting the change
      * @param postAdminEmailChangeInitiateDto The new address and current password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
      * @throws {SystemException} When a deleted or inactive account reaches this authenticated flow, or the queue does not accept every required job
-     * @throws {InvalidInputException} When the password is wrong or the address is unchanged
-     * @throws {ResourceConflictException} When the address is in use or the loaded account changed
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or the password is wrong or the address is unchanged
+     * @throws {ResourceConflictException} When the key belongs to a different request or the address is in use or the loaded account changed
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
@@ -350,8 +391,9 @@ export class AdminController {
     @ApiOperation({
         summary: 'Initiate current admin email change',
         description:
-            'Verifies the current password and queues a confirmation link to the new address. Each request replaces the previous link, even for the same address; the current email and sessions remain unchanged.',
+            'Verifies the current password and queues a confirmation link to the new address. Each new keyed operation replaces the previous link, even for the same address; the current email and sessions remain unchanged. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({
         description: 'Confirmation request and delivery job committed; email delivery is asynchronous.',
     })
@@ -361,11 +403,23 @@ export class AdminController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async initiateEmailChangeMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
         @Body() postAdminEmailChangeInitiateDto: PostAdminEmailChangeInitiateDto,
     ) {
         await this.commandPipeline.execute(
             new InitiateAdminEmailChangeCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        postAdminEmailChangeInitiateDto.newEmail,
+                        postAdminEmailChangeInitiateDto.currentPassword,
+                    ]),
+                },
                 principal.id,
                 postAdminEmailChangeInitiateDto.newEmail,
                 postAdminEmailChangeInitiateDto.currentPassword,
@@ -504,8 +558,12 @@ export class AdminController {
      * Invites a new admin by creating an account pending activation and emailing its owner. The
      * account starts with no permissions; they are granted separately once it exists.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
+     * @param principal The verified principal of the current request
      * @param postAdminInviteDto The invitation payload carrying the email and name
-     * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or request validation fails
+     * @throws {ResourceConflictException} When the key belongs to a different request or the email address is already in use
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the delivery queue does not accept every required job
      */
@@ -516,15 +574,36 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Invite admin',
-        description: `Invites a new admin by creating an account pending activation, with no permissions, and emailing its owner. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission.`,
+        description: `Invites a new admin by creating an account pending activation, with no permissions, and emailing its owner. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.`,
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Admin invitation queued; the account is pending activation.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
-    async invite(@Body() postAdminInviteDto: PostAdminInviteDto) {
-        await this.commandPipeline.execute(new InviteAdminCommand(postAdminInviteDto.email, postAdminInviteDto.name));
+    @ApiDefaultResourceConflictResponse()
+    async invite(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Body() postAdminInviteDto: PostAdminInviteDto,
+    ) {
+        await this.commandPipeline.execute(
+            new InviteAdminCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        postAdminInviteDto.email,
+                        postAdminInviteDto.name,
+                    ]),
+                },
+                postAdminInviteDto.email,
+                postAdminInviteDto.name,
+            ),
+        );
     }
 
     /**
@@ -569,11 +648,13 @@ export class AdminController {
      * Activates a pending admin account with the invite token from the invitation email. Public: the
      * new admin has no credentials yet, the token is what proves the invitation.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param postAdminActivationDto Invitation and upload proofs with the bound password and avatar descriptor
-     * @throws {InvalidInputException} When the invitation or upload proof is invalid or expired, or the form binding or uploaded metadata does not match
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or the invitation or upload proof is invalid or expired, or the form binding or uploaded metadata does not match
      * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {ResourceConflictException} When the account is already active or changed concurrently
+     * @throws {ResourceConflictException} When the key belongs to a different request or the account is already active or changed concurrently
      * @throws {SystemException} When the loaded account is deleted or differs from the verified subject
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
@@ -584,16 +665,33 @@ export class AdminController {
     @ApiOperation({
         summary: 'Activate admin account',
         description:
-            'Activates the invited account with its first password and verified uploaded avatar. Commits the pending key and avatar move job without opening a session.',
+            'Activates the invited account with its first password and verified uploaded avatar. Commits the pending key and avatar move job without opening a session. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Account successfully activated; avatar finalization is queued.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
-    async activate(@Body() postAdminActivationDto: PostAdminActivationDto) {
+    async activate(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @Body() postAdminActivationDto: PostAdminActivationDto,
+    ) {
         await this.commandPipeline.execute(
             new ActivateAdminCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        postAdminActivationDto.token,
+                        postAdminActivationDto.password,
+                        postAdminActivationDto.avatar.sizeBytes,
+                        postAdminActivationDto.avatar.contentType,
+                        postAdminActivationDto.uploadToken,
+                    ]),
+                },
                 postAdminActivationDto.token,
                 postAdminActivationDto.password,
                 postAdminActivationDto.avatar,
@@ -605,10 +703,13 @@ export class AdminController {
     /**
      * Re-issues a pending admin's invitation, invalidating earlier links.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param principal The verified principal requesting the invitation
      * @param params The path parameters carrying the target admin ID
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or request validation fails
      * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
-     * @throws {ResourceConflictException} When the account is active, banned, or concurrently modified
+     * @throws {ResourceConflictException} When the key belongs to a different request or the account is active, banned, or concurrently modified
      * @throws {AccessDeniedException} When the actor cannot administer the target
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
@@ -620,17 +721,37 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Re-invite admin',
-        description: `Invalidates earlier invitations and emails a replacement for a pending admin account. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission and authority to administer the target.`,
+        description: `Invalidates earlier invitations and emails a replacement for a pending admin account. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission and authority to administer the target. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.`,
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Invitation successfully re-issued.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     // Active/banned accounts and concurrent writes all return 409.
     @ApiDefaultResourceConflictResponse()
-    async reInvite(@CurrentPrincipal() principal: Principal, @Param() params: ParamIdDto) {
-        await this.commandPipeline.execute(new ReInviteAdminCommand(params.id, principal));
+    async reInvite(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Param() params: ParamIdDto,
+    ) {
+        await this.commandPipeline.execute(
+            new ReInviteAdminCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        params.id,
+                    ]),
+                },
+                params.id,
+                principal,
+            ),
+        );
     }
 
     /**

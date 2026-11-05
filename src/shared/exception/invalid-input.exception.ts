@@ -19,6 +19,11 @@ export enum InvalidInputMessage {
      * The requested email address is unchanged.
      */
     EMAIL_UNCHANGED = 'The new email address must differ from the current address.',
+
+    /**
+     * The idempotency key is missing or is not a single UUID v4.
+     */
+    IDEMPOTENCY_KEY = 'Idempotency-Key must be a single valid UUID v4.',
 }
 
 /**

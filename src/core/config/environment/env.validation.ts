@@ -472,6 +472,14 @@ export class EnvironmentVariables {
     readonly REDIS_RATE_LIMIT_COMMAND_TIMEOUT!: number;
 
     /**
+     * Server-held UTF-8 key for context-separated HMAC digests, independent of JWT secrets.
+     */
+    @IsString()
+    @Matches(/\S/)
+    @IsByteLength(32)
+    readonly HASHING_KEY!: string;
+
+    /**
      * Maximum administrator login lifetime, independent of refresh activity.
      */
     @IsJwtTtl()

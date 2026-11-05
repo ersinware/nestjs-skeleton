@@ -104,7 +104,7 @@ export async function login(
             // Every refusal decided before the password is verified spends the verification anyway,
             // so response time says no more than the uniform message does — the only defence
             // against enumeration until rate limiting lands.
-            await ports.hashingPort.simulateVerify(password);
+            await ports.hashingPort.simulatePasswordVerify(password);
 
             throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND, undefined, error);
         }
@@ -115,7 +115,7 @@ export async function login(
     const { id, password: currentPassword } = identity;
 
     if (identity.isBanned) {
-        await ports.hashingPort.simulateVerify(password);
+        await ports.hashingPort.simulatePasswordVerify(password);
 
         throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, id);
     }
@@ -123,12 +123,12 @@ export async function login(
     // An invited admin has no password until activation. Pending users already have a hash and
     // continue through the real verification below.
     if (!currentPassword) {
-        await ports.hashingPort.simulateVerify(password);
+        await ports.hashingPort.simulatePasswordVerify(password);
 
         throw await denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, id);
     }
 
-    if (!(await ports.hashingPort.verify(currentPassword, password))) {
+    if (!(await ports.hashingPort.verifyPassword(currentPassword, password))) {
         throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, id);
     }
 

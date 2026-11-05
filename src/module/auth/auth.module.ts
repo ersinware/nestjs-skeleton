@@ -6,6 +6,7 @@
 import { Module } from '@nestjs/common';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
+import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
@@ -32,6 +33,7 @@ import { UserModule } from 'src/module/user';
         AuditModule,
         ErrorReporterModule,
         DatabaseModule,
+        IdempotencyModule,
         JobQueueModule,
         HashingModule,
         TokenModule,

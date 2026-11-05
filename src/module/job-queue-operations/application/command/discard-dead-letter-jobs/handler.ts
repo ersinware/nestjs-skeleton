@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT, type IJobQueueDeadLetterOperatorPort } from 'src/core/job-queue';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
@@ -20,12 +20,12 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
     /**
      * Initializes the handler with the transaction, queue operator, and audit ports.
      *
-     * @param transactionPort Commit boundary for deletion and audit
+     * @param idempotencyPort Commit boundary for deletion and audit
      * @param operatorPort Exact dead-letter mutation port
      * @param auditPort Durable operator audit port
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT)
         private readonly operatorPort: IJobQueueDeadLetterOperatorPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -40,7 +40,7 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
     async execute(command: DiscardDeadLetterJobsCommand) {
-        await this.transactionPort.start(async () => {
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
             const affected = await this.operatorPort.discardDeadLetterJobs(command.jobIds);
 
             if (affected !== command.jobIds.length) {
@@ -51,6 +51,8 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
                 action: JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED,
                 detail: { jobIds: command.jobIds, count: String(affected) },
             });
+
+            return { replayResultId: null };
         });
     }
 }

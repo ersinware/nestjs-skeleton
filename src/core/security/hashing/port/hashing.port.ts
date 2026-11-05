@@ -9,34 +9,44 @@
 export const TOKEN_HASHING_PORT = Symbol();
 
 /**
- * Contract for hashing plain text and verifying it against stored hashes.
+ * Contract for password hashing and context-separated keyed digests.
  */
 export interface IHashingPort {
     /**
-     * Hashes a plain text string.
+     * Hashes a password with Argon2id.
      *
      * @param plainText The string to hash.
      * @returns The hash string.
      */
-    hash(plainText: string): Promise<string>;
+    hashPassword(plainText: string): Promise<string>;
 
     /**
-     * Verifies a plain text string against a hash.
+     * Verifies a password against an encoded Argon2 hash.
      *
      * @param hash The hash to verify against.
      * @param plainText The plain text to verify.
      * @returns Whether the plain text matches the hash — a mismatch resolves to false, never throws.
      * @throws {Error} The raw driver error when the stored hash is not a valid encoding.
      */
-    verify(hash: string, plainText: string): Promise<boolean>;
+    verifyPassword(hash: string, plainText: string): Promise<boolean>;
 
     /**
-     * Spends the time a `verify` against a stored hash would, without a stored hash.
+     * Spends the time a `verifyPassword` against a stored hash would, without a stored hash.
      *
      * For a rejection decided before the password is verified (unknown email, pending or banned
      * account), so response time does not say why the attempt failed.
      *
      * @param plainText The plain text the caller would have verified.
      */
-    simulateVerify(plainText: string): Promise<void>;
+    simulatePasswordVerify(plainText: string): Promise<void>;
+
+    /**
+     * Produces a deterministic HMAC-SHA-256 digest with the server-held hashing key.
+     * Context and value are encoded as a JSON pair; callers own value canonicalization.
+     *
+     * @param context Caller-owned purpose separating digest domains.
+     * @param value Canonical value to digest, interpreted as UTF-8 text.
+     * @returns The 64-character lowercase hexadecimal digest.
+     */
+    hmacSha256(context: string, value: string): string;
 }

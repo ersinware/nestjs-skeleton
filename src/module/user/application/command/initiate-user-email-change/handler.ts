@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { InitiateUserEmailChangeCommand } from 'src/module/user/application/command/initiate-user-email-change/command';
@@ -28,14 +28,14 @@ export class InitiateUserEmailChangeCommandHandler implements ICommandHandler<In
     /**
      * Initializes the request dependencies.
      *
-     * @param transactionPort Commits account state, delivery, and audit together
+     * @param idempotencyPort Commits account state, delivery, and audit together
      * @param userWriterPort Loads and saves authoritative account state
      * @param hashingPort Verifies the current password outside the transaction
      * @param emailInUsePort Checks the target against existing account addresses
      * @param auditPort Records the request or failed password proof
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_IS_USER_EMAIL_IN_USE_PORT) private readonly emailInUsePort: IIsUserEmailInUsePort,
@@ -54,29 +54,37 @@ export class InitiateUserEmailChangeCommandHandler implements ICommandHandler<In
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     async execute(command: InitiateUserEmailChangeCommand) {
-        const user = await this.userWriterPort.load(command.id);
+        await this.idempotencyPort.executePrepared(
+            command.idempotencyRequest,
+            async () => {
+                const user = await this.userWriterPort.load(command.id);
 
-        if (!user) {
-            throw new ResourceNotFoundException();
-        }
+                if (!user) {
+                    throw new ResourceNotFoundException();
+                }
 
-        try {
-            user.requestEmailChange(
-                command.newEmail,
-                await this.hashingPort.verify(user.password, command.password),
-                (await this.emailInUsePort.isEmailInUse(command.newEmail)).isInUse,
-            );
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
-            }
+                return {
+                    user,
+                    passwordMatches: await this.hashingPort.verifyPassword(user.password, command.password),
+                    emailInUse: (await this.emailInUsePort.isEmailInUse(command.newEmail)).isInUse,
+                };
+            },
+            async ({ user, passwordMatches, emailInUse }) => {
+                try {
+                    user.requestEmailChange(command.newEmail, passwordMatches, emailInUse);
+                } catch (error) {
+                    if (isExceptionWithAudit(error)) {
+                        await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        await this.transactionPort.start(async () => {
-            await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
-        });
+                await this.userWriterPort.save(user);
+                await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGE_REQUESTED });
+
+                return { replayResultId: null };
+            },
+        );
     }
 }

@@ -3,7 +3,7 @@
  * @description Restricted HTTP access to dead-letter jobs and redrive operations.
  */
 
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
 import {
     ApiAcceptedResponse,
     ApiBearerAuth,
@@ -13,6 +13,7 @@ import {
     ApiTags,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
 import { CommandPipeline, QueryPipeline } from 'src/core/cqrs';
 import {
@@ -25,15 +26,17 @@ import {
     ApiDefaultResourceConflictResponse,
     ApiDefaultResourceNotFoundResponse,
     ApiDefaultUnauthenticatedResponse,
+    ApiIdempotencyKey,
 } from 'src/core/doc';
 import {
     HttpCache,
     HttpCachePolicy,
+    IdempotencyKey,
     QueryPaginationDto,
     RequestValidationMessage,
     ResponsePaginationDto,
 } from 'src/core/http';
-import { Permissions } from 'src/core/security/auth';
+import { CurrentPrincipal, Permissions } from 'src/core/security/auth';
 import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
 import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
@@ -46,7 +49,8 @@ import { PostDeadLetterDiscardDto } from 'src/module/job-queue-operations/presen
 import { ResponseDeadLetterJobDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-job.dto';
 import { ResponseDeadLetterRedriveAcceptedDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive-accepted.dto';
 import { ResponseDeadLetterRedriveStatusDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive-status.dto';
-import { Permission } from 'src/shared/domain/principal';
+import { Permission, type Principal } from 'src/shared/domain/principal';
+import { InvalidInputMessage } from 'src/shared/exception';
 
 /**
  * Gives authorized operators sanitized dead-letter views, exact discard, and redrive control.
@@ -133,8 +137,12 @@ export class JobQueueOperationsController {
     /**
      * Requests an asynchronous redrive of all eligible shared dead-letter jobs.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
+     * @param principal Current authenticated and authorized operator
      * @returns Identifier of the accepted operation
-     * @throws {ResourceConflictException} When another redrive is queued or active
+     * @throws {InvalidInputException} When Idempotency-Key is absent or invalid
+     * @throws {ResourceConflictException} When the key belongs to a different request or another redrive is queued or active
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
@@ -144,12 +152,28 @@ export class JobQueueOperationsController {
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiOperation({
         summary: 'Redrive dead-letter jobs',
-        description: `Starts an exclusive operation that returns eligible jobs to their original queues. Requires '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission.`,
+        description: `Starts an exclusive operation that returns eligible jobs to their original queues. Requires '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests return the original operationId without enqueueing or auditing again. Authentication, authorization, and rate limiting apply on every retry.`,
     })
+    @ApiIdempotencyKey()
     @ApiAcceptedResponse({ description: 'Redrive operation accepted.', type: ResponseDeadLetterRedriveAcceptedDto })
-    @ApiDefaultResourceConflictResponse('A dead-letter redrive is already in progress.')
-    async redrive(): Promise<ResponseDeadLetterRedriveAcceptedDto> {
-        const operationId = await this.commandPipeline.execute(new StartDeadLetterRedriveCommand());
+    @ApiDefaultInvalidRequestResponse(InvalidInputMessage.IDEMPOTENCY_KEY)
+    @ApiDefaultResourceConflictResponse()
+    async redrive(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+    ): Promise<ResponseDeadLetterRedriveAcceptedDto> {
+        const operationId = await this.commandPipeline.execute(
+            new StartDeadLetterRedriveCommand({
+                key: idempotencyKey,
+                canonicalValue: JSON.stringify([
+                    request.method,
+                    request.routeOptions.url!,
+                    principal.type,
+                    principal.id,
+                ]),
+            }),
+        );
 
         return plainToInstance(ResponseDeadLetterRedriveAcceptedDto, { operationId });
     }
@@ -185,7 +209,12 @@ export class JobQueueOperationsController {
     /**
      * Discards an exact set of dead-letter jobs as one audited operation.
      *
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
+     * @param principal The verified principal of the current request
      * @param body Validated dead-letter job identifiers
+     * @throws {ResourceConflictException} When the key belongs to a different request
+     * @throws {InvalidInputException} When the idempotency key is absent or invalid, or request validation fails
      * @throws {ResourceNotFoundException} When any requested job is missing from the shared dead-letter queue
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the queue returns an invalid mutation result
@@ -196,12 +225,33 @@ export class JobQueueOperationsController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Discard dead-letter jobs',
-        description: `Atomically discards the specified dead-letter jobs. Requires '${Permission.JOB_DEAD_LETTER_DISCARD}' permission.`,
+        description: `Atomically discards the specified dead-letter jobs. Requires '${Permission.JOB_DEAD_LETTER_DISCARD}' permission. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.`,
     })
+    @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Every requested dead-letter job was discarded.' })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceNotFoundResponse()
-    async discard(@Body() body: PostDeadLetterDiscardDto) {
-        await this.commandPipeline.execute(new DiscardDeadLetterJobsCommand(body.jobIds));
+    @ApiDefaultResourceConflictResponse()
+    async discard(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Body() body: PostDeadLetterDiscardDto,
+    ) {
+        await this.commandPipeline.execute(
+            new DiscardDeadLetterJobsCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.type,
+                        principal.id,
+                        [...body.jobIds].sort(),
+                    ]),
+                },
+                body.jobIds,
+            ),
+        );
     }
 }

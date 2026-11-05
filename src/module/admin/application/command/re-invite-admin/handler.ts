@@ -5,7 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -24,12 +24,12 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the business write and audit
+     * @param idempotencyPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and persist the admin
      * @param auditPort The port used to record the re-invitation for the audit trail
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -45,24 +45,29 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
     async execute(command: ReInviteAdminCommand) {
-        const admin = await this.adminWriterPort.load(command.id);
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
+            const admin = await this.adminWriterPort.load(command.id);
 
-        if (!admin) {
-            throw new ResourceNotFoundException();
-        }
-
-        try {
-            admin.reInvite(command.actor);
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit, targetId: admin.id }, { markExceptionAsAudited: error });
+            if (!admin) {
+                throw new ResourceNotFoundException();
             }
 
-            throw error;
-        }
-        await this.transactionPort.start(async () => {
+            try {
+                admin.reInvite(command.actor);
+            } catch (error) {
+                if (isExceptionWithAudit(error)) {
+                    await this.auditPort.record(
+                        { ...error.audit, targetId: admin.id },
+                        { markExceptionAsAudited: error },
+                    );
+                }
+
+                throw error;
+            }
             await this.adminWriterPort.save(admin);
             await this.auditPort.record({ action: AdminAuditAction.ADMIN_INVITED, targetId: admin.id });
+
+            return { replayResultId: null };
         });
     }
 }
