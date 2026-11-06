@@ -3,17 +3,16 @@
  * @description Verifies independent profile mutations and rejection before persistence or avatar delivery.
  */
 
-import { ConfigService } from '@nestjs/config';
-import { ENV } from 'src/core/config';
 import type { ITransactionPort } from 'src/core/database';
 
+import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
-import { createUserAvatarChangeFormHash } from 'src/module/user/domain/user-avatar-change';
+import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
@@ -49,7 +48,7 @@ describe('UpdateUserCommandHandler', () => {
                 audit,
                 token as unknown as ITokenPort,
                 storage as unknown as IStoragePort,
-                new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'secret' }),
+                { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
 
             const result = handler.execute(new UpdateUserCommand('owner', 'Changed'));
@@ -79,7 +78,7 @@ describe('UpdateUserCommandHandler', () => {
                 audit,
                 token as unknown as ITokenPort,
                 storage as unknown as IStoragePort,
-                new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'secret' }),
+                { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
             const command = new UpdateUserCommand(
                 'owner',
@@ -143,19 +142,12 @@ describe('UpdateUserCommandHandler', () => {
             jti: avatarId,
             revocationVersion: scenario === 'revoked' ? 1 : user.revocationVersion,
             fileKey: scenario === 'invalid-key' ? 'foreign/key' : sourceKey,
-            formHash: createUserAvatarChangeFormHash(
-                {
-                    id,
-                    avatarId,
-                    ...(name !== undefined && { name }),
-                    avatar,
-                },
-                'upload-secret',
-            ),
+            formHash: 'form-digest',
         };
         if (scenario === 'binding') {
             payload.formHash = 'mismatched-binding';
         }
+        const verifyHmacSha256 = vi.fn<IHashingPort['verifyHmacSha256']>().mockReturnValue(scenario !== 'binding');
         const verifyUploadToken = vi.fn().mockResolvedValue(payload);
         if (scenario === 'invalid-proof') {
             verifyUploadToken.mockRejectedValue(new UnauthenticatedException());
@@ -179,7 +171,7 @@ describe('UpdateUserCommandHandler', () => {
             audit,
             { verifyUploadToken } as unknown as ITokenPort,
             storage as unknown as IStoragePort,
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
+            { verifyHmacSha256 } as unknown as IHashingPort,
         );
         const hasUpload = scenario !== 'name-only' && scenario !== 'unchanged-name';
         const result = handler.execute(
@@ -202,6 +194,13 @@ describe('UpdateUserCommandHandler', () => {
         };
         if (scenario in failureKind) {
             await expect(result).rejects.toMatchObject({ kind: failureKind[scenario as keyof typeof failureKind] });
+            if (verifyHmacSha256.mock.calls.length > 0) {
+                expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
+                    UserUploadPurpose.PROFILE_AVATAR,
+                    canonicalizeUserAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
+                    payload.formHash,
+                );
+            }
             expect(user.toSnapshot()).toEqual(before);
             expect(user.pullJobs()).toEqual([]);
             expect(writer.save).not.toHaveBeenCalled();
@@ -231,6 +230,11 @@ describe('UpdateUserCommandHandler', () => {
         expect(user.revocationVersion).toBe(before.revocationVersion);
         expect(writer.save).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);
         if (hasUpload) {
+            expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
+                UserUploadPurpose.PROFILE_AVATAR,
+                canonicalizeUserAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
+                payload.formHash,
+            );
             expect(verifyUploadToken).toHaveBeenCalledWith('proof', UserUploadPurpose.PROFILE_AVATAR, true);
             expect(user.pullJobs()).toEqual([
                 {

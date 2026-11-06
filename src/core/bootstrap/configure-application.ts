@@ -10,8 +10,9 @@ import { IncomingMessage, ServerResponse } from 'http';
 import { Logger } from 'nestjs-pino';
 import { ACTIVE_VERSIONS, GLOBAL_PREFIX, ROUTE_DOCS, VERSION_1, VERSION_PREFIX } from 'src/core/config';
 import { createSwaggerDocument } from 'src/core/doc';
-import { httpCacheHook } from 'src/core/http';
+import { createHttpCacheHook } from 'src/core/http';
 import { auditContextHook } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 
 /**
  * Applies HTTP hooks, routing, logging, shutdown hooks and API documentation before initialization.
@@ -25,7 +26,9 @@ export function configureApplication(app: NestFastifyApplication) {
 
     // Raw for the same reason: the `no-store` fallback must reach replies no interceptor sees, and
     // the ETag needs the serialized body.
-    app.getHttpAdapter().getInstance().addHook('onSend', httpCacheHook);
+    app.getHttpAdapter()
+        .getInstance()
+        .addHook('onSend', createHttpCacheHook(app.get<IHashingPort>(TOKEN_HASHING_PORT)));
 
     app.enableShutdownHooks()
         .enableVersioning({ type: VersioningType.URI, defaultVersion: VERSION_1, prefix: VERSION_PREFIX })

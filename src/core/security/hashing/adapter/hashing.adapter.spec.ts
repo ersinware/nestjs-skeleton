@@ -107,12 +107,32 @@ describe('HashingAdapter', () => {
         });
     });
 
+    describe('verifyHmacSha256', () => {
+        it('accepts the original binding and rejects changed inputs, keys, and malformed digests', async () => {
+            const adapter = await createAdapter(Environment.PRODUCTION);
+            const digest = adapter.hmacSha256('purpose', 'value');
+            const otherAdapter = new HashingAdapter(
+                new ConfigService({
+                    [ENV.NODE_ENV]: Environment.PRODUCTION,
+                    [ENV.HASHING_KEY]: 'another-test-only-key-not-for-production',
+                }),
+            );
+            expect(adapter.verifyHmacSha256('purpose', 'value', digest)).toBe(true);
+            expect(adapter.verifyHmacSha256('purpose', 'changed', digest)).toBe(false);
+            expect(adapter.verifyHmacSha256('other-purpose', 'value', digest)).toBe(false);
+            expect(otherAdapter.verifyHmacSha256('purpose', 'value', digest)).toBe(false);
+            for (const malformed of ['', 'short', 'x'.repeat(64), digest.toUpperCase()]) {
+                expect(adapter.verifyHmacSha256('purpose', 'value', malformed)).toBe(false);
+            }
+        });
+    });
+
     describe('hmacSha256', () => {
         it('returns the stable UTF-8 context/value HMAC as lowercase hex', async () => {
             const adapter = await createAdapter(Environment.PRODUCTION);
 
             expect(adapter.hmacSha256('idempotency-fingerprint', 'şifre🔑')).toBe(
-                '4143c067df3d87cfe62366dabe160424987571eeb9b5c85cbb9e117412c3d275',
+                'ddd4bc67485d14228110d5f031b5f2e6f9e5d3b084e3e5b9067db4ad92e77afa',
             );
             expect(adapter.hmacSha256('idempotency-fingerprint', 'şifre🔑')).toBe(
                 (await createAdapter(Environment.PRODUCTION)).hmacSha256('idempotency-fingerprint', 'şifre🔑'),

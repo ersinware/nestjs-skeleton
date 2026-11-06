@@ -19,7 +19,7 @@ export const KEY_DECORATOR_HTTP_CACHE = 'KEY_DECORATOR_HTTP_CACHE';
  * `no-store` automatically). `HttpCacheInterceptor` enforces both with a `SystemException`, so a
  * missing or misplaced decorator fails on the first request instead of leaking an implicit policy.
  *
- * A storing policy also documents the `304` that `httpCacheHook` answers on a matching
+ * A storing policy also documents the `304` that the hook from `createHttpCacheHook` answers on a matching
  * `If-None-Match`: the policy is what makes the 304 possible, so its decorator is the one place
  * that knows to document it.
  *

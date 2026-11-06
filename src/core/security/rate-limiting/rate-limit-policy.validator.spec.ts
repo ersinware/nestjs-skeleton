@@ -8,6 +8,7 @@ import { DiscoveryModule } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import 'reflect-metadata';
 import { Authenticated, Public } from 'src/core/security/auth';
+import type { IHashingPort } from 'src/core/security/hashing';
 import { PrincipalTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/principal-tracker-resolver.adapter';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { RateLimitExempt } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
@@ -31,7 +32,9 @@ async function bootstrap(
     controllers: readonly Type<unknown>[],
     registry: Partial<RateLimitTrackerResolverRegistry> = {
         ip: { resolve: () => '192.0.2.1' },
-        'target-account': new TargetAccountTrackerResolverAdapter(),
+        'target-account': new TargetAccountTrackerResolverAdapter({
+            hmacSha256: () => 'a'.repeat(64),
+        } as unknown as IHashingPort),
         principal: new PrincipalTrackerResolverAdapter(),
     },
 ): Promise<void> {
@@ -283,7 +286,9 @@ describe('RateLimitPolicyValidator bootstrap', () => {
         await expect(
             bootstrap([], {
                 ip: { resolve: () => '192.0.2.1' },
-                'target-account': new TargetAccountTrackerResolverAdapter(),
+                'target-account': new TargetAccountTrackerResolverAdapter({
+                    hmacSha256: () => 'a'.repeat(64),
+                } as unknown as IHashingPort),
             }),
         ).rejects.toThrow('Invalid rate-limit configuration');
     });

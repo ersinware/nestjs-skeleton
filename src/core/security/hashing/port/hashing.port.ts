@@ -42,11 +42,22 @@ export interface IHashingPort {
 
     /**
      * Produces a deterministic HMAC-SHA-256 digest with the server-held hashing key.
-     * Context and value are encoded as a JSON pair; callers own value canonicalization.
+     * The UTF-8 context is length-prefixed; the value is consumed directly without JSON encoding.
+     * Callers own value canonicalization.
      *
      * @param context Caller-owned purpose separating digest domains.
-     * @param value Canonical value to digest, interpreted as UTF-8 text.
+     * @param value Canonical UTF-8 text or raw bytes to digest.
      * @returns The 64-character lowercase hexadecimal digest.
      */
-    hmacSha256(context: string, value: string): string;
+    hmacSha256(context: string, value: string | Uint8Array): string;
+
+    /**
+     * Verifies a context-separated HMAC using a timing-safe digest comparison.
+     *
+     * @param context Caller-owned purpose separating digest domains.
+     * @param value Canonical UTF-8 text or raw bytes to verify.
+     * @param expectedDigest Expected lowercase hexadecimal digest.
+     * @returns Whether the digest matches; mismatched or malformed digests return false.
+     */
+    verifyHmacSha256(context: string, value: string | Uint8Array, expectedDigest: string): boolean;
 }

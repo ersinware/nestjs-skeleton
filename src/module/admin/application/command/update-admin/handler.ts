@@ -4,11 +4,10 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -16,7 +15,7 @@ import {
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
-import { assertAdminAvatarChangeFormHashMatches } from 'src/module/admin/domain/admin-avatar-change';
+import { canonicalizeAdminAvatarChangeForm } from 'src/module/admin/domain/admin-avatar-change';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
@@ -38,11 +37,6 @@ import {
 @CommandHandler(UpdateAdminCommand)
 export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCommand, void> {
     /**
-     * Server-only key used to verify profile form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes the handler with the required ports.
      *
      * @param transactionPort The commit boundary for the business write and audit
@@ -50,7 +44,7 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
      * @param auditPort The port used to record profile changes and audited refusals
      * @param tokenPort Verifies profile-owned upload proofs
      * @param storagePort Checks uploaded metadata outside the database transaction
-     * @param configService Provides the validated upload secret
+     * @param hashingPort Produces and verifies workflow form bindings
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -58,10 +52,8 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        configService: ConfigService,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
+    ) {}
 
     /**
      * Executes the update admin command.
@@ -133,16 +125,20 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
                 throw error;
             }
 
-            assertAdminAvatarChangeFormHashMatches(
-                {
-                    id: admin.id,
-                    avatarId: payload.jti,
-                    ...(name !== undefined && { name }),
-                    avatar,
-                },
-                this.uploadSecret,
-                payload.formHash,
-            );
+            if (
+                !this.hashingPort.verifyHmacSha256(
+                    AdminUploadPurpose.PROFILE_AVATAR,
+                    canonicalizeAdminAvatarChangeForm({
+                        id: admin.id,
+                        avatarId: payload.jti,
+                        ...(name !== undefined && { name }),
+                        avatar,
+                    }),
+                    payload.formHash,
+                )
+            ) {
+                throw new InvalidInputException();
+            }
 
             let uploaded;
 

@@ -3,14 +3,15 @@
  * @description Verifies invitation-bounded upload authorization without consuming invitation state.
  */
 
-import { ConfigService } from '@nestjs/config';
-import { ENV } from 'src/core/config';
 import type { IAuditPort } from 'src/core/observability/audit';
+import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { InitiateAdminActivationCommand } from 'src/module/admin/application/command/initiate-admin-activation/command';
 import { InitiateAdminActivationCommandHandler } from 'src/module/admin/application/command/initiate-admin-activation/handler';
+import { canonicalizeAdminActivationForm } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
+import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { ExceptionKind } from 'src/shared/exception';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -32,6 +33,7 @@ describe('InitiateAdminActivationCommandHandler', () => {
         const initiateUpload = vi.fn<IStoragePort['initiateUpload']>().mockResolvedValue({ mode: 'single', request });
         const generateUploadToken = vi.fn<ITokenPort['generateUploadToken']>().mockResolvedValue('proof');
         const record = vi.fn<IAuditPort['record']>();
+        const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const save = vi.fn();
         const handler = new InitiateAdminActivationCommandHandler(
             { load: vi.fn().mockResolvedValue(admin), save },
@@ -46,7 +48,7 @@ describe('InitiateAdminActivationCommandHandler', () => {
             } as unknown as ITokenPort,
             { initiateUpload } as unknown as IStoragePort,
             { record },
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
+            { hmacSha256 } as unknown as IHashingPort,
         );
         const result = await handler.execute(
             new InitiateAdminActivationCommand('invitation', 'password', { sizeBytes: 4, contentType: 'image/png' }),
@@ -61,9 +63,20 @@ describe('InitiateAdminActivationCommandHandler', () => {
         });
         expect(generateUploadToken).toHaveBeenCalledWith(
             expect.objectContaining({
+                formHash: 'form-digest',
+                purpose: AdminUploadPurpose.ACTIVATION,
                 exp: now + Math.min(600, remaining),
                 sub: admin.id,
                 fileKey: buildAdminPendingAvatarKey(admin.id, admin.inviteId!),
+            }),
+        );
+        expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
+            AdminUploadPurpose.ACTIVATION,
+            canonicalizeAdminActivationForm({
+                id: admin.id,
+                inviteId: admin.inviteId!,
+                password: 'password',
+                avatar: { sizeBytes: 4, contentType: 'image/png' },
             }),
         );
         expect(admin.toSnapshot()).toEqual(before);
@@ -89,7 +102,7 @@ describe('InitiateAdminActivationCommandHandler', () => {
             } as unknown as ITokenPort,
             { initiateUpload } as unknown as IStoragePort,
             { record: vi.fn() },
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
+            { hmacSha256: vi.fn() } as unknown as IHashingPort,
         );
         await expect(
             handler.execute(

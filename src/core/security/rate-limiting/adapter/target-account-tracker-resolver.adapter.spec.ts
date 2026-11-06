@@ -4,12 +4,12 @@
  */
 
 import type { FastifyRequest } from 'fastify';
-import { createHash } from 'node:crypto';
 import { EMAIL_MAX_LENGTH } from 'src/core/http';
+import type { IHashingPort } from 'src/core/security/hashing';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { RateLimitTrackerField } from 'src/core/security/rate-limiting/rate-limit-policy';
 import { InvalidInputException, SystemException } from 'src/shared/exception';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 /**
  * Supplies raw transport input without DTO transformation.
@@ -22,23 +22,34 @@ function request(body: unknown): FastifyRequest {
 }
 
 describe('TargetAccountTrackerResolverAdapter', () => {
-    const resolver = new TargetAccountTrackerResolverAdapter();
+    const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>();
+    const resolver = new TargetAccountTrackerResolverAdapter({ hmacSha256 } as unknown as IHashingPort);
 
     it('hashes trimmed email without mutating raw input or including other credentials', () => {
         const body = { email: ' \tUser+alias@example.test\n', password: 'secret' };
-        const expected = createHash('sha256').update('User+alias@example.test').digest('hex');
+        const expected = 'a'.repeat(64);
+        hmacSha256.mockReturnValue(expected);
         expect(resolver.resolve(request(body), RateLimitTrackerField.TARGET_EMAIL)).toBe(expected);
         expect(
             resolver.resolve(request({ email: body.email, password: 'different' }), RateLimitTrackerField.TARGET_EMAIL),
         ).toBe(expected);
+        expect(hmacSha256).toHaveBeenCalledTimes(2);
+        expect(hmacSha256).toHaveBeenNthCalledWith(1, 'rate-limit-target-email', 'User+alias@example.test');
+        expect(hmacSha256).toHaveBeenNthCalledWith(2, 'rate-limit-target-email', 'User+alias@example.test');
         expect(body.email).toBe(' \tUser+alias@example.test\n');
     });
 
     it('preserves case and provider aliases because account lookup uses exact email equality', () => {
-        const trackers = ['User@example.test', 'user@example.test', 'user+tag@example.test'].map((email) =>
+        hmacSha256
+            .mockReturnValueOnce('a'.repeat(64))
+            .mockReturnValueOnce('b'.repeat(64))
+            .mockReturnValueOnce('c'.repeat(64));
+        const emails = ['User@example.test', 'user@example.test', 'user+tag@example.test'];
+        const trackers = emails.map((email) =>
             resolver.resolve(request({ email }), RateLimitTrackerField.TARGET_EMAIL),
         );
         expect(new Set(trackers).size).toBe(3);
+        expect(hmacSha256.mock.calls).toEqual(emails.map((email) => ['rate-limit-target-email', email]));
         for (const tracker of trackers) {
             expect(tracker).toMatch(/^[a-f0-9]{64}$/);
         }

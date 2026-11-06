@@ -3,9 +3,7 @@
  * @description Activation preserves business refusal kinds and evidence while preventing rejected writes.
  */
 
-import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { ENV } from 'src/core/config';
 import type { IIdempotencyPort } from 'src/core/idempotency';
 import type { IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
@@ -14,7 +12,7 @@ import type { IStoragePort } from 'src/core/storage';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
-import { createAdminActivationFormHash } from 'src/module/admin/domain/admin-activation';
+import { canonicalizeAdminActivationForm } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
@@ -35,6 +33,7 @@ describe('ActivateAdminCommandHandler', () => {
         verifyInviteToken = vi.fn<ITokenPort['verifyInviteToken']>(),
         verifyUploadToken = vi.fn<ITokenPort['verifyUploadToken']>(),
         hash = vi.fn<IHashingPort['hashPassword']>(),
+        verifyHmacSha256 = vi.fn<IHashingPort['verifyHmacSha256']>(),
         idempotency: IIdempotencyPort = {
             execute: (_request, work) => work(),
             executePrepared: async (_request, prepare, work) => work(await prepare()),
@@ -54,6 +53,7 @@ describe('ActivateAdminCommandHandler', () => {
         save.mockResolvedValue(undefined);
         record.mockResolvedValue(undefined);
         hash.mockResolvedValue('hashed-password');
+        verifyHmacSha256.mockReturnValue(true);
         verifyInviteToken.mockResolvedValue({
             sub: admin.id,
             jti: admin.inviteId!,
@@ -68,15 +68,7 @@ describe('ActivateAdminCommandHandler', () => {
                 purpose: AdminUploadPurpose.ACTIVATION,
                 fileKey: buildAdminPendingAvatarKey(admin.id, admin.inviteId!),
                 exp: admin.inviteExpiresAt!.getTime() / 1000,
-                formHash: createAdminActivationFormHash(
-                    {
-                        id: admin.id,
-                        inviteId: admin.inviteId!,
-                        password: command.password,
-                        avatar: command.avatar,
-                    },
-                    'upload-secret',
-                ),
+                formHash: 'form-digest',
                 type: AuthTokenType.UPLOAD,
             }),
         );
@@ -87,14 +79,13 @@ describe('ActivateAdminCommandHandler', () => {
                 verifyInviteToken,
                 verifyUploadToken,
             } as unknown as ITokenPort,
-            { hashPassword: hash } as unknown as IHashingPort,
+            { hashPassword: hash, verifyHmacSha256 } as unknown as IHashingPort,
             { record },
             {
                 headObject: vi
                     .fn()
                     .mockResolvedValue({ sizeBytes: 1024, contentType: 'image/png', etag: 'source-etag' }),
             } as unknown as IStoragePort,
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
         );
     });
 
@@ -172,6 +163,23 @@ describe('ActivateAdminCommandHandler', () => {
             return Promise.resolve('hashed-password');
         });
         await expect(handler.execute(command)).rejects.toBeInstanceOf(InvalidInputException);
+        expect(save).not.toHaveBeenCalled();
+        expect(record).not.toHaveBeenCalled();
+    });
+    it('rejects a mismatched form before password hashing or persistence', async () => {
+        verifyHmacSha256.mockReturnValueOnce(false);
+        await expect(handler.execute(command)).rejects.toBeInstanceOf(InvalidInputException);
+        expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
+            AdminUploadPurpose.ACTIVATION,
+            canonicalizeAdminActivationForm({
+                id: admin.id,
+                inviteId: admin.inviteId!,
+                password: command.password,
+                avatar: command.avatar,
+            }),
+            'form-digest',
+        );
+        expect(hash).not.toHaveBeenCalled();
         expect(save).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
     });

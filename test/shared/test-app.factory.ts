@@ -12,8 +12,9 @@ import { once } from 'node:events';
 import type { RedisClientType } from 'redis';
 import { AppModule } from 'src/app.module';
 import { resolveTrustProxy } from 'src/core/config';
-import { httpCacheHook } from 'src/core/http';
+import { createHttpCacheHook } from 'src/core/http';
 import { auditContextHook } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { RateLimitCounterAdapter } from 'src/core/security/rate-limiting/adapter/rate-limit-counter.adapter';
 import {
     TOKEN_RATE_LIMIT_COUNTER_PORT,
@@ -67,7 +68,9 @@ export async function createTestApp(options?: OptionsTestApp): Promise<NestFasti
     );
 
     app.getHttpAdapter().getInstance().addHook('onRequest', auditContextHook);
-    app.getHttpAdapter().getInstance().addHook('onSend', httpCacheHook);
+    app.getHttpAdapter()
+        .getInstance()
+        .addHook('onSend', createHttpCacheHook(app.get<IHashingPort>(TOKEN_HASHING_PORT)));
 
     app.setGlobalPrefix('api');
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

@@ -4,8 +4,9 @@
  */
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { CommandPipeline } from 'src/core/cqrs';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import {
     TOKEN_RATE_LIMIT_COUNTER_PORT,
     type IRateLimitCounterPort,
@@ -86,7 +87,9 @@ describe('Target-account policies with production HTTP and Redis', () => {
             const email = `${randomUUID()}@example.test`;
             const ip = '192.0.2.50';
             const tracker =
-                limiter.source === RateLimitTrackerSource.IP ? ip : createHash('sha256').update(email).digest('hex');
+                limiter.source === RateLimitTrackerSource.IP
+                    ? ip
+                    : app.get<IHashingPort>(TOKEN_HASHING_PORT).hmacSha256('rate-limit-target-email', email);
             // Seed through the production port and real Redis, without modifying configured budgets.
             const attempt = {
                 ...limiter,

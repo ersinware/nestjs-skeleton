@@ -3,13 +3,12 @@
  * @description Verifies state-bound profile upload issuance without profile writes.
  */
 
-import { ConfigService } from '@nestjs/config';
-import { ENV } from 'src/core/config';
+import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { InitiateAdminAvatarChangeCommand } from 'src/module/admin/application/command/initiate-admin-avatar-change/command';
 import { InitiateAdminAvatarChangeCommandHandler } from 'src/module/admin/application/command/initiate-admin-avatar-change/handler';
-import { createAdminAvatarChangeFormHash } from 'src/module/admin/domain/admin-avatar-change';
+import { canonicalizeAdminAvatarChangeForm } from 'src/module/admin/domain/admin-avatar-change';
 import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
@@ -46,12 +45,13 @@ describe('InitiateAdminAvatarChangeCommandHandler', () => {
         };
         const initiateUpload = vi.fn<IStoragePort['initiateUpload']>().mockResolvedValue({ mode: 'single', request });
         const generateUploadToken = vi.fn<ITokenPort['generateUploadToken']>().mockResolvedValue('proof');
+        const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const save = vi.fn();
         const handler = new InitiateAdminAvatarChangeCommandHandler(
             { load: vi.fn().mockResolvedValue(admin), save },
             { generateUploadToken } as unknown as ITokenPort,
             { initiateUpload } as unknown as IStoragePort,
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
+            { hmacSha256 } as unknown as IHashingPort,
             { record: vi.fn().mockResolvedValue(undefined) },
         );
         const result = handler.execute(new InitiateAdminAvatarChangeCommand(id, avatar, 'New Admin'));
@@ -68,16 +68,15 @@ describe('InitiateAdminAvatarChangeCommandHandler', () => {
                 exp: now + 600,
                 fileKey: buildAdminPendingAvatarKey(id, proof.jti),
             });
-            expect(proof.formHash).toBe(
-                createAdminAvatarChangeFormHash(
-                    {
-                        id,
-                        avatarId: proof.jti,
-                        name: 'New Admin',
-                        avatar,
-                    },
-                    'upload-secret',
-                ),
+            expect(proof.formHash).toBe('form-digest');
+            expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
+                AdminUploadPurpose.PROFILE_AVATAR,
+                canonicalizeAdminAvatarChangeForm({
+                    id,
+                    avatarId: proof.jti,
+                    name: 'New Admin',
+                    avatar,
+                }),
             );
             expect(initiateUpload).toHaveBeenCalledExactlyOnceWith({
                 key: proof.fileKey,

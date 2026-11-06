@@ -4,10 +4,9 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
-import { ENV } from 'src/core/config';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -22,7 +21,7 @@ import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-ke
 import {
     USER_REGISTRATION_UPLOAD_TOKEN_TTL_SECONDS,
     USER_REGISTRATION_UPLOAD_URL_TTL_SECONDS,
-    createUserRegistrationFormHash,
+    canonicalizeUserRegistrationForm,
 } from 'src/module/user/domain/user-registration';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
@@ -38,26 +37,19 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
     InitiateUserRegistrationResult
 > {
     /**
-     * Server-only key protects credential-containing form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes upload authorization dependencies.
      *
      * @param emailInUsePort Reads address availability on the primary
      * @param storagePort Signs the conditional upload request
      * @param tokenPort Signs workflow-owned upload claims
-     * @param configService Provides the validated upload secret
+     * @param hashingPort Produces and verifies workflow form bindings
      */
     constructor(
         @Inject(TOKEN_IS_USER_EMAIL_IN_USE_PORT) private readonly emailInUsePort: IIsUserEmailInUsePort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
-        configService: ConfigService,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
+    ) {}
 
     /**
      * Reserves a UUID in the proof without writing an account, job, or audit record.
@@ -98,7 +90,15 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
                 jti: randomUUID(),
                 purpose: UserUploadPurpose.REGISTRATION,
                 fileKey,
-                formHash: createUserRegistrationFormHash(command, this.uploadSecret),
+                formHash: this.hashingPort.hmacSha256(
+                    UserUploadPurpose.REGISTRATION,
+                    canonicalizeUserRegistrationForm({
+                        email: command.email,
+                        name: command.name,
+                        password: command.password,
+                        avatar: command.avatar,
+                    }),
+                ),
                 exp: now + USER_REGISTRATION_UPLOAD_TOKEN_TTL_SECONDS,
             }),
         };

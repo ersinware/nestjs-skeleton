@@ -6,7 +6,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ENV, Environment } from 'src/core/config';
 import type { IHashingPort } from 'src/core/security/hashing/port/hashing.port';
 
@@ -92,15 +92,32 @@ export class HashingAdapter implements IHashingPort, OnModuleInit {
     }
 
     /**
-     * Separates digest purposes using an unambiguous context/value encoding.
+     * Length-prefixes the UTF-8 context to separate digest purposes without re-encoding the value.
      *
      * @param context Caller-owned digest purpose.
-     * @param value Canonical UTF-8 value.
+     * @param value Canonical UTF-8 text or raw bytes.
      * @returns The lowercase hexadecimal HMAC-SHA-256 digest.
      */
-    hmacSha256(context: string, value: string): string {
+    hmacSha256(context: string, value: string | Uint8Array): string {
         return createHmac('sha256', this.hashingKey)
-            .update(JSON.stringify([context, value]), 'utf8')
+            .update(`${Buffer.byteLength(context, 'utf8')}:`, 'utf8')
+            .update(context, 'utf8')
+            .update(value)
             .digest('hex');
+    }
+
+    /**
+     * Compares encoded digests without content-dependent early exits for equal-length inputs.
+     *
+     * @param context Caller-owned digest purpose.
+     * @param value Canonical UTF-8 text or raw bytes.
+     * @param expectedDigest Expected lowercase hexadecimal digest.
+     * @returns Whether the expected digest matches the computed HMAC.
+     */
+    verifyHmacSha256(context: string, value: string | Uint8Array, expectedDigest: string): boolean {
+        const actual = Buffer.from(this.hmacSha256(context, value), 'utf8'),
+            expected = Buffer.from(expectedDigest, 'utf8');
+
+        return actual.length === expected.length && timingSafeEqual(actual, expected);
     }
 }

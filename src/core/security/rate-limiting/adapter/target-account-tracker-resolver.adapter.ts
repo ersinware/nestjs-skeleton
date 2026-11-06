@@ -3,14 +3,19 @@
  * @description Derives target-account trackers from validated email or route ID input without account lookup.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { isEmail, isUUID, maxLength, minLength } from 'class-validator';
 import type { FastifyRequest } from 'fastify';
-import { createHash } from 'node:crypto';
 import { EMAIL_MAX_LENGTH, EMAIL_MIN_LENGTH, PARAM_ID, RequestValidationMessage } from 'src/core/http';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import type { IRateLimitTrackerResolverPort } from 'src/core/security/rate-limiting/port/rate-limit-tracker-resolver.port';
 import { RateLimitTrackerField } from 'src/core/security/rate-limiting/rate-limit-policy';
 import { InvalidInputException, SystemException } from 'src/shared/exception';
+
+/**
+ * Separates target-email trackers from other keyed digests.
+ */
+const TARGET_EMAIL_CONTEXT = 'rate-limit-target-email';
 
 /**
  * Applies the owning workflow's field contract before pipes, without checking account existence.
@@ -18,11 +23,18 @@ import { InvalidInputException, SystemException } from 'src/shared/exception';
 @Injectable()
 export class TargetAccountTrackerResolverAdapter implements IRateLimitTrackerResolverPort {
     /**
+     * Connects email tracker derivation to the shared hashing capability.
+     *
+     * @param hashingPort Produces keyed email digests without exposing the hashing key.
+     */
+    constructor(@Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort) {}
+
+    /**
      * Validates the configured target input and returns its canonical tracker.
      *
      * @param request Request carrying raw body and route parameters before DTO validation.
      * @param field Selector for the target email body field or resource ID route parameter.
-     * @returns Lowercase UUID v7 or SHA-256 of the trimmed, case-preserved email.
+     * @returns Lowercase UUID v7 or HMAC-SHA-256 of the trimmed, case-preserved email.
      */
     resolve(request: FastifyRequest, field: RateLimitTrackerField): string {
         switch (field) {
@@ -39,7 +51,7 @@ export class TargetAccountTrackerResolverAdapter implements IRateLimitTrackerRes
      * Matches email DTO normalization without changing case or provider aliases.
      *
      * @param request Request carrying the unvalidated target email body.
-     * @returns SHA-256 of the validated trimmed email.
+     * @returns Context-separated HMAC-SHA-256 of the validated trimmed email.
      */
     private resolveEmail(request: FastifyRequest): string {
         const body = request.body;
@@ -58,7 +70,7 @@ export class TargetAccountTrackerResolverAdapter implements IRateLimitTrackerRes
             throw new InvalidInputException(RequestValidationMessage.PAYLOAD);
         }
 
-        return createHash('sha256').update(email).digest('hex');
+        return this.hashingPort.hmacSha256(TARGET_EMAIL_CONTEXT, email);
     }
 
     /**

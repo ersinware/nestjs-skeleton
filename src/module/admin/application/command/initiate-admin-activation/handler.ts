@@ -4,11 +4,10 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
-import { ENV } from 'src/core/config';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -22,7 +21,7 @@ import {
 import {
     ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS,
     ADMIN_ACTIVATION_UPLOAD_URL_TTL_SECONDS,
-    createAdminActivationFormHash,
+    canonicalizeAdminActivationForm,
 } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
@@ -46,28 +45,21 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
     InitiateAdminActivationResult
 > {
     /**
-     * Server-only key protects credential-containing form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes upload authorization dependencies.
      *
      * @param adminWriterPort Reads live invitation state on the primary
      * @param tokenPort Verifies invitations and signs workflow-owned upload proofs
      * @param storagePort Signs the conditional avatar request
      * @param auditPort Records audited invitation refusals
-     * @param configService Provides the validated upload secret
+     * @param hashingPort Produces and verifies workflow form bindings
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        configService: ConfigService,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
+    ) {}
 
     /**
      * Prepares an upload whose URL and proof cannot outlive the invitation.
@@ -131,14 +123,14 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
                 jti: randomUUID(),
                 purpose: AdminUploadPurpose.ACTIVATION,
                 fileKey,
-                formHash: createAdminActivationFormHash(
-                    {
+                formHash: this.hashingPort.hmacSha256(
+                    AdminUploadPurpose.ACTIVATION,
+                    canonicalizeAdminActivationForm({
                         id: sub,
                         inviteId: jti,
                         password: command.password,
                         avatar: command.avatar,
-                    },
-                    this.uploadSecret,
+                    }),
                 ),
                 exp: Math.min(now + ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS, exp),
             }),

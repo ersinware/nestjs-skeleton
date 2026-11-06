@@ -4,9 +4,7 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ENV } from 'src/core/config';
 import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
@@ -19,7 +17,7 @@ import {
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { assertUserRegistrationFormHashMatches } from 'src/module/user/domain/user-registration';
+import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
@@ -38,20 +36,14 @@ import {
 @CommandHandler(RegisterUserCommand)
 export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserCommand, void> {
     /**
-     * Server-only key used to verify the normalized credential form binding.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes the handler with the required ports.
      *
      * @param idempotencyPort The commit boundary for the account, delivery jobs, and audit
      * @param userWriterPort The port used to persist the user aggregate and its jobs
-     * @param hashingPort The port used to hash passwords
+     * @param hashingPort Hashes passwords and verifies registration form bindings
      * @param auditPort The port used to record the pending registration
      * @param tokenPort Verifies the workflow-owned upload proof
      * @param storagePort Checks the actual uploaded object before opening a transaction
-     * @param configService Provides the validated form binding secret
      */
     constructor(
         @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
@@ -60,10 +52,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        configService: ConfigService,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+    ) {}
 
     /**
      * Verifies the uploaded avatar and commits the pending account, delivery jobs, and audit together.
@@ -104,7 +93,20 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
                     );
                 }
 
-                assertUserRegistrationFormHashMatches(command, this.uploadSecret, payload.formHash);
+                if (
+                    !this.hashingPort.verifyHmacSha256(
+                        UserUploadPurpose.REGISTRATION,
+                        canonicalizeUserRegistrationForm({
+                            email: command.email,
+                            name: command.name,
+                            password: command.password,
+                            avatar: command.avatar,
+                        }),
+                        payload.formHash,
+                    )
+                ) {
+                    throw new InvalidInputException();
+                }
 
                 let avatar;
 

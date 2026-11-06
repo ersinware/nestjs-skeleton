@@ -4,11 +4,10 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ENV } from 'src/core/config';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -17,7 +16,7 @@ import {
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
-import { assertUserAvatarChangeFormHashMatches } from 'src/module/user/domain/user-avatar-change';
+import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AuditReason } from 'src/shared/domain/audit';
@@ -38,11 +37,6 @@ import {
 @CommandHandler(UpdateUserCommand)
 export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserCommand, void> {
     /**
-     * Server-only key used to verify profile form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes the handler with the required ports.
      *
      * @param transactionPort The commit boundary for the business write and audit
@@ -50,7 +44,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      * @param auditPort The port used to record profile changes and audited refusals
      * @param tokenPort Verifies profile-owned upload proofs
      * @param storagePort Checks uploaded metadata outside the database transaction
-     * @param configService Provides the validated upload secret
+     * @param hashingPort Produces and verifies workflow form bindings
      */
     constructor(
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
@@ -58,10 +52,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        configService: ConfigService,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
+    ) {}
 
     /**
      * Executes the update user command.
@@ -133,16 +125,20 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
                 throw error;
             }
 
-            assertUserAvatarChangeFormHashMatches(
-                {
-                    id: user.id,
-                    avatarId: payload.jti,
-                    ...(name !== undefined && { name }),
-                    avatar,
-                },
-                this.uploadSecret,
-                payload.formHash,
-            );
+            if (
+                !this.hashingPort.verifyHmacSha256(
+                    UserUploadPurpose.PROFILE_AVATAR,
+                    canonicalizeUserAvatarChangeForm({
+                        id: user.id,
+                        avatarId: payload.jti,
+                        ...(name !== undefined && { name }),
+                        avatar,
+                    }),
+                    payload.formHash,
+                )
+            ) {
+                throw new InvalidInputException();
+            }
 
             let uploaded;
 

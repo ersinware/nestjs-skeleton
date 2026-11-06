@@ -1,26 +1,28 @@
 /**
  * @file user-avatar-change.spec.ts
- * @description Verifies that upload proofs bind exactly the selected identity and submitted profile fields.
+ * @description Verifies canonical profile forms retain every upload-authorized field.
  */
 
 /// <reference types="vitest/globals" />
 
-import {
-    assertUserAvatarChangeFormHashMatches,
-    createUserAvatarChangeFormHash,
-} from 'src/module/user/domain/user-avatar-change';
-import { ExceptionKind } from 'src/shared/exception';
+import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
 
 describe('User avatar form binding', () => {
     const form = { id: 'owner', avatarId: 'avatar', avatar: { sizeBytes: 4, contentType: 'image/png' } } as const;
-    const secret = 'server-only-secret';
 
-    it('accepts the exact avatar-only form and combined name', () => {
-        for (const input of [form, { ...form, name: 'User Name' }]) {
-            expect(() =>
-                assertUserAvatarChangeFormHashMatches(input, secret, createUserAvatarChangeFormHash(input, secret)),
-            ).not.toThrow();
-        }
+    it('preserves avatar-only and combined profile forms independently of property insertion order', () => {
+        expect(canonicalizeUserAvatarChangeForm(form)).toBe('["owner","avatar",null,4,"image/png"]');
+        expect(canonicalizeUserAvatarChangeForm({ ...form, name: 'User Name' })).toBe(
+            canonicalizeUserAvatarChangeForm({
+                name: 'User Name',
+                avatar: form.avatar,
+                avatarId: form.avatarId,
+                id: form.id,
+            }),
+        );
+        expect(canonicalizeUserAvatarChangeForm(form)).not.toBe(
+            canonicalizeUserAvatarChangeForm({ ...form, name: 'User Name' }),
+        );
     });
 
     it.each([
@@ -29,23 +31,7 @@ describe('User avatar form binding', () => {
         { ...form, name: 'User Name' },
         { ...form, avatar: { ...form.avatar, sizeBytes: 5 } },
         { ...form, avatar: { ...form.avatar, contentType: 'image/jpeg' as const } },
-    ])('rejects changes to signed form fields: %j', (changed) => {
-        expect(() =>
-            assertUserAvatarChangeFormHashMatches(changed, secret, createUserAvatarChangeFormHash(form, secret)),
-        ).toThrow(expect.objectContaining({ kind: ExceptionKind.INVALID_INPUT }));
-    });
-
-    it('rejects a removed name, wrong secret, and malformed binding', () => {
-        expect(() =>
-            assertUserAvatarChangeFormHashMatches(
-                form,
-                secret,
-                createUserAvatarChangeFormHash({ ...form, name: 'User Name' }, secret),
-            ),
-        ).toThrow();
-        expect(() =>
-            assertUserAvatarChangeFormHashMatches(form, 'other', createUserAvatarChangeFormHash(form, secret)),
-        ).toThrow();
-        expect(() => assertUserAvatarChangeFormHashMatches(form, secret, '')).toThrow();
+    ])('distinguishes changes to authorized fields: %j', (changed) => {
+        expect(canonicalizeUserAvatarChangeForm(changed)).not.toBe(canonicalizeUserAvatarChangeForm(form));
     });
 });

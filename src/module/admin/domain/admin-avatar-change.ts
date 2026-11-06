@@ -3,10 +3,7 @@
  * @description Owns profile avatar upload lifetimes and form binding to upload proofs.
  */
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
-import { InvalidInputException } from 'src/shared/exception';
 
 /**
  * Time allowed to upload a profile avatar, in seconds.
@@ -44,47 +41,11 @@ type AdminAvatarChangeForm = {
 };
 
 /**
- * Binds one profile form to its owner and avatar identity.
+ * Serializes the profile form in a fixed field order for application-owned HMAC binding.
  *
  * @param form Validated and normalized profile form
- * @param uploadSecret Server-held upload secret
- * @returns Opaque keyed form binding
+ * @returns Canonical form text to pass directly to the hashing port; never expose it in proofs
  */
-export function createAdminAvatarChangeFormHash(form: AdminAvatarChangeForm, uploadSecret: string): string {
-    return createHmac('sha256', uploadSecret)
-        .update(
-            JSON.stringify([
-                AdminUploadPurpose.PROFILE_AVATAR,
-                form.id,
-                form.avatarId,
-                form.name,
-                form.avatar.sizeBytes,
-                form.avatar.contentType,
-            ]),
-        )
-        .digest('hex');
-}
-
-/**
- * Rejects a final form that differs from the signature-verified binding.
- *
- * @param form Validated and normalized final profile form
- * @param secret Server-held upload secret
- * @param expectedFormHash Binding from the verified upload proof
- * @throws {InvalidInputException} When the form binding does not match
- */
-export function assertAdminAvatarChangeFormHashMatches(
-    form: AdminAvatarChangeForm,
-    secret: string,
-    expectedFormHash: string,
-) {
-    const actualFormHashBuffer = Buffer.from(createAdminAvatarChangeFormHash(form, secret)),
-        expectedFormHashBuffer = Buffer.from(expectedFormHash);
-
-    if (
-        actualFormHashBuffer.length !== expectedFormHashBuffer.length ||
-        !timingSafeEqual(actualFormHashBuffer, expectedFormHashBuffer)
-    ) {
-        throw new InvalidInputException();
-    }
+export function canonicalizeAdminAvatarChangeForm(form: AdminAvatarChangeForm): string {
+    return JSON.stringify([form.id, form.avatarId, form.name, form.avatar.sizeBytes, form.avatar.contentType]);
 }
