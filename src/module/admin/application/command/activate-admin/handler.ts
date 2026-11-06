@@ -4,9 +4,7 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { ENV } from 'src/core/config';
 import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
@@ -17,7 +15,7 @@ import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
-import { assertAdminActivationFormHashMatches } from 'src/module/admin/domain/admin-activation';
+import { canonicalizeAdminActivationForm } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
@@ -39,20 +37,14 @@ import {
 @CommandHandler(ActivateAdminCommand)
 export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdminCommand, void> {
     /**
-     * Server-only key used to verify credential form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes the handler with the required ports.
      *
      * @param idempotencyPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param tokenPort The port used to verify the invite token
-     * @param hashingPort The port used to hash the initial password
+     * @param hashingPort Hashes the initial password and verifies activation form bindings
      * @param auditPort The port used to record activation and audited refusals
      * @param storagePort Checks actual uploaded metadata before the database transaction
-     * @param configService Provides the validated upload secret
      */
     constructor(
         @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
@@ -61,10 +53,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        configService: ConfigService,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+    ) {}
 
     /**
      * Executes the activate admin command.
@@ -124,16 +113,20 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
                     throw new InvalidInputException();
                 }
 
-                assertAdminActivationFormHashMatches(
-                    {
-                        id: payload.sub,
-                        inviteId: payload.jti,
-                        password: command.password,
-                        avatar: command.avatar,
-                    },
-                    this.uploadSecret,
-                    payloadUpload.formHash,
-                );
+                if (
+                    !this.hashingPort.verifyHmacSha256(
+                        AdminUploadPurpose.ACTIVATION,
+                        canonicalizeAdminActivationForm({
+                            id: payload.sub,
+                            inviteId: payload.jti,
+                            password: command.password,
+                            avatar: command.avatar,
+                        }),
+                        payloadUpload.formHash,
+                    )
+                ) {
+                    throw new InvalidInputException();
+                }
 
                 let avatar;
 

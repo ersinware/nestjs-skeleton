@@ -4,7 +4,7 @@
  */
 
 export { HttpCache } from 'src/core/http/caching/decorator/http-cache.decorator';
-export { httpCacheHook } from 'src/core/http/caching/hook/http-cache.hook';
+export { createHttpCacheHook } from 'src/core/http/caching/hook/http-cache.hook';
 export { HttpCachePolicy } from 'src/core/http/caching/http-cache-policy.enum';
 export { HttpCacheInterceptor } from 'src/core/http/caching/interceptor/http-cache.interceptor';
 export { IdempotencyKey } from 'src/core/http/idempotency/decorator/idempotency-key.decorator';

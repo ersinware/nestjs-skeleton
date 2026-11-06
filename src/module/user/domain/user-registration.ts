@@ -3,10 +3,7 @@
  * @description Owns user registration upload lifetimes and form binding to upload proofs.
  */
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import type { AvatarUploadDescriptor } from 'src/shared/domain/avatar';
-import { InvalidInputException } from 'src/shared/exception';
 
 /**
  * Time allowed to upload the initial avatar, in seconds.
@@ -44,48 +41,11 @@ type UserRegistrationForm = {
 };
 
 /**
- * Binds credentials with a server-held key so the public proof cannot expose a password digest.
- * The fixed field order and purpose prefix separate this binding from JWT signatures.
+ * Serializes the registration form in a fixed field order for application-owned HMAC binding.
  *
  * @param form Validated and normalized registration form
- * @param uploadSecret Server-held upload secret
- * @returns Opaque keyed form binding
+ * @returns Canonical form text to pass directly to the hashing port; never expose it in proofs
  */
-export function createUserRegistrationFormHash(form: UserRegistrationForm, uploadSecret: string): string {
-    return createHmac('sha256', uploadSecret)
-        .update(
-            JSON.stringify([
-                UserUploadPurpose.REGISTRATION,
-                form.email,
-                form.name,
-                form.password,
-                form.avatar.sizeBytes,
-                form.avatar.contentType,
-            ]),
-        )
-        .digest('hex');
-}
-
-/**
- * Rejects a final form that differs from the signature-verified binding.
- *
- * @param form Validated and normalized final registration form
- * @param secret Server-held upload secret
- * @param expectedFormHash Binding from the verified upload proof
- * @throws {InvalidInputException} When the form binding does not match
- */
-export function assertUserRegistrationFormHashMatches(
-    form: UserRegistrationForm,
-    secret: string,
-    expectedFormHash: string,
-) {
-    const actualFormHashBuffer = Buffer.from(createUserRegistrationFormHash(form, secret)),
-        expectedFormHashBuffer = Buffer.from(expectedFormHash);
-
-    if (
-        actualFormHashBuffer.length !== expectedFormHashBuffer.length ||
-        !timingSafeEqual(actualFormHashBuffer, expectedFormHashBuffer)
-    ) {
-        throw new InvalidInputException();
-    }
+export function canonicalizeUserRegistrationForm(form: UserRegistrationForm): string {
+    return JSON.stringify([form.email, form.name, form.password, form.avatar.sizeBytes, form.avatar.contentType]);
 }

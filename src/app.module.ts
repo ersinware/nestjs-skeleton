@@ -16,6 +16,7 @@ import { AuditInterceptor, AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
 import { LoggerModule } from 'src/core/observability/logger';
 import { AuthenticationGuard, AuthorizationGuard, AuthPolicyModule } from 'src/core/security/auth';
+import { HashingModule } from 'src/core/security/hashing';
 import { PostAuthRateLimitGuard, PreAuthRateLimitGuard, RateLimitingModule } from 'src/core/security/rate-limiting';
 import { SessionModule } from 'src/core/security/session';
 import { TokenModule } from 'src/core/security/token';
@@ -43,6 +44,7 @@ import { UserModule } from 'src/module/user';
         CacheModule,
         DatabaseModule,
         EmailModule,
+        HashingModule,
         TokenModule,
         StorageModule,
         SessionModule,

@@ -2,14 +2,14 @@
 
 ### Hashing
 
-- Use `IHashingPort` for Argon2id password operations and HMAC-SHA-256 digests; features never own HMAC keys or crypto primitives. Callers own canonical values and distinct purpose contexts.
-- `HashingAdapter.hmacSha256(context, value)` hashes UTF-8 `JSON.stringify([context, value])` to 64-character lowercase hex. `HASHING_KEY` is required at boot: a string of at least 32 UTF-8 bytes with non-whitespace content, used as text, not hex-decoded. Generate high entropy independently of JWT secrets; keep it identical across instances/restarts and preserve retained digest comparisons during rotation.
+- Use `IHashingPort` for Argon2id passwords and HMAC-SHA-256 generation/verification; features never own HMAC keys or digest primitives. Callers own canonical serialization and distinct purpose contexts; the port consumes text/bytes directly.
+- Require a high-entropy `HASHING_KEY`: nonblank UTF-8 text, at least 32 bytes, independent of JWT secrets. Keep it identical across instances/restarts; rotation must preserve retained digest comparisons.
 
 ### Authentication & Authorization
 
 - JWT signing disables automatic `iat`; signing and verification pin HS256; each token type uses its own secret and a verified type discriminator. Boot validation requires secrets of at least 32 UTF-8 bytes.
 - Invalid access/refresh credentials remain unauthenticated; handlers translate invalid invitation, activation, email-confirmation, and upload proofs to invalid input, preserving `cause`. Catch only `UNAUTHENTICATED`; propagate other failures. Logout keeps its no-op semantics below.
-- Upload tokens reuse the token port/adapter; domains own `formHash` computation/verification and expiry. Credential-containing bindings use a server-held key; never embed raw forms, credentials, or unkeyed password digests.
+- Domains own upload form canonicalization and expiry; handlers produce/verify `formHash` through `IHashingPort` using the upload purpose as context. Pass explicit form fields, never whole commands. Upload JWTs use the token port and `JWT_UPLOAD_SECRET`; never embed raw forms, credentials, or unkeyed password digests.
 - Aggregates enforce revocation by comparing the signed proof snapshot with current account state; keep this rule out of form hashes and never substitute the current version for the snapshot.
 - Each bounded context owns its upload-purpose enum with context-distinct values; use the same value for signing and verification. Core accepts strings; never take `expectedPurpose` from clients.
 - Global guards run authentication before authorization; authentication verifies access JWTs, stable session liveness, and session versions ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)). `@Public()` skips authentication and provides no verified principal.

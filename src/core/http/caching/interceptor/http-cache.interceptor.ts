@@ -14,7 +14,7 @@ import { SystemException } from 'src/shared/exception';
 
 /**
  * The policy half of HTTP caching: writes `Cache-Control` from route metadata, which only the
- * `Reflector` can read. The validator half (`ETag` / `304`) is `httpCacheHook`, which needs the
+ * `Reflector` can read. The validator half (`ETag` / `304`) is built by `createHttpCacheHook` and needs the
  * serialized body. The header is set before the handler runs; the hook downgrades error replies
  * to `no-store`.
  */

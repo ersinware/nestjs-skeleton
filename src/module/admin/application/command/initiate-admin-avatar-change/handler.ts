@@ -4,11 +4,10 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
-import { ENV } from 'src/core/config';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -22,7 +21,7 @@ import {
 import {
     ADMIN_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
     ADMIN_AVATAR_CHANGE_UPLOAD_URL_TTL_SECONDS,
-    createAdminAvatarChangeFormHash,
+    canonicalizeAdminAvatarChangeForm,
 } from 'src/module/admin/domain/admin-avatar-change';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
 import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
@@ -39,28 +38,21 @@ export class InitiateAdminAvatarChangeCommandHandler implements ICommandHandler<
     InitiateAdminAvatarChangeResult
 > {
     /**
-     * Server-only key protecting profile form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes upload authorization dependencies.
      *
      * @param adminWriterPort Reads live account state on the primary
      * @param tokenPort Signs the profile-owned upload proof
      * @param storagePort Signs the conditional avatar PUT
-     * @param configService Provides the validated upload secret
+     * @param hashingPort Produces and verifies workflow form bindings
      * @param auditPort Records workflow refusal evidence
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        configService: ConfigService,
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+    ) {}
 
     /**
      * Issues a short-lived upload plan without persisting profile changes.
@@ -111,14 +103,14 @@ export class InitiateAdminAvatarChangeCommandHandler implements ICommandHandler<
                 revocationVersion: admin.revocationVersion,
                 purpose: AdminUploadPurpose.PROFILE_AVATAR,
                 fileKey,
-                formHash: createAdminAvatarChangeFormHash(
-                    {
+                formHash: this.hashingPort.hmacSha256(
+                    AdminUploadPurpose.PROFILE_AVATAR,
+                    canonicalizeAdminAvatarChangeForm({
                         id: admin.id,
                         avatarId,
                         ...(command.name !== undefined && { name: command.name }),
                         avatar: command.avatar,
-                    },
-                    this.uploadSecret,
+                    }),
                 ),
                 exp: now + ADMIN_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
             }),

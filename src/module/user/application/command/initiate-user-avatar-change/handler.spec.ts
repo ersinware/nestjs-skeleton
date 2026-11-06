@@ -3,14 +3,13 @@
  * @description Verifies state-bound profile upload issuance without profile writes.
  */
 
-import { ConfigService } from '@nestjs/config';
-import { ENV } from 'src/core/config';
+import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { InitiateUserAvatarChangeCommand } from 'src/module/user/application/command/initiate-user-avatar-change/command';
 import { InitiateUserAvatarChangeCommandHandler } from 'src/module/user/application/command/initiate-user-avatar-change/handler';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
-import { createUserAvatarChangeFormHash } from 'src/module/user/domain/user-avatar-change';
+import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { ExceptionKind } from 'src/shared/exception';
@@ -48,12 +47,13 @@ describe('InitiateUserAvatarChangeCommandHandler', () => {
         };
         const initiateUpload = vi.fn<IStoragePort['initiateUpload']>().mockResolvedValue({ mode: 'single', request });
         const generateUploadToken = vi.fn<ITokenPort['generateUploadToken']>().mockResolvedValue('proof');
+        const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const save = vi.fn();
         const handler = new InitiateUserAvatarChangeCommandHandler(
             { load: vi.fn().mockResolvedValue(user), save, loadByEmail: vi.fn(), insert: vi.fn() },
             { generateUploadToken } as unknown as ITokenPort,
             { initiateUpload } as unknown as IStoragePort,
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
+            { hmacSha256 } as unknown as IHashingPort,
             { record: vi.fn().mockResolvedValue(undefined) },
         );
         const result = handler.execute(new InitiateUserAvatarChangeCommand(id, avatar, 'New User'));
@@ -73,16 +73,15 @@ describe('InitiateUserAvatarChangeCommandHandler', () => {
                 exp: now + 600,
                 fileKey: buildUserPendingAvatarKey(id, proof.jti),
             });
-            expect(proof.formHash).toBe(
-                createUserAvatarChangeFormHash(
-                    {
-                        id,
-                        avatarId: proof.jti,
-                        name: 'New User',
-                        avatar,
-                    },
-                    'upload-secret',
-                ),
+            expect(proof.formHash).toBe('form-digest');
+            expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
+                UserUploadPurpose.PROFILE_AVATAR,
+                canonicalizeUserAvatarChangeForm({
+                    id,
+                    avatarId: proof.jti,
+                    name: 'New User',
+                    avatar,
+                }),
             );
             expect(initiateUpload).toHaveBeenCalledExactlyOnceWith({
                 key: proof.fileKey,

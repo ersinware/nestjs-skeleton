@@ -3,13 +3,14 @@
  * @description Verifies registration refusal boundaries precede hashing and account persistence.
  */
 
-import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import type { IIdempotencyPort } from 'src/core/idempotency';
+import type { IHashingPort } from 'src/core/security/hashing';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { createUserRegistrationFormHash } from 'src/module/user/domain/user-registration';
+import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
+import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { ExceptionKind, ResourceNotFoundException, UnauthenticatedException } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -23,18 +24,20 @@ describe('RegisterUserCommandHandler', () => {
         { sizeBytes: 4, contentType: 'image/png' },
         'proof',
     );
-    const secret = 'test-upload-secret';
 
     function setup() {
         const claims = {
             sub: id,
             fileKey: buildUserPendingAvatarKey(id, id),
-            formHash: createUserRegistrationFormHash(command, secret),
+            formHash: 'form-digest',
         };
         const token = { verifyUploadToken: vi.fn().mockResolvedValue(claims) };
         const storage = { headObject: vi.fn().mockResolvedValue({ sizeBytes: 4, contentType: 'image/png' }) };
         const writer = { insert: vi.fn() };
-        const hashing = { hashPassword: vi.fn().mockResolvedValue('hash') };
+        const hashing = {
+            hashPassword: vi.fn().mockResolvedValue('hash'),
+            verifyHmacSha256: vi.fn<IHashingPort['verifyHmacSha256']>().mockReturnValue(true),
+        };
         const execute = vi.fn<IIdempotencyPort['execute']>().mockImplementation((_request, work) => work());
         const idempotency = {
             execute,
@@ -51,12 +54,11 @@ describe('RegisterUserCommandHandler', () => {
             audit,
             token as never,
             storage as never,
-            new ConfigService({ JWT_UPLOAD_SECRET: secret }),
         );
         return { handler, claims, token, storage, writer, hashing, idempotency, audit };
     }
 
-    it.each(['identity', 'key', 'missing', 'size', 'type', 'proof'] as const)(
+    it.each(['identity', 'key', 'missing', 'size', 'type', 'proof', 'binding'] as const)(
         'rejects %s without hashing or writing',
         async (failure) => {
             const fixture = setup();
@@ -79,12 +81,28 @@ describe('RegisterUserCommandHandler', () => {
                 case 'type':
                     fixture.storage.headObject.mockResolvedValue({ sizeBytes: 4, contentType: 'image/jpeg' });
                     break;
+                case 'binding':
+                    fixture.hashing.verifyHmacSha256.mockReturnValueOnce(false);
+                    break;
                 case 'proof':
                     fixture.token.verifyUploadToken.mockRejectedValue(new UnauthenticatedException());
                     kind = ExceptionKind.INVALID_INPUT;
                     break;
             }
             await expect(fixture.handler.execute(command)).rejects.toMatchObject({ kind });
+            if (failure === 'binding') {
+                expect(fixture.hashing.verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
+                    UserUploadPurpose.REGISTRATION,
+                    canonicalizeUserRegistrationForm({
+                        email: command.email,
+                        name: command.name,
+                        password: command.password,
+                        avatar: command.avatar,
+                    }),
+                    fixture.claims.formHash,
+                );
+                expect(fixture.storage.headObject).not.toHaveBeenCalled();
+            }
             expect(fixture.hashing.hashPassword).not.toHaveBeenCalled();
             expect(fixture.writer.insert).not.toHaveBeenCalled();
             expect(fixture.idempotency.execute).not.toHaveBeenCalled();

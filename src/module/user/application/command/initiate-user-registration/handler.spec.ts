@@ -3,11 +3,11 @@
  * @description Verifies initiation deadlines, form binding, and authoritative email refusal.
  */
 
-import { ConfigService } from '@nestjs/config';
+import type { IHashingPort } from 'src/core/security/hashing';
 import { InitiateUserRegistrationCommand } from 'src/module/user/application/command/initiate-user-registration/command';
 import { InitiateUserRegistrationCommandHandler } from 'src/module/user/application/command/initiate-user-registration/handler';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { createUserRegistrationFormHash } from 'src/module/user/domain/user-registration';
+import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { ExceptionKind } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,11 +21,12 @@ describe('InitiateUserRegistrationCommandHandler', () => {
             initiateUpload: vi.fn().mockResolvedValue({ mode: 'single', request: { url: 'signed-url' } }),
         };
         const token = { generateUploadToken: vi.fn().mockResolvedValue('proof') };
+        const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const handler = new InitiateUserRegistrationCommandHandler(
             email,
             storage as never,
             token as never,
-            new ConfigService({ JWT_UPLOAD_SECRET: 'secret' }),
+            { hmacSha256 } as unknown as IHashingPort,
         );
         const command = new InitiateUserRegistrationCommand('avatar@example.test', 'Avatar', 'Password!123', {
             sizeBytes: 4,
@@ -40,7 +41,16 @@ describe('InitiateUserRegistrationCommandHandler', () => {
                 purpose: UserUploadPurpose.REGISTRATION,
                 fileKey: buildUserPendingAvatarKey(claims.sub, claims.sub),
                 exp: Math.floor(now / 1000) + 600,
-                formHash: createUserRegistrationFormHash(command, 'secret'),
+                formHash: 'form-digest',
+            }),
+        );
+        expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
+            UserUploadPurpose.REGISTRATION,
+            canonicalizeUserRegistrationForm({
+                email: command.email,
+                name: command.name,
+                password: command.password,
+                avatar: command.avatar,
             }),
         );
         expect(storage.initiateUpload).toHaveBeenCalledWith(

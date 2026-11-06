@@ -4,11 +4,10 @@
  */
 
 import { Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
-import { ENV } from 'src/core/config';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
 import {
@@ -23,7 +22,7 @@ import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import {
     USER_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
     USER_AVATAR_CHANGE_UPLOAD_URL_TTL_SECONDS,
-    createUserAvatarChangeFormHash,
+    canonicalizeUserAvatarChangeForm,
 } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
@@ -39,28 +38,21 @@ export class InitiateUserAvatarChangeCommandHandler implements ICommandHandler<
     InitiateUserAvatarChangeResult
 > {
     /**
-     * Server-only key protecting profile form bindings.
-     */
-    private readonly uploadSecret: string;
-
-    /**
      * Initializes upload authorization dependencies.
      *
      * @param userWriterPort Reads live account state on the primary
      * @param tokenPort Signs the profile-owned upload proof
      * @param storagePort Signs the conditional avatar PUT
-     * @param configService Provides the validated upload secret
+     * @param hashingPort Produces and verifies workflow form bindings
      * @param auditPort Records workflow refusal evidence
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        configService: ConfigService,
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-    ) {
-        this.uploadSecret = configService.getOrThrow<string>(ENV.JWT_UPLOAD_SECRET);
-    }
+    ) {}
 
     /**
      * Issues a short-lived upload plan without persisting profile changes.
@@ -111,14 +103,14 @@ export class InitiateUserAvatarChangeCommandHandler implements ICommandHandler<
                 revocationVersion: user.revocationVersion,
                 purpose: UserUploadPurpose.PROFILE_AVATAR,
                 fileKey,
-                formHash: createUserAvatarChangeFormHash(
-                    {
+                formHash: this.hashingPort.hmacSha256(
+                    UserUploadPurpose.PROFILE_AVATAR,
+                    canonicalizeUserAvatarChangeForm({
                         id: user.id,
                         avatarId,
                         ...(command.name !== undefined && { name: command.name }),
                         avatar: command.avatar,
-                    },
-                    this.uploadSecret,
+                    }),
                 ),
                 exp: now + USER_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
             }),

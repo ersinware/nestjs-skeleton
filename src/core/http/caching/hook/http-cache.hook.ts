@@ -3,10 +3,15 @@
  * @description Fastify `onSend` hook completing the HTTP cache contract: a `Cache-Control` on every response, an `ETag` / `304` on cacheable reads.
  */
 
-import { createHash } from 'crypto';
-import type { DoneFuncWithErrOrRes, FastifyReply, FastifyRequest } from 'fastify';
+import type { onSendHookHandler } from 'fastify';
 import { HEADER_CACHE_CONTROL, HttpCachePolicy } from 'src/core/http/caching/http-cache-policy.enum';
 import { isSafeMethod } from 'src/core/http/caching/safe-method.util';
+import type { IHashingPort } from 'src/core/security/hashing';
+
+/**
+ * Separates HTTP representation validators from other keyed digests.
+ */
+const HTTP_ETAG_CONTEXT = 'http-etag';
 
 /**
  * Validator header carrying the body's fingerprint.
@@ -19,7 +24,7 @@ const HEADER_ETAG = 'etag';
 const HEADER_IF_NONE_MATCH = 'if-none-match';
 
 /**
- * The validator half of HTTP caching, placed where every response passes — including those no
+ * Builds the validator half of HTTP caching, placed where every response passes — including those no
  * interceptor sees (guard refusals, unmatched routes):
  *
  * - A response without `Cache-Control`, or with an error status, leaves as `no-store`; a route's
@@ -30,46 +35,42 @@ const HEADER_IF_NONE_MATCH = 'if-none-match';
  * The tag fingerprints the body, not an entity version: it saves the transfer, never the query.
  * Weak because the comparison is over the JSON rendering, not exact bytes.
  *
- * @param request The incoming request, read for its method and `If-None-Match`.
- * @param reply The outgoing reply, whose cache headers and status are written here.
- * @param payload The serialized body about to be sent.
- * @param done Continues sending; passed `null` to drop the body on a `304`.
+ * @param hashingPort Produces keyed body digests without exposing the hashing key.
+ * @returns The Fastify hook enforcing cache policy and conditional response validation.
  */
-export function httpCacheHook(
-    request: FastifyRequest,
-    reply: FastifyReply,
-    payload: unknown,
-    done: DoneFuncWithErrOrRes,
-) {
-    if (reply.statusCode >= 400 || !reply.hasHeader(HEADER_CACHE_CONTROL)) {
-        reply.header(HEADER_CACHE_CONTROL, HttpCachePolicy.NO_STORE);
-    }
+export function createHttpCacheHook(hashingPort: IHashingPort): onSendHookHandler {
+    return (request, reply, payload, done) => {
+        if (reply.statusCode >= 400 || !reply.hasHeader(HEADER_CACHE_CONTROL)) {
+            reply.header(HEADER_CACHE_CONTROL, HttpCachePolicy.NO_STORE);
+        }
 
-    const isValidatable =
-        isSafeMethod(request.method) &&
-        reply.statusCode === 200 &&
-        reply.getHeader(HEADER_CACHE_CONTROL) !== HttpCachePolicy.NO_STORE &&
-        (typeof payload === 'string' || Buffer.isBuffer(payload));
+        if (
+            !(
+                isSafeMethod(request.method) &&
+                reply.statusCode === 200 &&
+                reply.getHeader(HEADER_CACHE_CONTROL) !== HttpCachePolicy.NO_STORE &&
+                (typeof payload === 'string' || Buffer.isBuffer(payload))
+            )
+        ) {
+            done();
 
-    if (!isValidatable) {
+            return;
+        }
+
+        const etag = `W/"${hashingPort.hmacSha256(HTTP_ETAG_CONTEXT, payload)}"`;
+
+        reply.header(HEADER_ETAG, etag);
+
+        if (matchesIfNoneMatch(request.headers[HEADER_IF_NONE_MATCH], etag)) {
+            // RFC 9110 § 15.4.5: a 304 carries the validator but no representation headers or body.
+            reply.code(304).removeHeader('content-type').removeHeader('content-length');
+            done(null, null);
+
+            return;
+        }
+
         done();
-
-        return;
-    }
-
-    const etag = `W/"${createHash('sha1').update(payload).digest('base64url')}"`;
-
-    reply.header(HEADER_ETAG, etag);
-
-    if (matchesIfNoneMatch(request.headers[HEADER_IF_NONE_MATCH], etag)) {
-        // RFC 9110 § 15.4.5: a 304 carries the validator but no representation headers or body.
-        reply.code(304).removeHeader('content-type').removeHeader('content-length');
-        done(null, null);
-
-        return;
-    }
-
-    done();
+    };
 }
 
 /**
@@ -97,9 +98,9 @@ function matchesIfNoneMatch(header: string | undefined, etag: string): boolean {
 /**
  * Drops the `W/` weakness indicator so tags compare on their opaque part alone.
  *
- * @param tag An entity-tag, strong or weak.
+ * @param etag An entity-tag, strong or weak.
  * @returns The quoted opaque tag.
  */
-function stripWeakPrefix(tag: string): string {
-    return tag.startsWith('W/') ? tag.slice(2) : tag;
+function stripWeakPrefix(etag: string): string {
+    return etag.startsWith('W/') ? etag.slice(2) : etag;
 }

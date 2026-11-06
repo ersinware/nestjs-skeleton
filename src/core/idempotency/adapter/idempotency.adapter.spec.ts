@@ -17,6 +17,7 @@ describe('IdempotencyAdapter', () => {
         verifyPassword: vi.fn(),
         simulatePasswordVerify: vi.fn(),
         hmacSha256: vi.fn(() => 'opaque-digest'),
+        verifyHmacSha256: vi.fn(),
     } satisfies IHashingPort;
     const start = vi.fn();
     const transactions = {

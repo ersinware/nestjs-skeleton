@@ -5,6 +5,7 @@
 
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { IHashingPort } from 'src/core/security/hashing';
 import { PrincipalTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/principal-tracker-resolver.adapter';
 import { TargetAccountTrackerResolverAdapter } from 'src/core/security/rate-limiting/adapter/target-account-tracker-resolver.adapter';
 import { KEY_DECORATOR_RATE_LIMIT_EXEMPT } from 'src/core/security/rate-limiting/decorator/rate-limit-exempt.decorator';
@@ -36,7 +37,9 @@ function setup() {
         new Reflector(),
         {
             [RateLimitTrackerSource.IP]: { resolve },
-            [RateLimitTrackerSource.TARGET_ACCOUNT]: new TargetAccountTrackerResolverAdapter(),
+            [RateLimitTrackerSource.TARGET_ACCOUNT]: new TargetAccountTrackerResolverAdapter({
+                hmacSha256: () => 'a'.repeat(64),
+            } as unknown as IHashingPort),
             [RateLimitTrackerSource.PRINCIPAL]: new PrincipalTrackerResolverAdapter(),
         },
         { consume },

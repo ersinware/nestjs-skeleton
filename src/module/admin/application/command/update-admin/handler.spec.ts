@@ -3,15 +3,14 @@
  * @description Verifies independent profile mutations and rejection before persistence or avatar delivery.
  */
 
-import { ConfigService } from '@nestjs/config';
-import { ENV } from 'src/core/config';
 import type { ITransactionPort } from 'src/core/database';
 
+import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
-import { createAdminAvatarChangeFormHash } from 'src/module/admin/domain/admin-avatar-change';
+import { canonicalizeAdminAvatarChangeForm } from 'src/module/admin/domain/admin-avatar-change';
 import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
@@ -47,7 +46,7 @@ describe('UpdateAdminCommandHandler', () => {
                 audit,
                 token as unknown as ITokenPort,
                 storage as unknown as IStoragePort,
-                new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'secret' }),
+                { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
 
             const result = handler.execute(new UpdateAdminCommand('owner', 'Changed'));
@@ -77,7 +76,7 @@ describe('UpdateAdminCommandHandler', () => {
                 audit,
                 token as unknown as ITokenPort,
                 storage as unknown as IStoragePort,
-                new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'secret' }),
+                { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
             const command = new UpdateAdminCommand(
                 'owner',
@@ -137,19 +136,12 @@ describe('UpdateAdminCommandHandler', () => {
             jti: avatarId,
             revocationVersion: scenario === 'revoked' ? 1 : admin.revocationVersion,
             fileKey: scenario === 'invalid-key' ? 'foreign/key' : sourceKey,
-            formHash: createAdminAvatarChangeFormHash(
-                {
-                    id,
-                    avatarId,
-                    ...(name !== undefined && { name }),
-                    avatar,
-                },
-                'upload-secret',
-            ),
+            formHash: 'form-digest',
         };
         if (scenario === 'binding') {
             payload.formHash = 'mismatched-binding';
         }
+        const verifyHmacSha256 = vi.fn<IHashingPort['verifyHmacSha256']>().mockReturnValue(scenario !== 'binding');
         const verifyUploadToken = vi.fn().mockResolvedValue(payload);
         if (scenario === 'invalid-proof') {
             verifyUploadToken.mockRejectedValue(new UnauthenticatedException());
@@ -173,7 +165,7 @@ describe('UpdateAdminCommandHandler', () => {
             audit,
             { verifyUploadToken } as unknown as ITokenPort,
             storage as unknown as IStoragePort,
-            new ConfigService({ [ENV.JWT_UPLOAD_SECRET]: 'upload-secret' }),
+            { verifyHmacSha256 } as unknown as IHashingPort,
         );
         const hasUpload = scenario !== 'name-only' && scenario !== 'unchanged-name';
         const result = handler.execute(
@@ -197,6 +189,13 @@ describe('UpdateAdminCommandHandler', () => {
         };
         if (scenario in failureKind) {
             await expect(result).rejects.toMatchObject({ kind: failureKind[scenario as keyof typeof failureKind] });
+            if (verifyHmacSha256.mock.calls.length > 0) {
+                expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
+                    AdminUploadPurpose.PROFILE_AVATAR,
+                    canonicalizeAdminAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
+                    payload.formHash,
+                );
+            }
             expect(admin.toSnapshot()).toEqual(before);
             expect(admin.pullJobs()).toEqual([]);
             expect(writer.save).not.toHaveBeenCalled();
@@ -226,6 +225,11 @@ describe('UpdateAdminCommandHandler', () => {
         expect(admin.revocationVersion).toBe(before.revocationVersion);
         expect(writer.save).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);
         if (hasUpload) {
+            expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
+                AdminUploadPurpose.PROFILE_AVATAR,
+                canonicalizeAdminAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
+                payload.formHash,
+            );
             expect(verifyUploadToken).toHaveBeenCalledWith('proof', AdminUploadPurpose.PROFILE_AVATAR, true);
             expect(admin.pullJobs()).toEqual([
                 {

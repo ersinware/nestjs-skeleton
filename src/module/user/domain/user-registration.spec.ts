@@ -1,13 +1,11 @@
 /**
  * @file user-registration.spec.ts
- * @description Verifies registration form binding rejects changes to every upload-authorized field.
+ * @description Verifies canonical registration forms retain every upload-authorized field.
  */
 
-import {
-    assertUserRegistrationFormHashMatches,
-    createUserRegistrationFormHash,
-} from 'src/module/user/domain/user-registration';
-import { ExceptionKind } from 'src/shared/exception';
+/// <reference types="vitest/globals" />
+
+import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
 
 describe('User registration form binding', () => {
     const form = {
@@ -16,12 +14,18 @@ describe('User registration form binding', () => {
         password: 'Password!123',
         avatar: { sizeBytes: 4, contentType: 'image/png' as const },
     };
-    const secret = 'test-upload-secret';
 
-    it('accepts the same normalized form', () => {
-        expect(() =>
-            assertUserRegistrationFormHashMatches(form, secret, createUserRegistrationFormHash(form, secret)),
-        ).not.toThrow();
+    it('preserves form semantics independently of property order and unrelated command metadata', () => {
+        const command = { ...form, idempotencyRequest: { key: 'request', canonicalValue: 'metadata' } };
+        expect(canonicalizeUserRegistrationForm(command)).toBe(canonicalizeUserRegistrationForm(form));
+        expect(
+            canonicalizeUserRegistrationForm({
+                avatar: form.avatar,
+                password: form.password,
+                name: form.name,
+                email: form.email,
+            }),
+        ).toBe('["avatar@example.test","Avatar","Password!123",4,"image/png"]');
     });
 
     it.each([
@@ -30,17 +34,7 @@ describe('User registration form binding', () => {
         { ...form, password: 'OtherPassword!123' },
         { ...form, avatar: { ...form.avatar, sizeBytes: 5 } },
         { ...form, avatar: { ...form.avatar, contentType: 'image/jpeg' as const } },
-    ])('rejects a changed authorized form: %s', (changed) => {
-        expect(() =>
-            assertUserRegistrationFormHashMatches(changed, secret, createUserRegistrationFormHash(form, secret)),
-        ).toThrow(expect.objectContaining({ kind: ExceptionKind.INVALID_INPUT }));
-    });
-
-    it('rejects another secret and malformed hash lengths', () => {
-        for (const hash of [createUserRegistrationFormHash(form, 'other-secret'), 'short']) {
-            expect(() => assertUserRegistrationFormHashMatches(form, secret, hash)).toThrow(
-                expect.objectContaining({ kind: ExceptionKind.INVALID_INPUT }),
-            );
-        }
+    ])('distinguishes a changed authorized form: %j', (changed) => {
+        expect(canonicalizeUserRegistrationForm(changed)).not.toBe(canonicalizeUserRegistrationForm(form));
     });
 });
