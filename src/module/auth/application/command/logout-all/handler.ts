@@ -52,9 +52,9 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * @throws {SystemException} When the revocation job is not accepted
      */
     async execute(command: LogoutAllCommand) {
-        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
-            const deliveryId = randomUUID();
+        const deliveryId = randomUUID();
 
+        await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
             await this.jobQueueWriterPort.enqueue([
                 {
                     deliveryId,

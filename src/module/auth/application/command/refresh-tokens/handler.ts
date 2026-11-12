@@ -95,6 +95,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         const { sub, principalType } = payload;
 
         let identity;
+
         try {
             identity = await this.identityReaderPort.getRefreshState(principalType, sub, payload.sessionVersion);
         } catch (error) {
