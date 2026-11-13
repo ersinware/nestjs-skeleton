@@ -17,15 +17,7 @@ import {
     Query,
     Req,
 } from '@nestjs/common';
-import {
-    ApiBearerAuth,
-    ApiExtraModels,
-    ApiNoContentResponse,
-    ApiOkResponse,
-    ApiOperation,
-    ApiTags,
-    getSchemaPath,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
@@ -57,7 +49,6 @@ import {
 import { Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
 import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
-import { SessionOutcome } from 'src/core/security/session';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import { BanAdminCommand } from 'src/module/admin/application/command/ban-admin/command';
 import { ChangeAdminPasswordCommand } from 'src/module/admin/application/command/change-admin-password/command';
@@ -84,14 +75,6 @@ import { PostAdminEmailChangeConfirmDto } from 'src/module/admin/presentation/dt
 import { PostAdminEmailChangeInitiateDto } from 'src/module/admin/presentation/dto/post-admin-email-change-initiate.dto';
 import { PostAdminInviteDto } from 'src/module/admin/presentation/dto/post-admin-invite.dto';
 import { PutAdminPermissionsDto } from 'src/module/admin/presentation/dto/put-admin-permissions.dto';
-import {
-    ResponseAdminEmailChangeLoginRequiredDto,
-    ResponseAdminEmailChangeSessionDto,
-} from 'src/module/admin/presentation/dto/response-admin-email-change.dto';
-import {
-    ResponseAdminPasswordLoginRequiredDto,
-    ResponseAdminPasswordSessionDto,
-} from 'src/module/admin/presentation/dto/response-admin-password.dto';
 import { ResponseAdminDto } from 'src/module/admin/presentation/dto/response-admin.dto';
 import { Permission, PrincipalAuditAction, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { ResourceConflictMessage } from 'src/shared/exception';
@@ -428,46 +411,33 @@ export class AdminController {
     }
 
     /**
-     * Consumes emailed proof for the authenticated account and replaces its sessions.
+     * Confirms the authenticated account’s email change and revokes its existing sessions.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal confirming the change
      * @param postAdminEmailChangeConfirmDto The token delivered to the pending address
-     * @returns The committed email change with replacement tokens or a sign-in requirement
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
      * @throws {ResourceNotFoundException} When the authenticated account no longer exists
-     * @throws {ResourceConflictException} When the email is taken or the account changed concurrently
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the confirmation contract, or the queue does not accept every required job
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/confirm')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.ADMIN)
-    @HttpCode(HttpStatus.OK)
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Confirm current admin email change',
         description:
-            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, queues an old-address notice, and attempts to open a replacement session.',
+            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, and queues a notice to the previous address. Returns 204 without a response body. Discard old tokens and sign in with the new email address and unchanged password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
     })
-    @ApiExtraModels(ResponseAdminEmailChangeSessionDto, ResponseAdminEmailChangeLoginRequiredDto)
-    @ApiOkResponse({
-        description:
-            'Email changed. Discard old tokens; use the replacement pair or sign in with the new address and unchanged password. Session unavailability does not undo the email change.',
-        schema: {
-            type: 'object',
-            oneOf: [
-                { $ref: getSchemaPath(ResponseAdminEmailChangeSessionDto) },
-                { $ref: getSchemaPath(ResponseAdminEmailChangeLoginRequiredDto) },
-            ],
-            discriminator: {
-                propertyName: 'session',
-                mapping: {
-                    [SessionOutcome.CREATED]: getSchemaPath(ResponseAdminEmailChangeSessionDto),
-                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseAdminEmailChangeLoginRequiredDto),
-                },
-            },
-        },
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Email changed. Discard old tokens and sign in with the new email address and unchanged password.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
@@ -475,60 +445,57 @@ export class AdminController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async confirmEmailChangeMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
         @Body() postAdminEmailChangeConfirmDto: PostAdminEmailChangeConfirmDto,
-    ): Promise<ResponseAdminEmailChangeSessionDto | ResponseAdminEmailChangeLoginRequiredDto> {
-        const result = await this.commandPipeline.execute(
-            new ConfirmAdminEmailChangeCommand(principal.id, postAdminEmailChangeConfirmDto.token),
+    ) {
+        await this.commandPipeline.execute(
+            new ConfirmAdminEmailChangeCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        postAdminEmailChangeConfirmDto.token,
+                    ]),
+                },
+                principal.id,
+                postAdminEmailChangeConfirmDto.token,
+            ),
         );
-
-        return result.session === SessionOutcome.CREATED
-            ? plainToInstance(ResponseAdminEmailChangeSessionDto, result)
-            : plainToInstance(ResponseAdminEmailChangeLoginRequiredDto, result);
     }
 
     /**
      * Changes the currently authenticated admin's password; the current password must be verified so
      * a hijacked session cannot take the account over.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal of the current request
      * @param patchAdminPasswordDto The payload carrying the current and new passwords
-     * @returns The password change result with tokens or a sign-in requirement
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {ResourceNotFoundException} When the admin does not exist
      * @throws {AccessDeniedException} When the loaded account is banned
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
     @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @PrincipalOnly(PrincipalType.ADMIN)
-    @HttpCode(HttpStatus.OK)
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Change current admin password',
         description:
-            "Updates the currently authenticated admin's password, revokes existing sessions, and attempts to open a replacement session for this client.",
+            'Verifies the current password, changes it, and revokes existing sessions. Returns 204 without a response body. Discard old tokens and sign in with the new password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, password verification, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
     })
-    @ApiExtraModels(ResponseAdminPasswordSessionDto, ResponseAdminPasswordLoginRequiredDto)
-    @ApiOkResponse({
-        description:
-            'Password changed. The session result contains new tokens or requires sign-in with the new password; session unavailability does not undo the password change.',
-        schema: {
-            type: 'object',
-            oneOf: [
-                { $ref: getSchemaPath(ResponseAdminPasswordSessionDto) },
-                { $ref: getSchemaPath(ResponseAdminPasswordLoginRequiredDto) },
-            ],
-            discriminator: {
-                propertyName: 'session',
-                mapping: {
-                    [SessionOutcome.CREATED]: getSchemaPath(ResponseAdminPasswordSessionDto),
-                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseAdminPasswordLoginRequiredDto),
-                },
-            },
-        },
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Password changed. Discard old tokens and sign in with the new password.',
     })
     // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
     // share the status, so naming one cause would document the endpoint as if the others did not exist.
@@ -536,22 +503,30 @@ export class AdminController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
+    @ApiDefaultResourceConflictResponse()
     async changePasswordMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
         @Body() patchAdminPasswordDto: PatchAdminPasswordDto,
-    ): Promise<ResponseAdminPasswordSessionDto | ResponseAdminPasswordLoginRequiredDto> {
-        const result = await this.commandPipeline.execute(
+    ) {
+        await this.commandPipeline.execute(
             new ChangeAdminPasswordCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        patchAdminPasswordDto.currentPassword,
+                        patchAdminPasswordDto.newPassword,
+                    ]),
+                },
                 principal.id,
                 patchAdminPasswordDto.currentPassword,
                 patchAdminPasswordDto.newPassword,
             ),
         );
-
-        return result.session === SessionOutcome.CREATED
-            ? plainToInstance(ResponseAdminPasswordSessionDto, result)
-            : plainToInstance(ResponseAdminPasswordLoginRequiredDto, result);
     }
 
     /**

@@ -338,6 +338,7 @@ describe('Admin invitation with avatar', () => {
         const login = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/admin/login',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { email: finalized.email, password },
         });
         expect(login.statusCode).toBe(200);
@@ -587,6 +588,7 @@ describe('Admin invitation with avatar', () => {
             const login = await app.inject({
                 method: 'POST',
                 url: '/api/v1/auth/admin/login',
+                headers: { 'idempotency-key': randomUUID() },
                 payload: { email: (await state(initial.id)).email, password },
             });
             expect(login.statusCode).toBe(200);

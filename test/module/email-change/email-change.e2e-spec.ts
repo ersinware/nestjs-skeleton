@@ -26,7 +26,7 @@ import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.toke
 import { audit, AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import { OpenSessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { TOKEN_TOKEN_PORT, type EmailConfirmationTokenPayload, type ITokenPort } from 'src/core/security/token';
 import {
@@ -52,7 +52,7 @@ import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { user, emailChangeNotification as userNotification } from 'src/module/user/infrastructure/user.schema';
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalAuditAction, PrincipalType } from 'src/shared/domain/principal';
-import { AccessDeniedException, DependencyUnavailableException } from 'src/shared/exception';
+import { AccessDeniedException } from 'src/shared/exception';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -233,8 +233,33 @@ describe.each(CASES)('$route email change', (context) => {
             password: hash,
             avatarKey: `avatar/${context.kind}/${id}/${uuidv7()}`,
         });
-        const pair = await tokenPort.generateTokens({ id, type: context.kind, permissions: [] }, 0);
-        expect(await sessionPort.openSession(id, pair.session)).toBe(true);
+        const { outcome, session, accessExpiresAt } = await sessionPort.openSession(
+            { key: randomUUID(), canonicalValue: 'session-fixture' },
+            id,
+            context.kind,
+            0,
+        );
+        expect(outcome).toBe(OpenSessionOutcome.OPENED);
+        const pair = await tokenPort.generateTokens(
+            {
+                sub: id,
+                principalType: session!.principalType,
+                sid: session!.sid,
+                sessionVersion: session!.sessionVersion,
+                sessionExpiresAt: session!.sessionExpiresAt,
+                permissions: [],
+                exp: accessExpiresAt!,
+            },
+            {
+                sub: id,
+                principalType: session!.principalType,
+                sid: session!.sid,
+                sessionVersion: session!.sessionVersion,
+                sessionExpiresAt: session!.sessionExpiresAt,
+                jti: session!.refreshTokenJti,
+                exp: session!.refreshExpiresAt,
+            },
+        );
         return { id, email, accessToken: pair.accessToken, refreshToken: pair.refreshToken };
     }
 
@@ -467,8 +492,33 @@ describe.each(CASES)('$route email change', (context) => {
 
     it('rejects the other authenticated principal kind before reaching the command', async () => {
         const kind = context.kind === PrincipalType.ADMIN ? PrincipalType.USER : PrincipalType.ADMIN;
-        const pair = await tokenPort.generateTokens({ id: account.id, type: kind, permissions: [] }, 0);
-        await sessionPort.openSession(account.id, pair.session);
+        const { outcome, session, accessExpiresAt } = await sessionPort.openSession(
+            { key: randomUUID(), canonicalValue: 'session-fixture' },
+            account.id,
+            kind,
+            0,
+        );
+        expect(outcome).toBe(OpenSessionOutcome.OPENED);
+        const pair = await tokenPort.generateTokens(
+            {
+                sub: account.id,
+                principalType: session!.principalType,
+                sid: session!.sid,
+                sessionVersion: session!.sessionVersion,
+                sessionExpiresAt: session!.sessionExpiresAt,
+                permissions: [],
+                exp: accessExpiresAt!,
+            },
+            {
+                sub: account.id,
+                principalType: session!.principalType,
+                sid: session!.sid,
+                sessionVersion: session!.sessionVersion,
+                sessionExpiresAt: session!.sessionExpiresAt,
+                jti: session!.refreshTokenJti,
+                exp: session!.refreshExpiresAt,
+            },
+        );
         const proof = await pending();
         for (const [path, body] of [
             ['/email/initiate', { newEmail: proof.email, currentPassword: password }],
@@ -611,88 +661,80 @@ describe.each(CASES)('$route email change', (context) => {
         expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toEqual([]);
     });
 
-    it('commits the change, rejects all old sessions and accepts only registered replacement tokens', async () => {
-        const secondSession = await tokenPort.generateTokens(
-            { id: account.id, type: context.kind, permissions: [] },
-            0,
-        );
-        await sessionPort.openSession(account.id, secondSession.session);
-        const proof = await pending();
-        const response = await http('POST', '/email/confirm', { token: proof.token });
-        expect(response.statusCode).toBe(200);
-        expect(response.headers['cache-control']).toContain('no-store');
-        const data = response.json<{ data: { session: string; accessToken: string; refreshToken: string } }>().data;
-        expect(data).toEqual({
-            session: 'created',
-            accessToken: expect.any(String) as unknown,
-            refreshToken: expect.any(String) as unknown,
-        });
-        expect(await state()).toMatchObject({
-            email: proof.email,
-            password: hash,
-            pendingEmail: null,
-            pendingEmailRequestId: null,
-            pendingEmailExpiresAt: null,
-            pendingEmailRevocationVersion: null,
-            sessionVersion: 1,
-            revocationVersion: 1,
-        });
-        for (const access of [account.accessToken, secondSession.accessToken]) {
-            expect((await http('GET', '', undefined, access)).statusCode).toBe(401);
-        }
-        expect((await http('GET', '', undefined, data.accessToken)).statusCode).toBe(200);
-        expect(
-            (
-                await app.inject({
-                    method: 'POST',
-                    url: '/api/v1/auth/refresh',
-                    payload: { refreshToken: account.refreshToken },
-                })
-            ).statusCode,
-        ).toBe(401);
-        expect((await http('POST', '/email/confirm', { token: proof.token }, data.accessToken)).statusCode).toBe(400);
-        expect(await notices()).toMatchObject([
-            { previousEmail: account.email, aggregateId: account.id, createdAt: expect.any(Date) as unknown },
-        ]);
-        expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
-        const mirrorJob = (await jobs(context.queues.SESSION_RECONCILE))[0]!;
-        if (context.kind === PrincipalType.ADMIN) {
-            await app.get(AdminSessionConsumer).consume(mirrorJob.data);
-        } else {
-            await app.get(UserSessionConsumer).consume(mirrorJob.data);
-        }
-        expect((await http('GET', '', undefined, data.accessToken)).statusCode).toBe(200);
-        expect(
-            (
-                await app.inject({
-                    method: 'POST',
-                    url: '/api/v1/auth/refresh',
-                    payload: { refreshToken: data.refreshToken },
-                })
-            ).statusCode,
-        ).toBe(200);
-    });
-
-    it.each(['unavailable', 'newer-version'] as const)(
-        'preserves committed state and returns login_required on %s registration',
-        async (cause) => {
-            const proof = await pending();
-            if (cause === 'unavailable') {
-                vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new DependencyUnavailableException());
-            } else {
-                const open = sessionPort.openSession.bind(sessionPort);
-                vi.spyOn(sessionPort, 'openSession').mockImplementationOnce(async (id, registration) => {
-                    await sessionPort.setVersion(id, registration.principalType, registration.sessionVersion + 1);
-                    return open(id, registration);
+    it.each([null, 'malformed'])(
+        'requires a valid request key for confirmation and password change: %j',
+        async (key) => {
+            const before = await state();
+            for (const [method, path, payload] of [
+                ['POST', '/email/confirm', { token: 'invalid-proof' }],
+                ['PATCH', '/password', { currentPassword: password, newPassword: 'Changed-password!123' }],
+            ] as const) {
+                const response = await app.inject({
+                    method,
+                    url: `${base}${path}`,
+                    headers: {
+                        authorization: `Bearer ${account.accessToken}`,
+                        ...(key === null ? {} : { 'idempotency-key': key }),
+                    },
+                    payload,
                 });
+                expect(response.statusCode).toBe(400);
             }
-            const response = await http('POST', '/email/confirm', { token: proof.token });
-            expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ data: { session: 'login_required' } });
-            expect((await state()).email).toBe(proof.email);
-            expect(await notices()).toHaveLength(1);
-            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
-            expect(await jobs(context.queues.SESSION_RECONCILE)).toHaveLength(1);
+            expect(await state()).toEqual(before);
+            expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(0);
+            expect(await evidence(PrincipalAuditAction.PASSWORD_CHANGED)).toHaveLength(0);
+        },
+    );
+
+    it.each(['email', 'password'] as const)(
+        'returns bodyless 204 for first %s success and replay without credential issuance or duplicate writes',
+        async (operationName) => {
+            const proof = operationName === 'email' ? await pending() : null,
+                key = randomUUID(),
+                payload = proof
+                    ? { token: proof.token }
+                    : { currentPassword: password, newPassword: 'Changed-password!123' },
+                path = proof ? '/email/confirm' : '/password',
+                method = proof ? 'POST' : 'PATCH',
+                open = vi.spyOn(sessionPort, 'openSession'),
+                sign = vi.spyOn(tokenPort, 'generateTokens'),
+                read = vi.spyOn(sessionPort, 'getVersion'),
+                load = vi.spyOn(app.get<AccountReader>(context.writerToken), 'load'),
+                call = () => http(method, path, payload, account.accessToken, key),
+                first = await call();
+            expect(first.statusCode).toBe(204);
+            expect(first.body).toBe('');
+            expect(load).toHaveBeenCalledTimes(1);
+            load.mockClear();
+            expect((await state()).sessionVersion).toBe(1);
+            expect((await state()).revocationVersion).toBe(1);
+            const before = await state(),
+                beforeNotices = await notices(),
+                beforeJobs = await jobs(context.queues.SESSION_RECONCILE),
+                action = proof ? PrincipalAuditAction.EMAIL_CHANGED : PrincipalAuditAction.PASSWORD_CHANGED,
+                beforeAudit = await evidence(action),
+                verify = vi.spyOn(tokenPort, 'verifyEmailConfirmationToken'),
+                hash = vi.spyOn(hashingPort, 'verifyPassword'),
+                replay = await call();
+            expect(replay.statusCode).toBe(204);
+            expect(replay.body).toBe('');
+            expect(load).not.toHaveBeenCalled();
+            expect(verify).not.toHaveBeenCalled();
+            expect(hash).not.toHaveBeenCalled();
+            expect(open).not.toHaveBeenCalled();
+            expect(sign).not.toHaveBeenCalled();
+            expect(read).not.toHaveBeenCalled();
+            expect(await state()).toEqual(before);
+            expect(await notices()).toEqual(beforeNotices);
+            expect(await jobs(context.queues.SESSION_RECONCILE)).toEqual(beforeJobs);
+            expect(await evidence(action)).toEqual(beforeAudit);
+            expect(beforeAudit).toHaveLength(1);
+            expect(beforeJobs).toHaveLength(1);
+            const [retained] = await database.select().from(operation).where(eq(operation.key, key));
+            expect(retained?.replayResultId).toBeNull();
+            // Retained success does not bypass guard admission after mirror propagation.
+            await sessionPort.setVersion(account.id, context.kind, 1);
+            expect((await call()).statusCode).toBe(401);
         },
     );
 
@@ -760,7 +802,7 @@ describe.each(CASES)('$route email change', (context) => {
             http('POST', '/email/confirm', { token: proof.token }),
             http('POST', '/email/confirm', { token: proof.token }),
         ]);
-        expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+        expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         expect(await notices()).toHaveLength(1);
         expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
         expect(await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION)).toHaveLength(1);
@@ -842,7 +884,7 @@ describe.each(CASES)('$route email change', (context) => {
                 loser === 'request'
                     ? await http('POST', '/email/confirm', { token: proof.token })
                     : await http('POST', '/email/initiate', replacement);
-            expect(winner.statusCode).toBe(loser === 'request' ? 200 : 204);
+            expect(winner.statusCode).toBe(204);
         } finally {
             resume.resolve();
         }
@@ -908,10 +950,17 @@ describe.each(CASES)('$route email change', (context) => {
     it('keeps each historical recipient across successive changes and account deletion', async () => {
         const first = await pending();
         const firstResponse = await http('POST', '/email/confirm', { token: first.token });
-        expect(firstResponse.statusCode).toBe(200);
-        account = { ...account, accessToken: firstResponse.json<{ data: { accessToken: string } }>().data.accessToken };
+        expect(firstResponse.statusCode).toBe(204);
+        const signedIn = await app.inject({
+            method: 'POST',
+            url: `/api/v1/auth/${context.route}/login`,
+            headers: { 'idempotency-key': randomUUID() },
+            payload: { email: first.email, password },
+        });
+        expect(signedIn.statusCode).toBe(200);
+        account = { ...account, ...signedIn.json<{ data: { accessToken: string; refreshToken: string } }>().data };
         const second = await pending();
-        expect((await http('POST', '/email/confirm', { token: second.token })).statusCode).toBe(200);
+        expect((await http('POST', '/email/confirm', { token: second.token })).statusCode).toBe(204);
         const records = await notices();
         expect(records.map((row) => row.previousEmail).sort()).toEqual([account.email, first.email].sort());
         const deliveries = await jobs(context.queues.EMAIL_CHANGE_NOTIFICATION);
@@ -930,14 +979,15 @@ describe.each(CASES)('$route email change', (context) => {
         expect(sendEmail).toHaveBeenCalledTimes(4);
     });
 
-    it('preserves durable reconciliation and cache eviction after a post-commit unexpected session error', async () => {
+    it('preserves durable reconciliation and cache eviction without post-commit session issuance', async () => {
         const proof = await pending();
         const cache = app.get<ICachePort>(TOKEN_CACHE_PORT);
         if (context.kind === PrincipalType.USER) {
             await cache.set(CacheKeys.userById(account.id), { email: account.email }, 60);
         }
-        vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new Error('Unexpected session bug'));
-        expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(500);
+        const open = vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new Error('Unexpected session bug'));
+        expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(204);
+        expect(open).not.toHaveBeenCalled();
         expect((await state()).email).toBe(proof.email);
         expect(await notices()).toHaveLength(1);
         expect(await evidence(PrincipalAuditAction.EMAIL_CHANGED)).toHaveLength(1);
@@ -947,7 +997,9 @@ describe.each(CASES)('$route email change', (context) => {
         } else {
             await app.get(UserSessionConsumer).consume(reconcile.data);
             const eviction = (await jobs(UserJobQueue.CACHE_INVALIDATE))[0]!;
-            expect(await cache.get(CacheKeys.userById(account.id))).not.toBeNull();
+            expect(await cache.get(CacheKeys.userById(account.id))).toBeNull();
+            // A delayed job also evicts a stale fill that arrives after the immediate eviction.
+            await cache.set(CacheKeys.userById(account.id), { email: account.email }, 60);
             await app.get(UserCacheConsumer).consume(eviction.data);
             expect(await cache.get(CacheKeys.userById(account.id))).toBeNull();
         }
@@ -959,7 +1011,7 @@ describe.each(CASES)('$route email change', (context) => {
         async (delivery) => {
             const proof = await pending();
             if (delivery === 'notification') {
-                expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(200);
+                expect((await http('POST', '/email/confirm', { token: proof.token })).statusCode).toBe(204);
             }
             const queue =
                 delivery === 'confirmation'
@@ -1124,7 +1176,7 @@ describe.each(CASES)('$route email change', (context) => {
             expect(
                 (await http('POST', `/email/confirm?token=${encodeURIComponent(proof.token)}`, { token: proof.token }))
                     .statusCode,
-            ).toBe(200);
+            ).toBe(204);
             expect(lines.length).toBeGreaterThan(0);
             const serialized = lines.join('');
             for (const sensitive of [

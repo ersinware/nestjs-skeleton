@@ -4,20 +4,22 @@
  */
 
 import { Command } from '@nestjs/cqrs';
-import { SessionOutcome } from 'src/core/security/session';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 
 /**
  * Command to change an existing admin's password.
  */
-export class ChangeAdminPasswordCommand extends Command<ChangeAdminPasswordResult> {
+export class ChangeAdminPasswordCommand extends Command<void> {
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Logical request identity and canonical semantic input.
      * @param id The unique identifier of the admin
      * @param currentPassword The admin's current password
      * @param newPassword The new password to set
      */
     constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
         readonly id: string,
         readonly currentPassword: string,
         readonly newPassword: string,
@@ -25,30 +27,3 @@ export class ChangeAdminPasswordCommand extends Command<ChangeAdminPasswordResul
         super();
     }
 }
-
-/**
- * A committed password change with either a fresh session or a required sign-in.
- */
-export type ChangeAdminPasswordResult =
-    | {
-          /**
-           * Confirms that a replacement session was opened after the password change.
-           */
-          readonly session: SessionOutcome.CREATED;
-
-          /**
-           * Access token issued for the replacement session.
-           */
-          readonly accessToken: string;
-
-          /**
-           * Refresh token issued for the replacement session.
-           */
-          readonly refreshToken: string;
-      }
-    | {
-          /**
-           * The password change committed, but the client must sign in again.
-           */
-          readonly session: SessionOutcome.LOGIN_REQUIRED;
-      };

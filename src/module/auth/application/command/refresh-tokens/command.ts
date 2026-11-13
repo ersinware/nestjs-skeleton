@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 
 /**
  * Enum defining the client-safe messages of refresh rejections. Lives with the command because the
@@ -24,9 +25,13 @@ export class RefreshTokensCommand extends Command<RefreshTokensResult> {
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Logical request identity and canonical semantic input.
      * @param refreshToken The refresh token being rotated away
      */
-    constructor(readonly refreshToken: string) {
+    constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
+        readonly refreshToken: string,
+    ) {
         super();
     }
 }

@@ -45,7 +45,7 @@ export interface IIdempotencyPort {
      * Prepared aggregate snapshots retain optimistic concurrency protection when saved.
      * Preparation and work failures propagate unless retained success wins the final claim.
      *
-     * @param request Validated key and canonical semantic input
+     * @param idempotencyRequest Validated key and canonical semantic input
      * @param prepare Read-only preparation outside the commit boundary
      * @param work Sequential DB-only mutation using the prepared facts
      * @returns Original success metadata after commit
@@ -54,7 +54,7 @@ export interface IIdempotencyPort {
      * @throws {DependencyUnavailableException} When required persistence or preparation dependencies are unavailable
      */
     executePrepared<T>(
-        request: IdempotencyRequest,
+        idempotencyRequest: IdempotencyRequest,
         prepare: () => Promise<T>,
         work: (prepared: T) => Promise<IdempotencyResult>,
     ): Promise<IdempotencyResult>;
@@ -67,12 +67,12 @@ export interface IIdempotencyPort {
      * rate limiting remain the caller's responsibility on every request, including replay.
      * No automatic retry occurs after an ambiguous database outcome; clients reuse the same key.
      *
-     * @param request Validated key and canonical semantic input
+     * @param idempotencyRequest Validated key and canonical semantic input
      * @param work Database-only mutation returning the minimum replay metadata
      * @returns Original success metadata after commit
      * @throws {ResourceConflictException} When the key is already bound to another fingerprint
      * @throws {SystemException} When a transaction is already active or a claimed operation is missing
      * @throws {DependencyUnavailableException} When required database persistence is unavailable
      */
-    execute(request: IdempotencyRequest, work: () => Promise<IdempotencyResult>): Promise<IdempotencyResult>;
+    execute(idempotencyRequest: IdempotencyRequest, work: () => Promise<IdempotencyResult>): Promise<IdempotencyResult>;
 }

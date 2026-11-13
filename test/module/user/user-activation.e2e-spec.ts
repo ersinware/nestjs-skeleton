@@ -247,6 +247,7 @@ describe('User registration and activation', () => {
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/admin/login',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { email, password },
         });
         expect(response.statusCode).toBe(200);
@@ -283,10 +284,21 @@ describe('User registration and activation', () => {
 
     it('rejects pending refresh even if a signed credential is presented', async () => {
         const row = await register();
-        const pair = await tokenPort.generateTokens({ id: row.id, type: PrincipalType.USER, permissions: [] }, 0);
+        const payload = {
+                sub: row.id,
+                principalType: PrincipalType.USER,
+                sid: randomUUID(),
+                sessionVersion: 0,
+                sessionExpiresAt: Math.floor(Date.now() / 1000) + 7200,
+            },
+            pair = await tokenPort.generateTokens(
+                { ...payload, permissions: [], exp: Math.floor(Date.now() / 1000) + 900 },
+                { ...payload, jti: randomUUID(), exp: Math.floor(Date.now() / 1000) + 3600 },
+            );
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/refresh',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { refreshToken: pair.refreshToken },
         });
         expect(response.statusCode).toBe(401);
@@ -507,6 +519,7 @@ describe('User registration and activation', () => {
             app.inject({
                 method: 'POST',
                 url: '/api/v1/auth/user/login',
+                headers: { 'idempotency-key': randomUUID() },
                 payload: { email, password },
             });
         expect((await login(`${uuidv7()}@example.test`)).statusCode).toBe(401);
@@ -523,6 +536,7 @@ describe('User registration and activation', () => {
             app.inject({
                 method: 'POST',
                 url: '/api/v1/auth/user/login',
+                headers: { 'idempotency-key': randomUUID() },
                 payload: { email: row.email, password: loginPassword },
             });
         expect((await login('WrongPass-12345!')).statusCode).toBe(401);
@@ -537,6 +551,7 @@ describe('User registration and activation', () => {
         const wrongPassword = await app.inject({
             method: 'POST',
             url: '/api/v1/user/activation/complete',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { token, password: 'WrongPass-12345!' },
         });
         expect(wrongPassword.statusCode).toBe(400);
@@ -546,19 +561,18 @@ describe('User registration and activation', () => {
         const activated = await app.inject({
             method: 'POST',
             url: '/api/v1/user/activation/complete',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { token, password },
         });
-        expect(activated.statusCode).toBe(200);
-        expect(Object.keys(data(activated)).sort()).toEqual(['accessToken', 'refreshToken', 'session']);
-        expect(data(activated)['session']).toBe('created');
-        expect(typeof data(activated)['accessToken']).toBe('string');
-        expect(typeof data(activated)['refreshToken']).toBe('string');
+        expect(activated.statusCode).toBe(204);
+        expect(activated.body).toBe('');
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
         expect(
             (
                 await app.inject({
                     method: 'POST',
                     url: '/api/v1/user/activation/complete',
+                    headers: { 'idempotency-key': randomUUID() },
                     payload: { token, password },
                 })
             ).statusCode,
@@ -587,6 +601,7 @@ describe('User registration and activation', () => {
             const response = await app.inject({
                 method: 'POST',
                 url: '/api/v1/user/activation/complete',
+                headers: { 'idempotency-key': randomUUID() },
                 payload: { token, password },
             });
             expect(response.statusCode).toBe(400);
@@ -604,6 +619,7 @@ describe('User registration and activation', () => {
             const response = await app.inject({
                 method: 'POST',
                 url: '/api/v1/auth/user/login',
+                headers: { 'idempotency-key': randomUUID() },
                 remoteAddress: `192.0.2.${i + 1}`,
                 payload: { email: row.email, password },
             });
@@ -614,6 +630,7 @@ describe('User registration and activation', () => {
         const blocked = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/user/login',
+            headers: { 'idempotency-key': randomUUID() },
             remoteAddress: '198.51.100.1',
             payload: { email: row.email, password },
         });
@@ -677,6 +694,7 @@ describe('User registration and activation', () => {
                 await app.inject({
                     method: 'POST',
                     url: '/api/v1/user/activation/complete',
+                    headers: { 'idempotency-key': randomUUID() },
                     payload: { token: oldToken, password },
                 })
             ).statusCode,
@@ -709,6 +727,7 @@ describe('User registration and activation', () => {
                 await app.inject({
                     method: 'POST',
                     url: '/api/v1/user/activation/complete',
+                    headers: { 'idempotency-key': randomUUID() },
                     payload: { token: await proof(row), password },
                 })
             ).statusCode,
@@ -780,6 +799,7 @@ describe('User registration and activation', () => {
         await app.inject({
             method: 'POST',
             url: '/api/v1/user/activation/complete',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { token: await proof(row), password },
         });
         expect((await request(row.email)).statusCode).toBe(204);
@@ -790,10 +810,20 @@ describe('User registration and activation', () => {
         const row = await register();
         const token = await proof(row);
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
+            app.inject({
+                method: 'POST',
+                url: '/api/v1/user/activation/complete',
+                headers: { 'idempotency-key': randomUUID() },
+                payload: { token, password },
+            }),
+            app.inject({
+                method: 'POST',
+                url: '/api/v1/user/activation/complete',
+                headers: { 'idempotency-key': randomUUID() },
+                payload: { token, password },
+            }),
         ]);
-        expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+        expect(responses.map((response) => response.statusCode).sort()).toEqual([204, 409]);
         expect(
             (await actions(row.id)).filter((entry) => entry.action === String(UserAuditAction.USER_ACTIVATED)),
         ).toHaveLength(1);
@@ -827,7 +857,12 @@ describe('User registration and activation', () => {
             return aggregate;
         });
         const responses = await Promise.all([
-            app.inject({ method: 'POST', url: '/api/v1/user/activation/complete', payload: { token, password } }),
+            app.inject({
+                method: 'POST',
+                url: '/api/v1/user/activation/complete',
+                headers: { 'idempotency-key': randomUUID() },
+                payload: { token, password },
+            }),
             app.inject({
                 headers: { 'idempotency-key': randomUUID() },
                 method: 'POST',
@@ -905,6 +940,7 @@ describe('User registration and activation', () => {
         const request = app.inject({
             method: 'POST',
             url: '/api/v1/user/activation/complete',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { token, password },
         });
         await entered;
@@ -940,6 +976,7 @@ describe('User registration and activation', () => {
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/user/activation/complete',
+            headers: { 'idempotency-key': randomUUID() },
             payload: { token, password },
         });
         expect(response.statusCode).toBe(503);
@@ -949,64 +986,51 @@ describe('User registration and activation', () => {
         ).toHaveLength(0);
     });
 
-    it('keeps activation committed when token generation fails after commit', async () => {
-        const row = await register();
-        const token = await proof(row);
-        vi.spyOn(tokenPort, 'generateTokens').mockRejectedValueOnce(new Error('unexpected signing failure'));
+    it.each([null, 'malformed'])('requires a valid activation request key: %j', async (key) => {
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/user/activation/complete',
-            payload: { token, password },
+            ...(key === null ? {} : { headers: { 'idempotency-key': key } }),
+            payload: { token: 'invalid-proof', password },
         });
-        expect(response.statusCode).toBe(500);
-        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
-        expect(
-            (
-                await app.inject({
+        expect(response.statusCode).toBe(400);
+    });
+
+    it('replays bodyless activation before consumed-proof preparation without credential or duplicate durable effects', async () => {
+        const row = await register(),
+            token = await proof(row),
+            key = randomUUID(),
+            open = vi.spyOn(sessionPort, 'openSession'),
+            sign = vi.spyOn(tokenPort, 'generateTokens'),
+            load = vi.spyOn(app.get<IUserWriterPort>(TOKEN_USER_WRITER_PORT), 'load'),
+            call = () =>
+                app.inject({
                     method: 'POST',
                     url: '/api/v1/user/activation/complete',
+                    headers: { 'idempotency-key': key },
                     payload: { token, password },
-                })
-            ).statusCode,
-        ).toBe(409);
-    });
-
-    it('returns login_required after a recognized session outage without undoing activation', async () => {
-        const row = await register();
-        vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new DependencyUnavailableException());
-        const response = await app.inject({
-            method: 'POST',
-            url: '/api/v1/user/activation/complete',
-            payload: { token: await proof(row), password },
-        });
-        expect(response.statusCode).toBe(200);
-        expect(data(response)).toEqual({ session: 'login_required' });
-        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
-    });
-
-    it('propagates an unexpected session error after activation commits', async () => {
-        const row = await register();
-        vi.spyOn(sessionPort, 'openSession').mockRejectedValueOnce(new Error('unexpected session failure'));
-        const response = await app.inject({
-            method: 'POST',
-            url: '/api/v1/user/activation/complete',
-            payload: { token: await proof(row), password },
-        });
-        expect(response.statusCode).toBe(500);
-        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
-    });
-
-    it('keeps activation committed when session registration is refused', async () => {
-        const row = await register();
-        vi.spyOn(sessionPort, 'openSession').mockResolvedValueOnce(false);
-        const response = await app.inject({
-            method: 'POST',
-            url: '/api/v1/user/activation/complete',
-            payload: { token: await proof(row), password },
-        });
-        expect(response.statusCode).toBe(200);
-        expect(data(response)).toEqual({ session: 'login_required' });
-        expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBeNull();
+                });
+        const first = await call();
+        expect(first.statusCode).toBe(204);
+        expect(first.body).toBe('');
+        expect(load).toHaveBeenCalledTimes(1);
+        load.mockClear();
+        const before = await state(row.id),
+            beforeActions = await actions(row.id),
+            beforeJobs = await jobs(row.id),
+            verify = vi.spyOn(tokenPort, 'verifyActivationToken'),
+            hash = vi.spyOn(hashingPort, 'verifyPassword'),
+            replay = await call();
+        expect(replay.statusCode).toBe(204);
+        expect(replay.body).toBe('');
+        expect(load).not.toHaveBeenCalled();
+        expect(verify).not.toHaveBeenCalled();
+        expect(hash).not.toHaveBeenCalled();
+        expect(open).not.toHaveBeenCalled();
+        expect(sign).not.toHaveBeenCalled();
+        expect(await state(row.id)).toEqual(before);
+        expect(await actions(row.id)).toEqual(beforeActions);
+        expect(await jobs(row.id)).toEqual(beforeJobs);
     });
     /**
      * Reads current persisted user state independently of projection caching.
@@ -1081,9 +1105,17 @@ describe('User registration and activation', () => {
             const activated = await app.inject({
                 method: 'POST',
                 url: '/api/v1/user/activation/complete',
+                headers: { 'idempotency-key': randomUUID() },
                 payload: { token: await proof(initial), password },
             });
-            expect(activated.statusCode).toBe(200);
+            expect(activated.statusCode).toBe(204);
+            const signedIn = await app.inject({
+                method: 'POST',
+                url: '/api/v1/auth/user/login',
+                headers: { 'idempotency-key': randomUUID() },
+                payload: { email: initial.email, password },
+            });
+            expect(signedIn.statusCode).toBe(200);
             const initialJob = (
                 await boss.findJobs<Job>(UserJobQueue.AVATAR_FINALIZE, { data: { aggregateId: initial.id } })
             )[0]!;
@@ -1094,7 +1126,7 @@ describe('User registration and activation', () => {
             return {
                 id: initial.id,
                 headers: {
-                    authorization: `Bearer ${activated.json<{ data: { accessToken: string } }>().data.accessToken}`,
+                    authorization: `Bearer ${signedIn.json<{ data: { accessToken: string } }>().data.accessToken}`,
                 },
             };
         }

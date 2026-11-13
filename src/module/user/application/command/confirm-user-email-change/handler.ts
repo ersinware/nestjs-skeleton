@@ -5,14 +5,10 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { SessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import {
-    ConfirmUserEmailChangeCommand,
-    type ConfirmUserEmailChangeResult,
-} from 'src/module/user/application/command/confirm-user-email-change/command';
+import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/command/confirm-user-email-change/command';
 import {
     TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
     type IUserEmailChangeNotificationWriterPort,
@@ -37,132 +33,118 @@ import { uuidv7 } from 'uuidv7';
  * Confirms against current primary state; account mutation, delivery, and audit share a commit.
  */
 @CommandHandler(ConfirmUserEmailChangeCommand)
-export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<
-    ConfirmUserEmailChangeCommand,
-    ConfirmUserEmailChangeResult
-> {
+export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<ConfirmUserEmailChangeCommand, void> {
     /**
      * Initializes confirmation dependencies.
      *
-     * @param transactionPort Commits the account, jobs, notification and audit together
+     * @param idempotencyPort Commits the account, jobs, notification and audit together
      * @param userWriterPort Loads and persists authoritative account state
      * @param notificationWriterPort Stores the immutable old-address recipient
-     * @param tokenPort Verifies the proof and signs replacement credentials
-     * @param sessionPort Registers a replacement session after commit
+     * @param tokenPort Verifies the email confirmation proof
      * @param auditPort Records completed changes and security refusals
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT)
         private readonly notificationWriterPort: IUserEmailChangeNotificationWriterPort,
         @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
-        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
     /**
-     * Confirms the current request and tries to open a replacement session after commit.
+     * Confirms the current request and requires a new sign-in after commit.
      *
      * @param command Authenticated account and emailed token
-     * @returns Replacement credentials or an instruction to sign in again
      * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
      * @throws {ResourceNotFoundException} When the authenticated account no longer exists
-     * @throws {ResourceConflictException} When the email is taken or the account changed concurrently
+     * @throws {ResourceConflictException} When the key belongs to a different request or persistence rejects a conflicting mutation.
      * @throws {SystemException} When the loaded account violates the confirmation contract, or the queue does not accept every required job
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
-    async execute(command: ConfirmUserEmailChangeCommand): Promise<ConfirmUserEmailChangeResult> {
-        let payload;
+    async execute(command: ConfirmUserEmailChangeCommand) {
+        await this.idempotencyPort.executePrepared(
+            command.idempotencyRequest,
+            async () => {
+                let payload;
 
-        try {
-            payload = await this.tokenPort.verifyEmailConfirmationToken(command.token);
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
-                throw new InvalidInputException('The email confirmation is invalid or has expired.', { cause: error });
-            }
+                try {
+                    payload = await this.tokenPort.verifyEmailConfirmationToken(command.token);
+                } catch (error) {
+                    if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
+                        throw new InvalidInputException('The email confirmation is invalid or has expired.', {
+                            cause: error,
+                        });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        if (payload.sub !== command.id) {
-            const error = new AccessDeniedException();
+                if (payload.sub !== command.id) {
+                    const error = new AccessDeniedException();
 
-            await this.auditPort.record(
-                {
-                    action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-                    reason: AuditReason.PRINCIPAL_MISMATCH,
-                    targetId: payload.sub,
-                    detail: { targetPrincipalType: payload.principalType },
-                },
-                { markExceptionAsAudited: error },
-            );
+                    await this.auditPort.record(
+                        {
+                            action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
+                            reason: AuditReason.PRINCIPAL_MISMATCH,
+                            targetId: payload.sub,
+                            detail: { targetPrincipalType: payload.principalType },
+                        },
+                        { markExceptionAsAudited: error },
+                    );
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        if (payload.principalType !== PrincipalType.USER) {
-            const error = new AccessDeniedException();
+                if (payload.principalType !== PrincipalType.USER) {
+                    const error = new AccessDeniedException();
 
-            await this.auditPort.record(
-                {
-                    action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
-                    reason: AuditReason.PRINCIPAL_MISMATCH,
-                    targetId: payload.sub,
-                    detail: { targetPrincipalType: payload.principalType },
-                },
-                { markExceptionAsAudited: error },
-            );
+                    await this.auditPort.record(
+                        {
+                            action: DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED,
+                            reason: AuditReason.PRINCIPAL_MISMATCH,
+                            targetId: payload.sub,
+                            detail: { targetPrincipalType: payload.principalType },
+                        },
+                        { markExceptionAsAudited: error },
+                    );
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        const user = await this.userWriterPort.load(command.id);
+                const user = await this.userWriterPort.load(command.id);
 
-        if (!user) {
-            throw new ResourceNotFoundException();
-        }
+                if (!user) {
+                    throw new ResourceNotFoundException();
+                }
 
-        const notification = { id: uuidv7(), aggregateId: user.id, previousEmail: user.email };
+                return { user, payload };
+            },
+            async ({ user, payload }) => {
+                const notificationId = uuidv7(),
+                    previousEmail = user.email;
 
-        try {
-            user.confirmEmailChange(payload, notification.id);
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
-            }
+                try {
+                    user.confirmEmailChange(payload, notificationId);
+                } catch (error) {
+                    if (isExceptionWithAudit(error)) {
+                        await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        await this.transactionPort.start(async () => {
-            await this.userWriterPort.save(user);
-            await this.notificationWriterPort.save(notification);
-            await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGED });
-        });
+                await this.userWriterPort.save(user);
+                await this.notificationWriterPort.save({
+                    id: notificationId,
+                    aggregateId: user.id,
+                    previousEmail,
+                });
+                await this.auditPort.record({ action: PrincipalAuditAction.EMAIL_CHANGED });
 
-        const tokenPairWithSession = await this.tokenPort.generateTokens(
-            { id: user.id, type: PrincipalType.USER, permissions: user.permissions },
-            user.sessionVersion,
+                return { replayResultId: null };
+            },
         );
-
-        try {
-            if (!(await this.sessionPort.openSession(user.id, tokenPairWithSession.session))) {
-                return { session: SessionOutcome.LOGIN_REQUIRED };
-            }
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return { session: SessionOutcome.LOGIN_REQUIRED };
-            }
-
-            throw error;
-        }
-
-        return {
-            session: SessionOutcome.CREATED,
-            accessToken: tokenPairWithSession.accessToken,
-            refreshToken: tokenPairWithSession.refreshToken,
-        };
     }
 }

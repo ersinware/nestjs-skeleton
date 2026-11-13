@@ -7,6 +7,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import type { RedisClientType } from 'redis';
 import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
@@ -18,7 +19,12 @@ import {
 import { TOKEN_RATE_LIMIT_CONNECTION } from 'src/core/security/rate-limiting/rate-limit-connection.token';
 import { RATE_LIMIT_POLICIES, RateLimitPolicy } from 'src/core/security/rate-limiting/rate-limit-policy';
 import { RateLimitTrackerSource } from 'src/core/security/rate-limiting/rate-limit-tracker-source';
-import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import {
+    OpenSessionOutcome,
+    TOKEN_SESSION_PORT,
+    type ISessionPort,
+    type SessionRegistration,
+} from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
@@ -113,11 +119,32 @@ describe('Principal policies with production guards and Redis', () => {
         kind = PrincipalType.ADMIN,
         id = uuidv7(),
         permissions: readonly Permission[] = kind === PrincipalType.ADMIN ? [Permission.ADMIN_ACCOUNT_INVITE] : [],
-    ): Promise<Awaited<ReturnType<ITokenPort['generateTokens']>> & Principal> {
+    ): Promise<
+        Awaited<ReturnType<ITokenPort['generateTokens']>> & Principal & { readonly session: SessionRegistration }
+    > {
         ids.push(id);
         kinds.set(id, kind);
-        const pair = await tokens.generateTokens({ id, type: kind, permissions }, 0);
-        expect(await sessions.openSession(id, pair.session)).toBe(true);
+        const { outcome, session, accessExpiresAt } = await sessions.openSession(
+            { key: randomUUID(), canonicalValue: 'session-fixture' },
+            id,
+            kind,
+            0,
+        );
+        expect(outcome).toBe(OpenSessionOutcome.OPENED);
+        const payload = {
+                sub: id,
+                principalType: session!.principalType,
+                sid: session!.sid,
+                sessionVersion: session!.sessionVersion,
+                sessionExpiresAt: session!.sessionExpiresAt,
+            },
+            pair = {
+                ...(await tokens.generateTokens(
+                    { ...payload, permissions, exp: accessExpiresAt! },
+                    { ...payload, jti: session!.refreshTokenJti, exp: session!.refreshExpiresAt },
+                )),
+                session: session!,
+            };
         return { id, type: kind, permissions, ...pair };
     }
 

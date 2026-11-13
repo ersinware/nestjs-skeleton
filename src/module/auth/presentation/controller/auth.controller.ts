@@ -34,10 +34,7 @@ import { LoginAdminCommand } from 'src/module/auth/application/command/login-adm
 import { LoginUserCommand } from 'src/module/auth/application/command/login-user/command';
 import { LogoutAllCommand } from 'src/module/auth/application/command/logout-all/command';
 import { LogoutCommand } from 'src/module/auth/application/command/logout/command';
-import {
-    RefreshTokensCommand,
-    RefreshTokensRejectionMessage,
-} from 'src/module/auth/application/command/refresh-tokens/command';
+import { RefreshTokensCommand } from 'src/module/auth/application/command/refresh-tokens/command';
 import { PostLoginDto } from 'src/module/auth/presentation/dto/post-login.dto';
 import { PostRefreshTokenDto } from 'src/module/auth/presentation/dto/post-refresh-token.dto';
 import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tokens.dto';
@@ -70,8 +67,12 @@ export class AuthController {
     /**
      * Authenticates a user's credentials and opens a session.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param dto The user's email and password
      * @returns A new session with tokens, or an activation-required outcome without tokens
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
+     * @throws {ResourceConflictException} When the key belongs to a different request.
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
@@ -82,9 +83,10 @@ export class AuthController {
     @ApiOperation({
         summary: 'Authenticate user',
         description:
-            'Validates credentials. Activated users receive a session; pending users with the correct password receive activation_required without tokens and can request another activation email.',
+            'Validates credentials. Activated users receive a session; pending users with the correct password receive activation_required without tokens and can request another activation email. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
     })
     @ApiExtraModels(ResponseUserLoginSessionDto, ResponseUserLoginActivationRequiredDto)
+    @ApiIdempotencyKey()
     @ApiOkResponse({
         description: 'Authenticated or awaiting account activation.',
         schema: {
@@ -102,12 +104,29 @@ export class AuthController {
             },
         },
     })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
+    @ApiDefaultResourceConflictResponse()
     async loginUser(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @Body() dto: PostLoginDto,
     ): Promise<ResponseUserLoginSessionDto | ResponseUserLoginActivationRequiredDto> {
-        const result = await this.commandPipeline.execute(new LoginUserCommand(dto.email, dto.password));
+        const result = await this.commandPipeline.execute(
+            new LoginUserCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        dto.email,
+                        dto.password,
+                    ]),
+                },
+                dto.email,
+                dto.password,
+            ),
+        );
 
         return result.session === SessionOutcome.CREATED
             ? plainToInstance(ResponseUserLoginSessionDto, result)
@@ -117,8 +136,12 @@ export class AuthController {
     /**
      * Authenticates an admin's credentials and opens a session.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param dto The admin's email and password
      * @returns The generated access and refresh token pair
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
+     * @throws {ResourceConflictException} When the key belongs to a different request.
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
@@ -128,25 +151,49 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate admin',
-        description: 'Validates admin credentials and issues a JWT access and refresh token pair.',
+        description:
+            'Validates admin credentials and issues a JWT access and refresh token pair. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse(UnauthenticatedMessage.CREDENTIALS)
-    async loginAdmin(@Body() dto: PostLoginDto): Promise<ResponseTokensDto> {
+    @ApiDefaultResourceConflictResponse()
+    async loginAdmin(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @Body() dto: PostLoginDto,
+    ): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
-            await this.commandPipeline.execute(new LoginAdminCommand(dto.email, dto.password)),
+            await this.commandPipeline.execute(
+                new LoginAdminCommand(
+                    {
+                        key: idempotencyKey,
+                        canonicalValue: JSON.stringify([
+                            request.method,
+                            request.routeOptions.url!,
+                            dto.email,
+                            dto.password,
+                        ]),
+                    },
+                    dto.email,
+                    dto.password,
+                ),
+            ),
         );
     }
 
     /**
      * Exchanges a valid refresh token for a new token pair, invalidating the old refresh token.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param dto The refresh token being rotated away
      * @returns The newly generated access and refresh token pair
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
-     * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {DependencyUnavailableException} When identity lookup, session rotation, job persistence, or audit persistence is unavailable.
      * @throws {SystemException} When rotation returns an unsupported outcome or the remediation job is not accepted
      */
@@ -157,16 +204,29 @@ export class AuthController {
     @ApiOperation({
         summary: 'Refresh session tokens',
         description:
-            'Exchanges a valid refresh token for a new access and refresh token pair, invalidating the old refresh token.',
+            'Exchanges a valid refresh token for a new access and refresh token pair, invalidating the old refresh token. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Retained same-request success can be replayed after the input refresh credential expires, provided its absolute session lifetime and the winning registration remain valid; without retained success, expired credentials cannot rotate. Current authentication, authorization, and rate limits still apply.',
     })
+    @ApiIdempotencyKey()
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultResourceConflictResponse(RefreshTokensRejectionMessage.CONCURRENT_REFRESH)
-    async refresh(@Body() dto: PostRefreshTokenDto): Promise<ResponseTokensDto> {
+    @ApiDefaultResourceConflictResponse()
+    async refresh(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @Body() dto: PostRefreshTokenDto,
+    ): Promise<ResponseTokensDto> {
         return plainToInstance(
             ResponseTokensDto,
-            await this.commandPipeline.execute(new RefreshTokensCommand(dto.refreshToken)),
+            await this.commandPipeline.execute(
+                new RefreshTokensCommand(
+                    {
+                        key: idempotencyKey,
+                        canonicalValue: JSON.stringify([request.method, request.routeOptions.url!, dto.refreshToken]),
+                    },
+                    dto.refreshToken,
+                ),
+            ),
         );
     }
 

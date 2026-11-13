@@ -1,29 +1,35 @@
 /**
  * @file login.util.ts
- * @description The single credential-login flow shared by the user and admin login commands: identity lookup, ban check, password verification, session opening, and the audit records of the decision.
+ * @description Shared user/admin login with retained-session replay before password preparation.
  */
 
+import type { IdempotencyRequest } from 'src/core/idempotency';
 import { type IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
-import { SessionOutcome, type ISessionPort } from 'src/core/security/session';
+import {
+    OpenSessionOutcome,
+    ReplaySessionOutcome,
+    SessionOutcome,
+    type ISessionPort,
+    type OpenSessionResult,
+    type ReplaySessionResult,
+} from 'src/core/security/session';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
 import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import type { PrincipalType } from 'src/shared/domain/principal';
 import {
     ExceptionKind,
+    ResourceConflictException,
+    ResourceConflictMessage,
+    SystemException,
     UnauthenticatedException,
     UnauthenticatedMessage,
     isExceptionOfKind,
 } from 'src/shared/exception';
 
 /**
- * The reasons the credential-login flow deliberately rejects an attempt.
- *
- * Lives with the flow — the only code that decides the rejection — because only it can tell an
- * unknown email from a wrong password, and none of it reaches the client: the response says no more
- * than "credentials", so an attacker cannot use the distinction to enumerate accounts. The reason
- * travels to the auditor alone, as {@link AuditRecordInput.reason}, never as exception context.
+ * Internal refusal reasons recorded in audit; clients receive the uniform credentials message.
  */
 enum AuthRejectionReason {
     /**
@@ -34,22 +40,17 @@ enum AuthRejectionReason {
     /**
      * The account is banned from authenticating.
      */
-    INACTIVE_ACCOUNT = 'ACCOUNT_IS_INACTIVE',
+    INACTIVE_ACCOUNT = 'INACTIVE_ACCOUNT',
 
     /**
      * The account has no password yet, or a user still needs activation after password proof.
      */
-    PENDING_ACCOUNT = 'ACCOUNT_PENDING_ACTIVATION',
+    PENDING_ACCOUNT = 'PENDING_ACCOUNT',
 
     /**
      * The supplied password does not match the stored password hash.
      */
     INVALID_PASSWORD = 'INVALID_PASSWORD',
-
-    /**
-     * Session opening was rejected because a newer account version or the same session already exists.
-     */
-    SESSION_SUPERSEDED = 'SESSION_SUPERSEDED',
 }
 
 /**
@@ -64,24 +65,23 @@ export type CredentialLoginResult =
     | { readonly session: SessionOutcome.ACTIVATION_REQUIRED };
 
 /**
- * Authenticates an email/password pair against the given kind of principal and opens a fresh session.
+ * Replays a live login or verifies credentials before opening a session.
+ * User and admin login share the same credential and audit rules.
  *
- * One implementation for both kinds on purpose: every security property of the flow — the deny
- * order, the audit records, the uniform "credentials" response that blocks account enumeration —
- * must hold identically for users and admins, and a single body is what guarantees a future fix
- * (e.g. timing hardening) cannot land in one kind and miss the other.
- *
- * @param ports.identityReaderPort Loads account credentials for the requested principal kind.
- * @param ports.hashingPort Verifies passwords and performs equivalent work for rejected identities.
- * @param ports.tokenPort Issues the authenticated session tokens.
- * @param ports.sessionPort Registers the session against the current account version.
- * @param ports.auditPort Persists login outcomes and refusal evidence.
- * @param principalType The kind of principal the credentials authenticate against
- * @param email The email address identifying the account
- * @param password The plain-text password to verify
- * @returns A token pair when a session opens, or an activation-required outcome
- * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or a newer session version supersedes the login.
+ * @param ports.identityReaderPort Reads credentials and current account eligibility.
+ * @param ports.hashingPort Verifies supplied passwords.
+ * @param ports.tokenPort Signs the winning session claims.
+ * @param ports.sessionPort Reads retained success and opens sessions atomically.
+ * @param ports.auditPort Records login outcomes.
+ * @param principalType Owning principal context.
+ * @param idempotencyRequest Logical request identity.
+ * @param email Account email address.
+ * @param password Plain-text password to verify on a new attempt.
+ * @returns Session tokens or an activation-required outcome.
+ * @throws {ResourceConflictException} When the key belongs to a different request.
+ * @throws {UnauthenticatedException} When credentials or the winning session are no longer eligible.
  * @throws {DependencyUnavailableException} When a required dependency is unavailable.
+ * @throws {SystemException} When the session decision is unexpected.
  */
 export async function login(
     ports: {
@@ -92,6 +92,7 @@ export async function login(
         readonly auditPort: IAuditPort;
     },
     principalType: PrincipalType,
+    idempotencyRequest: IdempotencyRequest,
     email: string,
     password: string,
 ): Promise<CredentialLoginResult> {
@@ -101,83 +102,118 @@ export async function login(
         identity = await ports.identityReaderPort.getCredentialsByEmail(principalType, email);
     } catch (error) {
         if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
-            // Every refusal decided before the password is verified spends the verification anyway,
-            // so response time says no more than the uniform message does — the only defence
-            // against enumeration until rate limiting lands.
             await ports.hashingPort.simulatePasswordVerify(password);
 
-            throw await denyLogin(ports.auditPort, AuthRejectionReason.ACCOUNT_NOT_FOUND, undefined, error);
+            throw await auditAndCreateLoginFailure(
+                ports.auditPort,
+                AuthRejectionReason.ACCOUNT_NOT_FOUND,
+                undefined,
+                error,
+            );
         }
 
         throw error;
     }
 
-    const { id, password: currentPassword } = identity;
-
     if (identity.isBanned) {
         await ports.hashingPort.simulatePasswordVerify(password);
 
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, id);
+        throw await auditAndCreateLoginFailure(ports.auditPort, AuthRejectionReason.INACTIVE_ACCOUNT, identity.id);
     }
 
-    // An invited admin has no password until activation. Pending users already have a hash and
-    // continue through the real verification below.
-    if (!currentPassword) {
+    if (!identity.password) {
         await ports.hashingPort.simulatePasswordVerify(password);
 
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, id);
+        throw await auditAndCreateLoginFailure(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
     }
 
-    if (!(await ports.hashingPort.verifyPassword(currentPassword, password))) {
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.INVALID_PASSWORD, id);
-    }
-
-    /**
-     * Reached only when the account exists, is not banned, has a password, and the supplied
-     * password matches. For a user still awaiting activation, record the refusal and return
-     * without generating tokens or opening a session.
-     */
-    if (identity.requiresActivation) {
-        await ports.auditPort.record({
-            action: AuthAuditAction.LOGIN_FAILED,
-            reason: AuthRejectionReason.PENDING_ACCOUNT,
-            targetId: id,
-        });
-
-        return { session: SessionOutcome.ACTIVATION_REQUIRED };
-    }
-
-    const tokenPairWithSession = await ports.tokenPort.generateTokens(
-        { id, type: principalType, permissions: identity.permissions },
-        identity.sessionVersion,
+    let sessionResult: ReplaySessionResult | OpenSessionResult = await ports.sessionPort.findSessionRequestReplay(
+        idempotencyRequest,
+        identity.id,
+        principalType,
     );
 
-    // Mirror the version and open the session together; a newer Redis floor means this login's
-    // auth snapshot was superseded. Session availability failures propagate without issuing tokens.
-    if (!(await ports.sessionPort.openSession(id, tokenPairWithSession.session))) {
-        throw await denyLogin(ports.auditPort, AuthRejectionReason.SESSION_SUPERSEDED, id);
+    switch (sessionResult.outcome) {
+        case ReplaySessionOutcome.CONFLICT:
+            throw new ResourceConflictException(ResourceConflictMessage.IDEMPOTENCY_KEY_CONFLICT);
+        case ReplaySessionOutcome.REPLAY_UNAVAILABLE:
+        case ReplaySessionOutcome.SESSION_UNAVAILABLE:
+        case ReplaySessionOutcome.VERSION_SUPERSEDED:
+            throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
+        case ReplaySessionOutcome.REPLAYED:
+            break;
+        case ReplaySessionOutcome.NOT_FOUND: {
+            if (!(await ports.hashingPort.verifyPassword(identity.password, password))) {
+                throw await auditAndCreateLoginFailure(
+                    ports.auditPort,
+                    AuthRejectionReason.INVALID_PASSWORD,
+                    identity.id,
+                );
+            }
+
+            if (identity.requiresActivation) {
+                await ports.auditPort.record({
+                    action: AuthAuditAction.LOGIN_FAILED,
+                    reason: AuthRejectionReason.PENDING_ACCOUNT,
+                    targetId: identity.id,
+                });
+
+                return { session: SessionOutcome.ACTIVATION_REQUIRED };
+            }
+
+            sessionResult = await ports.sessionPort.openSession(
+                idempotencyRequest,
+                identity.id,
+                principalType,
+                identity.sessionVersion,
+            );
+
+            switch (sessionResult.outcome) {
+                case ReplaySessionOutcome.CONFLICT:
+                    throw new ResourceConflictException(ResourceConflictMessage.IDEMPOTENCY_KEY_CONFLICT);
+                case ReplaySessionOutcome.REPLAY_UNAVAILABLE:
+                case ReplaySessionOutcome.SESSION_UNAVAILABLE:
+                case ReplaySessionOutcome.VERSION_SUPERSEDED:
+                    throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
+                case ReplaySessionOutcome.REPLAYED:
+                    break;
+                case OpenSessionOutcome.VERSION_SUPERSEDED:
+                    throw new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS);
+                case OpenSessionOutcome.OPENED:
+                    break;
+                default:
+                    rejectUnexpectedLoginResult(sessionResult);
+            }
+
+            break;
+        }
+        default:
+            rejectUnexpectedLoginResult(sessionResult);
     }
 
-    await ports.auditPort.record({ action: AuthAuditAction.LOGIN_SUCCESS, targetId: id });
+    const { outcome, session } = sessionResult,
+        payload = {
+            sub: identity.id,
+            principalType: session.principalType,
+            sid: session.sid,
+            sessionExpiresAt: session.sessionExpiresAt,
+            sessionVersion: session.sessionVersion,
+        },
+        tokens = await ports.tokenPort.generateTokens(
+            { ...payload, permissions: identity.permissions, exp: sessionResult.accessExpiresAt },
+            { ...payload, jti: session.refreshTokenJti, exp: session.refreshExpiresAt },
+        );
 
-    return {
-        session: SessionOutcome.CREATED,
-        accessToken: tokenPairWithSession.accessToken,
-        refreshToken: tokenPairWithSession.refreshToken,
-    };
+    if (outcome === OpenSessionOutcome.OPENED) {
+        await ports.auditPort.record({ action: AuthAuditAction.LOGIN_SUCCESS, targetId: identity.id });
+    }
+
+    return { session: SessionOutcome.CREATED, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
 }
 
 /**
- * Records the failed attempt and builds the rejection the caller throws.
- *
- * This flow is the only code that knows WHY the attempt failed — the response deliberately says
- * nothing beyond "credentials", so an observer downstream cannot tell an unknown email from a wrong
- * password. Writing the audit record here rather than attaching the reason as exception `context`
- * is what keeps the two apart: the auditor gets the precise reason, the client gets none.
- *
- * The exception therefore carries NO context. Context is a diagnostic channel read on 5xx; a
- * deliberate 401 that has already been audited has nothing left to say to an operator, and leaving
- * it attached would duplicate the same refusal into the operational log as a `warn`.
+ * Records refusal evidence before returning the uniform credentials exception.
+ * Internal reasons stay out of client responses and diagnostic context.
  *
  * @param auditPort The port the failed attempt is recorded on
  * @param reason Why the attempt was rejected — the audit record's own vocabulary
@@ -186,7 +222,7 @@ export async function login(
  * @returns The exception the caller throws
  * @throws {DependencyUnavailableException} When the refusal audit cannot reach its database
  */
-async function denyLogin(
+async function auditAndCreateLoginFailure(
     auditPort: IAuditPort,
     reason: AuthRejectionReason,
     targetId?: string,
@@ -196,5 +232,19 @@ async function denyLogin(
 
     return new UnauthenticatedException(UnauthenticatedMessage.CREDENTIALS, {
         ...(cause !== undefined && { cause }),
+    });
+}
+
+/**
+ * Rejects unsupported session decisions and requires exhaustive login outcome handling.
+ *
+ * @param sessionResult Unsupported session result used only for exhaustive type checking.
+ * @returns Never returns because the decision violates the session contract.
+ */
+function rejectUnexpectedLoginResult(sessionResult: never): never {
+    void sessionResult;
+
+    throw new SystemException('Login received an unexpected session outcome.', {
+        context: { class: login.name, method: login.name },
     });
 }

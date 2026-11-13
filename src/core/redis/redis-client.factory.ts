@@ -20,6 +20,8 @@ import { ConnectionLogMessage, type ILoggerPort } from 'src/core/observability/l
  * @param env.connectTimeout Configuration key for the connection timeout in seconds.
  * @param env.maxRetriesPerRequest Configuration key limiting retries for pending requests.
  * @param env.commandTimeout Configuration key for the command response timeout in seconds.
+ * @param options.enableOfflineQueue Whether commands may queue before the connection is ready.
+ * @param options.autoResendUnfulfilledCommands Whether unanswered commands may be replayed after reconnect.
  * @param token The injection token the client is provided under; its description names the client in logs.
  * @returns The initialized Redis client instance.
  */
@@ -36,10 +38,15 @@ export function createRedisClient(
         readonly commandTimeout: string;
     },
     token: symbol,
+    options: {
+        readonly enableOfflineQueue?: boolean;
+        readonly autoResendUnfulfilledCommands?: boolean;
+    } = {},
 ): Redis {
     const clientName = token.description ?? token.toString(),
         password = configService.getOrThrow<string>(env.password),
         redis = new Redis({
+            ...options,
             host: configService.getOrThrow<string>(env.host),
             port: configService.getOrThrow<number>(env.port),
             ...(password ? { password } : {}),

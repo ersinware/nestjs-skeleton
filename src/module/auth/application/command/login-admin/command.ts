@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 
 /**
  * Command to log in an admin using email and password.
@@ -12,10 +13,12 @@ export class LoginAdminCommand extends Command<LoginAdminResult> {
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Logical request identity and canonical semantic input.
      * @param email The admin's email address
      * @param password The plain-text password to verify
      */
     constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
         readonly email: string,
         readonly password: string,
     ) {

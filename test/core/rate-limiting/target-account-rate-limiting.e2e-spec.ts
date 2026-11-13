@@ -237,6 +237,7 @@ describe('Target-account policies with production HTTP and Redis', () => {
                     await app.inject({
                         method: 'POST',
                         url: login.url,
+                        headers: { 'idempotency-key': randomUUID() },
                         payload: { email, password: 'Wrong-password-123!' },
                     })
                 ).statusCode,

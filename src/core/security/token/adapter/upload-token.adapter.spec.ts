@@ -15,12 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 describe('TokenAdapter upload tokens', () => {
     const now = Math.floor(new Date('2026-09-30T12:00:00Z').getTime() / 1000);
     const config = {
-        SESSION_ABSOLUTE_TTL_ADMIN: '8h',
-        SESSION_ABSOLUTE_TTL_USER: '7d',
         JWT_ACCESS_SECRET: 'a'.repeat(32),
-        JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'r'.repeat(32),
-        JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
         JWT_ACTIVATION_SECRET: 'u'.repeat(32),
         JWT_UPLOAD_SECRET: 'p'.repeat(32),
@@ -123,7 +119,26 @@ describe('TokenAdapter upload tokens', () => {
     });
 
     it('isolates upload proofs from every existing token verifier', async () => {
-        const pair = await adapter.generateTokens({ id: userClaims.sub, type: PrincipalType.USER, permissions: [] }, 0);
+        const pair = await adapter.generateTokens(
+            {
+                sub: userClaims.sub,
+                principalType: PrincipalType.USER,
+                sid: '12345678-1234-4234-8234-123456789abc',
+                sessionVersion: 0,
+                sessionExpiresAt: Math.floor(Date.now() / 1000) + 7200,
+                permissions: [],
+                exp: Math.floor(Date.now() / 1000) + 900,
+            },
+            {
+                sub: userClaims.sub,
+                principalType: PrincipalType.USER,
+                sid: '12345678-1234-4234-8234-123456789abc',
+                sessionVersion: 0,
+                sessionExpiresAt: Math.floor(Date.now() / 1000) + 7200,
+                jti: '12345678-1234-4234-8234-123456789def',
+                exp: Math.floor(Date.now() / 1000) + 3600,
+            },
+        );
         await expect(adapter.verifyUploadToken(pair.accessToken, userClaims.purpose)).rejects.toBeInstanceOf(
             UnauthenticatedException,
         );
@@ -181,12 +196,8 @@ describe('TokenAdapter upload tokens', () => {
 
 describe('Upload revocation snapshots', () => {
     const config = {
-        SESSION_ABSOLUTE_TTL_ADMIN: '8h',
-        SESSION_ABSOLUTE_TTL_USER: '7d',
         JWT_ACCESS_SECRET: 'a'.repeat(32),
-        JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'r'.repeat(32),
-        JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
         JWT_ACTIVATION_SECRET: 'u'.repeat(32),
         JWT_UPLOAD_SECRET: 'p'.repeat(32),

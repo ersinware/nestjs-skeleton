@@ -3,14 +3,12 @@
  * @description Port contract for generating and verifying JWT session, activation, email confirmation, and upload tokens.
  */
 
-import type { SessionIdentity, SessionRegistration } from 'src/core/security/session';
 import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
 import type { ActivationTokenPayload } from 'src/core/security/token/activation-token-payload.type';
 import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
 import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
 import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
 import type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
-import type { Principal } from 'src/shared/domain/principal';
 
 /**
  * Dependency injection token for the {@link ITokenPort} contract.
@@ -18,9 +16,9 @@ import type { Principal } from 'src/shared/domain/principal';
 export const TOKEN_TOKEN_PORT = Symbol();
 
 /**
- * A freshly signed token pair with session registration metadata, including the refresh credential JTI.
+ * Signed access and refresh credentials.
  */
-export type TokenPairWithSession = {
+export type TokenPair = {
     /**
      * Signed access credential for authenticated requests.
      */
@@ -30,11 +28,6 @@ export type TokenPairWithSession = {
      * Signed refresh credential for rotating the session token pair.
      */
     readonly refreshToken: string;
-
-    /**
-     * Exact identity and deadlines to register before returning tokens.
-     */
-    readonly session: SessionRegistration;
 };
 
 /**
@@ -42,28 +35,16 @@ export type TokenPairWithSession = {
  */
 export interface ITokenPort {
     /**
-     * Creates a fresh session identity and its signed access/refresh token pair.
+     * Signs supplied claims without generating identities or extending their deadlines.
      *
-     * @param principal The verified principal the tokens are minted for; its permissions go into the access token only.
-     * @param sessionVersion The session version to stamp into both tokens.
-     * @returns The signed token pair and session registration metadata.
+     * @param accessClaims Verified access claims with caller-selected expiry.
+     * @param refreshClaims Verified refresh claims with caller-selected expiry.
+     * @returns Signed access and refresh credentials.
      */
-    generateTokens(principal: Principal, sessionVersion: number): Promise<TokenPairWithSession>;
-
-    /**
-     * Signs replacement credentials with the existing session identity and absolute deadline.
-     *
-     * @param principal Verified owner and current permissions.
-     * @param sessionVersion Current account version.
-     * @param identity Existing session identity to preserve.
-     * @returns The signed token pair and session registration metadata.
-     * @throws {UnauthenticatedException} When the absolute session deadline has passed.
-     */
-    refreshTokens(
-        principal: Principal,
-        sessionVersion: number,
-        identity: SessionIdentity,
-    ): Promise<TokenPairWithSession>;
+    generateTokens(
+        accessClaims: Omit<AccessTokenPayload, 'type'>,
+        refreshClaims: Omit<RefreshTokenPayload, 'type'>,
+    ): Promise<TokenPair>;
 
     /**
      * Signs persisted invitation claims without generating identity or timestamps.
@@ -107,13 +88,24 @@ export interface ITokenPort {
     verifyAccessToken(token: string): Promise<AccessTokenPayload>;
 
     /**
-     * Verifies a refresh token's signature, expiry, and type.
+     * Verifies a refresh credential, including its credential and absolute session expiry.
      *
      * @param token The JWT refresh token string.
-     * @returns The decoded refresh token payload.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, or has an unexpected token type.
+     * @returns Verified refresh claims.
+     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or its session claims are invalid.
      */
     verifyRefreshToken(token: string): Promise<RefreshTokenPayload>;
+
+    /**
+     * Verifies a refresh credential for retained-request replay, deferring credential expiry only.
+     * Signature, type, claim structure, and absolute session expiry checks still apply.
+     * Without retained success, callers must reject expired credentials before rotation.
+     *
+     * @param token The JWT refresh token string.
+     * @returns Verified refresh claims for replay lookup.
+     * @throws {UnauthenticatedException} When the token is malformed, too early, has an unexpected type, or its session claims are invalid or expired.
+     */
+    verifyRefreshTokenForReplay(token: string): Promise<RefreshTokenPayload>;
 
     /**
      * Verifies a refresh credential for closing its session, allowing credential expiry only.
