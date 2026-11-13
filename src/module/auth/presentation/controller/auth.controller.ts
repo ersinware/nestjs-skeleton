@@ -83,7 +83,7 @@ export class AuthController {
     @ApiOperation({
         summary: 'Authenticate user',
         description:
-            'Validates credentials. Activated users receive a session; pending users with the correct password receive activation_required without tokens and can request another activation email. Reuse the same Idempotency-Key after an ambiguous outcome. For 300 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
+            'Validates credentials. Activated users receive a session; pending users with the correct password receive activation_required without tokens and can request another activation email. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
     })
     @ApiExtraModels(ResponseUserLoginSessionDto, ResponseUserLoginActivationRequiredDto)
     @ApiIdempotencyKey()
@@ -152,7 +152,7 @@ export class AuthController {
     @ApiOperation({
         summary: 'Authenticate admin',
         description:
-            'Validates admin credentials and issues a JWT access and refresh token pair. Reuse the same Idempotency-Key after an ambiguous outcome. For 300 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
+            'Validates admin credentials and issues a JWT access and refresh token pair. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
     })
     @ApiIdempotencyKey()
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
@@ -204,7 +204,7 @@ export class AuthController {
     @ApiOperation({
         summary: 'Refresh session tokens',
         description:
-            'Exchanges a valid refresh token for a new access and refresh token pair, invalidating the old refresh token. Reuse the same Idempotency-Key after an ambiguous outcome. For 300 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Retained same-request success can be replayed after the input refresh credential expires, provided its absolute session lifetime and the winning registration remain valid; without retained success, expired credentials cannot rotate. Current authentication, authorization, and rate limits still apply.',
+            'Exchanges a valid refresh token for a new access and refresh token pair, invalidating the old refresh token. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Retained same-request success can be replayed after the input refresh credential expires, provided its absolute session lifetime and the winning registration remain valid; without retained success, expired credentials cannot rotate. Current authentication, authorization, and rate limits still apply.',
     })
     @ApiIdempotencyKey()
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })

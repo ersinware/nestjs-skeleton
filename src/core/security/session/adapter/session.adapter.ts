@@ -74,7 +74,7 @@ const SessionKeys = {
 /**
  * Bounded request retry retention, independent of credential lifetimes.
  */
-const IDEMPOTENCY_TTL_SECONDS = 300;
+const IDEMPOTENCY_TTL_SECONDS = 120;
 
 /**
  * Separates Redis request fingerprints from PostgreSQL and other uses of the shared HMAC key.

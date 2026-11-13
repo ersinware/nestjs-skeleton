@@ -137,7 +137,7 @@ describe('SessionAdapter', () => {
             const [, count, ...args] = redis.eval.mock.calls[0]! as readonly unknown[];
             expect(args[0]).toBe('auth:{user:id}:idempotency:request-key');
             expect(args[Number(count)]).toBe('fingerprint');
-            expect(args.at(-1)).toBe(300);
+            expect(args.at(-1)).toBe(120);
             expect(args).not.toContain(request.canonicalValue);
         });
 

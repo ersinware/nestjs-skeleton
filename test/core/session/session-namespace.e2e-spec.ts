@@ -266,10 +266,10 @@ describe('Principal-scoped Redis sessions', () => {
                             : sessions.rotateSession(input, id, original.refreshTokenJti, original),
                     first = await mutate(),
                     sid = first.session!.sid;
-                expect(await redis.ttl(requestKey)).toBeGreaterThanOrEqual(299);
-                expect(await redis.ttl(requestKey)).toBeLessThanOrEqual(300);
-                // A shorter remaining window makes an accidental 300-second renewal observable without waiting.
-                await redis.pexpire(requestKey, 120_000);
+                expect(await redis.ttl(requestKey)).toBeGreaterThanOrEqual(119);
+                expect(await redis.ttl(requestKey)).toBeLessThanOrEqual(120);
+                // A shorter remaining window makes an accidental 120-second renewal observable without waiting.
+                await redis.pexpire(requestKey, 60_000);
                 const deadlines = async () =>
                         Promise.all([
                             redis.pexpiretime(requestKey),

@@ -18,7 +18,7 @@ Bu issue **HTTP request → Redis mutation** sınırını ve session üretimi ka
 - Generic bir `redisIdempotency.execute(callback)` abstraction eklenmez; ayrı çalışan callback mutation'ı atomik hale getiremez.
 - Replay için full HTTP response, password, access token, refresh token veya başka credential saklanmaz.
 - Aynı Lua script'in dokunduğu Redis key'leri mevcut `auth:{principalType:id}:...` yapısıyla hash-slot uyumlu kalır.
-- Redis request-idempotency success kayıtları **5 dakika (300 saniye)** TTL ile tutulur; bu süre session/refresh-token ömründen bağımsız bounded retry penceresidir.
+- Redis request-idempotency success kayıtları **2 dakika (120 saniye)** TTL ile tutulur; bu süre session/refresh-token ömründen bağımsız bounded retry penceresidir.
 - Redis mutation attempt sonrasında timeout veya connection loss yaşanması **ambiguous outcome** olarak değerlendirilir; mutation'ın gerçekleşmediği varsayılmaz.
 
 ## Faz 1 — Envanter incelemesi ve kararlar
@@ -263,7 +263,7 @@ Inventory kararlarına göre:
 - required / malformed `Idempotency-Key`;
 - aynı logical request'in aynı key ile retry edilmesi ve original success semantics'in korunması;
 - concurrent same-key request'ler;
-- Redis üzerinde SID alanlarının bağımsız expiry’si, 300 saniyelik request retention ve replay’in session/request/version TTL’lerini yenilememesi;
+- Redis üzerinde SID alanlarının bağımsız expiry’si, 120 saniyelik request retention ve replay’in session/request/version TTL’lerini yenilememesi;
 - ambiguous Redis outcome sonrasında same-key retry;
 - protected login'de istemeden birden fazla session oluşmaması ve successful retry'ın current session state nedeniyle farklı bir failure'a düşmemesi;
 - beş PostgreSQL endpoint’inde ilk başarı ve replay’in yalnız `204 No Content` döndürdüğü; session açma/token signing/account reload yapılmadığı ve mutation/audit/jobs tekrarlanmadığı;

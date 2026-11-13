@@ -31,7 +31,7 @@
     - Böylece session/version key'leriyle aynı Redis Cluster hash slot'unda kalır.
 - HMAC context’leri storage sınırına göre ayrıdır: PostgreSQL `postgres:idempotency-fingerprint`, Redis `redis:idempotency-fingerprint`; ikisi de mevcut hashing portunu kullanır.
 - Redis kaydı yalnızca minimum non-secret replay metadata tutmalı: **fingerprint + original session `sid` + refresh `jti`**. Token veya HTTP response saklanmamalı.
-- Redis idempotency kaydı **5 dakika (300 saniye)** tutulmalı. Bu bounded süre yalnızca ambiguous outcome ve normal client retry penceresini kapsar; session veya refresh-token ömrüne bağlı değildir. Süre dolduğunda same-key replay garantisi sona erer ve request normal domain semantics ile değerlendirilir.
+- Redis idempotency kaydı **2 dakika (120 saniye)** tutulmalı. Bu bounded süre yalnızca ambiguous outcome ve normal client retry penceresini kapsar; session veya refresh-token ömrüne bağlı değildir. Süre dolduğunda same-key replay garantisi sona erer ve request normal domain semantics ile değerlendirilir.
 - Lua ilk mutation’da `OPENED` / `ROTATED`, retained canlı başarıda `REPLAYED` + aynı registration döndürür. Bu ayrım callback hazırlığı veya audit koordinasyonunu değiştirmez.
 - Same-key + same-fingerprint retained success:
     - protected mutation tekrar çalışmaz;
