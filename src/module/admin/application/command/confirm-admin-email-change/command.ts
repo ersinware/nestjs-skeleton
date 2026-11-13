@@ -4,49 +4,24 @@
  */
 
 import { Command } from '@nestjs/cqrs';
-import { SessionOutcome } from 'src/core/security/session';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 
 /**
  * Completes a pending email change for the authenticated admin.
  */
-export class ConfirmAdminEmailChangeCommand extends Command<ConfirmAdminEmailChangeResult> {
+export class ConfirmAdminEmailChangeCommand extends Command<void> {
     /**
      * Initializes the authenticated confirmation.
      *
+     * @param idempotencyRequest Logical request identity and canonical semantic input.
      * @param id Account identifier from the verified principal
      * @param token Confirmation token received at the new address
      */
     constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
         readonly id: string,
         readonly token: string,
     ) {
         super();
     }
 }
-
-/**
- * A committed email change with a replacement session or required sign-in.
- */
-export type ConfirmAdminEmailChangeResult =
-    | {
-          /**
-           * Confirms that a replacement session was opened after the email change.
-           */
-          readonly session: SessionOutcome.CREATED;
-
-          /**
-           * Access token issued for the replacement session.
-           */
-          readonly accessToken: string;
-
-          /**
-           * Refresh token issued for the replacement session.
-           */
-          readonly refreshToken: string;
-      }
-    | {
-          /**
-           * The email change committed, but the client must sign in again.
-           */
-          readonly session: SessionOutcome.LOGIN_REQUIRED;
-      };

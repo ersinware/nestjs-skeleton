@@ -192,11 +192,11 @@ describe('PostgreSQL request idempotency', () => {
         const input = request();
         const hmac = vi.spyOn(hashing, 'hmacSha256');
         await port.execute(input, () => mutate(input.key));
-        expect(hmac).toHaveBeenCalledWith('idempotency-fingerprint', input.canonicalValue);
+        expect(hmac).toHaveBeenCalledWith('postgres:idempotency-fingerprint', input.canonicalValue);
         const [retained] = await database.select().from(operation).where(eq(operation.key, input.key));
         expect(retained).toStrictEqual({
             key: input.key,
-            fingerprint: hashing.hmacSha256('idempotency-fingerprint', input.canonicalValue),
+            fingerprint: hashing.hmacSha256('postgres:idempotency-fingerprint', input.canonicalValue),
             replayResultId: input.key,
             createdAt: retained?.createdAt,
         });

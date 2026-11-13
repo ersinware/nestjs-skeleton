@@ -9,11 +9,19 @@ import { randomUUID } from 'node:crypto';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import {
+    ReplaySessionOutcome,
+    RotateSessionOutcome,
+    TOKEN_SESSION_PORT,
+    type ISessionPort,
+    type ReplaySessionResult,
+    type RotateSessionResult,
+} from 'src/core/security/session';
 import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import {
     TOKEN_IDENTITY_READER_PORT,
     type IIdentityReaderPort,
+    type RefreshState,
 } from 'src/module/auth/application/command/port/identity-reader.port';
 import {
     RefreshTokensCommand,
@@ -27,6 +35,7 @@ import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 import {
     ExceptionKind,
     ResourceConflictException,
+    ResourceConflictMessage,
     SystemException,
     UnauthenticatedException,
     UnauthenticatedMessage,
@@ -74,17 +83,16 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @param command The refresh token command parameters
      * @returns The generated access and refresh tokens
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
-     * @throws {ResourceConflictException} When the token was already rotated within grace; the client needs the latest token pair.
+     * @throws {ResourceConflictException} When the request key conflicts or the token was already rotated within grace.
      * @throws {DependencyUnavailableException} When identity lookup, session rotation, job persistence, or audit persistence is unavailable.
-     * @throws {SystemException} When rotation returns an unsupported outcome or the remediation job is not accepted
+     * @throws {SystemException} When a session outcome is unexpected
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload;
 
         try {
-            payload = await this.tokenPort.verifyRefreshToken(command.refreshToken);
+            payload = await this.tokenPort.verifyRefreshTokenForReplay(command.refreshToken);
         } catch (error) {
-            // Hide token-type details from verification failures behind the generic refresh refusal.
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                 throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, { cause: error });
             }
@@ -92,12 +100,139 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw error;
         }
 
-        const { sub, principalType } = payload;
+        let sessionResult: ReplaySessionResult | RotateSessionResult = await this.sessionPort.findSessionRequestReplay(
+                command.idempotencyRequest,
+                payload.sub,
+                payload.principalType,
+            ),
+            identity: RefreshState;
 
-        let identity;
+        switch (sessionResult.outcome) {
+            case ReplaySessionOutcome.CONFLICT:
+                throw new ResourceConflictException(ResourceConflictMessage.IDEMPOTENCY_KEY_CONFLICT);
+            case ReplaySessionOutcome.REPLAY_UNAVAILABLE:
+            case ReplaySessionOutcome.SESSION_UNAVAILABLE:
+            case ReplaySessionOutcome.VERSION_SUPERSEDED:
+                throw new UnauthenticatedException();
+            case ReplaySessionOutcome.REPLAYED:
+                identity = await this.getRefreshState(
+                    payload.principalType,
+                    payload.sub,
+                    sessionResult.session.sessionVersion,
+                );
 
+                break;
+            case ReplaySessionOutcome.NOT_FOUND: {
+                if (payload.exp <= Math.floor(Date.now() / 1000)) {
+                    throw new UnauthenticatedException();
+                }
+
+                identity = await this.getRefreshState(payload.principalType, payload.sub, payload.sessionVersion);
+                sessionResult = await this.sessionPort.rotateSession(
+                    command.idempotencyRequest,
+                    payload.sub,
+                    payload.jti,
+                    {
+                        principalType: payload.principalType,
+                        sessionVersion: identity.sessionVersion,
+                        sid: payload.sid,
+                        sessionExpiresAt: payload.sessionExpiresAt,
+                    },
+                );
+
+                switch (sessionResult.outcome) {
+                    case ReplaySessionOutcome.CONFLICT:
+                        throw new ResourceConflictException(ResourceConflictMessage.IDEMPOTENCY_KEY_CONFLICT);
+                    case ReplaySessionOutcome.REPLAY_UNAVAILABLE:
+                    case ReplaySessionOutcome.SESSION_UNAVAILABLE:
+                    case ReplaySessionOutcome.VERSION_SUPERSEDED:
+                        throw new UnauthenticatedException();
+                    case ReplaySessionOutcome.REPLAYED:
+                        // Mutation may find a competing winner after the initial replay lookup.
+                        identity = await this.getRefreshState(
+                            payload.principalType,
+                            payload.sub,
+                            sessionResult.session.sessionVersion,
+                        );
+
+                        break;
+                    case RotateSessionOutcome.SESSION_CLOSED:
+                    case RotateSessionOutcome.SESSION_UNAVAILABLE:
+                    case RotateSessionOutcome.VERSION_SUPERSEDED:
+                        throw new UnauthenticatedException();
+                    case RotateSessionOutcome.CONCURRENT_REPLAY:
+                        // Timing cannot prove legitimacy; preserve evidence without revoking sessions.
+                        await this.auditPort.record({
+                            action: AuthAuditAction.REFRESH_CONCURRENT_REPLAY,
+                            targetId: payload.sub,
+                        });
+
+                        throw new ResourceConflictException(RefreshTokensRejectionMessage.CONCURRENT_REFRESH);
+                    case RotateSessionOutcome.REUSE_DETECTED: {
+                        const deliveryId = randomUUID();
+
+                        // Commit reuse evidence and the revocation request before rejecting the credential.
+                        await this.transactionPort.start(async () => {
+                            await this.jobQueueWriterPort.enqueue([
+                                {
+                                    deliveryId,
+                                    aggregateId: payload.sub,
+                                    queueName: REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE[payload.principalType],
+                                },
+                            ]);
+                            await this.auditPort.record({
+                                action: AuthAuditAction.REFRESH_REUSE_DETECTED,
+                                targetId: payload.sub,
+                                detail: { deliveryId },
+                            });
+                        });
+
+                        throw new UnauthenticatedException();
+                    }
+                    case RotateSessionOutcome.ROTATED:
+                        break;
+                    default:
+                        this.rejectUnexpectedSessionResult(sessionResult);
+                }
+
+                break;
+            }
+            default:
+                this.rejectUnexpectedSessionResult(sessionResult);
+        }
+
+        const { session } = sessionResult,
+            tokenPayload = {
+                sub: payload.sub,
+                principalType: session.principalType,
+                sid: session.sid,
+                sessionExpiresAt: session.sessionExpiresAt,
+                sessionVersion: session.sessionVersion,
+            };
+
+        return this.tokenPort.generateTokens(
+            { ...tokenPayload, permissions: identity.permissions, exp: sessionResult.accessExpiresAt },
+            { ...tokenPayload, jti: session.refreshTokenJti, exp: session.refreshExpiresAt },
+        );
+    }
+
+    /**
+     * Reads eligible refresh claims while keeping missing or revoked accounts unauthenticated.
+     *
+     * @param principalType Owning principal context.
+     * @param principalId Account identifier.
+     * @param sessionVersion Verified credential or winning replay version.
+     * @returns Current claims for the eligible account.
+     * @throws {UnauthenticatedException} When the account or supplied version is no longer eligible.
+     * @throws {DependencyUnavailableException} When the identity store is unavailable.
+     */
+    private async getRefreshState(
+        principalType: PrincipalType,
+        principalId: string,
+        sessionVersion: number,
+    ): Promise<RefreshState> {
         try {
-            identity = await this.identityReaderPort.getRefreshState(principalType, sub, payload.sessionVersion);
+            return await this.identityReaderPort.getRefreshState(principalType, principalId, sessionVersion);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.RESOURCE_NOT_FOUND)) {
                 throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, { cause: error });
@@ -105,76 +240,19 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
             throw error;
         }
-
-        // The access token is minted from the freshly read permissions, never from the old token:
-        // a refresh is exactly where a permission change reaches the client.
-        const tokenPairWithSession = await this.tokenPort.refreshTokens(
-                { id: sub, type: principalType, permissions: identity.permissions },
-                identity.sessionVersion,
-                { sid: payload.sid, sessionExpiresAt: payload.sessionExpiresAt },
-            ),
-            // The atomic rotation is both the single-use gate and the classifier: the grace
-            // tombstone distinguishes replay within grace from post-window reuse, not concurrency from theft.
-            outcome = await this.sessionPort.rotateSession(sub, payload.jti, tokenPairWithSession.session);
-
-        if (outcome === RotateOutcome.ROTATED) {
-            return { accessToken: tokenPairWithSession.accessToken, refreshToken: tokenPairWithSession.refreshToken };
-        }
-
-        if (outcome === RotateOutcome.SESSION_CLOSED) {
-            throw new UnauthenticatedException();
-        }
-
-        if (outcome === RotateOutcome.CONCURRENT_REPLAY) {
-            // Timing cannot prove a replay is benign; preserve evidence without revoking sessions.
-            await this.auditPort.record({
-                action: AuthAuditAction.REFRESH_CONCURRENT_REPLAY,
-                targetId: sub,
-            });
-
-            throw new ResourceConflictException(RefreshTokensRejectionMessage.CONCURRENT_REFRESH);
-        }
-
-        if (outcome !== RotateOutcome.REUSE_DETECTED) {
-            return rejectUnhandledRotateOutcome(outcome);
-        }
-
-        // Commit the reuse evidence and revocation request before rejecting the credential.
-        const deliveryId = randomUUID();
-
-        await this.transactionPort.start(async () => {
-            await this.jobQueueWriterPort.enqueue([
-                {
-                    deliveryId,
-                    aggregateId: sub,
-                    queueName: REFRESH_REUSE_QUEUE_BY_PRINCIPAL_TYPE[principalType],
-                },
-            ]);
-            await this.auditPort.record({
-                action: AuthAuditAction.REFRESH_REUSE_DETECTED,
-                targetId: sub,
-                detail: { deliveryId },
-            });
-        });
-
-        // No context: the reuse is audited above, and the response must stay indistinguishable from
-        // every other rejected refresh.
-        throw new UnauthenticatedException();
     }
-}
 
-/**
- * Rejects unhandled rotation outcomes before any reuse remediation.
- *
- * @param outcome Outcome missing an explicit handler branch.
- * @returns Never returns normally.
- * @throws {SystemException} When a rotation outcome has no handling branch
- */
-function rejectUnhandledRotateOutcome(outcome: never): never {
-    throw new SystemException(`Unhandled session rotation outcome: ${String(outcome)}.`, {
-        context: {
-            class: RefreshTokensCommandHandler.name,
-            method: rejectUnhandledRotateOutcome.name,
-        },
-    });
+    /**
+     * Rejects unsupported session decisions and requires exhaustive refresh outcome handling.
+     *
+     * @param sessionResult Unsupported session result used only for exhaustive type checking.
+     * @returns Never returns because the decision violates the session contract.
+     */
+    private rejectUnexpectedSessionResult(sessionResult: never): never {
+        void sessionResult;
+
+        throw new SystemException('Refresh received an unexpected session outcome.', {
+            context: { class: this.constructor.name, method: this.execute.name },
+        });
+    }
 }

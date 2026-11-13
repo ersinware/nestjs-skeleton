@@ -47,7 +47,7 @@ describe('IdempotencyAdapter', () => {
     it('uses the shared context-separated hashing port and persists no raw input for a 204 result', async () => {
         const work = vi.fn(() => Promise.resolve({ replayResultId: null }));
         await expect(adapter.execute(input, work)).resolves.toStrictEqual({ replayResultId: null });
-        expect(hashing.hmacSha256).toHaveBeenCalledWith('idempotency-fingerprint', input.canonicalValue);
+        expect(hashing.hmacSha256).toHaveBeenCalledWith('postgres:idempotency-fingerprint', input.canonicalValue);
         expect(values).toHaveBeenCalledWith({ key: input.key, fingerprint: 'opaque-digest' });
         expect(start).toHaveBeenCalledTimes(1);
         expect(work).toHaveBeenCalledTimes(1);

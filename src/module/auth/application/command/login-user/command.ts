@@ -4,6 +4,7 @@
  */
 
 import { Command } from '@nestjs/cqrs';
+import type { IdempotencyRequest } from 'src/core/idempotency';
 import type { CredentialLoginResult } from 'src/module/auth/application/command/login.util';
 
 /**
@@ -13,10 +14,12 @@ export class LoginUserCommand extends Command<LoginUserResult> {
     /**
      * Initializes the command payload.
      *
+     * @param idempotencyRequest Logical request identity and canonical semantic input.
      * @param email The user's email address
      * @param password The plain-text password to verify
      */
     constructor(
+        readonly idempotencyRequest: IdempotencyRequest,
         readonly email: string,
         readonly password: string,
     ) {

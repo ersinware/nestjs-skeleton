@@ -45,6 +45,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
      *
      * @param command The login user command parameters
      * @returns A token pair for an activated user, or an activation-required outcome
+     * @throws {ResourceConflictException} When the key belongs to a different request.
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
@@ -58,6 +59,7 @@ export class LoginUserCommandHandler implements ICommandHandler<LoginUserCommand
                 auditPort: this.auditPort,
             },
             PrincipalType.USER,
+            command.idempotencyRequest,
             command.email,
             command.password,
         );
