@@ -3,18 +3,28 @@
  * @description Exercises login and refresh retries through production HTTP, JWT, Redis, and durable evidence.
  */
 
+import { ConfigService } from '@nestjs/config';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { and, eq, or } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
+import { ENV, parseTtlToSeconds } from 'src/core/config';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit } from 'src/core/observability/audit';
+import {
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    TOKEN_AUTH_REFRESH_TOKEN_PORT,
+    type AccessTokenPayload,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import { AuthAuditAction } from 'src/module/auth/shared/auth-audit';
 import { user } from 'src/module/user/infrastructure/user.schema';
@@ -27,7 +37,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
     let app: NestFastifyApplication;
     let database: NodePgDatabase;
     let redis: Redis;
-    let tokens: ITokenPort;
+    let refreshTokens: ITokenPort<typeof REFRESH_TOKEN_TYPE>;
     let boss: PgBoss;
     let hash: string;
     let id: string;
@@ -39,7 +49,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         app = await createTestApp();
         database = app.get(TOKEN_DATABASE_CLIENT);
         redis = app.get(TOKEN_SESSION_CONNECTION);
-        tokens = app.get(TOKEN_TOKEN_PORT);
+        refreshTokens = app.get(TOKEN_AUTH_REFRESH_TOKEN_PORT);
         boss = app.get(TOKEN_JOB_QUEUE_CLIENT);
         hash = await app.get<IHashingPort>(TOKEN_HASHING_PORT).hashPassword(password);
         for (const queue of await boss.getQueues()) {
@@ -137,8 +147,8 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         }
         const first = responses[0].json<{ data: { refreshToken: string } }>().data,
             second = responses[1].json<{ data: { refreshToken: string } }>().data;
-        expect(await tokens.verifyRefreshToken(second.refreshToken)).toEqual(
-            await tokens.verifyRefreshToken(first.refreshToken),
+        expect(await refreshTokens.verify<RefreshTokenPayload>(second.refreshToken, REFRESH_TOKEN_TYPE)).toEqual(
+            await refreshTokens.verify<RefreshTokenPayload>(first.refreshToken, REFRESH_TOKEN_TYPE),
         );
         expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(1);
         const verify = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'verifyPassword'),
@@ -162,9 +172,41 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(1);
     });
 
+    it.each(['login', 'refresh'] as const)(
+        'recomputes access expiry on %s replay while preserving the registered refresh credential',
+        async (operation) => {
+            const key = randomUUID(),
+                initial = await login(operation === 'login' ? key : randomUUID());
+            expect(initial.statusCode).toBe(200);
+            const original = initial.json<{ data: { accessToken: string; refreshToken: string } }>().data,
+                first = operation === 'login' ? initial : await refresh(original.refreshToken, key);
+            expect(first.statusCode).toBe(200);
+            const pair = first.json<{ data: { accessToken: string; refreshToken: string } }>().data,
+                accessTokens = app.get<ITokenPort<typeof ACCESS_TOKEN_TYPE>>(TOKEN_AUTH_ACCESS_TOKEN_PORT),
+                claims = await accessTokens.verify<AccessTokenPayload>(pair.accessToken, ACCESS_TOKEN_TYPE),
+                registration = await redis.hgetall(`auth:{${type}:${id}}:sessions`),
+                refreshClaims = await refreshTokens.verify<RefreshTokenPayload>(pair.refreshToken, REFRESH_TOKEN_TYPE),
+                replayNow = Date.now() + 30_000;
+            vi.spyOn(Date, 'now').mockReturnValue(replayNow);
+
+            const replay = operation === 'login' ? await login(key) : await refresh(original.refreshToken, key);
+            expect(replay.statusCode).toBe(200);
+            const replayPair = replay.json<{ data: { accessToken: string; refreshToken: string } }>().data,
+                replayClaims = await accessTokens.verify<AccessTokenPayload>(replayPair.accessToken, ACCESS_TOKEN_TYPE),
+                accessTtl = parseTtlToSeconds(app.get(ConfigService).getOrThrow<string>(ENV.JWT_ACCESS_TTL));
+            expect(replayClaims).toEqual({
+                ...claims,
+                exp: Math.min(Math.floor(replayNow / 1000) + accessTtl, refreshClaims.exp),
+            });
+            expect(replayClaims.exp).toBeGreaterThan(claims.exp);
+            expect(replayPair.refreshToken).toBe(pair.refreshToken);
+            expect(await redis.hgetall(`auth:{${type}:${id}}:sessions`)).toEqual(registration);
+        },
+    );
+
     it('recovers login after signing fails without opening another session or retaining credentials', async () => {
         const key = randomUUID(),
-            sign = vi.spyOn(tokens, 'generateTokens').mockRejectedValueOnce(new Error('Lost credential response'));
+            sign = vi.spyOn(refreshTokens, 'sign').mockRejectedValueOnce(new Error('Lost credential response'));
         expect((await login(key)).statusCode).toBe(500);
         const before = await redis.hgetall(`auth:{${type}:${id}}:sessions`);
         expect(Object.keys(before)).toHaveLength(1);
@@ -182,35 +224,42 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
     it('replays successful refresh after input credential expiry while a new key cannot rotate it', async () => {
         const response = await login(),
             pair = response.json<{ data: { accessToken: string; refreshToken: string } }>().data,
-            refreshClaims = await tokens.verifyRefreshToken(pair.refreshToken),
-            accessClaims = await tokens.verifyAccessToken(pair.accessToken),
+            refreshClaims = await refreshTokens.verify<RefreshTokenPayload>(pair.refreshToken, REFRESH_TOKEN_TYPE),
             now = Date.now(),
-            shortened = await tokens.generateTokens(accessClaims, {
-                ...refreshClaims,
+            shortenedRefreshToken = await refreshTokens.sign<RefreshTokenPayload>(REFRESH_TOKEN_TYPE, {
+                sub: refreshClaims.sub,
+                principalType: refreshClaims.principalType,
+                sid: refreshClaims.sid,
+                sessionExpiresAt: refreshClaims.sessionExpiresAt,
+                jti: refreshClaims.jti,
+                sessionVersion: refreshClaims.sessionVersion,
                 exp: Math.floor(now / 1000) + 1,
             }),
             key = randomUUID(),
-            first = await refresh(shortened.refreshToken, key);
+            first = await refresh(shortenedRefreshToken, key);
         expect(first.statusCode).toBe(200);
         vi.spyOn(Date, 'now').mockReturnValue(now + 2000);
-        expect((await refresh(shortened.refreshToken, key)).statusCode).toBe(200);
-        expect((await refresh(shortened.refreshToken, randomUUID())).statusCode).toBe(401);
+        expect((await refresh(shortenedRefreshToken, key)).statusCode).toBe(200);
+        expect((await refresh(shortenedRefreshToken, randomUUID())).statusCode).toBe(401);
         expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(1);
     });
 
     it('preserves refresh success outside grace, does not remediate reuse, and keeps logout repeat-safe without a key', async () => {
         const loginResponse = await login(),
             original = loginResponse.json<{ data: { refreshToken: string } }>().data,
-            originalClaims = await tokens.verifyRefreshToken(original.refreshToken),
+            originalClaims = await refreshTokens.verify<RefreshTokenPayload>(original.refreshToken, REFRESH_TOKEN_TYPE),
             key = randomUUID(),
             responses = await Promise.all([refresh(original.refreshToken, key), refresh(original.refreshToken, key)]);
         expect(responses.map((response) => response.statusCode)).toEqual([200, 200]);
         const winning = responses[0].json<{ data: { refreshToken: string; accessToken: string } }>().data,
-            winningClaims = await tokens.verifyRefreshToken(winning.refreshToken);
+            winningClaims = await refreshTokens.verify<RefreshTokenPayload>(winning.refreshToken, REFRESH_TOKEN_TYPE);
         expect(winningClaims.sid).toBe(originalClaims.sid);
         expect(winningClaims.jti).not.toBe(originalClaims.jti);
         expect(
-            await tokens.verifyRefreshToken(responses[1].json<{ data: { refreshToken: string } }>().data.refreshToken),
+            await refreshTokens.verify<RefreshTokenPayload>(
+                responses[1].json<{ data: { refreshToken: string } }>().data.refreshToken,
+                REFRESH_TOKEN_TYPE,
+            ),
         ).toEqual(winningClaims);
         await redis.del(`auth:{${type}:${id}}:rotated:${originalClaims.sid}:${originalClaims.jti}`);
         expect((await refresh(original.refreshToken, key)).statusCode).toBe(200);

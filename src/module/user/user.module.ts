@@ -4,7 +4,10 @@
  */
 
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { CacheModule } from 'src/core/cache';
+import { ENV } from 'src/core/config';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
@@ -12,9 +15,10 @@ import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
+import { EmailChangeModule } from 'src/core/security/email-change';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
-import { TokenModule } from 'src/core/security/token';
+import { JwtTokenAdapter, TokenModule, type ITokenPort } from 'src/core/security/token';
 import { StorageModule } from 'src/core/storage';
 import { ActivateUserCommandHandler } from 'src/module/user/application/command/activate-user/handler';
 import { BanUserCommandHandler } from 'src/module/user/application/command/ban-user/handler';
@@ -65,6 +69,10 @@ import { TOKEN_IS_USER_EMAIL_IN_USE_PORT } from 'src/module/user/application/que
 import { ListUserPermissionCatalogQueryHandler } from 'src/module/user/application/query/list-user-permission-catalog/handler';
 import { ListUsersQueryHandler } from 'src/module/user/application/query/list-users/handler';
 import { TOKEN_LIST_USERS_PORT } from 'src/module/user/application/query/list-users/port';
+import {
+    TOKEN_USER_ACTIVATION_TOKEN_PORT,
+    USER_ACTIVATION_TOKEN_TYPE,
+} from 'src/module/user/application/user-activation-token';
 import { UserEmailChangeNotificationWriterAdapter } from 'src/module/user/infrastructure/adapter/user-email-change-notification-writer.adapter';
 import { UserReaderAdapter } from 'src/module/user/infrastructure/adapter/user-reader.adapter';
 import { UserReplicaReaderAdapter } from 'src/module/user/infrastructure/adapter/user-replica-reader.adapter';
@@ -87,6 +95,7 @@ import { UserFacade } from 'src/module/user/user.facade';
         HashingModule,
         SessionModule,
         TokenModule,
+        EmailChangeModule,
         StorageModule,
         EmailModule,
         CqrsPipelineModule,
@@ -154,6 +163,15 @@ import { UserFacade } from 'src/module/user/user.facade';
         { provide: TOKEN_GET_USER_BY_ID_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_GET_USER_CREDENTIALS_BY_EMAIL_PORT, useExisting: TOKEN_GET_USER_REFRESH_STATE_PORT },
         { provide: TOKEN_LIST_USERS_PORT, useClass: UserReplicaReaderAdapter },
+        {
+            provide: TOKEN_USER_ACTIVATION_TOKEN_PORT,
+            inject: [JwtService, ConfigService],
+            useFactory: (
+                jwtService: JwtService,
+                configService: ConfigService,
+            ): ITokenPort<typeof USER_ACTIVATION_TOKEN_TYPE> =>
+                new JwtTokenAdapter(jwtService, configService.getOrThrow<string>(ENV.JWT_ACTIVATION_SECRET)),
+        },
     ],
     exports: [UserFacade],
 })

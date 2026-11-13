@@ -7,14 +7,15 @@ import { randomUUID } from 'node:crypto';
 import type { IIdempotencyPort } from 'src/core/idempotency';
 import type { IAuditPort } from 'src/core/observability/audit';
 import type { IHashingPort } from 'src/core/security/hashing';
-import { AuthTokenType, type ITokenPort } from 'src/core/security/token';
-import type { IStoragePort } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import type { IStoragePort, UploadTokenPayload } from 'src/core/storage';
+import { ADMIN_INVITE_TOKEN_TYPE, type InviteTokenPayload } from 'src/module/admin/application/admin-invite-token';
+import { AdminUploadTokenType } from 'src/module/admin/application/admin-upload-token';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import type { IAdminWriterPort } from 'src/module/admin/application/command/port/admin-writer.port';
 import { canonicalizeAdminActivationForm } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import {
@@ -30,8 +31,12 @@ describe('ActivateAdminCommandHandler', () => {
     const load = vi.fn<IAdminWriterPort['load']>(),
         save = vi.fn<IAdminWriterPort['save']>(),
         record = vi.fn<IAuditPort['record']>(),
-        verifyInviteToken = vi.fn<ITokenPort['verifyInviteToken']>(),
-        verifyUploadToken = vi.fn<ITokenPort['verifyUploadToken']>(),
+        verifyInviteToken =
+            vi.fn<(token: string, expectedType: typeof ADMIN_INVITE_TOKEN_TYPE) => Promise<InviteTokenPayload>>(),
+        verifyUploadToken =
+            vi.fn<
+                (token: string, expectedType: AdminUploadTokenType) => Promise<UploadTokenPayload<AdminUploadTokenType>>
+            >(),
         hash = vi.fn<IHashingPort['hashPassword']>(),
         verifyHmacSha256 = vi.fn<IHashingPort['verifyHmacSha256']>(),
         idempotency: IIdempotencyPort = {
@@ -59,26 +64,23 @@ describe('ActivateAdminCommandHandler', () => {
             jti: admin.inviteId!,
             exp: admin.inviteExpiresAt!.getTime() / 1000,
             inviteRevocationVersion: admin.inviteRevocationVersion!,
-            type: AuthTokenType.INVITE,
+            type: ADMIN_INVITE_TOKEN_TYPE,
         });
         verifyUploadToken.mockImplementation(() =>
             Promise.resolve({
                 sub: admin.id,
                 jti: 'upload-id',
-                purpose: AdminUploadPurpose.ACTIVATION,
                 fileKey: buildAdminPendingAvatarKey(admin.id, admin.inviteId!),
                 exp: admin.inviteExpiresAt!.getTime() / 1000,
                 formHash: 'form-digest',
-                type: AuthTokenType.UPLOAD,
+                type: AdminUploadTokenType.ACTIVATION,
             }),
         );
         handler = new ActivateAdminCommandHandler(
             idempotency,
             { load, save },
-            {
-                verifyInviteToken,
-                verifyUploadToken,
-            } as unknown as ITokenPort,
+            { verify: verifyInviteToken } as unknown as ITokenPort<typeof ADMIN_INVITE_TOKEN_TYPE>,
+            { verify: verifyUploadToken } as unknown as ITokenPort<typeof AdminUploadTokenType.ACTIVATION>,
             { hashPassword: hash, verifyHmacSha256 } as unknown as IHashingPort,
             { record },
             {
@@ -170,7 +172,7 @@ describe('ActivateAdminCommandHandler', () => {
         verifyHmacSha256.mockReturnValueOnce(false);
         await expect(handler.execute(command)).rejects.toBeInstanceOf(InvalidInputException);
         expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
-            AdminUploadPurpose.ACTIVATION,
+            AdminUploadTokenType.ACTIVATION,
             canonicalizeAdminActivationForm({
                 id: admin.id,
                 inviteId: admin.inviteId!,
@@ -186,7 +188,7 @@ describe('ActivateAdminCommandHandler', () => {
     it.each(['subject', 'key', 'deadline'] as const)(
         'rejects upload proof with a mismatched %s before hashing',
         async (field) => {
-            const claims = await verifyUploadToken('proof', AdminUploadPurpose.ACTIVATION);
+            const claims = await verifyUploadToken('proof', AdminUploadTokenType.ACTIVATION);
             verifyUploadToken.mockResolvedValueOnce({
                 ...claims,
                 ...(field === 'subject'

@@ -10,11 +10,11 @@ import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
 import { UpdateUserCommandHandler } from 'src/module/user/application/command/update-user/handler';
+import { UserUploadTokenType } from 'src/module/user/application/user-upload-token';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import {
     DependencyUnavailableException,
@@ -39,14 +39,14 @@ describe('UpdateUserCommandHandler', () => {
                 writer.load.mockRejectedValueOnce(failure);
             }
             const audit = { record: vi.fn() };
-            const token = { verifyUploadToken: vi.fn() };
+            const token = { verify: vi.fn() };
             const storage = { headObject: vi.fn() };
             const transaction = { start: vi.fn(), join: vi.fn() };
             const handler = new UpdateUserCommandHandler(
                 transaction,
                 writer,
                 audit,
-                token as unknown as ITokenPort,
+                token as unknown as ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>,
                 storage as unknown as IStoragePort,
                 { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
@@ -57,7 +57,7 @@ describe('UpdateUserCommandHandler', () => {
             } else {
                 await expect(result).rejects.toMatchObject({ kind: ExceptionKind.RESOURCE_NOT_FOUND });
             }
-            expect(token.verifyUploadToken).not.toHaveBeenCalled();
+            expect(token.verify).not.toHaveBeenCalled();
             expect(storage.headObject).not.toHaveBeenCalled();
             expect(writer.save).not.toHaveBeenCalled();
             expect(transaction.start).not.toHaveBeenCalled();
@@ -70,13 +70,13 @@ describe('UpdateUserCommandHandler', () => {
         async (scenario) => {
             const writer = { load: vi.fn(), save: vi.fn(), loadByEmail: vi.fn(), insert: vi.fn() };
             const audit = { record: vi.fn() };
-            const token = { verifyUploadToken: vi.fn() };
+            const token = { verify: vi.fn() };
             const storage = { headObject: vi.fn() };
             const handler = new UpdateUserCommandHandler(
                 { start: vi.fn(), join: vi.fn() },
                 writer,
                 audit,
-                token as unknown as ITokenPort,
+                token as unknown as ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>,
                 storage as unknown as IStoragePort,
                 { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
@@ -88,7 +88,7 @@ describe('UpdateUserCommandHandler', () => {
             );
             await expect(handler.execute(command)).rejects.toMatchObject({ kind: ExceptionKind.INVALID_INPUT });
             expect(writer.load).not.toHaveBeenCalled();
-            expect(token.verifyUploadToken).not.toHaveBeenCalled();
+            expect(token.verify).not.toHaveBeenCalled();
             expect(storage.headObject).not.toHaveBeenCalled();
             expect(audit.record).not.toHaveBeenCalled();
         },
@@ -148,9 +148,9 @@ describe('UpdateUserCommandHandler', () => {
             payload.formHash = 'mismatched-binding';
         }
         const verifyHmacSha256 = vi.fn<IHashingPort['verifyHmacSha256']>().mockReturnValue(scenario !== 'binding');
-        const verifyUploadToken = vi.fn().mockResolvedValue(payload);
+        const verify = vi.fn().mockResolvedValue(payload);
         if (scenario === 'invalid-proof') {
-            verifyUploadToken.mockRejectedValue(new UnauthenticatedException());
+            verify.mockRejectedValue(new UnauthenticatedException());
         }
         const storage = {
             headObject: vi.fn().mockResolvedValue({ ...avatar, sizeBytes: scenario === 'metadata' ? 5 : 4 }),
@@ -169,7 +169,7 @@ describe('UpdateUserCommandHandler', () => {
             transaction,
             writer,
             audit,
-            { verifyUploadToken } as unknown as ITokenPort,
+            { verify } as unknown as ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>,
             storage as unknown as IStoragePort,
             { verifyHmacSha256 } as unknown as IHashingPort,
         );
@@ -196,7 +196,7 @@ describe('UpdateUserCommandHandler', () => {
             await expect(result).rejects.toMatchObject({ kind: failureKind[scenario as keyof typeof failureKind] });
             if (verifyHmacSha256.mock.calls.length > 0) {
                 expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
-                    UserUploadPurpose.PROFILE_AVATAR,
+                    UserUploadTokenType.PROFILE_AVATAR,
                     canonicalizeUserAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
                     payload.formHash,
                 );
@@ -231,11 +231,11 @@ describe('UpdateUserCommandHandler', () => {
         expect(writer.save).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);
         if (hasUpload) {
             expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
-                UserUploadPurpose.PROFILE_AVATAR,
+                UserUploadTokenType.PROFILE_AVATAR,
                 canonicalizeUserAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
                 payload.formHash,
             );
-            expect(verifyUploadToken).toHaveBeenCalledWith('proof', UserUploadPurpose.PROFILE_AVATAR, true);
+            expect(verify).toHaveBeenCalledWith('proof', UserUploadTokenType.PROFILE_AVATAR);
             expect(user.pullJobs()).toEqual([
                 {
                     deliveryId: avatarId,
@@ -251,7 +251,7 @@ describe('UpdateUserCommandHandler', () => {
             ]);
         } else {
             expect(user.pullJobs()).toHaveLength(scenario === 'unchanged-name' ? 0 : 1);
-            expect(verifyUploadToken).not.toHaveBeenCalled();
+            expect(verify).not.toHaveBeenCalled();
             expect(storage.headObject).not.toHaveBeenCalled();
         }
         expect(audit.record).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);

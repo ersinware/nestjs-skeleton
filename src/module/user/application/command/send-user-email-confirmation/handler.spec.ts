@@ -5,6 +5,7 @@
 
 import { ConfigService } from '@nestjs/config';
 import type { IEmailerPort } from 'src/core/email';
+import type { EMAIL_CONFIRMATION_TOKEN_TYPE } from 'src/core/security/email-change';
 import type { ITokenPort } from 'src/core/security/token';
 import { SendUserEmailConfirmationCommand } from 'src/module/user/application/command/send-user-email-confirmation/command';
 import { SendUserEmailConfirmationCommandHandler } from 'src/module/user/application/command/send-user-email-confirmation/handler';
@@ -32,7 +33,7 @@ describe('SendUserEmailConfirmationCommandHandler', () => {
             pendingEmailRevocationVersion: 3,
         });
         const sign = vi.fn().mockResolvedValue('fixed-token');
-        const token = { generateEmailConfirmationToken: sign } as unknown as ITokenPort;
+        const token = { sign } as unknown as ITokenPort<typeof EMAIL_CONFIRMATION_TOKEN_TYPE>;
         const handler = new SendUserEmailConfirmationCommandHandler(
             { getEmailConfirmationRecipient: read },
             token,

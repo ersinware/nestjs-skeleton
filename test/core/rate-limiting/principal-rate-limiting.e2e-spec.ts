@@ -13,6 +13,12 @@ import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { audit } from 'src/core/observability/audit/audit.schema';
 import {
+    ACCESS_TOKEN_TYPE,
+    AccessTokenLifetimePolicy,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    type AccessTokenPayload,
+} from 'src/core/security/auth';
+import {
     TOKEN_RATE_LIMIT_COUNTER_PORT,
     type IRateLimitCounterPort,
 } from 'src/core/security/rate-limiting/port/rate-limit-counter.port';
@@ -26,7 +32,7 @@ import {
     type SessionRegistration,
 } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { Permission, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { PrincipalRateLimitingTestController } from 'test/core/rate-limiting/principal-rate-limiting.fixture';
 import { createTestApp } from 'test/shared/test-app.factory';
@@ -65,16 +71,18 @@ const groups = [
 describe('Principal policies with production guards and Redis', () => {
     let app: NestFastifyApplication;
     let counter: IRateLimitCounterPort;
-    let tokens: ITokenPort;
+    let accessTokens: ITokenPort<typeof ACCESS_TOKEN_TYPE>;
     let sessions: ISessionPort;
+    let accessTokenLifetimePolicy: AccessTokenLifetimePolicy;
     const ids: string[] = [];
     const kinds = new Map<string, PrincipalType>();
 
     beforeAll(async () => {
         app = await createTestApp({ extraControllers: [PrincipalRateLimitingTestController] });
         counter = app.get(TOKEN_RATE_LIMIT_COUNTER_PORT);
-        tokens = app.get(TOKEN_TOKEN_PORT);
+        accessTokens = app.get(TOKEN_AUTH_ACCESS_TOKEN_PORT);
         sessions = app.get(TOKEN_SESSION_PORT);
+        accessTokenLifetimePolicy = app.get(AccessTokenLifetimePolicy);
     });
 
     afterAll(async () => {
@@ -119,33 +127,25 @@ describe('Principal policies with production guards and Redis', () => {
         kind = PrincipalType.ADMIN,
         id = uuidv7(),
         permissions: readonly Permission[] = kind === PrincipalType.ADMIN ? [Permission.ADMIN_ACCOUNT_INVITE] : [],
-    ): Promise<
-        Awaited<ReturnType<ITokenPort['generateTokens']>> & Principal & { readonly session: SessionRegistration }
-    > {
+    ): Promise<{ readonly accessToken: string } & Principal & { readonly session: SessionRegistration }> {
         ids.push(id);
         kinds.set(id, kind);
-        const { outcome, session, accessExpiresAt } = await sessions.openSession(
-            { key: randomUUID(), canonicalValue: 'session-fixture' },
+        const { outcome, session } = await sessions.openSession(
+            { key: randomUUID(), fingerprint: 'session-fixture' },
             id,
             kind,
             0,
         );
         expect(outcome).toBe(OpenSessionOutcome.OPENED);
-        const payload = {
-                sub: id,
-                principalType: session!.principalType,
-                sid: session!.sid,
-                sessionVersion: session!.sessionVersion,
-                sessionExpiresAt: session!.sessionExpiresAt,
-            },
-            pair = {
-                ...(await tokens.generateTokens(
-                    { ...payload, permissions, exp: accessExpiresAt! },
-                    { ...payload, jti: session!.refreshTokenJti, exp: session!.refreshExpiresAt },
-                )),
-                session: session!,
-            };
-        return { id, type: kind, permissions, ...pair };
+        const accessToken = await accessTokens.sign<AccessTokenPayload>(ACCESS_TOKEN_TYPE, {
+            sub: id,
+            principalType: session!.principalType,
+            sid: session!.sid,
+            sessionVersion: session!.sessionVersion,
+            permissions,
+            exp: accessTokenLifetimePolicy.getAccessExpiresAt(session!.refreshExpiresAt),
+        });
+        return { id, type: kind, permissions, accessToken, session: session! };
     }
 
     it.each(groups.flatMap((group) => group.endpoints.map((endpoint) => ({ ...endpoint, policy: group.policy }))))(

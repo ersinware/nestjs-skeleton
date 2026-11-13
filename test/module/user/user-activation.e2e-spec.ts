@@ -18,11 +18,18 @@ import { operation } from 'src/core/idempotency/idempotency.schema';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
+import {
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    TOKEN_AUTH_REFRESH_TOKEN_PORT,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, TOKEN_UPLOAD_TOKEN_PORT, type UploadTokenPayload } from 'src/core/storage';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import { FinalizeUserAvatarCommand } from 'src/module/user/application/command/finalize-user-avatar/command';
 import {
@@ -34,15 +41,21 @@ import { UserActivationConsumer } from 'src/module/user/application/consumer/use
 import { UserAvatarFinalizeConsumer } from 'src/module/user/application/consumer/user-avatar-finalize.consumer';
 import { UserAvatarReplaceConsumer } from 'src/module/user/application/consumer/user-avatar-replace.consumer';
 import { UserCacheConsumer } from 'src/module/user/application/consumer/user-cache.consumer';
+import {
+    TOKEN_USER_ACTIVATION_TOKEN_PORT,
+    USER_ACTIVATION_TOKEN_TYPE,
+    type ActivationTokenPayload,
+} from 'src/module/user/application/user-activation-token';
 import { CacheKeys } from 'src/module/user/application/user-cache-key.util';
+import { UserUploadTokenType, type UserProfileAvatarTokenPayload } from 'src/module/user/application/user-upload-token';
 import { UserJobQueue } from 'src/module/user/domain/job/user-job-queue.enum';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { user } from 'src/module/user/infrastructure/user.schema';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AVATAR_PERMANENT_CACHE_POLICY, type AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
@@ -54,7 +67,10 @@ describe('User registration and activation', () => {
     const objectKeys = new Set<string>();
     let database: NodePgDatabase;
     let boss: PgBoss;
-    let tokenPort: ITokenPort;
+    let accessTokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>;
+    let refreshTokenPort: ITokenPort<typeof REFRESH_TOKEN_TYPE>;
+    let activationTokenPort: ITokenPort<typeof USER_ACTIVATION_TOKEN_TYPE>;
+    let uploadTokenPort: ITokenPort<UserUploadTokenType>;
     let sessionPort: ISessionPort;
     let auditPort: IAuditPort;
     let jobWriterPort: IJobQueueWriterPort;
@@ -75,7 +91,10 @@ describe('User registration and activation', () => {
         });
         database = app.get(TOKEN_DATABASE_CLIENT);
         boss = app.get(TOKEN_JOB_QUEUE_CLIENT);
-        tokenPort = app.get(TOKEN_TOKEN_PORT);
+        accessTokenPort = app.get(TOKEN_AUTH_ACCESS_TOKEN_PORT);
+        refreshTokenPort = app.get(TOKEN_AUTH_REFRESH_TOKEN_PORT);
+        activationTokenPort = app.get(TOKEN_USER_ACTIVATION_TOKEN_PORT);
+        uploadTokenPort = app.get(TOKEN_UPLOAD_TOKEN_PORT);
         sessionPort = app.get(TOKEN_SESSION_PORT);
         auditPort = app.get(TOKEN_AUDIT_PORT);
         jobWriterPort = app.get(TOKEN_JOB_QUEUE_WRITER_PORT);
@@ -161,7 +180,10 @@ describe('User registration and activation', () => {
             uploadToken: string;
             request: { url: string; headers: Record<string, string> };
         };
-        const claims = await tokenPort.verifyUploadToken(plan.uploadToken, UserUploadPurpose.REGISTRATION);
+        const claims = await uploadTokenPort.verify<UploadTokenPayload<UserUploadTokenType.REGISTRATION>>(
+            plan.uploadToken,
+            UserUploadTokenType.REGISTRATION,
+        );
         ids.push(claims.sub);
         objectKeys.add(claims.fileKey);
         if (upload) {
@@ -191,7 +213,7 @@ describe('User registration and activation', () => {
     }
 
     async function proof(row: typeof user.$inferSelect) {
-        return tokenPort.generateActivationToken({
+        return activationTokenPort.sign<ActivationTokenPayload>(USER_ACTIVATION_TOKEN_TYPE, {
             sub: row.id,
             jti: row.activationId!,
             exp: Math.floor(row.activationExpiresAt!.getTime() / 1000),
@@ -284,22 +306,20 @@ describe('User registration and activation', () => {
 
     it('rejects pending refresh even if a signed credential is presented', async () => {
         const row = await register();
-        const payload = {
-                sub: row.id,
-                principalType: PrincipalType.USER,
-                sid: randomUUID(),
-                sessionVersion: 0,
-                sessionExpiresAt: Math.floor(Date.now() / 1000) + 7200,
-            },
-            pair = await tokenPort.generateTokens(
-                { ...payload, permissions: [], exp: Math.floor(Date.now() / 1000) + 900 },
-                { ...payload, jti: randomUUID(), exp: Math.floor(Date.now() / 1000) + 3600 },
-            );
+        const refreshToken = await refreshTokenPort.sign<RefreshTokenPayload>(REFRESH_TOKEN_TYPE, {
+            sub: row.id,
+            principalType: PrincipalType.USER,
+            sid: randomUUID(),
+            sessionVersion: 0,
+            sessionExpiresAt: nowEpochSeconds() + 7200,
+            jti: randomUUID(),
+            exp: nowEpochSeconds() + 3600,
+        });
         const response = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/refresh',
             headers: { 'idempotency-key': randomUUID() },
-            payload: { refreshToken: pair.refreshToken },
+            payload: { refreshToken },
         });
         expect(response.statusCode).toBe(401);
         expect((await database.select().from(user).where(eq(user.id, row.id)))[0]!.activationId).toBe(row.activationId);
@@ -320,7 +340,7 @@ describe('User registration and activation', () => {
             const [row] = await database.select().from(user).where(eq(user.email, payload.email));
             const deliveries = await jobs(row!.id, UserJobQueue.AVATAR_FINALIZE);
             await app.get(UserAvatarFinalizeConsumer).consume(deliveries[0]!.data);
-            const verify = vi.spyOn(tokenPort, 'verifyUploadToken');
+            const verify = vi.spyOn(uploadTokenPort, 'verify');
             const head = vi.spyOn(storageFixture.storage, 'headObject');
             const hash = vi.spyOn(hashingPort, 'hashPassword');
             const response = await call();
@@ -401,7 +421,10 @@ describe('User registration and activation', () => {
     it('checks actual object size and type before committing registration', async () => {
         const wrongSize = await prepareRegistration(undefined, true, 'wrong-size');
         const wrongType = await prepareRegistration(undefined, false);
-        const claims = await tokenPort.verifyUploadToken(wrongType.uploadToken, UserUploadPurpose.REGISTRATION);
+        const claims = await uploadTokenPort.verify<UploadTokenPayload<UserUploadTokenType.REGISTRATION>>(
+            wrongType.uploadToken,
+            UserUploadTokenType.REGISTRATION,
+        );
         const plan = await storageFixture.storage.initiateUpload({
             key: claims.fileKey,
             sizeBytes: 4,
@@ -597,7 +620,7 @@ describe('User registration and activation', () => {
             { ...valid, activationRevocationVersion: valid.activationRevocationVersion + 1 },
         ];
         for (const claims of invalid) {
-            const token = await tokenPort.generateActivationToken(claims);
+            const token = await activationTokenPort.sign<ActivationTokenPayload>(USER_ACTIVATION_TOKEN_TYPE, claims);
             const response = await app.inject({
                 method: 'POST',
                 url: '/api/v1/user/activation/complete',
@@ -1001,7 +1024,7 @@ describe('User registration and activation', () => {
             token = await proof(row),
             key = randomUUID(),
             open = vi.spyOn(sessionPort, 'openSession'),
-            sign = vi.spyOn(tokenPort, 'generateTokens'),
+            sign = vi.spyOn(accessTokenPort, 'sign'),
             load = vi.spyOn(app.get<IUserWriterPort>(TOKEN_USER_WRITER_PORT), 'load'),
             call = () =>
                 app.inject({
@@ -1018,7 +1041,7 @@ describe('User registration and activation', () => {
         const before = await state(row.id),
             beforeActions = await actions(row.id),
             beforeJobs = await jobs(row.id),
-            verify = vi.spyOn(tokenPort, 'verifyActivationToken'),
+            verify = vi.spyOn(activationTokenPort, 'verify'),
             hash = vi.spyOn(hashingPort, 'verifyPassword'),
             replay = await call();
         expect(replay.statusCode).toBe(204);
@@ -1151,7 +1174,10 @@ describe('User registration and activation', () => {
             const plan = response.json<{
                 data: { uploadToken: string; request: { url: string; headers: Record<string, string> } };
             }>().data;
-            const claims = await tokenPort.verifyUploadToken(plan.uploadToken, UserUploadPurpose.PROFILE_AVATAR);
+            const claims = await uploadTokenPort.verify<UploadTokenPayload<UserUploadTokenType.PROFILE_AVATAR>>(
+                plan.uploadToken,
+                UserUploadTokenType.PROFILE_AVATAR,
+            );
             const destinationKey = buildUserPermanentAvatarKey(owner.id, claims.jti);
             objectKeys.add(claims.fileKey);
             objectKeys.add(destinationKey);
@@ -1243,7 +1269,7 @@ describe('User registration and activation', () => {
             expect(await evidence(owner.id, UserAuditAction.USER_UPDATED)).toEqual([]);
         });
 
-        it.each(['expired', 'purpose', 'ownership', 'name-binding', 'missing-object'] as const)(
+        it.each(['expired', 'token-type', 'ownership', 'name-binding', 'missing-object'] as const)(
             'rejects %s before accepting a profile change',
             async (scenario) => {
                 const owner = await account();
@@ -1251,14 +1277,34 @@ describe('User registration and activation', () => {
                 const before = await state(owner.id);
                 const beforeJobs = await jobs(owner.id, UserJobQueue.AVATAR_REPLACE);
                 let uploadToken = prepared.uploadToken;
-                if (scenario === 'expired' || scenario === 'purpose' || scenario === 'ownership') {
-                    const claims = await tokenPort.verifyUploadToken(uploadToken, UserUploadPurpose.PROFILE_AVATAR);
-                    uploadToken = await tokenPort.generateUploadToken({
-                        ...claims,
-                        ...(scenario === 'expired' && { exp: Math.floor(Date.now() / 1000) - 1 }),
-                        ...(scenario === 'purpose' && { purpose: UserUploadPurpose.REGISTRATION }),
-                        ...(scenario === 'ownership' && { sub: uuidv7() }),
-                    });
+                if (scenario === 'expired' || scenario === 'token-type' || scenario === 'ownership') {
+                    const claims = await uploadTokenPort.verify<UserProfileAvatarTokenPayload>(
+                        uploadToken,
+                        UserUploadTokenType.PROFILE_AVATAR,
+                    );
+                    uploadToken =
+                        scenario === 'token-type'
+                            ? await uploadTokenPort.sign<UploadTokenPayload<UserUploadTokenType.REGISTRATION>>(
+                                  UserUploadTokenType.REGISTRATION,
+                                  {
+                                      sub: claims.sub,
+                                      jti: claims.jti,
+                                      fileKey: claims.fileKey,
+                                      formHash: claims.formHash,
+                                      exp: claims.exp,
+                                  },
+                              )
+                            : await uploadTokenPort.sign<UserProfileAvatarTokenPayload>(
+                                  UserUploadTokenType.PROFILE_AVATAR,
+                                  {
+                                      sub: scenario === 'ownership' ? uuidv7() : claims.sub,
+                                      jti: claims.jti,
+                                      fileKey: claims.fileKey,
+                                      formHash: claims.formHash,
+                                      revocationVersion: claims.revocationVersion,
+                                      exp: scenario === 'expired' ? nowEpochSeconds() - 1 : claims.exp,
+                                  },
+                              );
                 }
                 const response = await app.inject({
                     method: 'PATCH',

@@ -60,7 +60,7 @@ describe('env.validation.config', () => {
         JWT_ACCESS_SECRET: 'access-secret-at-least-32-bytes!',
         JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'refresh-secret-at-least-32-bytes',
-        JWT_REFRESH_TTL: '7d',
+        SESSION_REFRESH_TTL: '7d',
         JWT_INVITE_SECRET: 'invite-secret-at-least-32-bytes!',
         ADMIN_INVITE_URL: 'http://localhost:3001/admin/activate',
         JWT_ACTIVATION_SECRET: 'activation-secret-at-least-32-bytes',
@@ -120,6 +120,15 @@ describe('env.validation.config', () => {
         }
     });
 
+    it.each(['899s', '900s', '901s'])('bounds access lifetime by the session refresh lifetime %s', (ttl) => {
+        const validate = () => validateConfig({ ...validConfig, SESSION_REFRESH_TTL: ttl });
+        if (ttl === '899s') {
+            expect(validate).toThrow('SESSION_REFRESH_TTL must be greater than or equal to JWT_ACCESS_TTL');
+        } else {
+            expect(validate).not.toThrow();
+        }
+    });
+
     it.each(['ADMIN_EMAIL_CONFIRM_URL', 'USER_EMAIL_CONFIRM_URL'])(
         'accepts only absolute HTTP(S) confirmation URLs for %s',
         (key) => {
@@ -162,7 +171,7 @@ describe('env.validation.config', () => {
         expect(result.NODE_ENV).toBe(Environment.DEVELOPMENT);
         expect(result.DATABASE_URL).toBe('postgres://localhost:5432/db');
         expect(result.JWT_ACCESS_TTL).toBe('15m');
-        expect(result.JWT_REFRESH_TTL).toBe('7d');
+        expect(result.SESSION_REFRESH_TTL).toBe('7d');
         expect(result.SENTRY_ENVIRONMENT).toBe(ExceptionTrackerEnvironment.TEST);
     });
 
@@ -245,7 +254,7 @@ describe('env.validation.config', () => {
         ['SESSION_ABSOLUTE_TTL_USER', '0d'],
         ['SESSION_ABSOLUTE_TTL_USER', '7days'],
         ['JWT_ACCESS_TTL', '0s'],
-        ['JWT_REFRESH_TTL', '0d'],
+        ['SESSION_REFRESH_TTL', '0d'],
         ['REDIS_CACHE_HOST', 'http://localhost'],
         ['REDIS_SESSION_HOST', '999.999.999.999'],
         ['TRUST_PROXY', '999.1.1.1'],
@@ -406,10 +415,10 @@ describe('env.validation.config', () => {
         expect(() => validateConfig(invalidConfig)).toThrow(Error);
     });
 
-    it('should throw an error if JWT_REFRESH_TTL format is invalid', () => {
+    it('should throw an error if SESSION_REFRESH_TTL format is invalid', () => {
         const invalidConfig = {
             ...validConfig,
-            JWT_REFRESH_TTL: '7days',
+            SESSION_REFRESH_TTL: '7days',
         };
 
         expect(() => validateConfig(invalidConfig)).toThrow(Error);

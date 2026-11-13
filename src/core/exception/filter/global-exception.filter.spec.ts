@@ -12,8 +12,7 @@ import { ErrorDefaultDto } from 'src/core/exception/dto/error-default.dto';
 import { GlobalExceptionFilter } from 'src/core/exception/filter/global-exception.filter';
 import { AuditAction, TOKEN_AUDIT_PORT } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
-import type { AuthenticatedRequest } from 'src/core/security/auth';
-import { AuthTokenType, type AccessTokenPayload } from 'src/core/security/token';
+import { ACCESS_TOKEN_TYPE, type AccessTokenPayload, type AuthenticatedRequest } from 'src/core/security/auth';
 import { defineAuditAction } from 'src/shared/domain/audit';
 import { PrincipalType } from 'src/shared/domain/principal';
 import {
@@ -344,12 +343,11 @@ describe('GlobalExceptionFilter', () => {
                 const accessTokenPayload: AccessTokenPayload = {
                     sid: 'session-1',
                     exp: 2000000000,
-                    sessionExpiresAt: 2000000000,
                     sub: 'user-1',
                     principalType: PrincipalType.USER,
                     permissions: [],
                     sessionVersion: 1,
-                    type: AuthTokenType.ACCESS,
+                    type: ACCESS_TOKEN_TYPE,
                 };
 
                 await filter.catch(

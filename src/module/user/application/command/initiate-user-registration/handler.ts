@@ -7,8 +7,13 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import {
+    TOKEN_STORAGE_PORT,
+    TOKEN_UPLOAD_TOKEN_PORT,
+    type IStoragePort,
+    type UploadTokenPayload,
+} from 'src/core/storage';
 import {
     InitiateUserRegistrationCommand,
     type InitiateUserRegistrationResult,
@@ -17,15 +22,16 @@ import {
     TOKEN_IS_USER_EMAIL_IN_USE_PORT,
     type IIsUserEmailInUsePort,
 } from 'src/module/user/application/query/is-user-email-in-use/port';
+import { UserUploadTokenType } from 'src/module/user/application/user-upload-token';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import {
     USER_REGISTRATION_UPLOAD_TOKEN_TTL_SECONDS,
     USER_REGISTRATION_UPLOAD_URL_TTL_SECONDS,
     canonicalizeUserRegistrationForm,
 } from 'src/module/user/domain/user-registration';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
 import { ResourceConflictException, ResourceConflictMessage, SystemException } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -47,7 +53,8 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
     constructor(
         @Inject(TOKEN_IS_USER_EMAIL_IN_USE_PORT) private readonly emailInUsePort: IIsUserEmailInUsePort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof UserUploadTokenType.REGISTRATION>,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
     ) {}
 
@@ -66,7 +73,7 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
         }
 
         const id = uuidv7(),
-            now = Math.floor(Date.now() / 1000),
+            now = nowEpochSeconds(),
             fileKey = buildUserPendingAvatarKey(id, id),
             plan = await this.storagePort.initiateUpload({
                 key: fileKey,
@@ -85,22 +92,24 @@ export class InitiateUserRegistrationCommandHandler implements ICommandHandler<
         return {
             mode: plan.mode,
             request: plan.request,
-            uploadToken: await this.tokenPort.generateUploadToken({
-                sub: id,
-                jti: randomUUID(),
-                purpose: UserUploadPurpose.REGISTRATION,
-                fileKey,
-                formHash: this.hashingPort.hmacSha256(
-                    UserUploadPurpose.REGISTRATION,
-                    canonicalizeUserRegistrationForm({
-                        email: command.email,
-                        name: command.name,
-                        password: command.password,
-                        avatar: command.avatar,
-                    }),
-                ),
-                exp: now + USER_REGISTRATION_UPLOAD_TOKEN_TTL_SECONDS,
-            }),
+            uploadToken: await this.uploadTokenPort.sign<UploadTokenPayload<UserUploadTokenType.REGISTRATION>>(
+                UserUploadTokenType.REGISTRATION,
+                {
+                    sub: id,
+                    jti: randomUUID(),
+                    fileKey,
+                    formHash: this.hashingPort.hmacSha256(
+                        UserUploadTokenType.REGISTRATION,
+                        canonicalizeUserRegistrationForm({
+                            email: command.email,
+                            name: command.name,
+                            password: command.password,
+                            avatar: command.avatar,
+                        }),
+                    ),
+                    exp: now + USER_REGISTRATION_UPLOAD_TOKEN_TTL_SECONDS,
+                },
+            ),
         };
     }
 }

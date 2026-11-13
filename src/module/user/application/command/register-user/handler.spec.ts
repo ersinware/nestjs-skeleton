@@ -8,9 +8,9 @@ import type { IIdempotencyPort } from 'src/core/idempotency';
 import type { IHashingPort } from 'src/core/security/hashing';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
 import { RegisterUserCommandHandler } from 'src/module/user/application/command/register-user/handler';
+import { UserUploadTokenType } from 'src/module/user/application/user-upload-token';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { ExceptionKind, ResourceNotFoundException, UnauthenticatedException } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -31,7 +31,7 @@ describe('RegisterUserCommandHandler', () => {
             fileKey: buildUserPendingAvatarKey(id, id),
             formHash: 'form-digest',
         };
-        const token = { verifyUploadToken: vi.fn().mockResolvedValue(claims) };
+        const token = { verify: vi.fn().mockResolvedValue(claims) };
         const storage = { headObject: vi.fn().mockResolvedValue({ sizeBytes: 4, contentType: 'image/png' }) };
         const writer = { insert: vi.fn() };
         const hashing = {
@@ -85,14 +85,14 @@ describe('RegisterUserCommandHandler', () => {
                     fixture.hashing.verifyHmacSha256.mockReturnValueOnce(false);
                     break;
                 case 'proof':
-                    fixture.token.verifyUploadToken.mockRejectedValue(new UnauthenticatedException());
+                    fixture.token.verify.mockRejectedValue(new UnauthenticatedException());
                     kind = ExceptionKind.INVALID_INPUT;
                     break;
             }
             await expect(fixture.handler.execute(command)).rejects.toMatchObject({ kind });
             if (failure === 'binding') {
                 expect(fixture.hashing.verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
-                    UserUploadPurpose.REGISTRATION,
+                    UserUploadTokenType.REGISTRATION,
                     canonicalizeUserRegistrationForm({
                         email: command.email,
                         name: command.name,

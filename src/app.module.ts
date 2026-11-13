@@ -19,7 +19,6 @@ import { AuthenticationGuard, AuthorizationGuard, AuthPolicyModule } from 'src/c
 import { HashingModule } from 'src/core/security/hashing';
 import { PostAuthRateLimitGuard, PreAuthRateLimitGuard, RateLimitingModule } from 'src/core/security/rate-limiting';
 import { SessionModule } from 'src/core/security/session';
-import { TokenModule } from 'src/core/security/token';
 import { StorageModule } from 'src/core/storage';
 import { AdminModule } from 'src/module/admin';
 import { AuditTrailModule } from 'src/module/audit-trail';
@@ -45,7 +44,6 @@ import { UserModule } from 'src/module/user';
         DatabaseModule,
         EmailModule,
         HashingModule,
-        TokenModule,
         StorageModule,
         SessionModule,
         AuthPolicyModule,

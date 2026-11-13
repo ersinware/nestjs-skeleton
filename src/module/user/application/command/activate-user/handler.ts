@@ -8,12 +8,17 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { ActivateUserCommand } from 'src/module/user/application/command/activate-user/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
+import {
+    TOKEN_USER_ACTIVATION_TOKEN_PORT,
+    USER_ACTIVATION_TOKEN_TYPE,
+    type ActivationTokenPayload,
+} from 'src/module/user/application/user-activation-token';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import {
     ExceptionKind,
@@ -33,14 +38,15 @@ export class ActivateUserCommandHandler implements ICommandHandler<ActivateUserC
      *
      * @param idempotencyPort Commits the account state and success audit together
      * @param userWriterPort Loads and persists authoritative account state
-     * @param tokenPort Verifies the activation proof
+     * @param activationTokenPort Verifies the activation proof
      * @param hashingPort Verifies the existing password without replacing its hash
      * @param auditPort Records completed activations and audited refusals
      */
     constructor(
         @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_USER_ACTIVATION_TOKEN_PORT)
+        private readonly activationTokenPort: ITokenPort<typeof USER_ACTIVATION_TOKEN_TYPE>,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
@@ -60,10 +66,13 @@ export class ActivateUserCommandHandler implements ICommandHandler<ActivateUserC
         await this.idempotencyPort.executePrepared(
             command.idempotencyRequest,
             async () => {
-                let payload;
+                let payload: ActivationTokenPayload;
 
                 try {
-                    payload = await this.tokenPort.verifyActivationToken(command.token);
+                    payload = await this.activationTokenPort.verify<ActivationTokenPayload>(
+                        command.token,
+                        USER_ACTIVATION_TOKEN_TYPE,
+                    );
                 } catch (error) {
                     if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                         throw new InvalidInputException('The activation link is invalid or has expired.', {

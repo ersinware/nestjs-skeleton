@@ -5,14 +5,15 @@
 
 import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
-import type { IStoragePort } from 'src/core/storage';
+import type { IStoragePort, UploadTokenPayload } from 'src/core/storage';
 import { InitiateUserAvatarChangeCommand } from 'src/module/user/application/command/initiate-user-avatar-change/command';
 import { InitiateUserAvatarChangeCommandHandler } from 'src/module/user/application/command/initiate-user-avatar-change/handler';
+import { UserUploadTokenType } from 'src/module/user/application/user-upload-token';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey, buildUserPermanentAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { ExceptionKind } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('InitiateUserAvatarChangeCommandHandler', () => {
@@ -21,7 +22,7 @@ describe('InitiateUserAvatarChangeCommandHandler', () => {
     it.each(['active', 'banned', 'pending'] as const)('checks %s eligibility before signing', async (state) => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-07T08:00:00Z'));
-        const now = Math.floor(Date.now() / 1000);
+        const now = nowEpochSeconds();
         const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
         const currentAvatarKey = buildUserPermanentAvatarKey(id, 'c116ffde-c006-4b3f-902c-e658d6ad4142');
         const user = User.reconstitute({
@@ -46,12 +47,12 @@ describe('InitiateUserAvatarChangeCommandHandler', () => {
             expiresAt: new Date((now + 300) * 1000),
         };
         const initiateUpload = vi.fn<IStoragePort['initiateUpload']>().mockResolvedValue({ mode: 'single', request });
-        const generateUploadToken = vi.fn<ITokenPort['generateUploadToken']>().mockResolvedValue('proof');
+        const sign = vi.fn<ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>['sign']>().mockResolvedValue('proof');
         const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const save = vi.fn();
         const handler = new InitiateUserAvatarChangeCommandHandler(
             { load: vi.fn().mockResolvedValue(user), save, loadByEmail: vi.fn(), insert: vi.fn() },
-            { generateUploadToken } as unknown as ITokenPort,
+            { sign } as unknown as ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>,
             { initiateUpload } as unknown as IStoragePort,
             { hmacSha256 } as unknown as IHashingPort,
             { record: vi.fn().mockResolvedValue(undefined) },
@@ -62,20 +63,23 @@ describe('InitiateUserAvatarChangeCommandHandler', () => {
                 kind: state === 'banned' ? ExceptionKind.ACCESS_DENIED : ExceptionKind.SYSTEM,
             });
             expect(initiateUpload).not.toHaveBeenCalled();
-            expect(generateUploadToken).not.toHaveBeenCalled();
+            expect(sign).not.toHaveBeenCalled();
         } else {
             expect(await result).toEqual({ mode: 'single', request, uploadToken: 'proof' });
-            const proof = generateUploadToken.mock.calls[0]![0];
+            const [tokenType, proof] = sign.mock.calls[0]! as [
+                UserUploadTokenType,
+                Omit<UploadTokenPayload<UserUploadTokenType.PROFILE_AVATAR>, 'type'>,
+            ];
+            expect(tokenType).toBe(UserUploadTokenType.PROFILE_AVATAR);
             expect(proof).toMatchObject({
                 sub: id,
                 revocationVersion: 0,
-                purpose: UserUploadPurpose.PROFILE_AVATAR,
                 exp: now + 600,
                 fileKey: buildUserPendingAvatarKey(id, proof.jti),
             });
             expect(proof.formHash).toBe('form-digest');
             expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
-                UserUploadPurpose.PROFILE_AVATAR,
+                UserUploadTokenType.PROFILE_AVATAR,
                 canonicalizeUserAvatarChangeForm({
                     id,
                     avatarId: proof.jti,

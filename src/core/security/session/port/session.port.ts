@@ -3,7 +3,6 @@
  * @description Atomic session lifecycle and account-wide access-version contracts.
  */
 
-import type { IdempotencyRequest } from 'src/core/idempotency';
 import type { SessionIdentity } from 'src/core/security/session/session-identity.type';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
@@ -11,6 +10,21 @@ import type { PrincipalType } from 'src/shared/domain/principal';
  * Dependency injection token representing the {@link ISessionPort} contract.
  */
 export const TOKEN_SESSION_PORT = Symbol();
+
+/**
+ * Session-scoped logical request identity carrying a precomputed request fingerprint.
+ */
+export type SessionRequestIdentity = {
+    /**
+     * Logical request identifier used to deduplicate retried mutations.
+     */
+    readonly key: string;
+
+    /**
+     * Deterministic request fingerprint protecting idempotent replay from parameter mismatch.
+     */
+    readonly fingerprint: string;
+};
 
 /**
  * Authoritative session metadata used to sign credentials without changing identity or deadlines.
@@ -29,7 +43,7 @@ export type SessionRegistration = SessionIdentity & {
     /**
      * Current refresh credential identifier.
      */
-    readonly refreshTokenJti: string;
+    readonly refreshCredentialId: string;
 
     /**
      * Refresh credential expiry in Unix seconds.
@@ -86,11 +100,6 @@ export type ReplaySessionResult =
            * Original winning live registration.
            */
           readonly session: SessionRegistration;
-
-          /**
-           * Access credential expiry for this issuance in Unix seconds.
-           */
-          readonly accessExpiresAt: number;
       }
     | {
           /**
@@ -102,11 +111,6 @@ export type ReplaySessionResult =
            * No issuable registration accompanies this decision.
            */
           readonly session: null;
-
-          /**
-           * No credential deadline accompanies this decision.
-           */
-          readonly accessExpiresAt?: never;
       };
 
 /**
@@ -139,11 +143,6 @@ export type OpenSessionResult =
            * Original winning live registration.
            */
           readonly session: SessionRegistration;
-
-          /**
-           * Access credential expiry selected for this issuance in Unix seconds.
-           */
-          readonly accessExpiresAt: number;
       }
     | {
           /**
@@ -157,11 +156,6 @@ export type OpenSessionResult =
            * Rejected decisions cannot issue credentials.
            */
           readonly session: null;
-
-          /**
-           * Rejected decisions have no credential deadline.
-           */
-          readonly accessExpiresAt?: never;
       };
 
 /**
@@ -214,11 +208,6 @@ export type RotateSessionResult =
            * Original winning live registration.
            */
           readonly session: SessionRegistration;
-
-          /**
-           * Access credential expiry selected for this issuance in Unix seconds.
-           */
-          readonly accessExpiresAt: number;
       }
     | {
           /**
@@ -232,11 +221,6 @@ export type RotateSessionResult =
            * Rejected decisions cannot issue credentials.
            */
           readonly session: null;
-
-          /**
-           * Rejected decisions have no credential deadline.
-           */
-          readonly accessExpiresAt?: never;
       };
 
 /**
@@ -247,16 +231,16 @@ export interface ISessionPort {
      * Opens a session or replays the original live registration in one atomic operation.
      * Identity and deadlines are created only after the request replay decision.
      *
-     * @param idempotencyRequest Logical request identity.
+     * @param requestIdentity Logical request identity and precomputed fingerprint.
      * @param id Principal identifier.
      * @param principalType Owning context.
      * @param sessionVersion Current account version.
-     * @returns Opening decision, winning registration and per-issuance access expiry on success.
+     * @returns Opening decision and winning registration on success.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
      * @throws {SystemException} When the store returns an unsupported opening result.
      */
     openSession(
-        idempotencyRequest: IdempotencyRequest,
+        requestIdentity: SessionRequestIdentity,
         id: string,
         principalType: PrincipalType,
         sessionVersion: number,
@@ -266,7 +250,7 @@ export interface ISessionPort {
      * Reads retained request success before preparation, without changing session or request state.
      * Mutation methods recheck replay atomically; this read does not wait for in-flight requests.
      *
-     * @param idempotencyRequest Logical request identity and canonical input.
+     * @param requestIdentity Logical request identity and precomputed fingerprint.
      * @param principalId Principal identifier used to locate the request.
      * @param principalType Owning context.
      * @returns Missing request, conflict, unavailable replay, or the original live registration.
@@ -274,7 +258,7 @@ export interface ISessionPort {
      * @throws {SystemException} When the store returns an unsupported replay result.
      */
     findSessionRequestReplay(
-        idempotencyRequest: IdempotencyRequest,
+        requestIdentity: SessionRequestIdentity,
         principalId: string,
         principalType: PrincipalType,
     ): Promise<ReplaySessionResult>;
@@ -283,19 +267,19 @@ export interface ISessionPort {
      * Replays request success or rotates the current credential in one atomic operation.
      * Reuse outside grace closes that session before returning.
      *
-     * @param idempotencyRequest Logical request identity.
+     * @param requestIdentity Logical request identity and precomputed fingerprint.
      * @param id Principal identifier.
      * @param oldJti Presented refresh credential identifier.
      * @param session Current account version and verified session identity to preserve.
-     * @returns Rotation decision, winning registration and per-issuance access expiry on success.
+     * @returns Rotation decision and winning registration on success.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
      * @throws {SystemException} When the store returns an unsupported rotation result.
      */
     rotateSession(
-        idempotencyRequest: IdempotencyRequest,
+        requestIdentity: SessionRequestIdentity,
         id: string,
         oldJti: string,
-        session: Omit<SessionRegistration, 'refreshTokenJti' | 'refreshExpiresAt'>,
+        session: Omit<SessionRegistration, 'refreshCredentialId' | 'refreshExpiresAt'>,
     ): Promise<RotateSessionResult>;
 
     /**

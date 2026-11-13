@@ -8,6 +8,7 @@ import type { IEmailerPort } from 'src/core/email';
 import type { ITokenPort } from 'src/core/security/token';
 import { SendUserActivationCommand } from 'src/module/user/application/command/send-user-activation/command';
 import { SendUserActivationCommandHandler } from 'src/module/user/application/command/send-user-activation/handler';
+import type { USER_ACTIVATION_TOKEN_TYPE } from 'src/module/user/application/user-activation-token';
 import {
     DependencyUnavailableException,
     ExceptionKind,
@@ -32,7 +33,7 @@ describe('SendUserActivationCommandHandler', () => {
             activationRevocationVersion: 3,
         });
         const sign = vi.fn().mockResolvedValue('fixed-token');
-        const token = { generateActivationToken: sign } as unknown as ITokenPort;
+        const token = { sign } as unknown as ITokenPort<typeof USER_ACTIVATION_TOKEN_TYPE>;
         const handler = new SendUserActivationCommandHandler(
             { getActivationRecipient: read },
             token,

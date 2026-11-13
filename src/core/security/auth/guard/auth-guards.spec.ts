@@ -7,6 +7,8 @@ import { Reflector } from '@nestjs/core';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import 'reflect-metadata';
 import * as audit from 'src/core/observability/audit';
+import type { AccessTokenPayload } from 'src/core/security/auth/access-token';
+import { ACCESS_TOKEN_TYPE } from 'src/core/security/auth/access-token';
 import { Authenticated } from 'src/core/security/auth/decorator/authenticated.decorator';
 import { Permissions } from 'src/core/security/auth/decorator/permissions.decorator';
 import { PrincipalOnly } from 'src/core/security/auth/decorator/principal-only.decorator';
@@ -14,7 +16,7 @@ import { Public } from 'src/core/security/auth/decorator/public.decorator';
 import { AuthenticationGuard } from 'src/core/security/auth/guard/authentication.guard';
 import { AuthorizationGuard } from 'src/core/security/auth/guard/authorization.guard';
 import type { ISessionPort } from 'src/core/security/session';
-import { AuthTokenType, type AccessTokenPayload, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort, TokenVerifyOptions } from 'src/core/security/token';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { AccessDeniedException, DependencyUnavailableException, UnauthenticatedException } from 'src/shared/exception';
 import { describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
@@ -25,7 +27,16 @@ type GuardFixture = {
         headers: Readonly<Record<string, string>>;
         accessTokenPayload?: AccessTokenPayload;
     };
-    readonly tokens: { readonly [K in keyof ITokenPort]: Mock<ITokenPort[K]> };
+    readonly tokens: {
+        readonly sign: Mock<() => Promise<string>>;
+        readonly verify: Mock<
+            (
+                token: string,
+                expectedType: typeof ACCESS_TOKEN_TYPE,
+                options?: TokenVerifyOptions,
+            ) => Promise<AccessTokenPayload>
+        >;
+    };
     readonly sessions: { readonly [K in keyof ISessionPort]: Mock<ISessionPort[K]> };
     readonly context: ExecutionContextHost;
     readonly authentication: AuthenticationGuard;
@@ -59,12 +70,11 @@ function fixture(
     const payload: AccessTokenPayload = {
         sub: 'principal-1',
         sid: 'session-1',
-        sessionExpiresAt: 2000000000,
         exp: 2000000000,
         principalType: PrincipalType.ADMIN,
         permissions: [],
         sessionVersion: 3,
-        type: AuthTokenType.ACCESS,
+        type: ACCESS_TOKEN_TYPE,
     };
     const request: {
         headers: Readonly<Record<string, string>>;
@@ -73,20 +83,17 @@ function fixture(
         headers: { authorization: 'Bearer signed-token' },
     };
     const tokens = {
-        verifyAccessToken: vi.fn<ITokenPort['verifyAccessToken']>().mockResolvedValue(payload),
-        verifyRefreshToken: vi.fn(),
-        verifyRefreshTokenForReplay: vi.fn(),
-        verifyLogoutToken: vi.fn(),
-        generateTokens: vi.fn(),
-        generateInviteToken: vi.fn(),
-        verifyInviteToken: vi.fn(),
-        generateActivationToken: vi.fn(),
-        verifyActivationToken: vi.fn(),
-        generateEmailConfirmationToken: vi.fn(),
-        verifyEmailConfirmationToken: vi.fn(),
-        generateUploadToken: vi.fn(),
-        verifyUploadToken: vi.fn(),
-    } satisfies ITokenPort;
+        sign: vi.fn<() => Promise<string>>(),
+        verify: vi
+            .fn<
+                (
+                    token: string,
+                    expectedType: typeof ACCESS_TOKEN_TYPE,
+                    options?: TokenVerifyOptions,
+                ) => Promise<AccessTokenPayload>
+            >()
+            .mockResolvedValue(payload),
+    };
     const sessions = {
         getVersion: vi.fn<ISessionPort['getVersion']>().mockResolvedValue(3),
         isSessionActive: vi.fn<ISessionPort['isSessionActive']>().mockResolvedValue(true),
@@ -103,7 +110,11 @@ function fixture(
         sessions,
         publishActor: vi.spyOn(audit, 'publishAuditActor').mockImplementation(() => {}),
         context: new ExecutionContextHost([request], ControllerFixture, ControllerFixture.prototype.endpoint),
-        authentication: new AuthenticationGuard(tokens, sessions, new Reflector()),
+        authentication: new AuthenticationGuard(
+            tokens as unknown as ITokenPort<typeof ACCESS_TOKEN_TYPE>,
+            sessions,
+            new Reflector(),
+        ),
         authorization: new AuthorizationGuard(new Reflector()),
     };
 }
@@ -113,7 +124,7 @@ describe('AuthenticationGuard', () => {
         const f = fixture([Public()]);
         f.request.headers = {};
         expect(await f.authentication.canActivate(f.context)).toBe(true);
-        expect(f.tokens.verifyAccessToken).not.toHaveBeenCalled();
+        expect(f.tokens.verify).not.toHaveBeenCalled();
         expect(f.sessions.isSessionActive).not.toHaveBeenCalled();
         expect(f.request.accessTokenPayload).toBeUndefined();
         expect(f.publishActor).not.toHaveBeenCalled();
@@ -125,7 +136,7 @@ describe('AuthenticationGuard', () => {
             const f = fixture();
             f.request.headers = header === undefined ? {} : { authorization: header };
             await expect(f.authentication.canActivate(f.context)).rejects.toBeInstanceOf(UnauthenticatedException);
-            expect(f.tokens.verifyAccessToken).not.toHaveBeenCalled();
+            expect(f.tokens.verify).not.toHaveBeenCalled();
             expect(f.sessions.isSessionActive).not.toHaveBeenCalled();
         },
     );
@@ -133,7 +144,7 @@ describe('AuthenticationGuard', () => {
     it('propagates token refusal without consulting sessions or publishing identity', async () => {
         const f = fixture(),
             failure = new UnauthenticatedException();
-        f.tokens.verifyAccessToken.mockRejectedValue(failure);
+        f.tokens.verify.mockRejectedValue(failure);
         await expect(f.authentication.canActivate(f.context)).rejects.toBe(failure);
         expect(f.sessions.isSessionActive).not.toHaveBeenCalled();
         expect(f.request.accessTokenPayload).toBeUndefined();
@@ -165,7 +176,7 @@ describe('AuthenticationGuard', () => {
         f.sessions.isSessionActive.mockResolvedValue(true);
         expect(await f.authentication.canActivate(f.context)).toBe(true);
         expect(f.publishActor).toHaveBeenCalledExactlyOnceWith(f.payload.sub, f.payload.principalType);
-        expect(f.tokens.verifyAccessToken).toHaveBeenCalledExactlyOnceWith('signed-token');
+        expect(f.tokens.verify).toHaveBeenCalledExactlyOnceWith('signed-token', ACCESS_TOKEN_TYPE);
         expect(f.sessions.isSessionActive).toHaveBeenCalledExactlyOnceWith(
             f.payload.sub,
             f.payload.principalType,

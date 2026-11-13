@@ -19,11 +19,13 @@ import {
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
+import { ACCESS_TOKEN_TYPE, TOKEN_AUTH_ACCESS_TOKEN_PORT } from 'src/core/security/auth';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { JobQueueOperationsAuditAction } from 'src/module/job-queue-operations/shared/job-queue-operations-audit';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { UnauthenticatedException } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import request from 'supertest';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,7 +47,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     let database: NodePgDatabase;
     let auditPort: IAuditPort;
     let operatorPort: IJobQueueDeadLetterOperatorPort;
-    let tokenPort: ITokenPort;
+    let tokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>;
     let sessionPort: ISessionPort;
 
     /**
@@ -177,12 +179,12 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         database = app.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
         auditPort = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
         operatorPort = app.get<IJobQueueDeadLetterOperatorPort>(TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT);
-        tokenPort = app.get<ITokenPort>(TOKEN_TOKEN_PORT);
+        tokenPort = app.get<ITokenPort<typeof ACCESS_TOKEN_TYPE>>(TOKEN_AUTH_ACCESS_TOKEN_PORT);
         sessionPort = app.get<ISessionPort>(TOKEN_SESSION_PORT);
     });
 
     beforeEach(() => {
-        vi.spyOn(tokenPort, 'verifyAccessToken').mockImplementation((token) => {
+        vi.spyOn(tokenPort, 'verify').mockImplementation((token) => {
             if (token !== 'redrive' && token !== 'read' && token !== 'none') {
                 return Promise.reject(new UnauthenticatedException());
             }
@@ -190,8 +192,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             return Promise.resolve({
                 sub: ACTOR_ID,
                 sid: randomUUID(),
-                sessionExpiresAt: Math.floor(Date.now() / 1000) + 3600,
-                exp: Math.floor(Date.now() / 1000) + 900,
+                exp: nowEpochSeconds() + 900,
                 principalType: PrincipalType.ADMIN,
                 permissions:
                     token === 'redrive'
@@ -200,7 +201,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
                           ? [Permission.JOB_DEAD_LETTER_READ]
                           : [],
                 sessionVersion: 0,
-                type: AuthTokenType.ACCESS,
+                type: ACCESS_TOKEN_TYPE,
             });
         });
         vi.spyOn(sessionPort, 'isSessionActive').mockResolvedValue(true);
@@ -295,7 +296,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             secondApp = await createTestApp({
                 overrides: [
                     { provide: TOKEN_ERROR_REPORTER_PORT, useValue: { report: vi.fn() } },
-                    { provide: TOKEN_TOKEN_PORT, useValue: tokenPort },
+                    { provide: TOKEN_AUTH_ACCESS_TOKEN_PORT, useValue: tokenPort },
                     { provide: TOKEN_SESSION_PORT, useValue: sessionPort },
                 ],
             });

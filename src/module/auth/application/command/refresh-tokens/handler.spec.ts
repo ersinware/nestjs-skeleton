@@ -3,12 +3,21 @@
  * @description Refresh propagation of immutable session identity, account revocation, and atomic decisions.
  */
 
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import { ENV } from 'src/core/config';
 import type { ITransactionPort } from 'src/core/database';
 import type { IJobQueueWriterPort } from 'src/core/job-queue';
 import { type IAuditPort } from 'src/core/observability/audit';
+import {
+    ACCESS_TOKEN_TYPE,
+    AccessTokenLifetimePolicy,
+    REFRESH_TOKEN_TYPE,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
+import type { IHashingPort } from 'src/core/security/hashing';
 import { ReplaySessionOutcome, RotateSessionOutcome, type ISessionPort } from 'src/core/security/session';
-import { AuthTokenType, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort, TokenVerifyOptions } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
 import { RefreshTokensCommand } from 'src/module/auth/application/command/refresh-tokens/command';
 import { RefreshTokensCommandHandler } from 'src/module/auth/application/command/refresh-tokens/handler';
@@ -25,8 +34,17 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('RefreshTokensCommandHandler', () => {
-    const verifyRefreshTokenForReplay = vi.fn<ITokenPort['verifyRefreshTokenForReplay']>();
-    const generateTokens = vi.fn<ITokenPort['generateTokens']>();
+    const accessSign = vi.fn<ITokenPort<typeof ACCESS_TOKEN_TYPE>['sign']>();
+    const refreshVerify =
+        vi.fn<
+            (
+                token: string,
+                expectedType: typeof REFRESH_TOKEN_TYPE,
+                options?: TokenVerifyOptions,
+            ) => Promise<RefreshTokenPayload>
+        >();
+    const refreshSign = vi.fn<ITokenPort<typeof REFRESH_TOKEN_TYPE>['sign']>();
+    const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>();
     const getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>();
     const findSessionRequestReplay = vi.fn<ISessionPort['findSessionRequestReplay']>();
     const rotateSession = vi.fn<ISessionPort['rotateSession']>();
@@ -37,16 +55,15 @@ describe('RefreshTokensCommandHandler', () => {
         sessionVersion: 2,
         sid: 'stable-session',
         sessionExpiresAt: 2000000000,
-        refreshTokenJti: 'new-jti',
+        refreshCredentialId: 'new-jti',
         principalType: PrincipalType.USER,
         refreshExpiresAt: 1900000000,
-        accessExpiresAt: 1800000000,
     };
     let handler: RefreshTokensCommandHandler;
 
     beforeEach(() => {
         findSessionRequestReplay.mockResolvedValue({ outcome: ReplaySessionOutcome.NOT_FOUND, session: null });
-        verifyRefreshTokenForReplay.mockResolvedValue({
+        refreshVerify.mockResolvedValue({
             sub: 'user-1',
             principalType: PrincipalType.USER,
             sid: session.sid,
@@ -54,8 +71,9 @@ describe('RefreshTokensCommandHandler', () => {
             exp: 1900000000,
             jti: 'old-jti',
             sessionVersion: 1,
-            type: AuthTokenType.REFRESH,
+            type: REFRESH_TOKEN_TYPE,
         });
+        hmacSha256.mockReturnValue('fingerprint');
         getRefreshState.mockResolvedValue({
             sessionVersion: 2,
             permissions: [Permission.HEALTH_DETAIL_READ],
@@ -63,42 +81,39 @@ describe('RefreshTokensCommandHandler', () => {
         rotateSession.mockResolvedValue({
             outcome: RotateSessionOutcome.ROTATED,
             session,
-            accessExpiresAt: session.accessExpiresAt,
         });
-        generateTokens.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' });
+        accessSign.mockResolvedValue('access');
+        refreshSign.mockResolvedValue('refresh');
         enqueue.mockResolvedValue(undefined);
         start.mockImplementation(async (cb: () => Promise<unknown>) => cb());
         handler = new RefreshTokensCommandHandler(
-            { verifyRefreshTokenForReplay, generateTokens } as unknown as ITokenPort,
+            { sign: accessSign } as unknown as ITokenPort<typeof ACCESS_TOKEN_TYPE>,
+            { verify: refreshVerify, sign: refreshSign } as unknown as ITokenPort<typeof REFRESH_TOKEN_TYPE>,
+            { hmacSha256 } as unknown as IHashingPort,
             { getRefreshState } as unknown as IIdentityReaderPort,
             { findSessionRequestReplay, rotateSession } as unknown as ISessionPort,
             { enqueue },
             { start, join: vi.fn() } as unknown as ITransactionPort,
             { record },
+            new AccessTokenLifetimePolicy(new ConfigService({ [ENV.JWT_ACCESS_TTL]: '15m' })),
         );
     });
 
     it('preserves the original session while refreshing permissions at the current version', async () => {
+        const key = randomUUID();
         expect(
-            await handler.execute(
-                new RefreshTokensCommand({ key: randomUUID(), canonicalValue: 'refresh-fixture' }, 'old'),
-            ),
+            await handler.execute(new RefreshTokensCommand({ key, canonicalValue: 'refresh-fixture' }, 'old')),
         ).toEqual({
             accessToken: 'access',
             refreshToken: 'refresh',
         });
         expect(getRefreshState).toHaveBeenCalledWith(PrincipalType.USER, 'user-1', 1);
-        expect(rotateSession).toHaveBeenCalledWith(
-            expect.objectContaining({ canonicalValue: 'refresh-fixture' }),
-            'user-1',
-            'old-jti',
-            {
-                principalType: PrincipalType.USER,
-                sessionVersion: 2,
-                sid: session.sid,
-                sessionExpiresAt: session.sessionExpiresAt,
-            },
-        );
+        expect(rotateSession).toHaveBeenCalledWith({ key, fingerprint: 'fingerprint' }, 'user-1', 'old-jti', {
+            principalType: PrincipalType.USER,
+            sessionVersion: 2,
+            sid: session.sid,
+            sessionExpiresAt: session.sessionExpiresAt,
+        });
     });
 
     it('rejects an ineligible or missing account before signing or rotation without refusal audit', async () => {
@@ -106,10 +121,27 @@ describe('RefreshTokensCommandHandler', () => {
         await expect(
             handler.execute(new RefreshTokensCommand({ key: randomUUID(), canonicalValue: 'refresh-fixture' }, 'old')),
         ).rejects.toBeInstanceOf(UnauthenticatedException);
-        expect(generateTokens).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
         expect(rotateSession).not.toHaveBeenCalled();
         expect(enqueue).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 1])('rejects absolute expiry before retained replay: %s seconds', async (elapsed) => {
+        vi.spyOn(Date, 'now').mockReturnValue((session.sessionExpiresAt + elapsed) * 1000);
+        findSessionRequestReplay.mockResolvedValue({ outcome: ReplaySessionOutcome.REPLAYED, session });
+
+        await expect(
+            handler.execute(new RefreshTokensCommand({ key: randomUUID(), canonicalValue: 'refresh' }, 'old')),
+        ).rejects.toBeInstanceOf(UnauthenticatedException);
+        expect(findSessionRequestReplay).not.toHaveBeenCalled();
+        expect(getRefreshState).not.toHaveBeenCalled();
+        expect(rotateSession).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
+        expect(record).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('propagates unavailable identity storage without signing or rotation', async () => {
@@ -118,7 +150,8 @@ describe('RefreshTokensCommandHandler', () => {
         await expect(
             handler.execute(new RefreshTokensCommand({ key: randomUUID(), canonicalValue: 'refresh-fixture' }, 'old')),
         ).rejects.toBe(failure);
-        expect(generateTokens).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
         expect(rotateSession).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
     });
@@ -148,7 +181,7 @@ describe('RefreshTokensCommandHandler', () => {
         { principalType: PrincipalType.USER, queueName: UserSessionRevocationJobQueue.REFRESH_REUSE },
         { principalType: PrincipalType.ADMIN, queueName: AdminSessionRevocationJobQueue.REFRESH_REUSE },
     ])('routes $principalType reuse remediation to its owner queue', async ({ principalType, queueName }) => {
-        verifyRefreshTokenForReplay.mockResolvedValueOnce({
+        refreshVerify.mockResolvedValueOnce({
             sub: 'principal-1',
             principalType,
             sid: session.sid,
@@ -156,7 +189,7 @@ describe('RefreshTokensCommandHandler', () => {
             exp: 1900000000,
             jti: 'old-jti',
             sessionVersion: 1,
-            type: AuthTokenType.REFRESH,
+            type: REFRESH_TOKEN_TYPE,
         });
         rotateSession.mockResolvedValueOnce({ outcome: RotateSessionOutcome.REUSE_DETECTED, session: null });
 
@@ -188,7 +221,6 @@ describe('RefreshTokensCommandHandler', () => {
             const replay = {
                 outcome: ReplaySessionOutcome.REPLAYED,
                 session,
-                accessExpiresAt: session.accessExpiresAt,
             } as const;
             if (boundary === 'pre-read') {
                 findSessionRequestReplay.mockResolvedValueOnce(replay);
@@ -201,9 +233,26 @@ describe('RefreshTokensCommandHandler', () => {
                 ),
             ).resolves.toEqual({ accessToken: 'access', refreshToken: 'refresh' });
             expect(getRefreshState).toHaveBeenLastCalledWith(PrincipalType.USER, 'user-1', session.sessionVersion);
-            expect(generateTokens).toHaveBeenCalledWith(
-                expect.objectContaining({ sid: session.sid, sessionVersion: 2 }),
-                expect.objectContaining({ jti: session.refreshTokenJti, exp: session.refreshExpiresAt }),
+            expect(accessSign).toHaveBeenCalledWith(
+                ACCESS_TOKEN_TYPE,
+                expect.objectContaining({
+                    sub: 'user-1',
+                    sid: session.sid,
+                    sessionVersion: 2,
+                    permissions: [Permission.HEALTH_DETAIL_READ],
+                    exp: expect.any(Number) as number,
+                }),
+            );
+            expect(refreshSign).toHaveBeenCalledWith(
+                REFRESH_TOKEN_TYPE,
+                expect.objectContaining({
+                    sub: 'user-1',
+                    sid: session.sid,
+                    jti: session.refreshCredentialId,
+                    sessionVersion: 2,
+                    sessionExpiresAt: session.sessionExpiresAt,
+                    exp: session.refreshExpiresAt,
+                }),
             );
             if (boundary === 'pre-read') {
                 expect(rotateSession).not.toHaveBeenCalled();
@@ -215,13 +264,12 @@ describe('RefreshTokensCommandHandler', () => {
     );
 
     it.each([true, false])('admits expired input only with retained live success: %s', async (retained) => {
-        const payload = await verifyRefreshTokenForReplay('fixture');
-        verifyRefreshTokenForReplay.mockResolvedValueOnce({ ...payload, exp: 1 });
+        const payload = await refreshVerify('fixture', REFRESH_TOKEN_TYPE, { ignoreExpiration: true });
+        refreshVerify.mockResolvedValueOnce({ ...payload, exp: 1 });
         if (retained) {
             findSessionRequestReplay.mockResolvedValueOnce({
                 outcome: ReplaySessionOutcome.REPLAYED,
                 session,
-                accessExpiresAt: session.accessExpiresAt,
             });
             await expect(
                 handler.execute(new RefreshTokensCommand({ key: randomUUID(), canonicalValue: 'fixture' }, 'old')),
@@ -231,7 +279,8 @@ describe('RefreshTokensCommandHandler', () => {
                 handler.execute(new RefreshTokensCommand({ key: randomUUID(), canonicalValue: 'fixture' }, 'old')),
             ).rejects.toBeInstanceOf(UnauthenticatedException);
             expect(getRefreshState).not.toHaveBeenCalled();
-            expect(generateTokens).not.toHaveBeenCalled();
+            expect(accessSign).not.toHaveBeenCalled();
+            expect(refreshSign).not.toHaveBeenCalled();
         }
         expect(rotateSession).not.toHaveBeenCalled();
         expect(enqueue).not.toHaveBeenCalled();
@@ -249,7 +298,8 @@ describe('RefreshTokensCommandHandler', () => {
         ).rejects.toBeInstanceOf(
             outcome === ReplaySessionOutcome.CONFLICT ? ResourceConflictException : UnauthenticatedException,
         );
-        expect(generateTokens).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
         expect(rotateSession).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
         expect(enqueue).not.toHaveBeenCalled();

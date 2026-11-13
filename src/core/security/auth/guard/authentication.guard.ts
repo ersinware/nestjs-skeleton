@@ -6,10 +6,15 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { publishAuditActor } from 'src/core/observability/audit';
+import {
+    ACCESS_TOKEN_TYPE,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    type AccessTokenPayload,
+} from 'src/core/security/auth/access-token';
 import { isPublicAuthPolicy } from 'src/core/security/auth/auth-policy';
 import type { AuthenticatedRequest } from 'src/core/security/auth/authenticated-request.type';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { UnauthenticatedException, UnauthenticatedMessage } from 'src/shared/exception';
 
 /**
@@ -21,12 +26,12 @@ export class AuthenticationGuard implements CanActivate {
     /**
      * Connects token verification, session admission, and route policy lookup.
      *
-     * @param tokenPort Verifies access tokens.
+     * @param accessTokenPort Verifies access tokens.
      * @param sessionPort Reads the current session version.
      * @param reflector Reads and validates the endpoint access policy.
      */
     constructor(
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_AUTH_ACCESS_TOKEN_PORT) private readonly accessTokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         private readonly reflector: Reflector,
     ) {}
@@ -57,7 +62,7 @@ export class AuthenticationGuard implements CanActivate {
             throw new UnauthenticatedException();
         }
 
-        const payload = await this.tokenPort.verifyAccessToken(token);
+        const payload = await this.accessTokenPort.verify<AccessTokenPayload>(token, ACCESS_TOKEN_TYPE);
 
         // One authoritative read checks both individual logout and account-wide access retirement.
         // Availability failures propagate as 503; missing or closed state denies with 401.

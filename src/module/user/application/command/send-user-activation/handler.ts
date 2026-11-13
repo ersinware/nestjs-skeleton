@@ -14,12 +14,17 @@ import {
     type EmailPayload,
     type IEmailerPort,
 } from 'src/core/email';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { SendUserActivationCommand } from 'src/module/user/application/command/send-user-activation/command';
 import {
     TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT,
     type IGetUserActivationRecipientPort,
 } from 'src/module/user/application/query/get-user-activation-recipient/port';
+import {
+    TOKEN_USER_ACTIVATION_TOKEN_PORT,
+    USER_ACTIVATION_TOKEN_TYPE,
+    type ActivationTokenPayload,
+} from 'src/module/user/application/user-activation-token';
 import { ExceptionKind, TerminalJobException, isExceptionOfKind } from 'src/shared/exception';
 
 /**
@@ -32,14 +37,15 @@ export class SendUserActivationCommandHandler implements ICommandHandler<SendUse
      * Initializes delivery dependencies.
      *
      * @param activationRecipientPort Reads eligible activation metadata from the primary
-     * @param tokenPort Signs the persisted claims
+     * @param activationTokenPort Signs the persisted activation claims
      * @param emailerPort Sends the activation email
      * @param configService Provides the trusted frontend activation URL
      */
     constructor(
         @Inject(TOKEN_GET_USER_ACTIVATION_RECIPIENT_PORT)
         private readonly activationRecipientPort: IGetUserActivationRecipientPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_USER_ACTIVATION_TOKEN_PORT)
+        private readonly activationTokenPort: ITokenPort<typeof USER_ACTIVATION_TOKEN_TYPE>,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         private readonly configService: ConfigService,
     ) {}
@@ -61,7 +67,7 @@ export class SendUserActivationCommandHandler implements ICommandHandler<SendUse
                 this.buildActivationEmail(
                     recipient.email,
                     recipient.name,
-                    await this.tokenPort.generateActivationToken({
+                    await this.activationTokenPort.sign<ActivationTokenPayload>(USER_ACTIVATION_TOKEN_TYPE, {
                         sub: command.id,
                         jti: recipient.activationId,
                         exp: Math.floor(recipient.activationExpiresAt.getTime() / 1000),

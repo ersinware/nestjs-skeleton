@@ -1,176 +1,56 @@
 /**
  * @file token.port.ts
- * @description Port contract for generating and verifying JWT session, activation, email confirmation, and upload tokens.
+ * @description Generic port contract for signing and verifying typed JWT payloads.
  */
-
-import type { AccessTokenPayload } from 'src/core/security/token/access-token-payload.type';
-import type { ActivationTokenPayload } from 'src/core/security/token/activation-token-payload.type';
-import type { EmailConfirmationTokenPayload } from 'src/core/security/token/email-confirmation-token-payload.type';
-import type { InviteTokenPayload } from 'src/core/security/token/invite-token-payload.type';
-import type { RefreshTokenPayload } from 'src/core/security/token/refresh-token-payload.type';
-import type { UploadTokenPayload } from 'src/core/security/token/upload-token-payload.type';
 
 /**
- * Dependency injection token for the {@link ITokenPort} contract.
+ * Base shape shared by all typed token payloads.
  */
-export const TOKEN_TOKEN_PORT = Symbol();
-
-/**
- * Signed access and refresh credentials.
- */
-export type TokenPair = {
+export type TokenPayload<TType extends string = string> = {
     /**
-     * Signed access credential for authenticated requests.
+     * Discriminator naming the token contract that produced the payload.
      */
-    readonly accessToken: string;
-
-    /**
-     * Signed refresh credential for rotating the session token pair.
-     */
-    readonly refreshToken: string;
+    readonly type: TType;
 };
 
 /**
- * Contract for generating and verifying JWT session, activation, email confirmation, and upload tokens.
+ * Optional verification controls supported by {@link ITokenPort.verify}.
  */
-export interface ITokenPort {
+export type TokenVerifyOptions = {
     /**
-     * Signs supplied claims without generating identities or extending their deadlines.
-     *
-     * @param accessClaims Verified access claims with caller-selected expiry.
-     * @param refreshClaims Verified refresh claims with caller-selected expiry.
-     * @returns Signed access and refresh credentials.
+     * Defers JWT expiration checks when an expired credential still identifies a recoverable operation.
      */
-    generateTokens(
-        accessClaims: Omit<AccessTokenPayload, 'type'>,
-        refreshClaims: Omit<RefreshTokenPayload, 'type'>,
-    ): Promise<TokenPair>;
+    readonly ignoreExpiration?: boolean;
+};
+
+/**
+ * Generic contract for signing and verifying JWT payloads bound to a dedicated secret and type discriminator.
+ */
+export interface ITokenPort<TType extends string = string> {
+    /**
+     * Signs caller-supplied claims and attaches the token type discriminator.
+     *
+     * @param type Token type discriminator to stamp into the signed payload.
+     * @param payload Token claims without the `type` discriminator.
+     * @returns Signed compact JWT string.
+     */
+    sign<TPayload extends TokenPayload<TType>>(
+        type: TPayload['type'],
+        payload: Omit<TPayload, 'type'>,
+    ): Promise<string>;
 
     /**
-     * Signs persisted invitation claims without generating identity or timestamps.
+     * Verifies the JWT signature, pinned algorithm, optional expiration, and expected type discriminator.
      *
-     * @param payload Fixed claims loaded from the persisted invitation.
-     * @returns The signed invite token.
+     * @param token Compact JWT string to verify.
+     * @param expectedType Expected `type` claim discriminator.
+     * @param options Optional verification flags.
+     * @returns Verified token payload cast to the caller's typed contract.
+     * @throws {UnauthenticatedException} When signature, lifetime, or type verification fails.
      */
-    generateInviteToken(payload: Omit<InviteTokenPayload, 'type'>): Promise<string>;
-
-    /**
-     * Signs persisted activation claims without generating identity or timestamps.
-     *
-     * @param payload Fixed claims loaded from the pending account.
-     * @returns The signed activation token.
-     */
-    generateActivationToken(payload: Omit<ActivationTokenPayload, 'type'>): Promise<string>;
-
-    /**
-     * Signs persisted email request claims without generating identity or timestamps.
-     *
-     * @param payload Fixed claims loaded from the pending request.
-     * @returns The signed email confirmation token.
-     */
-    generateEmailConfirmationToken(payload: Omit<EmailConfirmationTokenPayload, 'type'>): Promise<string>;
-
-    /**
-     * Signs workflow-supplied upload claims without generating identity or timestamps.
-     *
-     * @param payload Upload claims and expiry selected by the owning workflow.
-     * @returns The signed upload token.
-     */
-    generateUploadToken(payload: Omit<UploadTokenPayload, 'type'>): Promise<string>;
-
-    /**
-     * Verifies an access token's signature, expiry, and type.
-     *
-     * @param token The JWT access token string.
-     * @returns The decoded access token payload.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, or has an unexpected token type.
-     */
-    verifyAccessToken(token: string): Promise<AccessTokenPayload>;
-
-    /**
-     * Verifies a refresh credential, including its credential and absolute session expiry.
-     *
-     * @param token The JWT refresh token string.
-     * @returns Verified refresh claims.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or its session claims are invalid.
-     */
-    verifyRefreshToken(token: string): Promise<RefreshTokenPayload>;
-
-    /**
-     * Verifies a refresh credential for retained-request replay, deferring credential expiry only.
-     * Signature, type, claim structure, and absolute session expiry checks still apply.
-     * Without retained success, callers must reject expired credentials before rotation.
-     *
-     * @param token The JWT refresh token string.
-     * @returns Verified refresh claims for replay lookup.
-     * @throws {UnauthenticatedException} When the token is malformed, too early, has an unexpected type, or its session claims are invalid or expired.
-     */
-    verifyRefreshTokenForReplay(token: string): Promise<RefreshTokenPayload>;
-
-    /**
-     * Verifies a refresh credential for closing its session, allowing credential expiry only.
-     * Absolute expiry and all signature, type, and session claim checks still apply.
-     *
-     * @param token Refresh token identifying the session to close.
-     * @returns Verified refresh claims.
-     * @throws {UnauthenticatedException} When the credential or session identity is invalid.
-     */
-    verifyLogoutToken(token: string): Promise<RefreshTokenPayload>;
-
-    /**
-     * Verifies an invite token's signature, type, identifiers, fixed times, and revocation version.
-     *
-     * @param token The JWT invite token string.
-     * @returns The decoded invite token payload.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid invitation claims.
-     */
-    verifyInviteToken(token: string): Promise<InviteTokenPayload>;
-
-    /**
-     * Verifies activation claims; the owning workflow must independently authorize the state transition.
-     *
-     * @param token The JWT activation token string.
-     * @returns Verified activation claims.
-     * @throws {UnauthenticatedException} When the token is malformed, expired, too early, has an unexpected type, or lacks valid activation claims.
-     */
-    verifyActivationToken(token: string): Promise<ActivationTokenPayload>;
-
-    /**
-     * Verifies email confirmation claims; callers must still check ownership and current request state.
-     *
-     * @param token The JWT email confirmation token string.
-     * @returns Verified email confirmation claims.
-     * @throws {UnauthenticatedException} When the token has an invalid signature, lifetime, type, or request claims.
-     */
-    verifyEmailConfirmationToken(token: string): Promise<EmailConfirmationTokenPayload>;
-
-    /**
-     * Verifies an upload proof with a required revocation snapshot; callers still check form and workflow state.
-     *
-     * @param token The JWT upload token string.
-     * @param expectedPurpose Server-selected purpose from the owning workflow.
-     * @param requireRevocationVersion Requires a valid revocation snapshot
-     * @returns Verified upload claims.
-     * @throws {UnauthenticatedException} When the signature, expiry, type, purpose, or claims are invalid.
-     */
-    verifyUploadToken(
+    verify<TPayload extends TokenPayload<TType>>(
         token: string,
-        expectedPurpose: string,
-        requireRevocationVersion: true,
-    ): Promise<UploadTokenPayload & Required<Pick<UploadTokenPayload, 'revocationVersion'>>>;
-
-    /**
-     * Verifies upload claims, optionally requiring a revocation snapshot.
-     *
-     * @param token The JWT upload token string
-     * @param expectedPurpose Server-selected upload purpose
-     * @param requireRevocationVersion Whether a valid revocation snapshot is required; defaults to false
-     * @returns Verified upload claims
-     * @throws {UnauthenticatedException} When the signature, expiry, type, purpose, or required claims are invalid
-     */
-    verifyUploadToken(
-        token: string,
-        expectedPurpose: string,
-        requireRevocationVersion?: boolean,
-    ): Promise<UploadTokenPayload>;
+        expectedType: TPayload['type'],
+        options?: TokenVerifyOptions,
+    ): Promise<TPayload>;
 }

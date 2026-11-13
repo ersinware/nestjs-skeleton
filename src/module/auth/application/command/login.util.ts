@@ -5,6 +5,13 @@
 
 import type { IdempotencyRequest } from 'src/core/idempotency';
 import { type IAuditPort } from 'src/core/observability/audit';
+import {
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    type AccessTokenLifetimePolicy,
+    type AccessTokenPayload,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
 import type { IHashingPort } from 'src/core/security/hashing';
 import {
     OpenSessionOutcome,
@@ -13,6 +20,7 @@ import {
     type ISessionPort,
     type OpenSessionResult,
     type ReplaySessionResult,
+    type SessionRequestIdentity,
 } from 'src/core/security/session';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IIdentityReaderPort } from 'src/module/auth/application/command/port/identity-reader.port';
@@ -27,6 +35,11 @@ import {
     UnauthenticatedMessage,
     isExceptionOfKind,
 } from 'src/shared/exception';
+
+/**
+ * Separates session request fingerprints from other uses of the shared HMAC key.
+ */
+const SESSION_REQUEST_FINGERPRINT_CONTEXT = 'session:request-fingerprint';
 
 /**
  * Internal refusal reasons recorded in audit; clients receive the uniform credentials message.
@@ -69,10 +82,12 @@ export type CredentialLoginResult =
  * User and admin login share the same credential and audit rules.
  *
  * @param ports.identityReaderPort Reads credentials and current account eligibility.
- * @param ports.hashingPort Verifies supplied passwords.
- * @param ports.tokenPort Signs the winning session claims.
+ * @param ports.hashingPort Verifies supplied passwords and produces session request fingerprints.
+ * @param ports.accessTokenPort Signs access credentials with the dedicated access secret.
+ * @param ports.refreshTokenPort Signs refresh credentials with the dedicated refresh secret.
  * @param ports.sessionPort Reads retained success and opens sessions atomically.
  * @param ports.auditPort Records login outcomes.
+ * @param ports.accessTokenLifetimePolicy Bounds issued access credentials.
  * @param principalType Owning principal context.
  * @param idempotencyRequest Logical request identity.
  * @param email Account email address.
@@ -87,9 +102,11 @@ export async function login(
     ports: {
         readonly identityReaderPort: IIdentityReaderPort;
         readonly hashingPort: IHashingPort;
-        readonly tokenPort: ITokenPort;
+        readonly accessTokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>;
+        readonly refreshTokenPort: ITokenPort<typeof REFRESH_TOKEN_TYPE>;
         readonly sessionPort: ISessionPort;
         readonly auditPort: IAuditPort;
+        readonly accessTokenLifetimePolicy: AccessTokenLifetimePolicy;
     },
     principalType: PrincipalType,
     idempotencyRequest: IdempotencyRequest,
@@ -127,8 +144,16 @@ export async function login(
         throw await auditAndCreateLoginFailure(ports.auditPort, AuthRejectionReason.PENDING_ACCOUNT, identity.id);
     }
 
+    const requestIdentity: SessionRequestIdentity = {
+        key: idempotencyRequest.key,
+        fingerprint: ports.hashingPort.hmacSha256(
+            SESSION_REQUEST_FINGERPRINT_CONTEXT,
+            idempotencyRequest.canonicalValue,
+        ),
+    };
+
     let sessionResult: ReplaySessionResult | OpenSessionResult = await ports.sessionPort.findSessionRequestReplay(
-        idempotencyRequest,
+        requestIdentity,
         identity.id,
         principalType,
     );
@@ -162,7 +187,7 @@ export async function login(
             }
 
             sessionResult = await ports.sessionPort.openSession(
-                idempotencyRequest,
+                requestIdentity,
                 identity.id,
                 principalType,
                 identity.sessionVersion,
@@ -191,24 +216,32 @@ export async function login(
             rejectUnexpectedLoginResult(sessionResult);
     }
 
-    const { outcome, session } = sessionResult,
-        payload = {
-            sub: identity.id,
-            principalType: session.principalType,
-            sid: session.sid,
-            sessionExpiresAt: session.sessionExpiresAt,
-            sessionVersion: session.sessionVersion,
-        },
-        tokens = await ports.tokenPort.generateTokens(
-            { ...payload, permissions: identity.permissions, exp: sessionResult.accessExpiresAt },
-            { ...payload, jti: session.refreshTokenJti, exp: session.refreshExpiresAt },
-        );
+    const { session } = sessionResult,
+        [accessToken, refreshToken] = await Promise.all([
+            ports.accessTokenPort.sign<AccessTokenPayload>(ACCESS_TOKEN_TYPE, {
+                exp: ports.accessTokenLifetimePolicy.getAccessExpiresAt(session.refreshExpiresAt),
+                sub: identity.id,
+                sid: session.sid,
+                principalType: session.principalType,
+                permissions: identity.permissions,
+                sessionVersion: session.sessionVersion,
+            }),
+            ports.refreshTokenPort.sign<RefreshTokenPayload>(REFRESH_TOKEN_TYPE, {
+                sid: session.sid,
+                sessionExpiresAt: session.sessionExpiresAt,
+                exp: session.refreshExpiresAt,
+                sub: identity.id,
+                principalType: session.principalType,
+                jti: session.refreshCredentialId,
+                sessionVersion: session.sessionVersion,
+            }),
+        ]);
 
-    if (outcome === OpenSessionOutcome.OPENED) {
+    if (sessionResult.outcome === OpenSessionOutcome.OPENED) {
         await ports.auditPort.record({ action: AuthAuditAction.LOGIN_SUCCESS, targetId: identity.id });
     }
 
-    return { session: SessionOutcome.CREATED, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+    return { session: SessionOutcome.CREATED, accessToken, refreshToken };
 }
 
 /**

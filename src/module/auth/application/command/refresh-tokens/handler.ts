@@ -10,14 +10,25 @@ import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import {
+    ACCESS_TOKEN_TYPE,
+    AccessTokenLifetimePolicy,
+    REFRESH_TOKEN_TYPE,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    TOKEN_AUTH_REFRESH_TOKEN_PORT,
+    type AccessTokenPayload,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
+import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
+import {
     ReplaySessionOutcome,
     RotateSessionOutcome,
     TOKEN_SESSION_PORT,
     type ISessionPort,
     type ReplaySessionResult,
     type RotateSessionResult,
+    type SessionRequestIdentity,
 } from 'src/core/security/session';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { type ITokenPort } from 'src/core/security/token';
 import {
     TOKEN_IDENTITY_READER_PORT,
     type IIdentityReaderPort,
@@ -34,13 +45,19 @@ import { PrincipalType } from 'src/shared/domain/principal';
 import { UserSessionRevocationJobQueue } from 'src/shared/domain/user';
 import {
     ExceptionKind,
+    isExceptionOfKind,
     ResourceConflictException,
     ResourceConflictMessage,
     SystemException,
     UnauthenticatedException,
     UnauthenticatedMessage,
-    isExceptionOfKind,
 } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
+
+/**
+ * Separates session request fingerprints from other uses of the shared HMAC key.
+ */
+const SESSION_REQUEST_FINGERPRINT_CONTEXT = 'session:request-fingerprint';
 
 /**
  * The refresh-reuse queue owned by each principal context. Exhaustive over {@link PrincipalType}
@@ -61,20 +78,26 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
     /**
      * Initializes the handler with the required ports.
      *
-     * @param tokenPort The port used to verify the old and generate the new token pair
-     * @param identityReaderPort The port used to read the principal's auth state
-     * @param sessionPort The port used to atomically rotate the refresh session
-     * @param jobQueueWriterPort The port used to persist the reuse-remediation job
+     * @param accessTokenPort Signs rotated access credentials
+     * @param refreshTokenPort Verifies presented refresh tokens and signs replacements
+     * @param hashingPort Produces session request fingerprints
+     * @param identityReaderPort Reads the principal's auth state
+     * @param sessionPort Atomically rotates the refresh session
+     * @param jobQueueWriterPort Persists the reuse-remediation job
      * @param transactionPort Commits the job and audit together
-     * @param auditPort The port used to record refresh-reuse decisions
+     * @param auditPort Records refresh-reuse decisions
+     * @param accessTokenLifetimePolicy Bounds issued access credentials
      */
     constructor(
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_AUTH_ACCESS_TOKEN_PORT) private readonly accessTokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>,
+        @Inject(TOKEN_AUTH_REFRESH_TOKEN_PORT) private readonly refreshTokenPort: ITokenPort<typeof REFRESH_TOKEN_TYPE>,
+        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_IDENTITY_READER_PORT) private readonly identityReaderPort: IIdentityReaderPort,
         @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_JOB_QUEUE_WRITER_PORT) private readonly jobQueueWriterPort: IJobQueueWriterPort,
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
+        private readonly accessTokenLifetimePolicy: AccessTokenLifetimePolicy,
     ) {}
 
     /**
@@ -88,10 +111,14 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @throws {SystemException} When a session outcome is unexpected
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
-        let payload;
+        let payload: RefreshTokenPayload;
 
         try {
-            payload = await this.tokenPort.verifyRefreshTokenForReplay(command.refreshToken);
+            payload = await this.refreshTokenPort.verify<RefreshTokenPayload>(
+                command.refreshToken,
+                REFRESH_TOKEN_TYPE,
+                { ignoreExpiration: true },
+            );
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                 throw new UnauthenticatedException(UnauthenticatedMessage.DEFAULT, { cause: error });
@@ -100,8 +127,22 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
             throw error;
         }
 
+        const now = nowEpochSeconds();
+
+        if (payload.sessionExpiresAt <= now) {
+            throw new UnauthenticatedException();
+        }
+
+        const requestIdentity: SessionRequestIdentity = {
+            key: command.idempotencyRequest.key,
+            fingerprint: this.hashingPort.hmacSha256(
+                SESSION_REQUEST_FINGERPRINT_CONTEXT,
+                command.idempotencyRequest.canonicalValue,
+            ),
+        };
+
         let sessionResult: ReplaySessionResult | RotateSessionResult = await this.sessionPort.findSessionRequestReplay(
-                command.idempotencyRequest,
+                requestIdentity,
                 payload.sub,
                 payload.principalType,
             ),
@@ -123,22 +164,17 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
 
                 break;
             case ReplaySessionOutcome.NOT_FOUND: {
-                if (payload.exp <= Math.floor(Date.now() / 1000)) {
+                if (payload.exp <= now) {
                     throw new UnauthenticatedException();
                 }
 
                 identity = await this.getRefreshState(payload.principalType, payload.sub, payload.sessionVersion);
-                sessionResult = await this.sessionPort.rotateSession(
-                    command.idempotencyRequest,
-                    payload.sub,
-                    payload.jti,
-                    {
-                        principalType: payload.principalType,
-                        sessionVersion: identity.sessionVersion,
-                        sid: payload.sid,
-                        sessionExpiresAt: payload.sessionExpiresAt,
-                    },
-                );
+                sessionResult = await this.sessionPort.rotateSession(requestIdentity, payload.sub, payload.jti, {
+                    principalType: payload.principalType,
+                    sessionVersion: identity.sessionVersion,
+                    sid: payload.sid,
+                    sessionExpiresAt: payload.sessionExpiresAt,
+                });
 
                 switch (sessionResult.outcome) {
                     case ReplaySessionOutcome.CONFLICT:
@@ -202,18 +238,27 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
         }
 
         const { session } = sessionResult,
-            tokenPayload = {
-                sub: payload.sub,
-                principalType: session.principalType,
-                sid: session.sid,
-                sessionExpiresAt: session.sessionExpiresAt,
-                sessionVersion: session.sessionVersion,
-            };
+            [accessToken, refreshToken] = await Promise.all([
+                this.accessTokenPort.sign<AccessTokenPayload>(ACCESS_TOKEN_TYPE, {
+                    exp: this.accessTokenLifetimePolicy.getAccessExpiresAt(session.refreshExpiresAt),
+                    sub: payload.sub,
+                    sid: session.sid,
+                    principalType: session.principalType,
+                    permissions: identity.permissions,
+                    sessionVersion: session.sessionVersion,
+                }),
+                this.refreshTokenPort.sign<RefreshTokenPayload>(REFRESH_TOKEN_TYPE, {
+                    sid: session.sid,
+                    sessionExpiresAt: session.sessionExpiresAt,
+                    exp: session.refreshExpiresAt,
+                    sub: payload.sub,
+                    principalType: session.principalType,
+                    jti: session.refreshCredentialId,
+                    sessionVersion: session.sessionVersion,
+                }),
+            ]);
 
-        return this.tokenPort.generateTokens(
-            { ...tokenPayload, permissions: identity.permissions, exp: sessionResult.accessExpiresAt },
-            { ...tokenPayload, jti: session.refreshTokenJti, exp: session.refreshExpiresAt },
-        );
+        return { accessToken, refreshToken };
     }
 
     /**

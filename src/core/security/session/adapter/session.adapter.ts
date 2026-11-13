@@ -8,9 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { randomBytes } from 'node:crypto';
 import { ENV, parseTtlToSeconds } from 'src/core/config';
-import type { IdempotencyRequest } from 'src/core/idempotency';
 import { isRedisUnavailable } from 'src/core/redis';
-import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import {
     OpenSessionOutcome,
     ReplaySessionOutcome,
@@ -20,6 +18,7 @@ import {
     type ReplaySessionResult,
     type RotateSessionResult,
     type SessionRegistration,
+    type SessionRequestIdentity,
 } from 'src/core/security/session/port/session.port';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { PrincipalType } from 'src/shared/domain/principal';
@@ -77,11 +76,6 @@ const SessionKeys = {
 const IDEMPOTENCY_TTL_SECONDS = 120;
 
 /**
- * Separates Redis request fingerprints from PostgreSQL and other uses of the shared HMAC key.
- */
-const REDIS_IDEMPOTENCY_FINGERPRINT_CONTEXT = 'redis:idempotency-fingerprint';
-
-/**
  * KEYS: request, version, sessions. ARGV[1]: fingerprint.
  * Replay resolves the original live registration before any mutation-domain checks.
  */
@@ -105,7 +99,7 @@ if storedRequestJson then
     local now = tonumber(redis.call('TIME')[1])
     local storedVersion = redis.call('GET', KEYS[2])
 
-    if storedSession.refreshTokenJti ~= storedRequest.jti
+    if storedSession.refreshCredentialId ~= storedRequest.jti
         or storedSession.refreshExpiresAt <= now
     then
         return { '${ReplaySessionOutcome.REPLAY_UNAVAILABLE}', false }
@@ -139,7 +133,7 @@ end
 
 /**
  * KEYS: request, version, sessions.
- * ARGV: fingerprint, kind, version, entropy, absolute TTL, refresh TTL, version TTL, request TTL.
+ * ARGV: fingerprint, kind, version, entropy, absolute TTL, refresh/version TTL, request TTL.
  */
 const OPEN_SESSION_LUA =
     REPLAY_SESSION_REQUEST_LUA +
@@ -157,7 +151,7 @@ local session = {
     principalType = ARGV[2],
     sessionVersion = version,
     sid = uuid(string.sub(ARGV[4], 1, 32)),
-    refreshTokenJti = uuid(string.sub(ARGV[4], 33, 64)),
+    refreshCredentialId = uuid(string.sub(ARGV[4], 33, 64)),
     sessionExpiresAt = now + tonumber(ARGV[5]),
     refreshExpiresAt = now + math.min(tonumber(ARGV[5]), tonumber(ARGV[6]))
 }
@@ -165,12 +159,12 @@ local session = {
 local sessionJson = cjson.encode(session)
 
 redis.call('HSETEX', KEYS[3], 'EXAT', session.refreshExpiresAt, 'FIELDS', 1, session.sid, sessionJson)
-redis.call('SET', KEYS[2], version, 'EX', math.max(tonumber(ARGV[7]), redis.call('TTL', KEYS[2])))
+redis.call('SET', KEYS[2], version, 'EX', math.max(tonumber(ARGV[6]), redis.call('TTL', KEYS[2])))
 redis.call('SET', KEYS[1], cjson.encode({
     fingerprint = ARGV[1],
     sid = session.sid,
-    jti = session.refreshTokenJti
-}), 'EX', ARGV[8])
+    jti = session.refreshCredentialId
+}), 'EX', ARGV[7])
 
 return { '${OpenSessionOutcome.OPENED}', sessionJson }
 `;
@@ -199,7 +193,7 @@ return 1
 
 /**
  * KEYS: request, version, sessions, old credential tombstone.
- * ARGV: fingerprint, old JTI, verified identity/version JSON, entropy, refresh TTL, version TTL,
+ * ARGV: fingerprint, old JTI, verified identity/version JSON, entropy, refresh/version TTL,
  * grace TTL, request TTL. Same-key replay precedes grace/reuse classification.
  */
 const ROTATE_SESSION_LUA =
@@ -229,7 +223,7 @@ if tonumber(storedVersion) > session.sessionVersion then
     return { '${RotateSessionOutcome.VERSION_SUPERSEDED}', false }
 end
 
-if storedSession.refreshTokenJti ~= ARGV[2] then
+if storedSession.refreshCredentialId ~= ARGV[2] then
     if redis.call('EXISTS', KEYS[4]) == 1 then
         return { '${RotateSessionOutcome.CONCURRENT_REPLAY}', false }
     end
@@ -240,19 +234,19 @@ if storedSession.refreshTokenJti ~= ARGV[2] then
 end
 
 storedSession.sessionVersion = session.sessionVersion
-storedSession.refreshTokenJti = uuid(ARGV[4])
+storedSession.refreshCredentialId = uuid(ARGV[4])
 storedSession.refreshExpiresAt = math.min(now + tonumber(ARGV[5]), storedSession.sessionExpiresAt)
 
 local sessionJson = cjson.encode(storedSession)
 
 redis.call('HSETEX', KEYS[3], 'EXAT', storedSession.refreshExpiresAt, 'FIELDS', 1, storedSession.sid, sessionJson)
-redis.call('SET', KEYS[4], '1', 'EX', ARGV[7])
-redis.call('SET', KEYS[2], storedSession.sessionVersion, 'EX', math.max(tonumber(ARGV[6]), redis.call('TTL', KEYS[2])))
+redis.call('SET', KEYS[4], '1', 'EX', ARGV[6])
+redis.call('SET', KEYS[2], storedSession.sessionVersion, 'EX', math.max(tonumber(ARGV[5]), redis.call('TTL', KEYS[2])))
 redis.call('SET', KEYS[1], cjson.encode({
     fingerprint = ARGV[1],
     sid = storedSession.sid,
-    jti = storedSession.refreshTokenJti
-}), 'EX', ARGV[8])
+    jti = storedSession.refreshCredentialId
+}), 'EX', ARGV[7])
 
 return { '${RotateSessionOutcome.ROTATED}', sessionJson }
 `;
@@ -284,14 +278,9 @@ export class SessionAdapter implements ISessionPort {
     private readonly sessionTtlByPrincipalType: Readonly<Record<PrincipalType, number>>;
 
     /**
-     * Refresh lifetime, capped by each session's immutable absolute deadline.
+     * Refresh lifetime, capped by each session's immutable absolute deadline; also retains version floors.
      */
-    private readonly refreshTtlSeconds: number;
-
-    /**
-     * Access lifetime, capped by the winning registration's credential deadlines.
-     */
-    private readonly accessTtlSeconds: number;
+    private readonly sessionRefreshTtlSeconds: number;
 
     /**
      * Per-consumed-credential grace, allowing several rapid rotations without losing history.
@@ -299,46 +288,37 @@ export class SessionAdapter implements ISessionPort {
     private readonly rotationGraceTtlSeconds: number;
 
     /**
-     * Retains account floors for at least either credential's configured lifetime.
-     */
-    private readonly versionTtlSeconds: number;
-
-    /**
      * Configures session retention and rotation grace on the session connection.
      *
      * @param redis Session authority connection.
      * @param configService Boot-validated lifetimes.
-     * @param hashingPort Produces request fingerprints without retaining credentials.
      */
     constructor(
         @Inject(TOKEN_SESSION_CONNECTION) private readonly redis: Redis,
         configService: ConfigService,
-        @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
     ) {
         this.sessionTtlByPrincipalType = {
             [PrincipalType.ADMIN]: parseTtlToSeconds(configService.getOrThrow<string>(ENV.SESSION_ABSOLUTE_TTL_ADMIN)),
             [PrincipalType.USER]: parseTtlToSeconds(configService.getOrThrow<string>(ENV.SESSION_ABSOLUTE_TTL_USER)),
         } satisfies Record<PrincipalType, number>;
-        this.refreshTtlSeconds = parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_REFRESH_TTL));
-        this.accessTtlSeconds = parseTtlToSeconds(configService.getOrThrow<string>(ENV.JWT_ACCESS_TTL));
+        this.sessionRefreshTtlSeconds = parseTtlToSeconds(configService.getOrThrow<string>(ENV.SESSION_REFRESH_TTL));
         this.rotationGraceTtlSeconds = parseTtlToSeconds(
             configService.getOrThrow<string>(ENV.SESSION_ROTATION_GRACE_TTL),
         );
-        this.versionTtlSeconds = Math.max(this.refreshTtlSeconds, this.accessTtlSeconds);
     }
 
     /**
      * Opens or replays a session with one atomic Redis decision.
      * Entropy is formatted into identities only if Lua admits a new mutation.
      *
-     * @param idempotencyRequest Logical request identity.
+     * @param requestIdentity Logical request identity and precomputed fingerprint.
      * @param id Principal identifier.
      * @param principalType Owning context.
      * @param sessionVersion Current account version.
      * @returns Opening decision and winning live registration on success.
      */
     async openSession(
-        idempotencyRequest: IdempotencyRequest,
+        requestIdentity: SessionRequestIdentity,
         id: string,
         principalType: PrincipalType,
         sessionVersion: number,
@@ -347,19 +327,15 @@ export class SessionAdapter implements ISessionPort {
                 this.redis.eval(
                     OPEN_SESSION_LUA,
                     3,
-                    SessionKeys.idempotency(id, principalType, idempotencyRequest.key),
+                    SessionKeys.idempotency(id, principalType, requestIdentity.key),
                     SessionKeys.version(id, principalType),
                     SessionKeys.sessions(id, principalType),
-                    this.hashingPort.hmacSha256(
-                        REDIS_IDEMPOTENCY_FINGERPRINT_CONTEXT,
-                        idempotencyRequest.canonicalValue,
-                    ),
+                    requestIdentity.fingerprint,
                     principalType,
                     sessionVersion,
                     randomBytes(32).toString('hex'),
                     this.sessionTtlByPrincipalType[principalType],
-                    this.refreshTtlSeconds,
-                    this.versionTtlSeconds,
+                    this.sessionRefreshTtlSeconds,
                     IDEMPOTENCY_TTL_SECONDS,
                 ),
             )) as
@@ -382,35 +358,14 @@ export class SessionAdapter implements ISessionPort {
             case ReplaySessionOutcome.SESSION_UNAVAILABLE:
             case ReplaySessionOutcome.VERSION_SUPERSEDED:
                 return { outcome, session: null };
-            case ReplaySessionOutcome.REPLAYED: {
-                const session = JSON.parse(result[1]) as SessionRegistration,
-                    now = Math.floor(Date.now() / 1000);
-
+            case ReplaySessionOutcome.REPLAYED:
+            case OpenSessionOutcome.OPENED:
                 return {
                     outcome,
-                    session,
-                    accessExpiresAt: Math.min(
-                        now + this.accessTtlSeconds,
-                        session.refreshExpiresAt,
-                        session.sessionExpiresAt,
-                    ),
+                    session: JSON.parse(result[1]) as SessionRegistration,
                 };
-            }
             case OpenSessionOutcome.VERSION_SUPERSEDED:
                 return { outcome, session: null };
-            case OpenSessionOutcome.OPENED: {
-                const session = JSON.parse(result[1]) as SessionRegistration;
-
-                return {
-                    outcome,
-                    session,
-                    accessExpiresAt: Math.min(
-                        Math.floor(Date.now() / 1000) + this.accessTtlSeconds,
-                        session.refreshExpiresAt,
-                        session.sessionExpiresAt,
-                    ),
-                };
-            }
             default:
                 throw new SystemException('Unexpected session opening result.', {
                     context: { class: this.constructor.name, method: this.openSession.name, outcome },
@@ -421,13 +376,13 @@ export class SessionAdapter implements ISessionPort {
     /**
      * Resolves retained success with the same atomic liveness checks used by mutations.
      *
-     * @param idempotencyRequest Logical request identity and canonical input.
+     * @param requestIdentity Logical request identity and precomputed fingerprint.
      * @param principalId Principal identifier.
      * @param principalType Owning context.
      * @returns Read-only replay decision and credential metadata when live.
      */
     async findSessionRequestReplay(
-        idempotencyRequest: IdempotencyRequest,
+        requestIdentity: SessionRequestIdentity,
         principalId: string,
         principalType: PrincipalType,
     ): Promise<ReplaySessionResult> {
@@ -435,13 +390,10 @@ export class SessionAdapter implements ISessionPort {
                 this.redis.eval(
                     REPLAY_SESSION_REQUEST_LUA + `return { '${ReplaySessionOutcome.NOT_FOUND}', false }`,
                     3,
-                    SessionKeys.idempotency(principalId, principalType, idempotencyRequest.key),
+                    SessionKeys.idempotency(principalId, principalType, requestIdentity.key),
                     SessionKeys.version(principalId, principalType),
                     SessionKeys.sessions(principalId, principalType),
-                    this.hashingPort.hmacSha256(
-                        REDIS_IDEMPOTENCY_FINGERPRINT_CONTEXT,
-                        idempotencyRequest.canonicalValue,
-                    ),
+                    requestIdentity.fingerprint,
                 ),
             )) as
                 | readonly [ReplaySessionOutcome.REPLAYED, string]
@@ -454,19 +406,11 @@ export class SessionAdapter implements ISessionPort {
             case ReplaySessionOutcome.SESSION_UNAVAILABLE:
             case ReplaySessionOutcome.VERSION_SUPERSEDED:
                 return { outcome, session: null };
-            case ReplaySessionOutcome.REPLAYED: {
-                const session = JSON.parse(result[1]) as SessionRegistration;
-
+            case ReplaySessionOutcome.REPLAYED:
                 return {
                     outcome,
-                    session,
-                    accessExpiresAt: Math.min(
-                        Math.floor(Date.now() / 1000) + this.accessTtlSeconds,
-                        session.refreshExpiresAt,
-                        session.sessionExpiresAt,
-                    ),
+                    session: JSON.parse(result[1]) as SessionRegistration,
                 };
-            }
             case ReplaySessionOutcome.NOT_FOUND:
                 return { outcome, session: null };
             default:
@@ -503,35 +447,31 @@ export class SessionAdapter implements ISessionPort {
     /**
      * Settles request replay before classifying refresh-domain reuse.
      *
-     * @param idempotencyRequest Logical request identity.
+     * @param requestIdentity Logical request identity and precomputed fingerprint.
      * @param id Principal identifier.
      * @param oldJti Presented credential identifier.
      * @param session Verified session identity and current account version.
      * @returns Rotation decision and winning registration.
      */
     async rotateSession(
-        idempotencyRequest: IdempotencyRequest,
+        requestIdentity: SessionRequestIdentity,
         id: string,
         oldJti: string,
-        session: Omit<SessionRegistration, 'refreshTokenJti' | 'refreshExpiresAt'>,
+        session: Omit<SessionRegistration, 'refreshCredentialId' | 'refreshExpiresAt'>,
     ): Promise<RotateSessionResult> {
         const result = (await this.run(() =>
                 this.redis.eval(
                     ROTATE_SESSION_LUA,
                     4,
-                    SessionKeys.idempotency(id, session.principalType, idempotencyRequest.key),
+                    SessionKeys.idempotency(id, session.principalType, requestIdentity.key),
                     SessionKeys.version(id, session.principalType),
                     SessionKeys.sessions(id, session.principalType),
                     SessionKeys.tombstone(id, session.principalType, session.sid, oldJti),
-                    this.hashingPort.hmacSha256(
-                        REDIS_IDEMPOTENCY_FINGERPRINT_CONTEXT,
-                        idempotencyRequest.canonicalValue,
-                    ),
+                    requestIdentity.fingerprint,
                     oldJti,
                     JSON.stringify(session),
                     randomBytes(16).toString('hex'),
-                    this.refreshTtlSeconds,
-                    this.versionTtlSeconds,
+                    this.sessionRefreshTtlSeconds,
                     this.rotationGraceTtlSeconds,
                     IDEMPOTENCY_TTL_SECONDS,
                 ),
@@ -559,38 +499,18 @@ export class SessionAdapter implements ISessionPort {
             case ReplaySessionOutcome.SESSION_UNAVAILABLE:
             case ReplaySessionOutcome.VERSION_SUPERSEDED:
                 return { outcome, session: null };
-            case ReplaySessionOutcome.REPLAYED: {
-                const previousSession = JSON.parse(result[1]) as SessionRegistration;
-
+            case ReplaySessionOutcome.REPLAYED:
+            case RotateSessionOutcome.ROTATED:
                 return {
                     outcome,
-                    session: previousSession,
-                    accessExpiresAt: Math.min(
-                        Math.floor(Date.now() / 1000) + this.accessTtlSeconds,
-                        previousSession.refreshExpiresAt,
-                        previousSession.sessionExpiresAt,
-                    ),
+                    session: JSON.parse(result[1]) as SessionRegistration,
                 };
-            }
             case RotateSessionOutcome.SESSION_CLOSED:
             case RotateSessionOutcome.SESSION_UNAVAILABLE:
             case RotateSessionOutcome.VERSION_SUPERSEDED:
             case RotateSessionOutcome.CONCURRENT_REPLAY:
             case RotateSessionOutcome.REUSE_DETECTED:
                 return { outcome, session: null };
-            case RotateSessionOutcome.ROTATED: {
-                const session = JSON.parse(result[1]) as SessionRegistration;
-
-                return {
-                    outcome,
-                    session: session,
-                    accessExpiresAt: Math.min(
-                        Math.floor(Date.now() / 1000) + this.accessTtlSeconds,
-                        session.refreshExpiresAt,
-                        session.sessionExpiresAt,
-                    ),
-                };
-            }
             default:
                 throw new SystemException('Unexpected session rotation result.', {
                     context: { class: this.constructor.name, method: this.rotateSession.name, outcome },
@@ -623,7 +543,7 @@ export class SessionAdapter implements ISessionPort {
                 1,
                 SessionKeys.version(id, principalType),
                 version,
-                this.versionTtlSeconds,
+                this.sessionRefreshTtlSeconds,
             ),
         );
     }

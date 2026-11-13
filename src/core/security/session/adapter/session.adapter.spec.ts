@@ -7,7 +7,6 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { ENV } from 'src/core/config';
-import type { IHashingPort } from 'src/core/security/hashing';
 import { SessionAdapter } from 'src/core/security/session/adapter/session.adapter';
 import {
     OpenSessionOutcome,
@@ -30,16 +29,13 @@ describe('SessionAdapter', () => {
 
     beforeEach(() => {
         const configService = new ConfigService({
-            [ENV.JWT_REFRESH_TTL]: '7d',
-            [ENV.JWT_ACCESS_TTL]: '15m',
+            [ENV.SESSION_REFRESH_TTL]: '7d',
             [ENV.SESSION_ROTATION_GRACE_TTL]: '30s',
             [ENV.SESSION_ABSOLUTE_TTL_ADMIN]: '8h',
             [ENV.SESSION_ABSOLUTE_TTL_USER]: '7d',
         });
 
-        adapter = new SessionAdapter(redis as unknown as Redis, configService, {
-            hmacSha256: vi.fn().mockReturnValue('fingerprint'),
-        } as unknown as IHashingPort);
+        adapter = new SessionAdapter(redis as unknown as Redis, configService);
     });
 
     it('translates an unavailable session deletion without reporting logout success', async () => {
@@ -54,7 +50,7 @@ describe('SessionAdapter', () => {
             const session: SessionRegistration = {
                 principalType,
                 sid: 'sid',
-                refreshTokenJti: 'new-jti',
+                refreshCredentialId: 'new-jti',
                 sessionVersion: 1,
                 sessionExpiresAt: 2_000_000_000,
                 refreshExpiresAt: 2_000_000_000,
@@ -65,17 +61,12 @@ describe('SessionAdapter', () => {
                 .mockResolvedValueOnce([RotateSessionOutcome.ROTATED, JSON.stringify(session)])
                 .mockResolvedValue(1);
             await adapter.findSessionRequestReplay(
-                { key: randomUUID(), canonicalValue: 'session-fixture' },
+                { key: randomUUID(), fingerprint: 'fingerprint' },
                 'id',
                 principalType,
             );
-            await adapter.openSession({ key: randomUUID(), canonicalValue: 'session-fixture' }, 'id', principalType, 1);
-            await adapter.rotateSession(
-                { key: randomUUID(), canonicalValue: 'session-fixture' },
-                'id',
-                'old-jti',
-                session,
-            );
+            await adapter.openSession({ key: randomUUID(), fingerprint: 'fingerprint' }, 'id', principalType, 1);
+            await adapter.rotateSession({ key: randomUUID(), fingerprint: 'fingerprint' }, 'id', 'old-jti', session);
             await adapter.isSessionActive('id', principalType, 'sid', 1);
             await adapter.setVersion('id', principalType, 2);
 
@@ -113,11 +104,11 @@ describe('SessionAdapter', () => {
     });
 
     describe.each(['open', 'rotate'] as const)('%s request contract', (operation) => {
-        const request = { key: 'request-key', canonicalValue: 'private-password-or-token' },
+        const request = { key: 'request-key', fingerprint: 'fingerprint' },
             session: SessionRegistration = {
                 principalType: PrincipalType.USER,
                 sid: 'sid',
-                refreshTokenJti: 'jti',
+                refreshCredentialId: 'jti',
                 sessionVersion: 1,
                 sessionExpiresAt: 2_000_000_000,
                 refreshExpiresAt: 1_900_000_000,
@@ -132,13 +123,12 @@ describe('SessionAdapter', () => {
                 operation === 'open'
                     ? await adapter.openSession(request, 'id', PrincipalType.USER, 1)
                     : await adapter.rotateSession(request, 'id', 'old-jti', session);
-            expect(result).toMatchObject({ outcome, session });
+            expect(result).toEqual({ outcome, session });
             expect(redis.eval).toHaveBeenCalledTimes(1);
             const [, count, ...args] = redis.eval.mock.calls[0]! as readonly unknown[];
             expect(args[0]).toBe('auth:{user:id}:idempotency:request-key');
             expect(args[Number(count)]).toBe('fingerprint');
             expect(args.at(-1)).toBe(120);
-            expect(args).not.toContain(request.canonicalValue);
         });
 
         it.each([

@@ -1,15 +1,25 @@
 /**
- * @file email-confirmation-token-payload.type.ts
+ * @file email-confirmation-token.ts
  * @description JWT claims bound to a persisted email change request.
  */
 
-import { AuthTokenType } from 'src/core/security/token/auth-token-type.enum';
+import type { TokenPayload } from 'src/core/security/token';
 import type { PrincipalType } from 'src/shared/domain/principal';
+
+/**
+ * Dependency injection token for signing and verifying {@link EmailConfirmationTokenPayload}.
+ */
+export const TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT = Symbol();
+
+/**
+ * Discriminator carried by signed email-change confirmation tokens.
+ */
+export const EMAIL_CONFIRMATION_TOKEN_TYPE = 'EMAIL_CONFIRMATION_TOKEN_TYPE';
 
 /**
  * Verified proof of access to the pending address; account state controls consumption.
  */
-export type EmailConfirmationTokenPayload = {
+export type EmailConfirmationTokenPayload = TokenPayload<typeof EMAIL_CONFIRMATION_TOKEN_TYPE> & {
     /**
      * Identifier of the account requesting the change.
      */
@@ -34,9 +44,4 @@ export type EmailConfirmationTokenPayload = {
      * Account revocation version captured when the request was created.
      */
     readonly emailRevocationVersion: number;
-
-    /**
-     * Discriminator preventing other credentials from confirming an email change.
-     */
-    readonly type: AuthTokenType.EMAIL_CONFIRM;
 };

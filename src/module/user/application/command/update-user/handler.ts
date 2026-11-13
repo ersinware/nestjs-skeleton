@@ -8,16 +8,16 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, TOKEN_UPLOAD_TOKEN_PORT, type IStoragePort } from 'src/core/storage';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { UpdateUserCommand } from 'src/module/user/application/command/update-user/command';
+import { UserUploadTokenType, type UserProfileAvatarTokenPayload } from 'src/module/user/application/user-upload-token';
 import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { canonicalizeUserAvatarChangeForm } from 'src/module/user/domain/user-avatar-change';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { AuditReason } from 'src/shared/domain/audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
@@ -42,7 +42,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      * @param transactionPort The commit boundary for the business write and audit
      * @param userWriterPort The port used to load and save the user aggregate
      * @param auditPort The port used to record profile changes and audited refusals
-     * @param tokenPort Verifies profile-owned upload proofs
+     * @param uploadTokenPort Verifies profile-owned upload proofs
      * @param storagePort Checks uploaded metadata outside the database transaction
      * @param hashingPort Produces and verifies workflow form bindings
      */
@@ -50,7 +50,8 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
     ) {}
@@ -82,10 +83,13 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
         let avatarUpdate: Parameters<User['update']>[1];
 
         if (avatar !== undefined && uploadToken !== undefined) {
-            let payload;
+            let payload: UserProfileAvatarTokenPayload;
 
             try {
-                payload = await this.tokenPort.verifyUploadToken(uploadToken, UserUploadPurpose.PROFILE_AVATAR, true);
+                payload = await this.uploadTokenPort.verify<UserProfileAvatarTokenPayload>(
+                    uploadToken,
+                    UserUploadTokenType.PROFILE_AVATAR,
+                );
             } catch (error) {
                 if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                     throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
@@ -127,7 +131,7 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
 
             if (
                 !this.hashingPort.verifyHmacSha256(
-                    UserUploadPurpose.PROFILE_AVATAR,
+                    UserUploadTokenType.PROFILE_AVATAR,
                     canonicalizeUserAvatarChangeForm({
                         id: user.id,
                         avatarId: payload.jti,

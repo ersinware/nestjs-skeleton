@@ -10,9 +10,9 @@ import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
+import { AuthPolicyModule } from 'src/core/security/auth';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
-import { TokenModule } from 'src/core/security/token';
 import { AdminModule } from 'src/module/admin';
 import { LoginAdminCommandHandler } from 'src/module/auth/application/command/login-admin/handler';
 import { LoginUserCommandHandler } from 'src/module/auth/application/command/login-user/handler';
@@ -36,7 +36,7 @@ import { UserModule } from 'src/module/user';
         IdempotencyModule,
         JobQueueModule,
         HashingModule,
-        TokenModule,
+        AuthPolicyModule,
         SessionModule,
         UserModule,
         AdminModule,

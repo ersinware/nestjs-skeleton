@@ -25,10 +25,24 @@ import {
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit, AuditAction, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
+import {
+    ACCESS_TOKEN_TYPE,
+    AccessTokenLifetimePolicy,
+    REFRESH_TOKEN_TYPE,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    TOKEN_AUTH_REFRESH_TOKEN_PORT,
+    type AccessTokenPayload,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
+import {
+    EMAIL_CONFIRMATION_TOKEN_TYPE,
+    TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT,
+    type EmailConfirmationTokenPayload,
+} from 'src/core/security/email-change';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { OpenSessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
-import { TOKEN_TOKEN_PORT, type EmailConfirmationTokenPayload, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import {
     TOKEN_ADMIN_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
     type IAdminEmailChangeNotificationWriterPort,
@@ -53,6 +67,7 @@ import { user, emailChangeNotification as userNotification } from 'src/module/us
 import { DomainFailureAuditAction } from 'src/shared/domain/audit';
 import { PrincipalAuditAction, PrincipalType } from 'src/shared/domain/principal';
 import { AccessDeniedException } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -120,9 +135,12 @@ describe.each(CASES)('$route email change', (context) => {
     let app: NestFastifyApplication;
     let database: NodePgDatabase;
     let boss: PgBoss;
-    let tokenPort: ITokenPort;
+    let accessTokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>;
+    let refreshTokenPort: ITokenPort<typeof REFRESH_TOKEN_TYPE>;
+    let emailConfirmationTokenPort: ITokenPort<typeof EMAIL_CONFIRMATION_TOKEN_TYPE>;
     let sessionPort: ISessionPort;
     let hashingPort: IHashingPort;
+    let accessTokenLifetimePolicy: AccessTokenLifetimePolicy;
     let hash: string;
     let account: Account;
     const ids: string[] = [];
@@ -141,9 +159,12 @@ describe.each(CASES)('$route email change', (context) => {
         });
         database = app.get(TOKEN_DATABASE_CLIENT);
         boss = app.get(TOKEN_JOB_QUEUE_CLIENT);
-        tokenPort = app.get(TOKEN_TOKEN_PORT);
+        accessTokenPort = app.get(TOKEN_AUTH_ACCESS_TOKEN_PORT);
+        refreshTokenPort = app.get(TOKEN_AUTH_REFRESH_TOKEN_PORT);
+        emailConfirmationTokenPort = app.get(TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT);
         sessionPort = app.get(TOKEN_SESSION_PORT);
         hashingPort = app.get(TOKEN_HASHING_PORT);
+        accessTokenLifetimePolicy = app.get(AccessTokenLifetimePolicy);
         hash = await hashingPort.hashPassword(password);
         // Control delivery timing without replacing queue persistence or production consumers.
         for (const queue of await boss.getQueues()) {
@@ -233,34 +254,33 @@ describe.each(CASES)('$route email change', (context) => {
             password: hash,
             avatarKey: `avatar/${context.kind}/${id}/${uuidv7()}`,
         });
-        const { outcome, session, accessExpiresAt } = await sessionPort.openSession(
-            { key: randomUUID(), canonicalValue: 'session-fixture' },
+        const { outcome, session } = await sessionPort.openSession(
+            { key: randomUUID(), fingerprint: 'session-fixture' },
             id,
             context.kind,
             0,
         );
         expect(outcome).toBe(OpenSessionOutcome.OPENED);
-        const pair = await tokenPort.generateTokens(
-            {
+        const [accessToken, refreshToken] = await Promise.all([
+            accessTokenPort.sign<AccessTokenPayload>(ACCESS_TOKEN_TYPE, {
                 sub: id,
                 principalType: session!.principalType,
                 sid: session!.sid,
                 sessionVersion: session!.sessionVersion,
-                sessionExpiresAt: session!.sessionExpiresAt,
                 permissions: [],
-                exp: accessExpiresAt!,
-            },
-            {
+                exp: accessTokenLifetimePolicy.getAccessExpiresAt(session!.refreshExpiresAt),
+            }),
+            refreshTokenPort.sign<RefreshTokenPayload>(REFRESH_TOKEN_TYPE, {
                 sub: id,
                 principalType: session!.principalType,
                 sid: session!.sid,
                 sessionVersion: session!.sessionVersion,
                 sessionExpiresAt: session!.sessionExpiresAt,
-                jti: session!.refreshTokenJti,
+                jti: session!.refreshCredentialId,
                 exp: session!.refreshExpiresAt,
-            },
-        );
-        return { id, email, accessToken: pair.accessToken, refreshToken: pair.refreshToken };
+            }),
+        ]);
+        return { id, email, accessToken, refreshToken };
     }
 
     /**
@@ -330,7 +350,14 @@ describe.each(CASES)('$route email change', (context) => {
             exp: row.pendingEmailExpiresAt!.getTime() / 1000,
             emailRevocationVersion: row.pendingEmailRevocationVersion!,
         };
-        return { token: await tokenPort.generateEmailConfirmationToken(claims), claims, email };
+        return {
+            token: await emailConfirmationTokenPort.sign<EmailConfirmationTokenPayload>(
+                EMAIL_CONFIRMATION_TOKEN_TYPE,
+                claims,
+            ),
+            claims,
+            email,
+        };
     }
 
     /**
@@ -492,39 +519,27 @@ describe.each(CASES)('$route email change', (context) => {
 
     it('rejects the other authenticated principal kind before reaching the command', async () => {
         const kind = context.kind === PrincipalType.ADMIN ? PrincipalType.USER : PrincipalType.ADMIN;
-        const { outcome, session, accessExpiresAt } = await sessionPort.openSession(
-            { key: randomUUID(), canonicalValue: 'session-fixture' },
+        const { outcome, session } = await sessionPort.openSession(
+            { key: randomUUID(), fingerprint: 'session-fixture' },
             account.id,
             kind,
             0,
         );
         expect(outcome).toBe(OpenSessionOutcome.OPENED);
-        const pair = await tokenPort.generateTokens(
-            {
-                sub: account.id,
-                principalType: session!.principalType,
-                sid: session!.sid,
-                sessionVersion: session!.sessionVersion,
-                sessionExpiresAt: session!.sessionExpiresAt,
-                permissions: [],
-                exp: accessExpiresAt!,
-            },
-            {
-                sub: account.id,
-                principalType: session!.principalType,
-                sid: session!.sid,
-                sessionVersion: session!.sessionVersion,
-                sessionExpiresAt: session!.sessionExpiresAt,
-                jti: session!.refreshTokenJti,
-                exp: session!.refreshExpiresAt,
-            },
-        );
+        const accessToken = await accessTokenPort.sign<AccessTokenPayload>(ACCESS_TOKEN_TYPE, {
+            sub: account.id,
+            principalType: session!.principalType,
+            sid: session!.sid,
+            sessionVersion: session!.sessionVersion,
+            permissions: [],
+            exp: accessTokenLifetimePolicy.getAccessExpiresAt(session!.refreshExpiresAt),
+        });
         const proof = await pending();
         for (const [path, body] of [
             ['/email/initiate', { newEmail: proof.email, currentPassword: password }],
             ['/email/confirm', { token: proof.token }],
         ] as const) {
-            expect((await http('POST', path, body, pair.accessToken)).statusCode).toBe(403);
+            expect((await http('POST', path, body, accessToken)).statusCode).toBe(403);
         }
         expect(await notices()).toEqual([]);
     });
@@ -623,9 +638,12 @@ describe.each(CASES)('$route email change', (context) => {
                     claims.emailRevocationVersion += 1;
                 }
                 if (fault === 'expired') {
-                    claims.exp = Math.floor(Date.now() / 1000) - 1;
+                    claims.exp = nowEpochSeconds() - 1;
                 }
-                token = await tokenPort.generateEmailConfirmationToken(claims);
+                token = await emailConfirmationTokenPort.sign<EmailConfirmationTokenPayload>(
+                    EMAIL_CONFIRMATION_TOKEN_TYPE,
+                    claims,
+                );
             }
             const response = await http('POST', '/email/confirm', { token });
             const expectedStatus = fault === 'subject' || fault === 'principal' ? 403 : 400;
@@ -640,7 +658,14 @@ describe.each(CASES)('$route email change', (context) => {
             const failures = await evidence(DomainFailureAuditAction.EMAIL_CHANGE_CONFIRMATION_FAILED);
             if (expectedStatus === 403) {
                 expect(failures).toHaveLength(1);
-                expect(failures[0]!.targetId).toBe((await tokenPort.verifyEmailConfirmationToken(token)).sub);
+                expect(failures[0]!.targetId).toBe(
+                    (
+                        await emailConfirmationTokenPort.verify<EmailConfirmationTokenPayload>(
+                            token,
+                            EMAIL_CONFIRMATION_TOKEN_TYPE,
+                        )
+                    ).sub,
+                );
             } else {
                 expect(failures).toEqual([]);
             }
@@ -697,7 +722,7 @@ describe.each(CASES)('$route email change', (context) => {
                 path = proof ? '/email/confirm' : '/password',
                 method = proof ? 'POST' : 'PATCH',
                 open = vi.spyOn(sessionPort, 'openSession'),
-                sign = vi.spyOn(tokenPort, 'generateTokens'),
+                sign = vi.spyOn(accessTokenPort, 'sign'),
                 read = vi.spyOn(sessionPort, 'getVersion'),
                 load = vi.spyOn(app.get<AccountReader>(context.writerToken), 'load'),
                 call = () => http(method, path, payload, account.accessToken, key),
@@ -713,7 +738,7 @@ describe.each(CASES)('$route email change', (context) => {
                 beforeJobs = await jobs(context.queues.SESSION_RECONCILE),
                 action = proof ? PrincipalAuditAction.EMAIL_CHANGED : PrincipalAuditAction.PASSWORD_CHANGED,
                 beforeAudit = await evidence(action),
-                verify = vi.spyOn(tokenPort, 'verifyEmailConfirmationToken'),
+                verify = vi.spyOn(emailConfirmationTokenPort, 'verify'),
                 hash = vi.spyOn(hashingPort, 'verifyPassword'),
                 replay = await call();
             expect(replay.statusCode).toBe(204);

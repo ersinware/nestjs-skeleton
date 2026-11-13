@@ -4,8 +4,10 @@
  */
 
 import { Controller, Get, Scope, type Type } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import 'reflect-metadata';
+import { ENV } from 'src/core/config';
 import { Authenticated } from 'src/core/security/auth/decorator/authenticated.decorator';
 import { Permissions } from 'src/core/security/auth/decorator/permissions.decorator';
 import { PrincipalOnly } from 'src/core/security/auth/decorator/principal-only.decorator';
@@ -22,9 +24,18 @@ import { describe, expect, it } from 'vitest';
  */
 async function bootstrap(controllers: readonly Type<unknown>[]): Promise<void> {
     const module = await Test.createTestingModule({
-        imports: [AuthPolicyModule],
+        imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), AuthPolicyModule],
         controllers: [...controllers],
-    }).compile();
+    })
+        .overrideProvider(ConfigService)
+        .useValue(
+            new ConfigService({
+                [ENV.JWT_ACCESS_TTL]: '15m',
+                [ENV.JWT_ACCESS_SECRET]: 'a'.repeat(32),
+                [ENV.JWT_REFRESH_SECRET]: 'r'.repeat(32),
+            }),
+        )
+        .compile();
     try {
         await module.init();
     } finally {

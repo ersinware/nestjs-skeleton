@@ -7,7 +7,12 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import {
+    EMAIL_CONFIRMATION_TOKEN_TYPE,
+    TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT,
+    type EmailConfirmationTokenPayload,
+} from 'src/core/security/email-change';
+import type { ITokenPort } from 'src/core/security/token';
 import { ConfirmUserEmailChangeCommand } from 'src/module/user/application/command/confirm-user-email-change/command';
 import {
     TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT,
@@ -40,7 +45,7 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<Con
      * @param idempotencyPort Commits the account, jobs, notification and audit together
      * @param userWriterPort Loads and persists authoritative account state
      * @param notificationWriterPort Stores the immutable old-address recipient
-     * @param tokenPort Verifies the email confirmation proof
+     * @param emailConfirmationTokenPort Verifies the email confirmation proof
      * @param auditPort Records completed changes and security refusals
      */
     constructor(
@@ -48,7 +53,8 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<Con
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_USER_EMAIL_CHANGE_NOTIFICATION_WRITER_PORT)
         private readonly notificationWriterPort: IUserEmailChangeNotificationWriterPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT)
+        private readonly emailConfirmationTokenPort: ITokenPort<typeof EMAIL_CONFIRMATION_TOKEN_TYPE>,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
     ) {}
 
@@ -67,10 +73,13 @@ export class ConfirmUserEmailChangeCommandHandler implements ICommandHandler<Con
         await this.idempotencyPort.executePrepared(
             command.idempotencyRequest,
             async () => {
-                let payload;
+                let payload: EmailConfirmationTokenPayload;
 
                 try {
-                    payload = await this.tokenPort.verifyEmailConfirmationToken(command.token);
+                    payload = await this.emailConfirmationTokenPort.verify<EmailConfirmationTokenPayload>(
+                        command.token,
+                        EMAIL_CONFIRMATION_TOKEN_TYPE,
+                    );
                 } catch (error) {
                     if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                         throw new InvalidInputException('The email confirmation is invalid or has expired.', {
