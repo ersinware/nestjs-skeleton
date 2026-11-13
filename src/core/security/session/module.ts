@@ -9,6 +9,7 @@ import Redis from 'ioredis';
 import { ENV } from 'src/core/config';
 import { LoggerModule, TOKEN_LOGGER_PORT, type ILoggerPort } from 'src/core/observability/logger';
 import { createRedisClient } from 'src/core/redis';
+import { HashingModule } from 'src/core/security/hashing';
 import { SessionCleanerAdapter } from 'src/core/security/session/adapter/session-cleaner.adapter';
 import { SessionHealthAdapter } from 'src/core/security/session/adapter/session-health.adapter';
 import { SessionAdapter } from 'src/core/security/session/adapter/session.adapter';
@@ -22,7 +23,7 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
  * their adapters. Closes the connection gracefully on shutdown.
  */
 @Module({
-    imports: [LoggerModule],
+    imports: [LoggerModule, HashingModule],
     providers: [
         {
             inject: [ConfigService, TOKEN_LOGGER_PORT],
@@ -41,6 +42,11 @@ import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-conn
                         commandTimeout: ENV.REDIS_SESSION_COMMAND_TIMEOUT,
                     },
                     TOKEN_SESSION_CONNECTION,
+                    {
+                        // A lost reply is ambiguous; only a new same-key HTTP request may retry it.
+                        enableOfflineQueue: false,
+                        autoResendUnfulfilledCommands: false,
+                    },
                 ),
         },
         {

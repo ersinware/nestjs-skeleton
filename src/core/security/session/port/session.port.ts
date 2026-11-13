@@ -3,6 +3,7 @@
  * @description Atomic session lifecycle and account-wide access-version contracts.
  */
 
+import type { IdempotencyRequest } from 'src/core/idempotency';
 import type { SessionIdentity } from 'src/core/security/session/session-identity.type';
 import type { PrincipalType } from 'src/shared/domain/principal';
 
@@ -12,7 +13,7 @@ import type { PrincipalType } from 'src/shared/domain/principal';
 export const TOKEN_SESSION_PORT = Symbol();
 
 /**
- * Signed token metadata used to register exactly the lifetime issued by the token port.
+ * Authoritative session metadata used to sign credentials without changing identity or deadlines.
  */
 export type SessionRegistration = SessionIdentity & {
     /**
@@ -37,56 +38,265 @@ export type SessionRegistration = SessionIdentity & {
 };
 
 /**
- * Rotation outcomes distinguish a dead session from reuse within a live session.
+ * Request replay outcomes shared by pre-reads and atomic session mutations.
  */
-export enum RotateOutcome {
+export enum ReplaySessionOutcome {
+    /**
+     * No retained success exists; normal preparation may proceed.
+     */
+    NOT_FOUND = 'REPLAY_NOT_FOUND',
+
+    /**
+     * The original winning registration is still live.
+     */
+    REPLAYED = 'REPLAY_REPLAYED',
+
+    /**
+     * The request key belongs to a different fingerprint.
+     */
+    CONFLICT = 'REPLAY_CONFLICT',
+
+    /**
+     * The account version floor is missing, so session validity cannot be established.
+     */
+    SESSION_UNAVAILABLE = 'REPLAY_SESSION_UNAVAILABLE',
+
+    /**
+     * The session or request version is below the stored account version floor.
+     */
+    VERSION_SUPERSEDED = 'REPLAY_VERSION_SUPERSEDED',
+
+    /**
+     * The original registration is missing, expired, or has a different current refresh credential.
+     */
+    REPLAY_UNAVAILABLE = 'REPLAY_REPLAY_UNAVAILABLE',
+}
+
+/**
+ * Retained request decision without creating a session or renewing retention.
+ */
+export type ReplaySessionResult =
+    | {
+          /**
+           * The retained success can issue credentials.
+           */
+          readonly outcome: ReplaySessionOutcome.REPLAYED;
+
+          /**
+           * Original winning live registration.
+           */
+          readonly session: SessionRegistration;
+
+          /**
+           * Access credential expiry for this issuance in Unix seconds.
+           */
+          readonly accessExpiresAt: number;
+      }
+    | {
+          /**
+           * Normal preparation is needed, or replay is refused.
+           */
+          readonly outcome: Exclude<ReplaySessionOutcome, ReplaySessionOutcome.REPLAYED>;
+
+          /**
+           * No issuable registration accompanies this decision.
+           */
+          readonly session: null;
+
+          /**
+           * No credential deadline accompanies this decision.
+           */
+          readonly accessExpiresAt?: never;
+      };
+
+/**
+ * Outcomes produced by new-session creation after replay checks.
+ */
+export enum OpenSessionOutcome {
+    /**
+     * A new session was opened and can issue credentials.
+     */
+    OPENED = 'OPEN_OPENED',
+
+    /**
+     * The new-session snapshot is below the stored version floor.
+     */
+    VERSION_SUPERSEDED = 'OPEN_VERSION_SUPERSEDED',
+}
+
+/**
+ * Opening decision with registration metadata only for successful issuance.
+ */
+export type OpenSessionResult =
+    | Extract<ReplaySessionResult, { readonly outcome: ReplaySessionOutcome.REPLAYED }>
+    | {
+          /**
+           * The newly opened session can issue credentials.
+           */
+          readonly outcome: OpenSessionOutcome.OPENED;
+
+          /**
+           * Original winning live registration.
+           */
+          readonly session: SessionRegistration;
+
+          /**
+           * Access credential expiry selected for this issuance in Unix seconds.
+           */
+          readonly accessExpiresAt: number;
+      }
+    | {
+          /**
+           * Request conflict or session-domain rejection decision.
+           */
+          readonly outcome:
+              | Exclude<OpenSessionOutcome, OpenSessionOutcome.OPENED>
+              | Exclude<ReplaySessionOutcome, ReplaySessionOutcome.NOT_FOUND | ReplaySessionOutcome.REPLAYED>;
+
+          /**
+           * Rejected decisions cannot issue credentials.
+           */
+          readonly session: null;
+
+          /**
+           * Rejected decisions have no credential deadline.
+           */
+          readonly accessExpiresAt?: never;
+      };
+
+/**
+ * Outcomes produced by credential rotation after replay checks.
+ */
+export enum RotateSessionOutcome {
     /**
      * Current refresh credential was atomically replaced while preserving the session deadline.
      */
-    ROTATED = 'ROTATED',
+    ROTATED = 'ROTATE_ROTATED',
 
     /**
      * Already-rotated credential was replayed within grace; rotation was denied without closing the session.
      */
-    CONCURRENT_REPLAY = 'CONCURRENT_REPLAY',
+    CONCURRENT_REPLAY = 'ROTATE_CONCURRENT_REPLAY',
 
     /**
      * Non-current credential was reused outside grace; the session was atomically closed.
      */
-    REUSE_DETECTED = 'REUSE_DETECTED',
+    REUSE_DETECTED = 'ROTATE_REUSE_DETECTED',
 
     /**
-     * Rotation was denied because the session is missing, expired, or fails deadline/version checks.
+     * The account version floor is missing, so session validity cannot be established.
      */
-    SESSION_CLOSED = 'SESSION_CLOSED',
+    SESSION_UNAVAILABLE = 'ROTATE_SESSION_UNAVAILABLE',
+
+    /**
+     * The session or request version is below the stored account version floor.
+     */
+    VERSION_SUPERSEDED = 'ROTATE_VERSION_SUPERSEDED',
+
+    /**
+     * Rotation was denied because the session is missing or expired.
+     */
+    SESSION_CLOSED = 'ROTATE_SESSION_CLOSED',
 }
 
 /**
- * Session mutations accept token-generated registrations and are awaited before returning credentials or logout success.
+ * Rotation decision with registration metadata only for successful issuance.
+ */
+export type RotateSessionResult =
+    | Extract<ReplaySessionResult, { readonly outcome: ReplaySessionOutcome.REPLAYED }>
+    | {
+          /**
+           * The newly rotated session can issue credentials.
+           */
+          readonly outcome: RotateSessionOutcome.ROTATED;
+
+          /**
+           * Original winning live registration.
+           */
+          readonly session: SessionRegistration;
+
+          /**
+           * Access credential expiry selected for this issuance in Unix seconds.
+           */
+          readonly accessExpiresAt: number;
+      }
+    | {
+          /**
+           * Existing session-domain rejection decision.
+           */
+          readonly outcome:
+              | Exclude<RotateSessionOutcome, RotateSessionOutcome.ROTATED>
+              | Exclude<ReplaySessionOutcome, ReplaySessionOutcome.NOT_FOUND | ReplaySessionOutcome.REPLAYED>;
+
+          /**
+           * Rejected decisions cannot issue credentials.
+           */
+          readonly session: null;
+
+          /**
+           * Rejected decisions have no credential deadline.
+           */
+          readonly accessExpiresAt?: never;
+      };
+
+/**
+ * Session mutations own identity and deadlines; token signing follows the atomic session decision.
  */
 export interface ISessionPort {
     /**
-     * Opens a new session and mirrors its version atomically; never replaces an existing sid.
+     * Opens a session or replays the original live registration in one atomic operation.
+     * Identity and deadlines are created only after the request replay decision.
      *
+     * @param idempotencyRequest Logical request identity.
      * @param id Principal identifier.
-     * @param session Signed token lifetimes, identity, and account version.
-     * @returns False if superseded or already registered.
+     * @param principalType Owning context.
+     * @param sessionVersion Current account version.
+     * @returns Opening decision, winning registration and per-issuance access expiry on success.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
+     * @throws {SystemException} When the store returns an unsupported opening result.
      */
-    openSession(id: string, session: SessionRegistration): Promise<boolean>;
+    openSession(
+        idempotencyRequest: IdempotencyRequest,
+        id: string,
+        principalType: PrincipalType,
+        sessionVersion: number,
+    ): Promise<OpenSessionResult>;
 
     /**
-     * Replaces only the current credential of an existing live session, preserving its deadline.
-     * Reuse outside grace closes that session in the same operation before returning.
+     * Reads retained request success before preparation, without changing session or request state.
+     * Mutation methods recheck replay atomically; this read does not wait for in-flight requests.
      *
+     * @param idempotencyRequest Logical request identity and canonical input.
+     * @param principalId Principal identifier used to locate the request.
+     * @param principalType Owning context.
+     * @returns Missing request, conflict, unavailable replay, or the original live registration.
+     * @throws {DependencyUnavailableException} When the session store is unavailable.
+     * @throws {SystemException} When the store returns an unsupported replay result.
+     */
+    findSessionRequestReplay(
+        idempotencyRequest: IdempotencyRequest,
+        principalId: string,
+        principalType: PrincipalType,
+    ): Promise<ReplaySessionResult>;
+
+    /**
+     * Replays request success or rotates the current credential in one atomic operation.
+     * Reuse outside grace closes that session before returning.
+     *
+     * @param idempotencyRequest Logical request identity.
      * @param id Principal identifier.
      * @param oldJti Presented refresh credential identifier.
-     * @param session Replacement credential with the original session identity.
-     * @returns The atomic rotation decision.
+     * @param session Current account version and verified session identity to preserve.
+     * @returns Rotation decision, winning registration and per-issuance access expiry on success.
      * @throws {DependencyUnavailableException} When the session store is unavailable.
-     * @throws {SystemException} When the session store returns an unsupported rotation result
+     * @throws {SystemException} When the store returns an unsupported rotation result.
      */
-    rotateSession(id: string, oldJti: string, session: SessionRegistration): Promise<RotateOutcome>;
+    rotateSession(
+        idempotencyRequest: IdempotencyRequest,
+        id: string,
+        oldJti: string,
+        session: Omit<SessionRegistration, 'refreshTokenJti' | 'refreshExpiresAt'>,
+    ): Promise<RotateSessionResult>;
 
     /**
      * Deletes the stable session; rotation never recreates missing sessions.

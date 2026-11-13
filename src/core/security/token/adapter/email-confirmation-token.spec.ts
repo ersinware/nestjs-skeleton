@@ -14,12 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('Email confirmation tokens', () => {
     const config = {
-        SESSION_ABSOLUTE_TTL_ADMIN: '8h',
-        SESSION_ABSOLUTE_TTL_USER: '7d',
         JWT_ACCESS_SECRET: 'a'.repeat(32),
-        JWT_ACCESS_TTL: '15m',
         JWT_REFRESH_SECRET: 'r'.repeat(32),
-        JWT_REFRESH_TTL: '1d',
         JWT_INVITE_SECRET: 'i'.repeat(32),
         JWT_ACTIVATION_SECRET: 'u'.repeat(32),
         JWT_UPLOAD_SECRET: 'p'.repeat(32),
@@ -69,7 +65,26 @@ describe('Email confirmation tokens', () => {
     });
 
     it('rejects other credentials as email proofs and email proofs as session/invite credentials', async () => {
-        const pair = await adapter.generateTokens({ id: request.sub, type: request.principalType, permissions: [] }, 3);
+        const pair = await adapter.generateTokens(
+            {
+                sub: request.sub,
+                principalType: request.principalType,
+                sid: '12345678-1234-4234-8234-123456789abc',
+                sessionVersion: 3,
+                sessionExpiresAt: Math.floor(Date.now() / 1000) + 7200,
+                permissions: [],
+                exp: Math.floor(Date.now() / 1000) + 900,
+            },
+            {
+                sub: request.sub,
+                principalType: request.principalType,
+                sid: '12345678-1234-4234-8234-123456789abc',
+                sessionVersion: 3,
+                sessionExpiresAt: Math.floor(Date.now() / 1000) + 7200,
+                jti: '12345678-1234-4234-8234-123456789def',
+                exp: Math.floor(Date.now() / 1000) + 3600,
+            },
+        );
         const invitation = await adapter.generateInviteToken({
             sub: request.sub,
             jti: request.jti,

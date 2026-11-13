@@ -75,9 +75,9 @@ function fixture(
     const tokens = {
         verifyAccessToken: vi.fn<ITokenPort['verifyAccessToken']>().mockResolvedValue(payload),
         verifyRefreshToken: vi.fn(),
+        verifyRefreshTokenForReplay: vi.fn(),
         verifyLogoutToken: vi.fn(),
         generateTokens: vi.fn(),
-        refreshTokens: vi.fn(),
         generateInviteToken: vi.fn(),
         verifyInviteToken: vi.fn(),
         generateActivationToken: vi.fn(),
@@ -90,6 +90,7 @@ function fixture(
     const sessions = {
         getVersion: vi.fn<ISessionPort['getVersion']>().mockResolvedValue(3),
         isSessionActive: vi.fn<ISessionPort['isSessionActive']>().mockResolvedValue(true),
+        findSessionRequestReplay: vi.fn(),
         openSession: vi.fn(),
         rotateSession: vi.fn(),
         closeSession: vi.fn(),

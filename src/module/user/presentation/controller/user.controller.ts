@@ -17,15 +17,7 @@ import {
     Query,
     Req,
 } from '@nestjs/common';
-import {
-    ApiBearerAuth,
-    ApiExtraModels,
-    ApiNoContentResponse,
-    ApiOkResponse,
-    ApiOperation,
-    ApiTags,
-    getSchemaPath,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
@@ -57,7 +49,6 @@ import {
 import { Audited } from 'src/core/observability/audit';
 import { CurrentPrincipal, Permissions, PrincipalOnly, Public } from 'src/core/security/auth';
 import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
-import { SessionOutcome } from 'src/core/security/session';
 import { ActivateUserCommand } from 'src/module/user/application/command/activate-user/command';
 import { BanUserCommand } from 'src/module/user/application/command/ban-user/command';
 import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
@@ -85,18 +76,6 @@ import { PostUserEmailChangeInitiateDto } from 'src/module/user/presentation/dto
 import { PostUserRegistrationInitiateDto } from 'src/module/user/presentation/dto/post-user-registration-initiate.dto';
 import { PostUserRegistrationDto } from 'src/module/user/presentation/dto/post-user-registration.dto';
 import { PutUserPermissionsDto } from 'src/module/user/presentation/dto/put-user-permissions.dto';
-import {
-    ResponseUserActivationLoginRequiredDto,
-    ResponseUserActivationSessionDto,
-} from 'src/module/user/presentation/dto/response-user-activation.dto';
-import {
-    ResponseUserEmailChangeLoginRequiredDto,
-    ResponseUserEmailChangeSessionDto,
-} from 'src/module/user/presentation/dto/response-user-email-change.dto';
-import {
-    ResponseUserPasswordLoginRequiredDto,
-    ResponseUserPasswordSessionDto,
-} from 'src/module/user/presentation/dto/response-user-password.dto';
 import { ResponseUserDto } from 'src/module/user/presentation/dto/response-user.dto';
 import { Permission, PrincipalAuditAction, PrincipalType, type Principal } from 'src/shared/domain/principal';
 import { InvalidInputMessage, ResourceConflictMessage } from 'src/shared/exception';
@@ -422,46 +401,33 @@ export class UserController {
     }
 
     /**
-     * Consumes emailed proof for the authenticated account and replaces its sessions.
+     * Confirms the authenticated account’s email change and revokes its existing sessions.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal confirming the change
      * @param postUserEmailChangeConfirmDto The token delivered to the pending address
-     * @returns The committed email change with replacement tokens or a sign-in requirement
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
      * @throws {ResourceNotFoundException} When the authenticated account no longer exists
-     * @throws {ResourceConflictException} When the email is taken or the account changed concurrently
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the confirmation contract, or the queue does not accept every required job
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */
     @Post('me/email/confirm')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @PrincipalOnly(PrincipalType.USER)
-    @HttpCode(HttpStatus.OK)
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Confirm current user email change',
         description:
-            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, queues an old-address notice, and attempts to open a replacement session.',
+            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, and queues a notice to the previous address. Returns 204 without a response body. Discard old tokens and sign in with the new email address and unchanged password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
     })
-    @ApiExtraModels(ResponseUserEmailChangeSessionDto, ResponseUserEmailChangeLoginRequiredDto)
-    @ApiOkResponse({
-        description:
-            'Email changed. Discard old tokens; use the replacement pair or sign in with the new address and unchanged password. Session unavailability does not undo the email change.',
-        schema: {
-            type: 'object',
-            oneOf: [
-                { $ref: getSchemaPath(ResponseUserEmailChangeSessionDto) },
-                { $ref: getSchemaPath(ResponseUserEmailChangeLoginRequiredDto) },
-            ],
-            discriminator: {
-                propertyName: 'session',
-                mapping: {
-                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserEmailChangeSessionDto),
-                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseUserEmailChangeLoginRequiredDto),
-                },
-            },
-        },
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Email changed. Discard old tokens and sign in with the new email address and unchanged password.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
@@ -469,60 +435,57 @@ export class UserController {
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async confirmEmailChangeMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
         @Body() postUserEmailChangeConfirmDto: PostUserEmailChangeConfirmDto,
-    ): Promise<ResponseUserEmailChangeSessionDto | ResponseUserEmailChangeLoginRequiredDto> {
-        const result = await this.commandPipeline.execute(
-            new ConfirmUserEmailChangeCommand(principal.id, postUserEmailChangeConfirmDto.token),
+    ) {
+        await this.commandPipeline.execute(
+            new ConfirmUserEmailChangeCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        postUserEmailChangeConfirmDto.token,
+                    ]),
+                },
+                principal.id,
+                postUserEmailChangeConfirmDto.token,
+            ),
         );
-
-        return result.session === SessionOutcome.CREATED
-            ? plainToInstance(ResponseUserEmailChangeSessionDto, result)
-            : plainToInstance(ResponseUserEmailChangeLoginRequiredDto, result);
     }
 
     /**
      * Changes the currently authenticated user's password; the current password must be verified so
      * a hijacked session cannot take the account over.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal of the current request
      * @param patchUserPasswordDto The payload carrying the current and new passwords
-     * @returns The password change result with tokens or a sign-in requirement
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {ResourceNotFoundException} When the user does not exist
      * @throws {AccessDeniedException} When the loaded account is banned
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
     @Patch('me/password')
     @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
     @PrincipalOnly(PrincipalType.USER)
-    @HttpCode(HttpStatus.OK)
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Change current user password',
         description:
-            "Updates the currently authenticated user's password, revokes existing sessions, and attempts to open a replacement session for this client.",
+            'Verifies the current password, changes it, and revokes existing sessions. Returns 204 without a response body. Discard old tokens and sign in with the new password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, password verification, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
     })
-    @ApiExtraModels(ResponseUserPasswordSessionDto, ResponseUserPasswordLoginRequiredDto)
-    @ApiOkResponse({
-        description:
-            'Password changed. The session result contains new tokens or requires sign-in with the new password; session unavailability does not undo the password change.',
-        schema: {
-            type: 'object',
-            oneOf: [
-                { $ref: getSchemaPath(ResponseUserPasswordSessionDto) },
-                { $ref: getSchemaPath(ResponseUserPasswordLoginRequiredDto) },
-            ],
-            discriminator: {
-                propertyName: 'session',
-                mapping: {
-                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserPasswordSessionDto),
-                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseUserPasswordLoginRequiredDto),
-                },
-            },
-        },
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Password changed. Discard old tokens and sign in with the new password.',
     })
     // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
     // share the status, so naming one cause would document the endpoint as if the others did not exist.
@@ -530,22 +493,30 @@ export class UserController {
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse(ResourceConflictMessage.CONCURRENT_MODIFICATION)
+    @ApiDefaultResourceConflictResponse()
     async changePasswordMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
         @Body() patchUserPasswordDto: PatchUserPasswordDto,
-    ): Promise<ResponseUserPasswordSessionDto | ResponseUserPasswordLoginRequiredDto> {
-        const result = await this.commandPipeline.execute(
+    ) {
+        await this.commandPipeline.execute(
             new ChangeUserPasswordCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        patchUserPasswordDto.currentPassword,
+                        patchUserPasswordDto.newPassword,
+                    ]),
+                },
                 principal.id,
                 patchUserPasswordDto.currentPassword,
                 patchUserPasswordDto.newPassword,
             ),
         );
-
-        return result.session === SessionOutcome.CREATED
-            ? plainToInstance(ResponseUserPasswordSessionDto, result)
-            : plainToInstance(ResponseUserPasswordLoginRequiredDto, result);
     }
 
     /**
@@ -645,57 +616,54 @@ export class UserController {
     /**
      * Consumes emailed proof and the current password to activate a pending account.
      *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
      * @param postUserActivationDto The activation token and existing password
-     * @returns Session credentials or an instruction to sign in after activation
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {InvalidInputException} When the proof or password is invalid or expired
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceNotFoundException} When the verified proof refers to a missing account
-     * @throws {ResourceConflictException} When the account is active or changed concurrently
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the activation contract
      * @throws {DependencyUnavailableException} When required database or audit persistence is unavailable
      */
     @Public()
     @Post('activation/complete')
     @RateLimit(RateLimitPolicy.USER_ACTIVATION)
-    @HttpCode(HttpStatus.OK)
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Activate user account',
         description:
-            'Verifies the emailed activation token and registration password, activates the account, then attempts to open a session. Expired links require another activation email.',
+            'Verifies the emailed activation token and existing password, consumes the proof, and activates the account. Returns 204 without a response body; sign in with the existing password afterward. Expired links require another activation email. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key success returns 204 without rechecking the consumed proof or password, or repeating activation and audit. Rate limits still apply.',
     })
-    @ApiExtraModels(ResponseUserActivationSessionDto, ResponseUserActivationLoginRequiredDto)
-    @ApiOkResponse({
-        description:
-            'Account activated. Use the new token pair or sign in with the existing password if session creation was unavailable.',
-        schema: {
-            type: 'object',
-            oneOf: [
-                { $ref: getSchemaPath(ResponseUserActivationSessionDto) },
-                { $ref: getSchemaPath(ResponseUserActivationLoginRequiredDto) },
-            ],
-            discriminator: {
-                propertyName: 'session',
-                mapping: {
-                    [SessionOutcome.CREATED]: getSchemaPath(ResponseUserActivationSessionDto),
-                    [SessionOutcome.LOGIN_REQUIRED]: getSchemaPath(ResponseUserActivationLoginRequiredDto),
-                },
-            },
-        },
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Account activated. Sign in with the existing password.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
     async activate(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
         @Body() postUserActivationDto: PostUserActivationDto,
-    ): Promise<ResponseUserActivationSessionDto | ResponseUserActivationLoginRequiredDto> {
-        const result = await this.commandPipeline.execute(
-            new ActivateUserCommand(postUserActivationDto.token, postUserActivationDto.password),
+    ) {
+        await this.commandPipeline.execute(
+            new ActivateUserCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        postUserActivationDto.token,
+                        postUserActivationDto.password,
+                    ]),
+                },
+                postUserActivationDto.token,
+                postUserActivationDto.password,
+            ),
         );
-
-        return result.session === SessionOutcome.CREATED
-            ? plainToInstance(ResponseUserActivationSessionDto, result)
-            : plainToInstance(ResponseUserActivationLoginRequiredDto, result);
     }
 
     /**

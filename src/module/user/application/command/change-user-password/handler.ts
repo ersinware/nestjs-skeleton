@@ -5,119 +5,87 @@
 
 import { Inject } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
+import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { SessionOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import {
-    ChangeUserPasswordCommand,
-    type ChangeUserPasswordResult,
-} from 'src/module/user/application/command/change-user-password/command';
+import { ChangeUserPasswordCommand } from 'src/module/user/application/command/change-user-password/command';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
-import { PrincipalAuditAction, PrincipalType } from 'src/shared/domain/principal';
-import {
-    ExceptionKind,
-    ResourceNotFoundException,
-    isExceptionOfKind,
-    isExceptionWithAudit,
-} from 'src/shared/exception';
+import { PrincipalAuditAction } from 'src/shared/domain/principal';
+import { ResourceNotFoundException, isExceptionWithAudit } from 'src/shared/exception';
 
 /**
  * Changes the password for an existing user account.
  */
 @CommandHandler(ChangeUserPasswordCommand)
-export class ChangeUserPasswordCommandHandler implements ICommandHandler<
-    ChangeUserPasswordCommand,
-    ChangeUserPasswordResult
-> {
+export class ChangeUserPasswordCommandHandler implements ICommandHandler<ChangeUserPasswordCommand, void> {
     /**
      * Initializes the handler with the required ports.
      *
-     * @param transactionPort The commit boundary for the business write and audit
+     * @param idempotencyPort The commit boundary for the business write and audit
      * @param userWriterPort The port used to load and save the user aggregate
      * @param hashingPort The port used to verify and hash passwords
-     * @param sessionPort The port used to synchronize the version and open a fresh session
      * @param auditPort The port used to record the password change for the audit trail
-     * @param tokenPort The port used to sign the replacement token pair
      */
     constructor(
-        @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
+        @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
-        @Inject(TOKEN_SESSION_PORT) private readonly sessionPort: ISessionPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
     ) {}
 
     /**
      * Executes the change user password command.
      *
      * @param command The command payload
-     * @returns The committed password change and its session outcome
      * @throws {ResourceNotFoundException} When the user does not exist
      * @throws {AccessDeniedException} When the loaded account is banned
      * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When persistence rejects a concurrent modification
+     * @throws {ResourceConflictException} When the key belongs to a different request or persistence rejects a conflicting mutation.
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
      */
-    async execute(command: ChangeUserPasswordCommand): Promise<ChangeUserPasswordResult> {
-        const { id } = command,
-            user = await this.userWriterPort.load(id);
+    async execute(command: ChangeUserPasswordCommand) {
+        await this.idempotencyPort.executePrepared(
+            command.idempotencyRequest,
+            async () => {
+                const { newPassword } = command,
+                    user = await this.userWriterPort.load(command.id);
 
-        if (!user) {
-            throw new ResourceNotFoundException();
-        }
+                if (!user) {
+                    throw new ResourceNotFoundException();
+                }
 
-        const { newPassword } = command,
-            hashedPassword = user.password;
+                const hashedPassword = user.password;
 
-        try {
-            user.changePassword(
-                await this.hashingPort.hashPassword(newPassword),
-                await this.hashingPort.verifyPassword(hashedPassword, command.currentPassword),
-                await this.hashingPort.verifyPassword(hashedPassword, newPassword),
-            );
-        } catch (error) {
-            if (isExceptionWithAudit(error)) {
-                await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
-            }
+                return {
+                    user,
+                    hashedNewPassword: await this.hashingPort.hashPassword(newPassword),
+                    currentPasswordMatches: await this.hashingPort.verifyPassword(
+                        hashedPassword,
+                        command.currentPassword,
+                    ),
+                    newPasswordMatches: await this.hashingPort.verifyPassword(hashedPassword, newPassword),
+                };
+            },
+            async ({ user, hashedNewPassword, currentPasswordMatches, newPasswordMatches }) => {
+                try {
+                    user.changePassword(hashedNewPassword, currentPasswordMatches, newPasswordMatches);
+                } catch (error) {
+                    if (isExceptionWithAudit(error)) {
+                        await this.auditPort.record({ ...error.audit }, { markExceptionAsAudited: error });
+                    }
 
-            throw error;
-        }
+                    throw error;
+                }
 
-        await this.transactionPort.start(async () => {
-            await this.userWriterPort.save(user);
-            await this.auditPort.record({ action: PrincipalAuditAction.PASSWORD_CHANGED });
-        });
+                await this.userWriterPort.save(user);
+                await this.auditPort.record({ action: PrincipalAuditAction.PASSWORD_CHANGED });
 
-        const tokenPairWithSession = await this.tokenPort.generateTokens(
-            { id, type: PrincipalType.USER, permissions: user.permissions },
-            user.sessionVersion,
+                return { replayResultId: null };
+            },
         );
-
-        // The password is already committed. Session unavailability cannot undo it; job
-        // reconciliation remains responsible for propagating the session version mirror.
-        try {
-            if (!(await this.sessionPort.openSession(id, tokenPairWithSession.session))) {
-                return { session: SessionOutcome.LOGIN_REQUIRED };
-            }
-        } catch (error) {
-            if (isExceptionOfKind(error, ExceptionKind.DEPENDENCY_UNAVAILABLE)) {
-                return { session: SessionOutcome.LOGIN_REQUIRED };
-            }
-
-            throw error;
-        }
-
-        return {
-            session: SessionOutcome.CREATED,
-            accessToken: tokenPairWithSession.accessToken,
-            refreshToken: tokenPairWithSession.refreshToken,
-        };
     }
 }

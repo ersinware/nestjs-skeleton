@@ -46,9 +46,10 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
      *
      * @param command The login admin command parameters
      * @returns The generated access and refresh tokens
+     * @throws {ResourceConflictException} When the key belongs to a different request.
      * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
-     * @throws {SystemException} When the admin identity incorrectly requires user activation
+     * @throws {SystemException} When the login flow returns an unexpected session outcome for an admin
      */
     async execute(command: LoginAdminCommand): Promise<LoginAdminResult> {
         const result = await login(
@@ -60,13 +61,14 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
                 auditPort: this.auditPort,
             },
             PrincipalType.ADMIN,
+            command.idempotencyRequest,
             command.email,
             command.password,
         );
 
         if (result.session !== SessionOutcome.CREATED) {
-            throw new SystemException('Admin identity unexpectedly requires user activation.', {
-                context: { class: this.constructor.name, method: this.execute.name },
+            throw new SystemException('Admin login returned an unexpected session outcome.', {
+                context: { class: this.constructor.name, method: this.execute.name, outcome: result.session },
             });
         }
 

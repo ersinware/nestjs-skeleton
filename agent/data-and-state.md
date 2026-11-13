@@ -23,7 +23,7 @@
 
 - `IIdempotencyPort` owns the outer primary transaction: claim, mutation, success audit, jobs, and minimum replay identity commit/roll back together. Same-key claims settle through PostgreSQL uniqueness under READ COMMITTED; only committed success is retained, rollback leaves the key reusable, and replay skips work.
 - `executePrepared()` checks replay before proof/password/external reads; preparation stays read-only outside the transaction, mutation callbacks DB-only. The final claim settles races even after preparation failure; prepared aggregates retain optimistic version checks.
-- Fingerprints use `IHashingPort.hmacSha256("idempotency-fingerprint", canonicalValue)` ([Hashing](security-and-sessions.md#hashing)). Persist no raw request, credentials, or response blobs; retention and endpoint metadata: [inventory](../docs/idempotency-retry-inventory.md#implemented-request-coordination).
+- Fingerprints use `IHashingPort.hmacSha256` with storage-specific purpose contexts ([Hashing](security-and-sessions.md#hashing)); preserve fingerprint compatibility for deployed data across context/canonicalization changes. Persist no raw request, credentials, or response blobs; retention and endpoint metadata: [inventory](../docs/idempotency-retry-inventory.md#implemented-request-coordination).
 
 ### Adapters
 

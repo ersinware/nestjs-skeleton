@@ -19,17 +19,12 @@ import type {
     IdempotencyResult,
 } from 'src/core/idempotency/port/idempotency.port';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { ResourceConflictException, SystemException } from 'src/shared/exception';
+import { ResourceConflictException, ResourceConflictMessage, SystemException } from 'src/shared/exception';
 
 /**
  * Separates request fingerprints from other uses of the shared HMAC key.
  */
-const IDEMPOTENCY_FINGERPRINT_CONTEXT = 'idempotency-fingerprint';
-
-/**
- * Explains why a retained key cannot identify a different logical request.
- */
-const IDEMPOTENCY_KEY_CONFLICT_MESSAGE = 'The idempotency key is already associated with a different request.';
+const POSTGRES_IDEMPOTENCY_FINGERPRINT_CONTEXT = 'postgres:idempotency-fingerprint';
 
 /**
  * Uses PostgreSQL uniqueness to wait for competing claims without distributed locks.
@@ -53,13 +48,13 @@ export class IdempotencyAdapter implements IIdempotencyPort {
      * Avoids revalidating consumed or expired proofs for retained success while keeping external
      * reads and password work outside the transaction. The final claim settles concurrent callers.
      *
-     * @param request Logical request identity and semantic input
+     * @param idempotencyRequest Logical request identity and semantic input
      * @param prepare Read-only preparation without business effects
      * @param work Database mutation using prepared facts
      * @returns Original committed success metadata
      */
     async executePrepared<T>(
-        request: IdempotencyRequest,
+        idempotencyRequest: IdempotencyRequest,
         prepare: () => Promise<T>,
         work: (prepared: T) => Promise<IdempotencyResult>,
     ): Promise<IdempotencyResult> {
@@ -69,7 +64,7 @@ export class IdempotencyAdapter implements IIdempotencyPort {
             [existing] = await this.database
                 .select({ fingerprint: operation.fingerprint, replayResultId: operation.replayResultId })
                 .from(operation)
-                .where(eq(operation.key, request.key));
+                .where(eq(operation.key, idempotencyRequest.key));
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -77,9 +72,9 @@ export class IdempotencyAdapter implements IIdempotencyPort {
         if (existing) {
             if (
                 existing.fingerprint !==
-                this.hashingPort.hmacSha256(IDEMPOTENCY_FINGERPRINT_CONTEXT, request.canonicalValue)
+                this.hashingPort.hmacSha256(POSTGRES_IDEMPOTENCY_FINGERPRINT_CONTEXT, idempotencyRequest.canonicalValue)
             ) {
-                throw new ResourceConflictException(IDEMPOTENCY_KEY_CONFLICT_MESSAGE);
+                throw new ResourceConflictException(ResourceConflictMessage.IDEMPOTENCY_KEY_CONFLICT);
             }
 
             return { replayResultId: existing.replayResultId };
@@ -91,28 +86,34 @@ export class IdempotencyAdapter implements IIdempotencyPort {
             prepared = await prepare();
         } catch (error) {
             // A competing request may have committed while these reads or proofs were evaluated.
-            return this.execute(request, () => {
+            return this.execute(idempotencyRequest, () => {
                 throw error;
             });
         }
 
-        return this.execute(request, () => work(prepared));
+        return this.execute(idempotencyRequest, () => work(prepared));
     }
 
     /**
      * Claims and commits new work, or reads the original committed success metadata.
      *
-     * @param request Logical operation identity and canonical semantic input
+     * @param idempotencyRequest Logical operation identity and canonical semantic input
      * @param work Database mutation, audit, and delivery writes
      * @returns Committed success metadata without repeating work on replay
      */
-    async execute(request: IdempotencyRequest, work: () => Promise<IdempotencyResult>): Promise<IdempotencyResult> {
-        const fingerprint = this.hashingPort.hmacSha256(IDEMPOTENCY_FINGERPRINT_CONTEXT, request.canonicalValue);
+    async execute(
+        idempotencyRequest: IdempotencyRequest,
+        work: () => Promise<IdempotencyResult>,
+    ): Promise<IdempotencyResult> {
+        const fingerprint = this.hashingPort.hmacSha256(
+            POSTGRES_IDEMPOTENCY_FINGERPRINT_CONTEXT,
+            idempotencyRequest.canonicalValue,
+        );
 
         return this.transactionPort.start(async () => {
             const [claimed] = await this.database
                 .insert(operation)
-                .values({ key: request.key, fingerprint })
+                .values({ key: idempotencyRequest.key, fingerprint })
                 .onConflictDoNothing({ target: operation.key })
                 .returning({ key: operation.key });
 
@@ -120,7 +121,7 @@ export class IdempotencyAdapter implements IIdempotencyPort {
                 const [existing] = await this.database
                     .select({ fingerprint: operation.fingerprint, replayResultId: operation.replayResultId })
                     .from(operation)
-                    .where(eq(operation.key, request.key));
+                    .where(eq(operation.key, idempotencyRequest.key));
 
                 if (!existing) {
                     throw new SystemException('The conflicting idempotency operation is missing.', {
@@ -129,7 +130,7 @@ export class IdempotencyAdapter implements IIdempotencyPort {
                 }
 
                 if (existing.fingerprint !== fingerprint) {
-                    throw new ResourceConflictException(IDEMPOTENCY_KEY_CONFLICT_MESSAGE);
+                    throw new ResourceConflictException(ResourceConflictMessage.IDEMPOTENCY_KEY_CONFLICT);
                 }
 
                 return { replayResultId: existing.replayResultId };
@@ -141,7 +142,7 @@ export class IdempotencyAdapter implements IIdempotencyPort {
                 await this.database
                     .update(operation)
                     .set({ replayResultId: result.replayResultId })
-                    .where(eq(operation.key, request.key));
+                    .where(eq(operation.key, idempotencyRequest.key));
             }
 
             return result;

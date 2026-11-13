@@ -12,12 +12,8 @@ import { describe, expect, it } from 'vitest';
 describe('TokenModule', () => {
     it('exports upload signing and verification through the existing token port', async () => {
         const config = {
-            SESSION_ABSOLUTE_TTL_ADMIN: '8h',
-            SESSION_ABSOLUTE_TTL_USER: '7d',
             JWT_ACCESS_SECRET: 'a'.repeat(32),
-            JWT_ACCESS_TTL: '15m',
             JWT_REFRESH_SECRET: 'r'.repeat(32),
-            JWT_REFRESH_TTL: '1d',
             JWT_INVITE_SECRET: 'i'.repeat(32),
             JWT_ACTIVATION_SECRET: 'u'.repeat(32),
             JWT_UPLOAD_SECRET: 'p'.repeat(32),

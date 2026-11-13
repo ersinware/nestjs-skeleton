@@ -26,6 +26,11 @@ export enum ResourceConflictMessage {
      * one's load and save, so its decision was made on stale state and was refused.
      */
     CONCURRENT_MODIFICATION = 'The resource was modified by another request; reload and retry.',
+
+    /**
+     * Targets reuse of a retained request key with a different semantic fingerprint.
+     */
+    IDEMPOTENCY_KEY_CONFLICT = 'The idempotency key is already associated with a different request.',
 }
 
 /**

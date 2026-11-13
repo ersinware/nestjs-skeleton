@@ -19,7 +19,12 @@ import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.toke
 import { AuditModule, audit } from 'src/core/observability/audit';
 import { runWithAuditContext } from 'src/core/observability/audit/audit-context';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
-import { RotateOutcome, TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
+import {
+    ReplaySessionOutcome,
+    RotateSessionOutcome,
+    TOKEN_SESSION_PORT,
+    type ISessionPort,
+} from 'src/core/security/session';
 import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
@@ -58,14 +63,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
  * owner writers, command dispatch, and audit persistence remain real.
  */
 const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
-    refreshTokens = vi.fn<ITokenPort['refreshTokens']>(),
     getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>(),
     rotateSession = vi.fn<ISessionPort['rotateSession']>(),
     tokenPort: ITokenPort = {
         generateTokens: vi.fn(),
-        refreshTokens,
         verifyAccessToken: vi.fn(),
         verifyRefreshToken,
+        verifyRefreshTokenForReplay: verifyRefreshToken,
         verifyLogoutToken: vi.fn(),
         generateInviteToken: vi.fn(),
         verifyInviteToken: vi.fn(),
@@ -81,6 +85,10 @@ const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
         getRefreshState,
     },
     sessionPort: ISessionPort = {
+        findSessionRequestReplay: vi.fn<ISessionPort['findSessionRequestReplay']>().mockResolvedValue({
+            outcome: ReplaySessionOutcome.NOT_FOUND,
+            session: null,
+        }),
         openSession: vi.fn(),
         rotateSession,
         closeSession: vi.fn(),
@@ -289,22 +297,15 @@ describe('Auth session-revocation jobs', () => {
                     permissions: [],
                     sessionVersion: 0,
                 });
-                refreshTokens.mockResolvedValueOnce({
-                    accessToken: 'unused-access-token',
-                    refreshToken: 'unused-refresh-token',
-                    session: {
-                        sid: uuidv7(),
-                        sessionExpiresAt: 2_000_000_000,
-                        sessionVersion: 0,
-                        principalType,
-                        refreshTokenJti: uuidv7(),
-                        refreshExpiresAt: 1_900_000_000,
-                    },
-                });
-                rotateSession.mockResolvedValueOnce(RotateOutcome.REUSE_DETECTED);
+                rotateSession.mockResolvedValueOnce({ outcome: RotateSessionOutcome.REUSE_DETECTED, session: null });
 
                 await expect(
-                    refreshTokensHandler.execute(new RefreshTokensCommand('reused-refresh-token')),
+                    refreshTokensHandler.execute(
+                        new RefreshTokensCommand(
+                            { key: randomUUID(), canonicalValue: 'refresh-fixture' },
+                            'reused-refresh-token',
+                        ),
+                    ),
                 ).rejects.toBeInstanceOf(UnauthenticatedException);
             }
 
