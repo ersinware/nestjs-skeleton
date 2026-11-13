@@ -19,8 +19,12 @@ import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, TOKEN_UPLOAD_TOKEN_PORT, type UploadTokenPayload } from 'src/core/storage';
+import {
+    AdminUploadTokenType,
+    type AdminProfileAvatarTokenPayload,
+} from 'src/module/admin/application/admin-upload-token';
 import { InviteAdminCommand } from 'src/module/admin/application/command/invite-admin/command';
 import { ReInviteAdminCommand } from 'src/module/admin/application/command/re-invite-admin/command';
 import { AdminAvatarFinalizeConsumer } from 'src/module/admin/application/consumer/admin-avatar-finalize.consumer';
@@ -30,7 +34,6 @@ import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { admin } from 'src/module/admin/infrastructure/admin.schema';
 import type { PostAdminActivationDto } from 'src/module/admin/presentation/dto/post-admin-activation.dto';
@@ -38,6 +41,7 @@ import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { AVATAR_PERMANENT_CACHE_POLICY, type AvatarUploadDescriptor } from 'src/shared/domain/avatar';
 import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, ExceptionKind } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import { createStorageTestFixture, type StorageTestFixture } from 'test/shared/storage-test.factory';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { uuidv7 } from 'uuidv7';
@@ -49,7 +53,7 @@ describe('Admin invitation with avatar', () => {
     let database: NodePgDatabase;
     let boss: PgBoss;
     let pipeline: CommandPipeline;
-    let tokens: ITokenPort;
+    let uploadTokens: ITokenPort<AdminUploadTokenType>;
     const ids: string[] = [];
     const objectKeys = new Set<string>();
     const sendEmail = vi.fn<IEmailerPort['sendEmail']>();
@@ -67,7 +71,7 @@ describe('Admin invitation with avatar', () => {
         database = app.get(TOKEN_DATABASE_CLIENT);
         boss = app.get(TOKEN_JOB_QUEUE_CLIENT);
         pipeline = app.get(CommandPipeline);
-        tokens = app.get(TOKEN_TOKEN_PORT);
+        uploadTokens = app.get(TOKEN_UPLOAD_TOKEN_PORT);
         for (const queue of await boss.getQueues()) {
             await boss.offWork(queue.name);
         }
@@ -240,7 +244,10 @@ describe('Admin invitation with avatar', () => {
             'if-none-match': '*',
             'cache-control': 'no-store',
         });
-        const claims = await tokens.verifyUploadToken(plan.uploadToken, AdminUploadPurpose.ACTIVATION);
+        const claims = await uploadTokens.verify<UploadTokenPayload<AdminUploadTokenType.ACTIVATION>>(
+            plan.uploadToken,
+            AdminUploadTokenType.ACTIVATION,
+        );
         const sourceKey = buildAdminPendingAvatarKey(id, before.inviteId!);
         const destinationKey = buildAdminPermanentAvatarKey(id, before.inviteId!);
         expect(claims).toMatchObject({ sub: id, fileKey: sourceKey });
@@ -321,7 +328,7 @@ describe('Admin invitation with avatar', () => {
         await app.get(AdminAvatarFinalizeConsumer).consume(deliveries[0]!.data);
         expect(await state(prepared.id)).toEqual(finalized);
         expect(await evidence(prepared.id, AdminAuditAction.ADMIN_AVATAR_FINALIZED)).toHaveLength(1);
-        const verify = vi.spyOn(app.get<ITokenPort>(TOKEN_TOKEN_PORT), 'verifyUploadToken');
+        const verify = vi.spyOn(app.get<ITokenPort<AdminUploadTokenType>>(TOKEN_UPLOAD_TOKEN_PORT), 'verify');
         const replay = await app.inject({
             method: 'POST',
             url: '/api/v1/admin/activation/complete',
@@ -355,7 +362,7 @@ describe('Admin invitation with avatar', () => {
         expect(publicProfile).not.toHaveProperty('inviteId');
     });
 
-    it.each(['password', 'size', 'type', 'missing-object', 'stored-size', 'wrong-purpose'] as const)(
+    it.each(['password', 'size', 'type', 'missing-object', 'stored-size', 'wrong-token-type'] as const)(
         'rejects %s without activation, hashing, or avatar work',
         async (scenario) => {
             const prepared = await prepare(
@@ -373,7 +380,7 @@ describe('Admin invitation with avatar', () => {
             if (scenario === 'type') {
                 payload.avatar = { ...avatar, contentType: 'image/jpeg' };
             }
-            if (scenario === 'wrong-purpose') {
+            if (scenario === 'wrong-token-type') {
                 payload.uploadToken = payload.token;
             }
             const hash = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'hashPassword');
@@ -620,7 +627,10 @@ describe('Admin invitation with avatar', () => {
             const plan = response.json<{
                 data: { uploadToken: string; request: { url: string; headers: Record<string, string> } };
             }>().data;
-            const claims = await tokens.verifyUploadToken(plan.uploadToken, AdminUploadPurpose.PROFILE_AVATAR);
+            const claims = await uploadTokens.verify<UploadTokenPayload<AdminUploadTokenType.PROFILE_AVATAR>>(
+                plan.uploadToken,
+                AdminUploadTokenType.PROFILE_AVATAR,
+            );
             const destinationKey = buildAdminPermanentAvatarKey(owner.id, claims.jti);
             objectKeys.add(claims.fileKey);
             objectKeys.add(destinationKey);
@@ -712,7 +722,7 @@ describe('Admin invitation with avatar', () => {
             expect(await evidence(owner.id, AdminAuditAction.ADMIN_UPDATED)).toEqual([]);
         });
 
-        it.each(['expired', 'purpose', 'ownership', 'name-binding', 'missing-object'] as const)(
+        it.each(['expired', 'token-type', 'ownership', 'name-binding', 'missing-object'] as const)(
             'rejects %s before accepting a profile change',
             async (scenario) => {
                 const owner = await account();
@@ -720,14 +730,34 @@ describe('Admin invitation with avatar', () => {
                 const before = await state(owner.id);
                 const beforeJobs = await jobs(owner.id, AdminJobQueue.AVATAR_REPLACE);
                 let uploadToken = prepared.uploadToken;
-                if (scenario === 'expired' || scenario === 'purpose' || scenario === 'ownership') {
-                    const claims = await tokens.verifyUploadToken(uploadToken, AdminUploadPurpose.PROFILE_AVATAR);
-                    uploadToken = await tokens.generateUploadToken({
-                        ...claims,
-                        ...(scenario === 'expired' && { exp: Math.floor(Date.now() / 1000) - 1 }),
-                        ...(scenario === 'purpose' && { purpose: AdminUploadPurpose.ACTIVATION }),
-                        ...(scenario === 'ownership' && { sub: uuidv7() }),
-                    });
+                if (scenario === 'expired' || scenario === 'token-type' || scenario === 'ownership') {
+                    const claims = await uploadTokens.verify<AdminProfileAvatarTokenPayload>(
+                        uploadToken,
+                        AdminUploadTokenType.PROFILE_AVATAR,
+                    );
+                    uploadToken =
+                        scenario === 'token-type'
+                            ? await uploadTokens.sign<UploadTokenPayload<AdminUploadTokenType.ACTIVATION>>(
+                                  AdminUploadTokenType.ACTIVATION,
+                                  {
+                                      sub: claims.sub,
+                                      jti: claims.jti,
+                                      fileKey: claims.fileKey,
+                                      formHash: claims.formHash,
+                                      exp: claims.exp,
+                                  },
+                              )
+                            : await uploadTokens.sign<AdminProfileAvatarTokenPayload>(
+                                  AdminUploadTokenType.PROFILE_AVATAR,
+                                  {
+                                      sub: scenario === 'ownership' ? uuidv7() : claims.sub,
+                                      jti: claims.jti,
+                                      fileKey: claims.fileKey,
+                                      formHash: claims.formHash,
+                                      revocationVersion: claims.revocationVersion,
+                                      exp: scenario === 'expired' ? nowEpochSeconds() - 1 : claims.exp,
+                                  },
+                              );
                 }
                 const response = await app.inject({
                     method: 'PATCH',

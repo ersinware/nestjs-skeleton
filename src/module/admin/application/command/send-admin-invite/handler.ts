@@ -14,7 +14,12 @@ import {
     escapeHtml,
     type IEmailerPort,
 } from 'src/core/email';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import { type ITokenPort } from 'src/core/security/token';
+import {
+    ADMIN_INVITE_TOKEN_TYPE,
+    TOKEN_ADMIN_INVITE_TOKEN_PORT,
+    type InviteTokenPayload,
+} from 'src/module/admin/application/admin-invite-token';
 import { SendAdminInviteCommand } from 'src/module/admin/application/command/send-admin-invite/command';
 import {
     TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT,
@@ -33,14 +38,15 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
      * Initializes the handler with the required ports.
      *
      * @param inviteRecipientPort The port used to read the admin's current invitation details
-     * @param tokenPort The port used to sign the fixed invitation claims
+     * @param inviteTokenPort The port used to sign the fixed invitation claims
      * @param emailerPort The port used to send the invitation email
      * @param configService Provides the activation page's base URL
      */
     constructor(
         @Inject(TOKEN_GET_ADMIN_INVITE_RECIPIENT_PORT)
         private readonly inviteRecipientPort: IGetAdminInviteRecipientPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_ADMIN_INVITE_TOKEN_PORT)
+        private readonly inviteTokenPort: ITokenPort<typeof ADMIN_INVITE_TOKEN_TYPE>,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         private readonly configService: ConfigService,
     ) {}
@@ -62,7 +68,7 @@ export class SendAdminInviteCommandHandler implements ICommandHandler<SendAdminI
                 this.buildInviteEmail(
                     recipient.email,
                     recipient.name,
-                    await this.tokenPort.generateInviteToken({
+                    await this.inviteTokenPort.sign<InviteTokenPayload>(ADMIN_INVITE_TOKEN_TYPE, {
                         sub: command.id,
                         jti: recipient.inviteId,
                         exp: Math.floor(recipient.inviteExpiresAt.getTime() / 1000),

@@ -8,6 +8,7 @@ import type { ITransactionPort } from 'src/core/database';
 import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
 import type { IStoragePort } from 'src/core/storage';
+import { AdminUploadTokenType } from 'src/module/admin/application/admin-upload-token';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { UpdateAdminCommandHandler } from 'src/module/admin/application/command/update-admin/handler';
 import { canonicalizeAdminAvatarChangeForm } from 'src/module/admin/domain/admin-avatar-change';
@@ -15,7 +16,6 @@ import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminJobQueue } from 'src/module/admin/domain/job/admin-job-queue.enum';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
@@ -37,14 +37,14 @@ describe('UpdateAdminCommandHandler', () => {
                 writer.load.mockRejectedValueOnce(failure);
             }
             const audit = { record: vi.fn() };
-            const token = { verifyUploadToken: vi.fn() };
+            const token = { verify: vi.fn() };
             const storage = { headObject: vi.fn() };
             const transaction = { start: vi.fn(), join: vi.fn() };
             const handler = new UpdateAdminCommandHandler(
                 transaction,
                 writer,
                 audit,
-                token as unknown as ITokenPort,
+                token as unknown as ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>,
                 storage as unknown as IStoragePort,
                 { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
@@ -55,7 +55,7 @@ describe('UpdateAdminCommandHandler', () => {
             } else {
                 await expect(result).rejects.toMatchObject({ kind: ExceptionKind.RESOURCE_NOT_FOUND });
             }
-            expect(token.verifyUploadToken).not.toHaveBeenCalled();
+            expect(token.verify).not.toHaveBeenCalled();
             expect(storage.headObject).not.toHaveBeenCalled();
             expect(writer.save).not.toHaveBeenCalled();
             expect(transaction.start).not.toHaveBeenCalled();
@@ -68,13 +68,13 @@ describe('UpdateAdminCommandHandler', () => {
         async (scenario) => {
             const writer = { load: vi.fn(), save: vi.fn() };
             const audit = { record: vi.fn() };
-            const token = { verifyUploadToken: vi.fn() };
+            const token = { verify: vi.fn() };
             const storage = { headObject: vi.fn() };
             const handler = new UpdateAdminCommandHandler(
                 { start: vi.fn(), join: vi.fn() },
                 writer,
                 audit,
-                token as unknown as ITokenPort,
+                token as unknown as ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>,
                 storage as unknown as IStoragePort,
                 { verifyHmacSha256: vi.fn() } as unknown as IHashingPort,
             );
@@ -86,7 +86,7 @@ describe('UpdateAdminCommandHandler', () => {
             );
             await expect(handler.execute(command)).rejects.toMatchObject({ kind: ExceptionKind.INVALID_INPUT });
             expect(writer.load).not.toHaveBeenCalled();
-            expect(token.verifyUploadToken).not.toHaveBeenCalled();
+            expect(token.verify).not.toHaveBeenCalled();
             expect(storage.headObject).not.toHaveBeenCalled();
             expect(audit.record).not.toHaveBeenCalled();
         },
@@ -163,7 +163,7 @@ describe('UpdateAdminCommandHandler', () => {
             transaction,
             writer,
             audit,
-            { verifyUploadToken } as unknown as ITokenPort,
+            { verify: verifyUploadToken } as unknown as ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>,
             storage as unknown as IStoragePort,
             { verifyHmacSha256 } as unknown as IHashingPort,
         );
@@ -191,7 +191,7 @@ describe('UpdateAdminCommandHandler', () => {
             await expect(result).rejects.toMatchObject({ kind: failureKind[scenario as keyof typeof failureKind] });
             if (verifyHmacSha256.mock.calls.length > 0) {
                 expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
-                    AdminUploadPurpose.PROFILE_AVATAR,
+                    AdminUploadTokenType.PROFILE_AVATAR,
                     canonicalizeAdminAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
                     payload.formHash,
                 );
@@ -226,11 +226,11 @@ describe('UpdateAdminCommandHandler', () => {
         expect(writer.save).toHaveBeenCalledTimes(scenario === 'unchanged-name' ? 0 : 1);
         if (hasUpload) {
             expect(verifyHmacSha256).toHaveBeenCalledExactlyOnceWith(
-                AdminUploadPurpose.PROFILE_AVATAR,
+                AdminUploadTokenType.PROFILE_AVATAR,
                 canonicalizeAdminAvatarChangeForm({ id, avatarId, ...(name !== undefined && { name }), avatar }),
                 payload.formHash,
             );
-            expect(verifyUploadToken).toHaveBeenCalledWith('proof', AdminUploadPurpose.PROFILE_AVATAR, true);
+            expect(verifyUploadToken).toHaveBeenCalledWith('proof', AdminUploadTokenType.PROFILE_AVATAR);
             expect(admin.pullJobs()).toEqual([
                 {
                     deliveryId: avatarId,

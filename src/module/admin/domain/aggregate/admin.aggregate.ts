@@ -23,6 +23,7 @@ import {
     ResourceConflictMessage,
     SystemException,
 } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * The module-owned state of an Admin aggregate.
@@ -928,7 +929,7 @@ export class Admin extends PrincipalAggregateRoot {
      */
     private issueInvitation() {
         this.props.inviteId = randomUUID();
-        this.props.inviteExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + INVITATION_LIFETIME_MS);
+        this.props.inviteExpiresAt = new Date(nowEpochSeconds() * 1000 + INVITATION_LIFETIME_MS);
         this.props.inviteRevocationVersion = this.revocationVersion;
     }
 

@@ -8,8 +8,19 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import { type ITokenPort } from 'src/core/security/token';
+import {
+    TOKEN_STORAGE_PORT,
+    TOKEN_UPLOAD_TOKEN_PORT,
+    type IStoragePort,
+    type UploadTokenPayload,
+} from 'src/core/storage';
+import {
+    ADMIN_INVITE_TOKEN_TYPE,
+    TOKEN_ADMIN_INVITE_TOKEN_PORT,
+    type InviteTokenPayload,
+} from 'src/module/admin/application/admin-invite-token';
+import { AdminUploadTokenType } from 'src/module/admin/application/admin-upload-token';
 import {
     InitiateAdminActivationCommand,
     type InitiateAdminActivationResult,
@@ -24,7 +35,6 @@ import {
     canonicalizeAdminActivationForm,
 } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
 import {
@@ -35,6 +45,7 @@ import {
     isExceptionOfKind,
     isExceptionWithAudit,
 } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * Authorizes one conditional PUT using the account's live invitation and fixed deadline.
@@ -48,14 +59,18 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
      * Initializes upload authorization dependencies.
      *
      * @param adminWriterPort Reads live invitation state on the primary
-     * @param tokenPort Verifies invitations and signs workflow-owned upload proofs
+     * @param inviteTokenPort Verifies invitation tokens
+     * @param uploadTokenPort Signs activation avatar upload proofs
      * @param storagePort Signs the conditional avatar request
      * @param auditPort Records audited invitation refusals
      * @param hashingPort Produces and verifies workflow form bindings
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_ADMIN_INVITE_TOKEN_PORT)
+        private readonly inviteTokenPort: ITokenPort<typeof ADMIN_INVITE_TOKEN_TYPE>,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof AdminUploadTokenType.ACTIVATION>,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
@@ -74,10 +89,10 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
      * @throws {SystemException} When invitation identity or the storage plan violates the contract
      */
     async execute(command: InitiateAdminActivationCommand): Promise<InitiateAdminActivationResult> {
-        let payload;
+        let payload: InviteTokenPayload;
 
         try {
-            payload = await this.tokenPort.verifyInviteToken(command.token);
+            payload = await this.inviteTokenPort.verify<InviteTokenPayload>(command.token, ADMIN_INVITE_TOKEN_TYPE);
         } catch (error) {
             if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                 throw new InvalidInputException('The invitation is invalid or has expired.', { cause: error });
@@ -100,7 +115,7 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
         }
 
         const fileKey = buildAdminPendingAvatarKey(sub, jti),
-            now = Math.floor(Date.now() / 1000),
+            now = nowEpochSeconds(),
             plan = await this.storagePort.initiateUpload({
                 key: fileKey,
                 sizeBytes: command.avatar.sizeBytes,
@@ -118,22 +133,24 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
         return {
             mode: plan.mode,
             request: plan.request,
-            uploadToken: await this.tokenPort.generateUploadToken({
-                sub,
-                jti: randomUUID(),
-                purpose: AdminUploadPurpose.ACTIVATION,
-                fileKey,
-                formHash: this.hashingPort.hmacSha256(
-                    AdminUploadPurpose.ACTIVATION,
-                    canonicalizeAdminActivationForm({
-                        id: sub,
-                        inviteId: jti,
-                        password: command.password,
-                        avatar: command.avatar,
-                    }),
-                ),
-                exp: Math.min(now + ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS, exp),
-            }),
+            uploadToken: await this.uploadTokenPort.sign<UploadTokenPayload<AdminUploadTokenType.ACTIVATION>>(
+                AdminUploadTokenType.ACTIVATION,
+                {
+                    sub,
+                    jti: randomUUID(),
+                    fileKey,
+                    formHash: this.hashingPort.hmacSha256(
+                        AdminUploadTokenType.ACTIVATION,
+                        canonicalizeAdminActivationForm({
+                            id: sub,
+                            inviteId: jti,
+                            password: command.password,
+                            avatar: command.avatar,
+                        }),
+                    ),
+                    exp: Math.min(now + ADMIN_ACTIVATION_UPLOAD_TOKEN_TTL_SECONDS, exp),
+                },
+            ),
         };
     }
 

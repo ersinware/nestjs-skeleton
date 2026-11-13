@@ -30,6 +30,7 @@ import { parseTtlToSeconds } from 'src/core/config/duration.util';
 import { ENV } from 'src/core/config/environment/env.constant';
 import { Environment } from 'src/core/config/environment/node-env.enum';
 import { ExceptionTrackerEnvironment } from 'src/core/observability/exception-tracker';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * Accepts `false` or named/IP/CIDR proxy lists, never hop counts: proxy-chain changes can
@@ -170,7 +171,7 @@ function IsJwtTtl(): PropertyDecorator {
                     return (
                         Number.isSafeInteger(seconds) &&
                         seconds > 0 &&
-                        Number.isSafeInteger((Math.floor(Date.now() / 1000) + seconds) * 1000)
+                        Number.isSafeInteger((nowEpochSeconds() + seconds) * 1000)
                     );
                 },
                 defaultMessage: () =>
@@ -492,6 +493,12 @@ export class EnvironmentVariables {
     readonly SESSION_ABSOLUTE_TTL_USER!: string;
 
     /**
+     * Refresh lifetime, capped by the session's absolute deadline (e.g., '7d').
+     */
+    @IsJwtTtl()
+    readonly SESSION_REFRESH_TTL!: string;
+
+    /**
      * 1–60 second replay grace: conflicts are audited without family revocation.
      * Timing alone cannot establish whether a replay is legitimate.
      */
@@ -538,12 +545,6 @@ export class EnvironmentVariables {
     @Matches(/\S/)
     @IsByteLength(32)
     readonly JWT_REFRESH_SECRET!: string;
-
-    /**
-     * Time-to-live for JWT refresh tokens (e.g., '7d').
-     */
-    @IsJwtTtl()
-    readonly JWT_REFRESH_TTL!: string;
 
     /**
      * Secret key for signing JWT invite tokens.
@@ -754,8 +755,8 @@ export function validateConfig(config: Record<string, unknown>): EnvironmentVari
     }
 
     // Session records expire with refresh credentials and must cover the access lifetime.
-    if (parseTtlToSeconds(validatedConfig.JWT_REFRESH_TTL) < parseTtlToSeconds(validatedConfig.JWT_ACCESS_TTL)) {
-        throw new Error(`${ENV.JWT_REFRESH_TTL} must be greater than or equal to ${ENV.JWT_ACCESS_TTL}.'`);
+    if (parseTtlToSeconds(validatedConfig.SESSION_REFRESH_TTL) < parseTtlToSeconds(validatedConfig.JWT_ACCESS_TTL)) {
+        throw new Error(`${ENV.SESSION_REFRESH_TTL} must be greater than or equal to ${ENV.JWT_ACCESS_TTL}.'`);
     }
 
     return validatedConfig;

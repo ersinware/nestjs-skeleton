@@ -8,9 +8,11 @@ import { randomUUID } from 'node:crypto';
 import { TOKEN_CACHE_HEALTH_PORT, type ICacheHealthPort } from 'src/core/cache';
 import type { IDatabaseHealthPort } from 'src/core/database';
 import { TOKEN_DATABASE_HEALTH_PORT } from 'src/core/database';
+import { ACCESS_TOKEN_TYPE, TOKEN_AUTH_ACCESS_TOKEN_PORT, type AccessTokenPayload } from 'src/core/security/auth';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
+import { nowEpochSeconds } from 'src/shared/time';
 import request from 'supertest';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,16 +22,19 @@ describe('HealthController', () => {
 
     beforeEach(async () => {
         app = await createTestApp();
-        vi.spyOn(app.get<ITokenPort>(TOKEN_TOKEN_PORT), 'verifyAccessToken').mockResolvedValue({
+        const accessClaims: AccessTokenPayload = {
             sub: randomUUID(),
             sid: randomUUID(),
-            sessionExpiresAt: Math.floor(Date.now() / 1000) + 3600,
-            exp: Math.floor(Date.now() / 1000) + 900,
+            exp: nowEpochSeconds() + 900,
             principalType: PrincipalType.ADMIN,
             permissions: [Permission.HEALTH_DETAIL_READ],
             sessionVersion: 0,
-            type: AuthTokenType.ACCESS,
-        });
+            type: ACCESS_TOKEN_TYPE,
+        };
+        vi.spyOn(
+            app.get<ITokenPort<typeof ACCESS_TOKEN_TYPE>>(TOKEN_AUTH_ACCESS_TOKEN_PORT),
+            'verify',
+        ).mockResolvedValue(accessClaims);
         vi.spyOn(app.get<ISessionPort>(TOKEN_SESSION_PORT), 'isSessionActive').mockResolvedValue(true);
     });
 

@@ -6,9 +6,9 @@
 import type { IHashingPort } from 'src/core/security/hashing';
 import { InitiateUserRegistrationCommand } from 'src/module/user/application/command/initiate-user-registration/command';
 import { InitiateUserRegistrationCommandHandler } from 'src/module/user/application/command/initiate-user-registration/handler';
+import { UserUploadTokenType } from 'src/module/user/application/user-upload-token';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { ExceptionKind } from 'src/shared/exception';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -20,7 +20,7 @@ describe('InitiateUserRegistrationCommandHandler', () => {
         const storage = {
             initiateUpload: vi.fn().mockResolvedValue({ mode: 'single', request: { url: 'signed-url' } }),
         };
-        const token = { generateUploadToken: vi.fn().mockResolvedValue('proof') };
+        const token = { sign: vi.fn().mockResolvedValue('proof') };
         const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const handler = new InitiateUserRegistrationCommandHandler(
             email,
@@ -33,19 +33,19 @@ describe('InitiateUserRegistrationCommandHandler', () => {
             contentType: 'image/png',
         });
         await handler.execute(command);
-        const claims = token.generateUploadToken.mock.calls[0]![0] as { sub: string; jti: string };
+        const claims = token.sign.mock.calls[0]![1] as { sub: string; jti: string };
         expect(claims.sub).toMatch(/^[\da-f]{8}-[\da-f]{4}-7[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/);
         expect(claims.jti).not.toBe(claims.sub);
-        expect(token.generateUploadToken).toHaveBeenCalledWith(
+        expect(token.sign).toHaveBeenCalledWith(
+            UserUploadTokenType.REGISTRATION,
             expect.objectContaining({
-                purpose: UserUploadPurpose.REGISTRATION,
                 fileKey: buildUserPendingAvatarKey(claims.sub, claims.sub),
                 exp: Math.floor(now / 1000) + 600,
                 formHash: 'form-digest',
             }),
         );
         expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
-            UserUploadPurpose.REGISTRATION,
+            UserUploadTokenType.REGISTRATION,
             canonicalizeUserRegistrationForm({
                 email: command.email,
                 name: command.name,
@@ -63,6 +63,6 @@ describe('InitiateUserRegistrationCommandHandler', () => {
         email.isEmailInUse.mockResolvedValue({ isInUse: true });
         await expect(handler.execute(command)).rejects.toMatchObject({ kind: ExceptionKind.RESOURCE_CONFLICT });
         expect(storage.initiateUpload).toHaveBeenCalledTimes(1);
-        expect(token.generateUploadToken).toHaveBeenCalledTimes(1);
+        expect(token.sign).toHaveBeenCalledTimes(1);
     });
 });

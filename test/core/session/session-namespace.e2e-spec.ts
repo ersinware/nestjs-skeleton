@@ -9,7 +9,6 @@ import type Redis from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { resolveEnvFilePath, validateConfig } from 'src/core/config';
-import type { IdempotencyRequest } from 'src/core/idempotency';
 import {
     OpenSessionOutcome,
     ReplaySessionOutcome,
@@ -18,6 +17,7 @@ import {
     TOKEN_SESSION_PORT,
     type ISessionPort,
     type SessionRegistration,
+    type SessionRequestIdentity,
 } from 'src/core/security/session';
 import { TOKEN_SESSION_CONNECTION } from 'src/core/security/session/session-connection.token';
 import { PrincipalType } from 'src/shared/domain/principal';
@@ -64,10 +64,10 @@ describe('Principal-scoped Redis sessions', () => {
      * @param principalType Owning context.
      * @returns Request identity for one independent fixture mutation.
      */
-    function request(id: string, principalType: PrincipalType): IdempotencyRequest {
+    function request(id: string, principalType: PrincipalType): SessionRequestIdentity {
         const key = randomUUID();
         keys.add(`auth:{${principalType}:${id}}:idempotency:${key}`);
-        return { key, canonicalValue: 'session-fixture' };
+        return { key, fingerprint: 'session-fixture' };
     }
 
     /**
@@ -88,7 +88,7 @@ describe('Principal-scoped Redis sessions', () => {
         keys.add(`${prefix}:sessions`);
         const { outcome, session } = await sessions.openSession(request(id, principalType), id, principalType, version);
         expect(outcome).toBe(OpenSessionOutcome.OPENED);
-        keys.add(`${prefix}:rotated:${session!.sid}:${session!.refreshTokenJti}`);
+        keys.add(`${prefix}:rotated:${session!.sid}:${session!.refreshCredentialId}`);
         return session!;
     }
 
@@ -113,7 +113,7 @@ describe('Principal-scoped Redis sessions', () => {
         expect(await sessions.getVersion(id, type)).toBe(9);
         expect(await sessions.isSessionActive(id, type, session.sid, 8)).toBe(false);
         expect(
-            await sessions.rotateSession(request(id, session.principalType), id, session.refreshTokenJti, session),
+            await sessions.rotateSession(request(id, session.principalType), id, session.refreshCredentialId, session),
         ).toMatchObject({ outcome: RotateSessionOutcome.VERSION_SUPERSEDED });
         expect(
             await sessions.openSession(
@@ -126,7 +126,7 @@ describe('Principal-scoped Redis sessions', () => {
         expect(await sessions.getVersion(id, otherType)).toBe(1);
         expect(await sessions.isSessionActive(id, otherType, other.sid, 1)).toBe(true);
         expect(
-            await sessions.rotateSession(request(id, other.principalType), id, other.refreshTokenJti, other),
+            await sessions.rotateSession(request(id, other.principalType), id, other.refreshCredentialId, other),
         ).toMatchObject({ outcome: RotateSessionOutcome.ROTATED });
     });
 
@@ -142,7 +142,7 @@ describe('Principal-scoped Redis sessions', () => {
             await sessions.rotateSession(
                 request(id, replacement.principalType),
                 id,
-                session.refreshTokenJti,
+                session.refreshCredentialId,
                 replacement,
             ),
         ).toMatchObject({ outcome: RotateSessionOutcome.ROTATED });
@@ -150,24 +150,24 @@ describe('Principal-scoped Redis sessions', () => {
             await sessions.rotateSession(
                 request(id, replacement.principalType),
                 id,
-                session.refreshTokenJti,
+                session.refreshCredentialId,
                 replacement,
             ),
         ).toMatchObject({ outcome: RotateSessionOutcome.CONCURRENT_REPLAY });
-        expect(await redis.exists(`auth:{${otherType}:${id}}:rotated:${session.sid}:${session.refreshTokenJti}`)).toBe(
-            0,
-        );
         expect(
-            await sessions.rotateSession(request(id, other.principalType), id, other.refreshTokenJti, other),
+            await redis.exists(`auth:{${otherType}:${id}}:rotated:${session.sid}:${session.refreshCredentialId}`),
+        ).toBe(0);
+        expect(
+            await sessions.rotateSession(request(id, other.principalType), id, other.refreshCredentialId, other),
         ).toMatchObject({ outcome: RotateSessionOutcome.ROTATED });
 
         // Expire only this principal's grace marker to exercise reuse outside grace without a timed wait.
-        await redis.del(`auth:{${type}:${id}}:rotated:${session.sid}:${session.refreshTokenJti}`);
+        await redis.del(`auth:{${type}:${id}}:rotated:${session.sid}:${session.refreshCredentialId}`);
         expect(
             await sessions.rotateSession(
                 request(id, replacement.principalType),
                 id,
-                session.refreshTokenJti,
+                session.refreshCredentialId,
                 replacement,
             ),
         ).toMatchObject({ outcome: RotateSessionOutcome.REUSE_DETECTED });
@@ -180,7 +180,7 @@ describe('Principal-scoped Redis sessions', () => {
         await sessions.closeSession(id, otherType, other.sid);
         expect(await sessions.isSessionActive(id, otherType, other.sid, 1)).toBe(false);
         expect(
-            await sessions.rotateSession(request(id, other.principalType), id, other.refreshTokenJti, other),
+            await sessions.rotateSession(request(id, other.principalType), id, other.refreshCredentialId, other),
         ).toMatchObject({
             outcome: RotateSessionOutcome.SESSION_CLOSED,
         });
@@ -196,11 +196,11 @@ describe('Principal-scoped Redis sessions', () => {
         await sessions.closeSession(id, type, session.sid);
         expect(await sessions.isSessionActive(id, type, session.sid, 1)).toBe(false);
         expect(
-            await sessions.rotateSession(request(id, session.principalType), id, session.refreshTokenJti, session),
+            await sessions.rotateSession(request(id, session.principalType), id, session.refreshCredentialId, session),
         ).toMatchObject({ outcome: RotateSessionOutcome.SESSION_CLOSED });
         expect(await sessions.isSessionActive(id, otherType, other.sid, 1)).toBe(true);
         expect(
-            await sessions.rotateSession(request(id, other.principalType), id, other.refreshTokenJti, other),
+            await sessions.rotateSession(request(id, other.principalType), id, other.refreshCredentialId, other),
         ).toMatchObject({ outcome: RotateSessionOutcome.ROTATED });
     });
 
@@ -223,7 +223,7 @@ describe('Principal-scoped Redis sessions', () => {
                     mutate = (value = input) =>
                         operation === 'open'
                             ? sessions.openSession(value, id, type, 1)
-                            : sessions.rotateSession(value, id, original.refreshTokenJti, original),
+                            : sessions.rotateSession(value, id, original.refreshCredentialId, original),
                     results = await Promise.all([mutate(), mutate(), mutate()]),
                     winner = results.find(
                         (result) =>
@@ -237,13 +237,13 @@ describe('Principal-scoped Redis sessions', () => {
                 }
                 expect(await redis.hlen(`${prefix}:sessions`)).toBe(operation === 'open' ? 2 : 1);
                 const before = await redis.hgetall(`${prefix}:sessions`);
-                expect(await mutate({ ...input, canonicalValue: 'different semantics' })).toMatchObject({
+                expect(await mutate({ ...input, fingerprint: 'different semantics' })).toMatchObject({
                     outcome: ReplaySessionOutcome.CONFLICT,
                     session: null,
                 });
                 expect(await redis.hgetall(`${prefix}:sessions`)).toEqual(before);
                 // Even outside rotation grace, retained success must win over reuse remediation.
-                await redis.del(`${prefix}:rotated:${original.sid}:${original.refreshTokenJti}`);
+                await redis.del(`${prefix}:rotated:${original.sid}:${original.refreshCredentialId}`);
                 expect(await mutate()).toMatchObject({
                     outcome: ReplaySessionOutcome.REPLAYED,
                     session: winner!.session,
@@ -263,7 +263,7 @@ describe('Principal-scoped Redis sessions', () => {
                     mutate = () =>
                         operation === 'open'
                             ? sessions.openSession(input, id, type, 1)
-                            : sessions.rotateSession(input, id, original.refreshTokenJti, original),
+                            : sessions.rotateSession(input, id, original.refreshCredentialId, original),
                     first = await mutate(),
                     sid = first.session!.sid;
                 expect(await redis.ttl(requestKey)).toBeGreaterThanOrEqual(119);
@@ -315,7 +315,7 @@ describe('Principal-scoped Redis sessions', () => {
                     mutate = () =>
                         operation === 'open'
                             ? sessions.openSession(input, id, type, 1)
-                            : sessions.rotateSession(input, id, original.refreshTokenJti, original);
+                            : sessions.rotateSession(input, id, original.refreshCredentialId, original);
                 await expect(mutate()).rejects.toBeInstanceOf(DependencyUnavailableException);
                 expect(evaluate).toHaveBeenCalledTimes(1);
                 const before = await redis.hgetall(`${prefix}:sessions`),
@@ -355,7 +355,7 @@ describe('Principal-scoped Redis sessions', () => {
                 const rejected =
                     operation === 'open'
                         ? await sessions.openSession(input, id, type, 1)
-                        : await sessions.rotateSession(input, id, original.refreshTokenJti, original);
+                        : await sessions.rotateSession(input, id, original.refreshCredentialId, original);
                 expect(rejected).toMatchObject({
                     outcome:
                         operation === 'open'
@@ -367,7 +367,7 @@ describe('Principal-scoped Redis sessions', () => {
                 const accepted =
                     operation === 'open'
                         ? await sessions.openSession(input, id, type, 2)
-                        : await sessions.rotateSession(input, id, original.refreshTokenJti, {
+                        : await sessions.rotateSession(input, id, original.refreshCredentialId, {
                               ...original,
                               sessionVersion: 2,
                           });
@@ -396,9 +396,9 @@ describe('Principal-scoped Redis sessions', () => {
                         break;
                     case 'within-grace':
                     case 'reuse':
-                        await sessions.rotateSession(request(id, type), id, original.refreshTokenJti, original);
+                        await sessions.rotateSession(request(id, type), id, original.refreshCredentialId, original);
                         if (scenario === 'reuse') {
-                            await redis.del(`${prefix}:rotated:${original.sid}:${original.refreshTokenJti}`);
+                            await redis.del(`${prefix}:rotated:${original.sid}:${original.refreshCredentialId}`);
                         }
                         expected =
                             scenario === 'reuse'
@@ -406,7 +406,7 @@ describe('Principal-scoped Redis sessions', () => {
                                 : RotateSessionOutcome.CONCURRENT_REPLAY;
                         break;
                 }
-                expect(await sessions.rotateSession(input, id, original.refreshTokenJti, original)).toEqual({
+                expect(await sessions.rotateSession(input, id, original.refreshCredentialId, original)).toEqual({
                     outcome: expected,
                     session: null,
                 });
@@ -429,8 +429,8 @@ describe('Principal-scoped Redis sessions', () => {
                     await redis.del(`${prefix}:version`);
                 } else {
                     const rotationInput = request(id, type);
-                    keys.add(`${prefix}:rotated:${first.session!.sid}:${first.session!.refreshTokenJti}`);
-                    await sessions.rotateSession(rotationInput, id, first.session!.refreshTokenJti, first.session!);
+                    keys.add(`${prefix}:rotated:${first.session!.sid}:${first.session!.refreshCredentialId}`);
+                    await sessions.rotateSession(rotationInput, id, first.session!.refreshCredentialId, first.session!);
                 }
                 const before = await redis.hgetall(`${prefix}:sessions`),
                     expected =

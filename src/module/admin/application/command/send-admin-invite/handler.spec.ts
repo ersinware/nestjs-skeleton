@@ -6,6 +6,7 @@
 import { ConfigService } from '@nestjs/config';
 import type { IEmailerPort } from 'src/core/email';
 import type { ITokenPort } from 'src/core/security/token';
+import { ADMIN_INVITE_TOKEN_TYPE } from 'src/module/admin/application/admin-invite-token';
 import { SendAdminInviteCommand } from 'src/module/admin/application/command/send-admin-invite/command';
 import { SendAdminInviteCommandHandler } from 'src/module/admin/application/command/send-admin-invite/handler';
 import {
@@ -32,7 +33,7 @@ describe('SendAdminInviteCommandHandler', () => {
             inviteRevocationVersion: 3,
         });
         const sign = vi.fn().mockResolvedValue('fixed-token');
-        const token = { generateInviteToken: sign } as unknown as ITokenPort;
+        const token = { sign } as unknown as ITokenPort<typeof ADMIN_INVITE_TOKEN_TYPE>;
         const handler = new SendAdminInviteCommandHandler(
             { getInviteRecipient: read },
             token,

@@ -14,11 +14,13 @@ import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_ERROR_REPORTER_PORT } from 'src/core/observability/error-reporter';
+import { ACCESS_TOKEN_TYPE, TOKEN_AUTH_ACCESS_TOKEN_PORT, type AccessTokenPayload } from 'src/core/security/auth';
 import { TOKEN_SESSION_PORT, type ISessionPort } from 'src/core/security/session';
-import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort } from 'src/core/security/token';
 import { JobQueueOperationsAuditAction } from 'src/module/job-queue-operations/shared/job-queue-operations-audit';
 import { Permission, PrincipalType } from 'src/shared/domain/principal';
 import { UnauthenticatedException } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import request from 'supertest';
 import { createTestApp } from 'test/shared/test-app.factory';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,7 +45,7 @@ describe('Dead-letter discard', () => {
     let boss: PgBoss;
     let database: NodePgDatabase;
     let auditPort: IAuditPort;
-    let tokenPort: ITokenPort;
+    let tokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE>;
     let sessionPort: ISessionPort;
 
     /**
@@ -94,13 +96,13 @@ describe('Dead-letter discard', () => {
         boss = app.get<PgBoss>(TOKEN_JOB_QUEUE_CLIENT);
         database = app.get<NodePgDatabase>(TOKEN_DATABASE_CLIENT);
         auditPort = app.get<IAuditPort>(TOKEN_AUDIT_PORT);
-        tokenPort = app.get<ITokenPort>(TOKEN_TOKEN_PORT);
+        tokenPort = app.get<ITokenPort<typeof ACCESS_TOKEN_TYPE>>(TOKEN_AUTH_ACCESS_TOKEN_PORT);
         sessionPort = app.get<ISessionPort>(TOKEN_SESSION_PORT);
         await boss.createQueue(OTHER_QUEUE, { policy: 'standard', partition: false });
     });
 
     beforeEach(() => {
-        vi.spyOn(tokenPort, 'verifyAccessToken').mockImplementation((token) => {
+        vi.spyOn(tokenPort, 'verify').mockImplementation((token) => {
             if (token !== 'discard' && token !== 'read' && token !== 'none') {
                 return Promise.reject(new UnauthenticatedException());
             }
@@ -108,8 +110,7 @@ describe('Dead-letter discard', () => {
             return Promise.resolve({
                 sub: ACTOR_ID,
                 sid: randomUUID(),
-                sessionExpiresAt: Math.floor(Date.now() / 1000) + 3600,
-                exp: Math.floor(Date.now() / 1000) + 900,
+                exp: nowEpochSeconds() + 900,
                 principalType: PrincipalType.ADMIN,
                 permissions:
                     token === 'discard'
@@ -118,7 +119,7 @@ describe('Dead-letter discard', () => {
                           ? [Permission.JOB_DEAD_LETTER_READ]
                           : [],
                 sessionVersion: 0,
-                type: AuthTokenType.ACCESS,
+                type: ACCESS_TOKEN_TYPE,
             });
         });
         vi.spyOn(sessionPort, 'isSessionActive').mockResolvedValue(true);
@@ -211,8 +212,9 @@ describe('Dead-letter discard', () => {
                 .auth('read', { type: 'bearer' })
                 .send({ jobIds: [id] })
                 .expect(403);
-            const claims = await tokenPort.verifyAccessToken('discard');
-            vi.spyOn(tokenPort, 'verifyAccessToken').mockResolvedValueOnce({ ...claims, sub: randomUUID() });
+            const claims = await tokenPort.verify<AccessTokenPayload>('discard', ACCESS_TOKEN_TYPE);
+            const otherPrincipalClaims: AccessTokenPayload = { ...claims, sub: randomUUID() };
+            vi.spyOn(tokenPort, 'verify').mockResolvedValueOnce(otherPrincipalClaims);
             await request(app.getHttpServer())
                 .post(DISCARD_PATH)
                 .set('Idempotency-Key', key)

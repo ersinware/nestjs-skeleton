@@ -23,3 +23,5 @@ export {
     MULTIPART_THRESHOLD_BYTES,
     planStorageUpload,
 } from 'src/core/storage/storage-upload-policy';
+export { TOKEN_UPLOAD_TOKEN_PORT } from 'src/core/storage/upload-token';
+export type { UploadTokenPayload } from 'src/core/storage/upload-token';

@@ -4,7 +4,7 @@
  */
 
 import type { FastifyRequest } from 'fastify';
-import type { AccessTokenPayload } from 'src/core/security/token';
+import type { AccessTokenPayload } from 'src/core/security/auth/access-token';
 
 /**
  * Request shape after `AuthenticationGuard` ran: carries the verified access-token payload.

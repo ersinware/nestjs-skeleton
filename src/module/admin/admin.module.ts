@@ -4,6 +4,9 @@
  */
 
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { ENV } from 'src/core/config';
 import { CqrsPipelineModule } from 'src/core/cqrs';
 import { DatabaseModule } from 'src/core/database';
 import { EmailModule } from 'src/core/email';
@@ -11,11 +14,16 @@ import { IdempotencyModule } from 'src/core/idempotency';
 import { JobQueueModule } from 'src/core/job-queue';
 import { AuditModule } from 'src/core/observability/audit';
 import { ErrorReporterModule } from 'src/core/observability/error-reporter';
+import { EmailChangeModule } from 'src/core/security/email-change';
 import { HashingModule } from 'src/core/security/hashing';
 import { SessionModule } from 'src/core/security/session';
-import { TokenModule } from 'src/core/security/token';
+import { JwtTokenAdapter, TokenModule, type ITokenPort } from 'src/core/security/token';
 import { StorageModule } from 'src/core/storage';
 import { AdminFacade } from 'src/module/admin/admin.facade';
+import {
+    ADMIN_INVITE_TOKEN_TYPE,
+    TOKEN_ADMIN_INVITE_TOKEN_PORT,
+} from 'src/module/admin/application/admin-invite-token';
 import { ActivateAdminCommandHandler } from 'src/module/admin/application/command/activate-admin/handler';
 import { BanAdminCommandHandler } from 'src/module/admin/application/command/ban-admin/handler';
 import { ChangeAdminPasswordCommandHandler } from 'src/module/admin/application/command/change-admin-password/handler';
@@ -83,6 +91,7 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         HashingModule,
         SessionModule,
         TokenModule,
+        EmailChangeModule,
         StorageModule,
         EmailModule,
         CqrsPipelineModule,
@@ -149,6 +158,15 @@ import { AdminController } from 'src/module/admin/presentation/controller/admin.
         { provide: TOKEN_GET_ADMIN_SESSION_VERSION_PORT, useExisting: TOKEN_GET_ADMIN_REFRESH_STATE_PORT },
         { provide: TOKEN_LIST_ADMINS_PORT, useClass: AdminReplicaReaderAdapter },
         { provide: TOKEN_GET_ADMIN_BY_ID_PORT, useExisting: TOKEN_LIST_ADMINS_PORT },
+        {
+            inject: [JwtService, ConfigService],
+            provide: TOKEN_ADMIN_INVITE_TOKEN_PORT,
+            useFactory: (
+                jwtService: JwtService,
+                configService: ConfigService,
+            ): ITokenPort<typeof ADMIN_INVITE_TOKEN_TYPE> =>
+                new JwtTokenAdapter(jwtService, configService.getOrThrow<string>(ENV.JWT_INVITE_SECRET)),
+        },
     ],
     exports: [AdminFacade],
 })

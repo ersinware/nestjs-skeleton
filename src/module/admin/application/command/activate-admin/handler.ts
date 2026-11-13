@@ -8,8 +8,19 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import { type ITokenPort } from 'src/core/security/token';
+import {
+    TOKEN_STORAGE_PORT,
+    TOKEN_UPLOAD_TOKEN_PORT,
+    type IStoragePort,
+    type UploadTokenPayload,
+} from 'src/core/storage';
+import {
+    ADMIN_INVITE_TOKEN_TYPE,
+    TOKEN_ADMIN_INVITE_TOKEN_PORT,
+    type InviteTokenPayload,
+} from 'src/module/admin/application/admin-invite-token';
+import { AdminUploadTokenType } from 'src/module/admin/application/admin-upload-token';
 import { ActivateAdminCommand } from 'src/module/admin/application/command/activate-admin/command';
 import {
     TOKEN_ADMIN_WRITER_PORT,
@@ -17,7 +28,6 @@ import {
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { canonicalizeAdminActivationForm } from 'src/module/admin/domain/admin-activation';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
@@ -41,7 +51,8 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      *
      * @param idempotencyPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
-     * @param tokenPort The port used to verify the invite token
+     * @param inviteTokenPort The port used to verify the invite token
+     * @param uploadTokenPort The port used to verify the activation upload proof
      * @param hashingPort Hashes the initial password and verifies activation form bindings
      * @param auditPort The port used to record activation and audited refusals
      * @param storagePort Checks actual uploaded metadata before the database transaction
@@ -49,7 +60,10 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
     constructor(
         @Inject(TOKEN_IDEMPOTENCY_PORT) private readonly idempotencyPort: IIdempotencyPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_ADMIN_INVITE_TOKEN_PORT)
+        private readonly inviteTokenPort: ITokenPort<typeof ADMIN_INVITE_TOKEN_TYPE>,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof AdminUploadTokenType.ACTIVATION>,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
@@ -70,10 +84,13 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
         await this.idempotencyPort.executePrepared(
             command.idempotencyRequest,
             async () => {
-                let payload;
+                let payload: InviteTokenPayload;
 
                 try {
-                    payload = await this.tokenPort.verifyInviteToken(command.token);
+                    payload = await this.inviteTokenPort.verify<InviteTokenPayload>(
+                        command.token,
+                        ADMIN_INVITE_TOKEN_TYPE,
+                    );
                 } catch (error) {
                     if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                         throw new InvalidInputException('The invitation is invalid or has expired.', { cause: error });
@@ -88,13 +105,12 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
                     throw new ResourceNotFoundException();
                 }
 
-                let payloadUpload;
+                let payloadUpload: UploadTokenPayload<AdminUploadTokenType.ACTIVATION>;
 
                 try {
-                    payloadUpload = await this.tokenPort.verifyUploadToken(
-                        command.uploadToken,
-                        AdminUploadPurpose.ACTIVATION,
-                    );
+                    payloadUpload = await this.uploadTokenPort.verify<
+                        UploadTokenPayload<AdminUploadTokenType.ACTIVATION>
+                    >(command.uploadToken, AdminUploadTokenType.ACTIVATION);
                 } catch (error) {
                     if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                         throw new InvalidInputException('The upload proof is invalid or has expired.', {
@@ -115,7 +131,7 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
 
                 if (
                     !this.hashingPort.verifyHmacSha256(
-                        AdminUploadPurpose.ACTIVATION,
+                        AdminUploadTokenType.ACTIVATION,
                         canonicalizeAdminActivationForm({
                             id: payload.sub,
                             inviteId: payload.jti,

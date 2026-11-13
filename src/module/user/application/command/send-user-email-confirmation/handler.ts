@@ -14,7 +14,12 @@ import {
     type EmailPayload,
     type IEmailerPort,
 } from 'src/core/email';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import {
+    EMAIL_CONFIRMATION_TOKEN_TYPE,
+    TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT,
+    type EmailConfirmationTokenPayload,
+} from 'src/core/security/email-change';
+import type { ITokenPort } from 'src/core/security/token';
 import { SendUserEmailConfirmationCommand } from 'src/module/user/application/command/send-user-email-confirmation/command';
 import {
     TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT,
@@ -35,14 +40,15 @@ export class SendUserEmailConfirmationCommandHandler implements ICommandHandler<
      * Initializes delivery dependencies.
      *
      * @param recipientPort Reads eligible request metadata from the primary
-     * @param tokenPort Signs the persisted claims
+     * @param emailConfirmationTokenPort Signs the persisted claims
      * @param emailerPort Sends the confirmation email
      * @param configService Provides the trusted frontend confirmation URL
      */
     constructor(
         @Inject(TOKEN_GET_USER_EMAIL_CONFIRMATION_RECIPIENT_PORT)
         private readonly recipientPort: IGetUserEmailConfirmationRecipientPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_EMAIL_CONFIRMATION_TOKEN_PORT)
+        private readonly emailConfirmationTokenPort: ITokenPort<typeof EMAIL_CONFIRMATION_TOKEN_TYPE>,
         @Inject(TOKEN_EMAILER_PORT) private readonly emailerPort: IEmailerPort,
         private readonly configService: ConfigService,
     ) {}
@@ -64,13 +70,16 @@ export class SendUserEmailConfirmationCommandHandler implements ICommandHandler<
                 this.buildConfirmationEmail(
                     recipient.pendingEmail,
                     command.recipientName,
-                    await this.tokenPort.generateEmailConfirmationToken({
-                        sub: command.id,
-                        principalType: PrincipalType.USER,
-                        jti: recipient.pendingEmailRequestId,
-                        exp: Math.floor(recipient.pendingEmailExpiresAt.getTime() / 1000),
-                        emailRevocationVersion: recipient.pendingEmailRevocationVersion,
-                    }),
+                    await this.emailConfirmationTokenPort.sign<EmailConfirmationTokenPayload>(
+                        EMAIL_CONFIRMATION_TOKEN_TYPE,
+                        {
+                            sub: command.id,
+                            principalType: PrincipalType.USER,
+                            jti: recipient.pendingEmailRequestId,
+                            exp: Math.floor(recipient.pendingEmailExpiresAt.getTime() / 1000),
+                            emailRevocationVersion: recipient.pendingEmailRevocationVersion,
+                        },
+                    ),
                 ),
                 { queueName: command.queueName, deliveryId: command.deliveryId },
             );

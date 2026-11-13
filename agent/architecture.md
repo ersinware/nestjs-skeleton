@@ -45,7 +45,7 @@ ESLint matrix: types from `boundaries/elements`, cross-element permissions from 
 
 ## Dependency Injection
 
-- DI tokens use `Symbol()` without arguments, except Redis connection tokens whose distinct descriptions identify connections in outage logs. Port bindings: token in the interface file; consumers `@Inject(TOKEN)`; module `{ provide: TOKEN, useClass: Adapter }`. Share identically configured adapters across ports with `useExisting`.
+- DI tokens use `Symbol()` without arguments, except Redis connection tokens whose distinct descriptions identify connections in outage logs. Port bindings: token with its owning contract; consumers `@Inject(TOKEN)`; module `{ provide: TOKEN, useClass: Adapter }`. Share identically configured adapters across ports with `useExisting`.
 - Value-parameterized adapters: undecorated classes + `useFactory`.
 - Redefined DI constructors must annotate token dependencies with `@Inject` at their new parameter positions, including those forwarded to `super`.
 - Register local providers; import modules exporting external providers. No project `@Global()` modules; global `ConfigModule` is the exception. Verify DI wiring separately; ESLint checks import boundaries.
@@ -119,5 +119,5 @@ Within `src/`, group by ownership and reasons to change, never TS kind. Placemen
 - Place `index.ts` only at module roots or the deepest independently consumed core/shared concern roots; never in grouping folders, layers, roles, or use cases. No stacked barrels.
 - In `src/`, enter another core/shared concern or module through its root barrel. Direct imports within the same concern/module remain subject to [Layer Isolation](architecture.md#layer-isolation); tests: [Testing Rules](testing.md#testing-rules).
 - Use explicit named exports, never `export *`; expose only public API needed by existing or explicitly approved consumers. Module barrels expose only their Module and optional Facade.
-- Keep internal adapters, behavior classes, and private connection tokens unexported. Public contracts may come from implementation files; public DB client tokens remain infrastructure contracts ([Layer Isolation](architecture.md#layer-isolation)).
+- Keep internal adapters, behavior classes, and private connection tokens unexported; export `JwtTokenAdapter` for secret-bound factories. Public contracts may come from implementation files; public DB client tokens remain infrastructure contracts ([Layer Isolation](architecture.md#layer-isolation)).
 - Align core/shared barrel roots with ESLint elements; grouping-folder wildcards may already cover additions. `eslint.config.spec.ts` verifies pattern alignment and required barrels.

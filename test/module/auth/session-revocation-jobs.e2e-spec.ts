@@ -20,12 +20,21 @@ import { AuditModule, audit } from 'src/core/observability/audit';
 import { runWithAuditContext } from 'src/core/observability/audit/audit-context';
 import { TOKEN_ERROR_REPORTER_PORT, type IErrorReporterPort } from 'src/core/observability/error-reporter';
 import {
+    ACCESS_TOKEN_TYPE,
+    AccessTokenLifetimePolicy,
+    REFRESH_TOKEN_TYPE,
+    TOKEN_AUTH_ACCESS_TOKEN_PORT,
+    TOKEN_AUTH_REFRESH_TOKEN_PORT,
+    type RefreshTokenPayload,
+} from 'src/core/security/auth';
+import { HashingModule } from 'src/core/security/hashing';
+import {
     ReplaySessionOutcome,
     RotateSessionOutcome,
     TOKEN_SESSION_PORT,
     type ISessionPort,
 } from 'src/core/security/session';
-import { AuthTokenType, TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
+import type { ITokenPort, TokenVerifyOptions } from 'src/core/security/token';
 import { TOKEN_ADMIN_WRITER_PORT } from 'src/module/admin/application/command/port/admin-writer.port';
 import { RevokeAdminSessionsCommandHandler } from 'src/module/admin/application/command/revoke-admin-sessions/handler';
 import { AdminSessionRevocationLogoutAllConsumer } from 'src/module/admin/application/consumer/admin-session-revocation-logout-all.consumer';
@@ -62,24 +71,24 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
  * Auth dependencies replaced only at the Redis/JWT edges so PostgreSQL, transactions, pg-boss,
  * owner writers, command dispatch, and audit persistence remain real.
  */
-const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
+const verifyRefreshToken =
+        vi.fn<
+            (
+                token: string,
+                expectedType: typeof REFRESH_TOKEN_TYPE,
+                options?: TokenVerifyOptions,
+            ) => Promise<RefreshTokenPayload>
+        >(),
     getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>(),
     rotateSession = vi.fn<ISessionPort['rotateSession']>(),
-    tokenPort: ITokenPort = {
-        generateTokens: vi.fn(),
-        verifyAccessToken: vi.fn(),
-        verifyRefreshToken,
-        verifyRefreshTokenForReplay: verifyRefreshToken,
-        verifyLogoutToken: vi.fn(),
-        generateInviteToken: vi.fn(),
-        verifyInviteToken: vi.fn(),
-        generateActivationToken: vi.fn(),
-        verifyActivationToken: vi.fn(),
-        generateEmailConfirmationToken: vi.fn(),
-        verifyEmailConfirmationToken: vi.fn(),
-        generateUploadToken: vi.fn(),
-        verifyUploadToken: vi.fn(),
+    accessTokenPort: ITokenPort<typeof ACCESS_TOKEN_TYPE> = {
+        sign: vi.fn(),
+        verify: vi.fn(),
     },
+    refreshTokenPort = {
+        sign: vi.fn(),
+        verify: verifyRefreshToken,
+    } as unknown as ITokenPort<typeof REFRESH_TOKEN_TYPE>,
     identityReaderPort: IIdentityReaderPort = {
         getCredentialsByEmail: vi.fn(),
         getRefreshState,
@@ -101,15 +110,17 @@ const verifyRefreshToken = vi.fn<ITokenPort['verifyRefreshToken']>(),
  * Test composition retaining the production application handlers and persistence adapters.
  */
 @Module({
-    imports: [IdempotencyModule, DatabaseModule, JobQueueModule, AuditModule, CqrsPipelineModule],
+    imports: [HashingModule, IdempotencyModule, DatabaseModule, JobQueueModule, AuditModule, CqrsPipelineModule],
     providers: [
+        AccessTokenLifetimePolicy,
         LogoutAllCommandHandler,
         RefreshTokensCommandHandler,
         RevokeAdminSessionsCommandHandler,
         RevokeUserSessionsCommandHandler,
         { provide: TOKEN_ADMIN_WRITER_PORT, useClass: AdminWriterAdapter },
         { provide: TOKEN_USER_WRITER_PORT, useClass: UserWriterAdapter },
-        { provide: TOKEN_TOKEN_PORT, useValue: tokenPort },
+        { provide: TOKEN_AUTH_ACCESS_TOKEN_PORT, useValue: accessTokenPort },
+        { provide: TOKEN_AUTH_REFRESH_TOKEN_PORT, useValue: refreshTokenPort },
         { provide: TOKEN_IDENTITY_READER_PORT, useValue: identityReaderPort },
         { provide: TOKEN_SESSION_PORT, useValue: sessionPort },
     ],
@@ -291,7 +302,7 @@ describe('Auth session-revocation jobs', () => {
                     exp: 1_900_000_000,
                     jti: uuidv7(),
                     sessionVersion: 0,
-                    type: AuthTokenType.REFRESH,
+                    type: REFRESH_TOKEN_TYPE,
                 });
                 getRefreshState.mockResolvedValueOnce({
                     permissions: [],

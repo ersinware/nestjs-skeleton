@@ -8,15 +8,18 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import { type ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, TOKEN_UPLOAD_TOKEN_PORT, type IStoragePort } from 'src/core/storage';
+import {
+    AdminUploadTokenType,
+    type AdminProfileAvatarTokenPayload,
+} from 'src/module/admin/application/admin-upload-token';
 import {
     TOKEN_ADMIN_WRITER_PORT,
     type IAdminWriterPort,
 } from 'src/module/admin/application/command/port/admin-writer.port';
 import { UpdateAdminCommand } from 'src/module/admin/application/command/update-admin/command';
 import { canonicalizeAdminAvatarChangeForm } from 'src/module/admin/domain/admin-avatar-change';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AdminAuditAction } from 'src/module/admin/shared/admin-audit';
 import { AuditReason } from 'src/shared/domain/audit';
@@ -42,7 +45,7 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
      * @param transactionPort The commit boundary for the business write and audit
      * @param adminWriterPort The port used to load and save the admin aggregate
      * @param auditPort The port used to record profile changes and audited refusals
-     * @param tokenPort Verifies profile-owned upload proofs
+     * @param uploadTokenPort Verifies profile-owned upload proofs
      * @param storagePort Checks uploaded metadata outside the database transaction
      * @param hashingPort Produces and verifies workflow form bindings
      */
@@ -50,7 +53,8 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
         @Inject(TOKEN_TRANSACTION_PORT) private readonly transactionPort: ITransactionPort,
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
     ) {}
@@ -82,10 +86,13 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
         let avatarUpdate: Parameters<Admin['update']>[1];
 
         if (avatar !== undefined && uploadToken !== undefined) {
-            let payload;
+            let payload: AdminProfileAvatarTokenPayload;
 
             try {
-                payload = await this.tokenPort.verifyUploadToken(uploadToken, AdminUploadPurpose.PROFILE_AVATAR, true);
+                payload = await this.uploadTokenPort.verify<AdminProfileAvatarTokenPayload>(
+                    uploadToken,
+                    AdminUploadTokenType.PROFILE_AVATAR,
+                );
             } catch (error) {
                 if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
                     throw new InvalidInputException('The upload proof is invalid or has expired.', { cause: error });
@@ -127,7 +134,7 @@ export class UpdateAdminCommandHandler implements ICommandHandler<UpdateAdminCom
 
             if (
                 !this.hashingPort.verifyHmacSha256(
-                    AdminUploadPurpose.PROFILE_AVATAR,
+                    AdminUploadTokenType.PROFILE_AVATAR,
                     canonicalizeAdminAvatarChangeForm({
                         id: admin.id,
                         avatarId: payload.jti,

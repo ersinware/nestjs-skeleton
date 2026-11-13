@@ -19,7 +19,8 @@ describe('StorageModule', () => {
         })
             .overrideProvider(ConfigService)
             .useValue({
-                getOrThrow: (key: string) => ({ STORAGE_BUCKET: 'storage-test' })[key],
+                getOrThrow: (key: string) =>
+                    ({ STORAGE_BUCKET: 'storage-test', JWT_UPLOAD_SECRET: 'p'.repeat(32) })[key],
             })
             .overrideProvider(TOKEN_S3_CLIENT)
             .useValue(client)

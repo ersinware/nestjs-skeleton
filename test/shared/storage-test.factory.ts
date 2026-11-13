@@ -24,7 +24,12 @@ import { vi } from 'vitest';
  */
 type StorageTestConfig = Pick<
     EnvironmentVariables,
-    'STORAGE_BUCKET' | 'STORAGE_REGION' | 'STORAGE_ENDPOINT' | 'STORAGE_CONNECT_TIMEOUT' | 'STORAGE_REQUEST_TIMEOUT'
+    | 'JWT_UPLOAD_SECRET'
+    | 'STORAGE_BUCKET'
+    | 'STORAGE_REGION'
+    | 'STORAGE_ENDPOINT'
+    | 'STORAGE_CONNECT_TIMEOUT'
+    | 'STORAGE_REQUEST_TIMEOUT'
 >;
 
 /**
@@ -37,6 +42,7 @@ export async function createStorageTestFixture(): Promise<StorageTestFixture> {
     vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'local-development-secret');
     vi.stubEnv('AWS_SESSION_TOKEN', undefined);
     const config: StorageTestConfig = {
+        JWT_UPLOAD_SECRET: 'test-only-upload-signing-key-not-for-production',
         STORAGE_BUCKET: 'storage-test',
         STORAGE_REGION: 'us-east-1',
         STORAGE_ENDPOINT: 'http://127.0.0.1:8333',

@@ -80,6 +80,7 @@ export default tseslint.config(
                 { type: 'shared', pattern: 'src/shared/exception' },
                 { type: 'shared', pattern: 'src/shared/pagination' },
                 { type: 'shared', pattern: 'src/shared/search' },
+                { type: 'shared', pattern: 'src/shared/time' },
                 { type: 'core', pattern: 'src/core/observability/*' },
                 { type: 'core', pattern: 'src/core/security/*' },
                 { type: 'core', pattern: 'src/core/bootstrap' },

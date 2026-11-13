@@ -8,8 +8,8 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, TOKEN_UPLOAD_TOKEN_PORT, type IStoragePort } from 'src/core/storage';
 import {
     InitiateUserAvatarChangeCommand,
     type InitiateUserAvatarChangeResult,
@@ -18,6 +18,7 @@ import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
+import { UserUploadTokenType, type UserProfileAvatarTokenPayload } from 'src/module/user/application/user-upload-token';
 import type { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import {
     USER_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
@@ -25,9 +26,9 @@ import {
     canonicalizeUserAvatarChangeForm,
 } from 'src/module/user/domain/user-avatar-change';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
 import { ResourceNotFoundException, SystemException, isExceptionWithAudit } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * Authorizes one conditional PUT for the authenticated account's next avatar version.
@@ -41,14 +42,15 @@ export class InitiateUserAvatarChangeCommandHandler implements ICommandHandler<
      * Initializes upload authorization dependencies.
      *
      * @param userWriterPort Reads live account state on the primary
-     * @param tokenPort Signs the profile-owned upload proof
+     * @param uploadTokenPort Signs the profile-owned upload proof
      * @param storagePort Signs the conditional avatar PUT
      * @param hashingPort Produces and verifies workflow form bindings
      * @param auditPort Records workflow refusal evidence
      */
     constructor(
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof UserUploadTokenType.PROFILE_AVATAR>,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -79,7 +81,7 @@ export class InitiateUserAvatarChangeCommandHandler implements ICommandHandler<
 
         const avatarId = randomUUID(),
             fileKey = buildUserPendingAvatarKey(user.id, avatarId),
-            now = Math.floor(Date.now() / 1000),
+            now = nowEpochSeconds(),
             plan = await this.storagePort.initiateUpload({
                 key: fileKey,
                 sizeBytes: command.avatar.sizeBytes,
@@ -97,23 +99,25 @@ export class InitiateUserAvatarChangeCommandHandler implements ICommandHandler<
         return {
             mode: plan.mode,
             request: plan.request,
-            uploadToken: await this.tokenPort.generateUploadToken({
-                sub: user.id,
-                jti: avatarId,
-                revocationVersion: user.revocationVersion,
-                purpose: UserUploadPurpose.PROFILE_AVATAR,
-                fileKey,
-                formHash: this.hashingPort.hmacSha256(
-                    UserUploadPurpose.PROFILE_AVATAR,
-                    canonicalizeUserAvatarChangeForm({
-                        id: user.id,
-                        avatarId,
-                        ...(command.name !== undefined && { name: command.name }),
-                        avatar: command.avatar,
-                    }),
-                ),
-                exp: now + USER_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
-            }),
+            uploadToken: await this.uploadTokenPort.sign<UserProfileAvatarTokenPayload>(
+                UserUploadTokenType.PROFILE_AVATAR,
+                {
+                    sub: user.id,
+                    jti: avatarId,
+                    revocationVersion: user.revocationVersion,
+                    fileKey,
+                    formHash: this.hashingPort.hmacSha256(
+                        UserUploadTokenType.PROFILE_AVATAR,
+                        canonicalizeUserAvatarChangeForm({
+                            id: user.id,
+                            avatarId,
+                            ...(command.name !== undefined && { name: command.name }),
+                            avatar: command.avatar,
+                        }),
+                    ),
+                    exp: now + USER_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
+                },
+            ),
         };
     }
 

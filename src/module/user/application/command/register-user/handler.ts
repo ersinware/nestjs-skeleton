@@ -8,17 +8,22 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { TOKEN_IDEMPOTENCY_PORT, type IIdempotencyPort } from 'src/core/idempotency';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import type { ITokenPort } from 'src/core/security/token';
+import {
+    TOKEN_STORAGE_PORT,
+    TOKEN_UPLOAD_TOKEN_PORT,
+    type IStoragePort,
+    type UploadTokenPayload,
+} from 'src/core/storage';
 import {
     TOKEN_USER_WRITER_PORT,
     type IUserWriterPort,
 } from 'src/module/user/application/command/port/user-writer.port';
 import { RegisterUserCommand } from 'src/module/user/application/command/register-user/command';
+import { UserUploadTokenType } from 'src/module/user/application/user-upload-token';
 import { User } from 'src/module/user/domain/aggregate/user.aggregate';
 import { buildUserPendingAvatarKey } from 'src/module/user/domain/user-avatar-key.util';
 import { canonicalizeUserRegistrationForm } from 'src/module/user/domain/user-registration';
-import { UserUploadPurpose } from 'src/module/user/domain/user-upload-purpose.enum';
 import { UserAuditAction } from 'src/module/user/shared/user-audit';
 import { assertAvatarUploadMatchesDescriptor } from 'src/shared/domain/avatar';
 import {
@@ -42,7 +47,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      * @param userWriterPort The port used to persist the user aggregate and its jobs
      * @param hashingPort Hashes passwords and verifies registration form bindings
      * @param auditPort The port used to record the pending registration
-     * @param tokenPort Verifies the workflow-owned upload proof
+     * @param uploadTokenPort Verifies the workflow-owned upload proof
      * @param storagePort Checks the actual uploaded object before opening a transaction
      */
     constructor(
@@ -50,7 +55,8 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
         @Inject(TOKEN_USER_WRITER_PORT) private readonly userWriterPort: IUserWriterPort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof UserUploadTokenType.REGISTRATION>,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
     ) {}
 
@@ -67,12 +73,12 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
         await this.idempotencyPort.executePrepared(
             command.idempotencyRequest,
             async () => {
-                let payload;
+                let payload: UploadTokenPayload<UserUploadTokenType.REGISTRATION>;
 
                 try {
-                    payload = await this.tokenPort.verifyUploadToken(
+                    payload = await this.uploadTokenPort.verify<UploadTokenPayload<UserUploadTokenType.REGISTRATION>>(
                         command.uploadToken,
-                        UserUploadPurpose.REGISTRATION,
+                        UserUploadTokenType.REGISTRATION,
                     );
                 } catch (error) {
                     if (isExceptionOfKind(error, ExceptionKind.UNAUTHENTICATED)) {
@@ -95,7 +101,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
 
                 if (
                     !this.hashingPort.verifyHmacSha256(
-                        UserUploadPurpose.REGISTRATION,
+                        UserUploadTokenType.REGISTRATION,
                         canonicalizeUserRegistrationForm({
                             email: command.email,
                             name: command.name,

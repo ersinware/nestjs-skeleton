@@ -1,43 +1,21 @@
 /**
  * @file module.spec.ts
- * @description Verifies token concern dependency injection bindings.
+ * @description Verifies token concern dependency injection exports.
  */
 
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { TokenModule } from 'src/core/security/token/module';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token/port/token.port';
 import { describe, expect, it } from 'vitest';
 
 describe('TokenModule', () => {
-    it('exports upload signing and verification through the existing token port', async () => {
-        const config = {
-            JWT_ACCESS_SECRET: 'a'.repeat(32),
-            JWT_REFRESH_SECRET: 'r'.repeat(32),
-            JWT_INVITE_SECRET: 'i'.repeat(32),
-            JWT_ACTIVATION_SECRET: 'u'.repeat(32),
-            JWT_UPLOAD_SECRET: 'p'.repeat(32),
-            JWT_EMAIL_CONFIRM_SECRET: 'e'.repeat(32),
-        };
+    it('exports JwtService infrastructure', async () => {
         const module = await Test.createTestingModule({
-            imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), TokenModule],
-        })
-            .overrideProvider(ConfigService)
-            .useValue(new ConfigService(config))
-            .compile();
+            imports: [TokenModule],
+        }).compile();
 
         try {
-            const port = module.get<ITokenPort>(TOKEN_TOKEN_PORT);
-            const claims = {
-                sub: 'subject-1',
-                jti: '12345678-1234-4234-8234-123456789abc',
-                purpose: 'documents_upload',
-                fileKey: 'pending/documents/subject-1',
-                formHash: 'domain-owned-binding',
-                exp: Math.floor(Date.now() / 1000) + 600,
-            };
-            const token = await port.generateUploadToken(claims);
-            expect(await port.verifyUploadToken(token, claims.purpose)).toMatchObject(claims);
+            expect(module.get(JwtService)).toBeInstanceOf(JwtService);
         } finally {
             await module.close();
         }

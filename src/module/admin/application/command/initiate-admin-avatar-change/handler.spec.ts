@@ -5,7 +5,8 @@
 
 import type { IHashingPort } from 'src/core/security/hashing';
 import type { ITokenPort } from 'src/core/security/token';
-import type { IStoragePort } from 'src/core/storage';
+import type { IStoragePort, UploadTokenPayload } from 'src/core/storage';
+import { AdminUploadTokenType } from 'src/module/admin/application/admin-upload-token';
 import { InitiateAdminAvatarChangeCommand } from 'src/module/admin/application/command/initiate-admin-avatar-change/command';
 import { InitiateAdminAvatarChangeCommandHandler } from 'src/module/admin/application/command/initiate-admin-avatar-change/handler';
 import { canonicalizeAdminAvatarChangeForm } from 'src/module/admin/domain/admin-avatar-change';
@@ -13,9 +14,9 @@ import {
     buildAdminPendingAvatarKey,
     buildAdminPermanentAvatarKey,
 } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { ExceptionKind } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('InitiateAdminAvatarChangeCommandHandler', () => {
@@ -24,7 +25,7 @@ describe('InitiateAdminAvatarChangeCommandHandler', () => {
     it.each([false, true])('checks eligibility before signing (banned=%s)', async (isBanned) => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-07T08:00:00Z'));
-        const now = Math.floor(Date.now() / 1000);
+        const now = nowEpochSeconds();
         const id = '019a3b7c-8d42-7e19-9a65-c3f821b6d047';
         const currentAvatarKey = buildAdminPermanentAvatarKey(id, 'c116ffde-c006-4b3f-902c-e658d6ad4142');
         const admin = Admin.reconstitute({
@@ -44,12 +45,14 @@ describe('InitiateAdminAvatarChangeCommandHandler', () => {
             expiresAt: new Date((now + 300) * 1000),
         };
         const initiateUpload = vi.fn<IStoragePort['initiateUpload']>().mockResolvedValue({ mode: 'single', request });
-        const generateUploadToken = vi.fn<ITokenPort['generateUploadToken']>().mockResolvedValue('proof');
+        const signUpload = vi
+            .fn<ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>['sign']>()
+            .mockResolvedValue('proof');
         const hmacSha256 = vi.fn<IHashingPort['hmacSha256']>().mockReturnValue('form-digest');
         const save = vi.fn();
         const handler = new InitiateAdminAvatarChangeCommandHandler(
             { load: vi.fn().mockResolvedValue(admin), save },
-            { generateUploadToken } as unknown as ITokenPort,
+            { sign: signUpload } as unknown as ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>,
             { initiateUpload } as unknown as IStoragePort,
             { hmacSha256 } as unknown as IHashingPort,
             { record: vi.fn().mockResolvedValue(undefined) },
@@ -58,19 +61,22 @@ describe('InitiateAdminAvatarChangeCommandHandler', () => {
         if (isBanned) {
             await expect(result).rejects.toMatchObject({ kind: ExceptionKind.ACCESS_DENIED });
             expect(initiateUpload).not.toHaveBeenCalled();
-            expect(generateUploadToken).not.toHaveBeenCalled();
+            expect(signUpload).not.toHaveBeenCalled();
         } else {
             expect(await result).toEqual({ mode: 'single', request, uploadToken: 'proof' });
-            const proof = generateUploadToken.mock.calls[0]![0];
+            const [tokenType, proof] = signUpload.mock.calls[0]! as [
+                AdminUploadTokenType,
+                Omit<UploadTokenPayload<AdminUploadTokenType.PROFILE_AVATAR>, 'type'>,
+            ];
+            expect(tokenType).toBe(AdminUploadTokenType.PROFILE_AVATAR);
             expect(proof).toMatchObject({
                 sub: id,
-                purpose: AdminUploadPurpose.PROFILE_AVATAR,
                 exp: now + 600,
                 fileKey: buildAdminPendingAvatarKey(id, proof.jti),
             });
             expect(proof.formHash).toBe('form-digest');
             expect(hmacSha256).toHaveBeenCalledExactlyOnceWith(
-                AdminUploadPurpose.PROFILE_AVATAR,
+                AdminUploadTokenType.PROFILE_AVATAR,
                 canonicalizeAdminAvatarChangeForm({
                     id,
                     avatarId: proof.jti,

@@ -8,8 +8,12 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { randomUUID } from 'node:crypto';
 import { TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
 import { TOKEN_HASHING_PORT, type IHashingPort } from 'src/core/security/hashing';
-import { TOKEN_TOKEN_PORT, type ITokenPort } from 'src/core/security/token';
-import { TOKEN_STORAGE_PORT, type IStoragePort } from 'src/core/storage';
+import { type ITokenPort } from 'src/core/security/token';
+import { TOKEN_STORAGE_PORT, TOKEN_UPLOAD_TOKEN_PORT, type IStoragePort } from 'src/core/storage';
+import {
+    AdminUploadTokenType,
+    type AdminProfileAvatarTokenPayload,
+} from 'src/module/admin/application/admin-upload-token';
 import {
     InitiateAdminAvatarChangeCommand,
     type InitiateAdminAvatarChangeResult,
@@ -24,10 +28,10 @@ import {
     canonicalizeAdminAvatarChangeForm,
 } from 'src/module/admin/domain/admin-avatar-change';
 import { buildAdminPendingAvatarKey } from 'src/module/admin/domain/admin-avatar-key.util';
-import { AdminUploadPurpose } from 'src/module/admin/domain/admin-upload-purpose.enum';
 import type { Admin } from 'src/module/admin/domain/aggregate/admin.aggregate';
 import { AVATAR_PENDING_CACHE_POLICY } from 'src/shared/domain/avatar';
 import { ResourceNotFoundException, SystemException, isExceptionWithAudit } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * Authorizes one conditional PUT for the authenticated account's next avatar version.
@@ -41,14 +45,15 @@ export class InitiateAdminAvatarChangeCommandHandler implements ICommandHandler<
      * Initializes upload authorization dependencies.
      *
      * @param adminWriterPort Reads live account state on the primary
-     * @param tokenPort Signs the profile-owned upload proof
+     * @param uploadTokenPort Signs the profile-owned upload proof
      * @param storagePort Signs the conditional avatar PUT
      * @param hashingPort Produces and verifies workflow form bindings
      * @param auditPort Records workflow refusal evidence
      */
     constructor(
         @Inject(TOKEN_ADMIN_WRITER_PORT) private readonly adminWriterPort: IAdminWriterPort,
-        @Inject(TOKEN_TOKEN_PORT) private readonly tokenPort: ITokenPort,
+        @Inject(TOKEN_UPLOAD_TOKEN_PORT)
+        private readonly uploadTokenPort: ITokenPort<typeof AdminUploadTokenType.PROFILE_AVATAR>,
         @Inject(TOKEN_STORAGE_PORT) private readonly storagePort: IStoragePort,
         @Inject(TOKEN_HASHING_PORT) private readonly hashingPort: IHashingPort,
         @Inject(TOKEN_AUDIT_PORT) private readonly auditPort: IAuditPort,
@@ -79,7 +84,7 @@ export class InitiateAdminAvatarChangeCommandHandler implements ICommandHandler<
 
         const avatarId = randomUUID(),
             fileKey = buildAdminPendingAvatarKey(admin.id, avatarId),
-            now = Math.floor(Date.now() / 1000),
+            now = nowEpochSeconds(),
             plan = await this.storagePort.initiateUpload({
                 key: fileKey,
                 sizeBytes: command.avatar.sizeBytes,
@@ -97,23 +102,25 @@ export class InitiateAdminAvatarChangeCommandHandler implements ICommandHandler<
         return {
             mode: plan.mode,
             request: plan.request,
-            uploadToken: await this.tokenPort.generateUploadToken({
-                sub: admin.id,
-                jti: avatarId,
-                revocationVersion: admin.revocationVersion,
-                purpose: AdminUploadPurpose.PROFILE_AVATAR,
-                fileKey,
-                formHash: this.hashingPort.hmacSha256(
-                    AdminUploadPurpose.PROFILE_AVATAR,
-                    canonicalizeAdminAvatarChangeForm({
-                        id: admin.id,
-                        avatarId,
-                        ...(command.name !== undefined && { name: command.name }),
-                        avatar: command.avatar,
-                    }),
-                ),
-                exp: now + ADMIN_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
-            }),
+            uploadToken: await this.uploadTokenPort.sign<AdminProfileAvatarTokenPayload>(
+                AdminUploadTokenType.PROFILE_AVATAR,
+                {
+                    sub: admin.id,
+                    jti: avatarId,
+                    revocationVersion: admin.revocationVersion,
+                    fileKey,
+                    formHash: this.hashingPort.hmacSha256(
+                        AdminUploadTokenType.PROFILE_AVATAR,
+                        canonicalizeAdminAvatarChangeForm({
+                            id: admin.id,
+                            avatarId,
+                            ...(command.name !== undefined && { name: command.name }),
+                            avatar: command.avatar,
+                        }),
+                    ),
+                    exp: now + ADMIN_AVATAR_CHANGE_UPLOAD_TOKEN_TTL_SECONDS,
+                },
+            ),
         };
     }
 

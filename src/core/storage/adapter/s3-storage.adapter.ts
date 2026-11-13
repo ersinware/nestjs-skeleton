@@ -32,6 +32,7 @@ import { TOKEN_S3_CLIENT } from 'src/core/storage/storage-client.token';
 import { translateStorageError } from 'src/core/storage/storage-error.util';
 import { MAX_PARTS, planStorageUpload } from 'src/core/storage/storage-upload-policy';
 import { InvalidInputException, SystemException } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * Maximum lifetime of a presigned upload URL, in seconds.
@@ -75,7 +76,7 @@ export class S3StorageAdapter implements IStoragePort {
     async initiateUpload(request: StorageUploadRequest): Promise<StorageUploadPlan> {
         // SigV4 timestamps have whole-second precision; expiry must use the same clock.
         const plan = planStorageUpload(request.sizeBytes),
-            now = new Date(Math.floor(Date.now() / 1000) * 1000),
+            now = new Date(nowEpochSeconds() * 1000),
             expiresIn = this.calculatePresignedUrlTtlSeconds(request.deadline, now),
             cacheControl = buildCacheControlHeader(request.cache);
 

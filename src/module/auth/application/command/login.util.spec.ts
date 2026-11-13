@@ -3,8 +3,11 @@
  * @description Verifies credential preparation, replay issuance, and refusal effects for both login owners.
  */
 
+import { ConfigService } from '@nestjs/config';
+import { ENV } from 'src/core/config';
 import type { IdempotencyRequest } from 'src/core/idempotency';
 import type { IAuditPort } from 'src/core/observability/audit';
+import { ACCESS_TOKEN_TYPE, AccessTokenLifetimePolicy, REFRESH_TOKEN_TYPE } from 'src/core/security/auth';
 import type { IHashingPort } from 'src/core/security/hashing';
 import { OpenSessionOutcome, ReplaySessionOutcome, SessionOutcome, type ISessionPort } from 'src/core/security/session';
 import type { ITokenPort } from 'src/core/security/token';
@@ -28,7 +31,7 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
             principalType,
             sessionVersion: 1,
             sid: 'original-sid',
-            refreshTokenJti: 'original-jti',
+            refreshCredentialId: 'original-jti',
             sessionExpiresAt: 2_000_000_000,
             refreshExpiresAt: 1_900_000_000,
         },
@@ -37,25 +40,33 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
         getRefreshState = vi.fn<IIdentityReaderPort['getRefreshState']>(),
         verifyPassword = vi.fn<IHashingPort['verifyPassword']>(),
         simulatePasswordVerify = vi.fn<IHashingPort['simulatePasswordVerify']>(),
+        hmacSha256 = vi.fn<IHashingPort['hmacSha256']>(),
         findSessionRequestReplay = vi.fn<ISessionPort['findSessionRequestReplay']>(),
         openSession = vi.fn<ISessionPort['openSession']>(),
-        generateTokens = vi.fn<ITokenPort['generateTokens']>(),
+        accessSign = vi.fn<ITokenPort<typeof ACCESS_TOKEN_TYPE>['sign']>(),
+        refreshSign = vi.fn<ITokenPort<typeof REFRESH_TOKEN_TYPE>['sign']>(),
         record = vi.fn<IAuditPort['record']>(),
         ports = {
             identityReaderPort: { getCredentialsByEmail, getRefreshState },
-            hashingPort: { verifyPassword, simulatePasswordVerify } as unknown as IHashingPort,
+            hashingPort: { verifyPassword, simulatePasswordVerify, hmacSha256 } as unknown as IHashingPort,
             sessionPort: { findSessionRequestReplay, openSession } as unknown as ISessionPort,
-            tokenPort: { generateTokens } as unknown as ITokenPort,
+            accessTokenPort: { sign: accessSign } as unknown as ITokenPort<typeof ACCESS_TOKEN_TYPE>,
+            refreshTokenPort: { sign: refreshSign } as unknown as ITokenPort<typeof REFRESH_TOKEN_TYPE>,
             auditPort: { record },
+            accessTokenLifetimePolicy: new AccessTokenLifetimePolicy(
+                new ConfigService({ [ENV.JWT_ACCESS_TTL]: '15m' }),
+            ),
         },
         execute = () => login(ports, principalType, request, 'owner@example.test', 'password');
 
     beforeEach(() => {
         getCredentialsByEmail.mockResolvedValue(identity);
         verifyPassword.mockResolvedValue(true);
+        hmacSha256.mockReturnValue('fingerprint');
         findSessionRequestReplay.mockResolvedValue({ outcome: ReplaySessionOutcome.NOT_FOUND, session: null });
-        openSession.mockResolvedValue({ outcome: OpenSessionOutcome.OPENED, session, accessExpiresAt: 1_800_000_000 });
-        generateTokens.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' });
+        openSession.mockResolvedValue({ outcome: OpenSessionOutcome.OPENED, session });
+        accessSign.mockResolvedValue('access');
+        refreshSign.mockResolvedValue('refresh');
     });
 
     it('opens only after password proof and audits only the first admitted mutation', async () => {
@@ -65,7 +76,7 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
             refreshToken: 'refresh',
         });
         expect(openSession).toHaveBeenCalledExactlyOnceWith(
-            request,
+            { key: request.key, fingerprint: 'fingerprint' },
             identity.id,
             principalType,
             identity.sessionVersion,
@@ -84,13 +95,11 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
                 findSessionRequestReplay.mockResolvedValueOnce({
                     outcome: ReplaySessionOutcome.REPLAYED,
                     session,
-                    accessExpiresAt: 1_800_000_000,
                 });
             } else {
                 openSession.mockResolvedValueOnce({
                     outcome: ReplaySessionOutcome.REPLAYED,
                     session,
-                    accessExpiresAt: 1_800_000_000,
                 });
             }
             await execute();
@@ -100,17 +109,26 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
             }
             expect(record).not.toHaveBeenCalled();
             expect(getRefreshState).not.toHaveBeenCalled();
-            expect(generateTokens).toHaveBeenCalledExactlyOnceWith(
+            expect(accessSign).toHaveBeenCalledExactlyOnceWith(
+                ACCESS_TOKEN_TYPE,
                 expect.objectContaining({
+                    sub: identity.id,
                     sid: session.sid,
+                    principalType,
+                    permissions: identity.permissions,
+                    sessionVersion: 1,
+                    exp: expect.any(Number) as number,
+                }),
+            );
+            expect(refreshSign).toHaveBeenCalledExactlyOnceWith(
+                REFRESH_TOKEN_TYPE,
+                expect.objectContaining({
+                    sub: identity.id,
+                    sid: session.sid,
+                    jti: session.refreshCredentialId,
+                    principalType,
                     sessionVersion: 1,
                     sessionExpiresAt: session.sessionExpiresAt,
-                    exp: 1_800_000_000,
-                }),
-                expect.objectContaining({
-                    sid: session.sid,
-                    jti: session.refreshTokenJti,
-                    sessionVersion: 1,
                     exp: session.refreshExpiresAt,
                 }),
             );
@@ -129,7 +147,8 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
         );
         expect(verifyPassword).not.toHaveBeenCalled();
         expect(openSession).not.toHaveBeenCalled();
-        expect(generateTokens).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
         expect(record).not.toHaveBeenCalled();
     });
 
@@ -138,7 +157,8 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
         await expect(execute()).rejects.toBeInstanceOf(UnauthenticatedException);
         expect(findSessionRequestReplay).toHaveBeenCalledTimes(1);
         expect(openSession).not.toHaveBeenCalled();
-        expect(generateTokens).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
         expect(record).toHaveBeenCalledWith(expect.objectContaining({ action: AuthAuditAction.LOGIN_FAILED }));
     });
 
@@ -147,6 +167,7 @@ describe.each(Object.values(PrincipalType))('%s credential login', (principalTyp
         expect(await execute()).toEqual({ session: SessionOutcome.ACTIVATION_REQUIRED });
         expect(findSessionRequestReplay).toHaveBeenCalledTimes(1);
         expect(openSession).not.toHaveBeenCalled();
-        expect(generateTokens).not.toHaveBeenCalled();
+        expect(accessSign).not.toHaveBeenCalled();
+        expect(refreshSign).not.toHaveBeenCalled();
     });
 });

@@ -20,6 +20,7 @@ import {
     ResourceConflictMessage,
     SystemException,
 } from 'src/shared/exception';
+import { nowEpochSeconds } from 'src/shared/time';
 
 /**
  * The module-owned state of a User aggregate.
@@ -848,7 +849,7 @@ export class User extends PrincipalAggregateRoot {
      */
     private issueActivation() {
         this.props.activationId = randomUUID();
-        this.props.activationExpiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + ACTIVATION_LIFETIME_MS);
+        this.props.activationExpiresAt = new Date(nowEpochSeconds() * 1000 + ACTIVATION_LIFETIME_MS);
         this.props.activationRevocationVersion = this.revocationVersion;
     }
 
