@@ -1,54 +1,41 @@
 # NestJS Modular Monolith — Agent Guide
 
+## Purpose
+
+Production-ready NestJS reference skeleton: strict DDD, Hexagonal Architecture, horizontal scalability, and Lift-and-Shift microservice readiness. Prioritize correctness, security, and standards over convenience. Keep the skeleton free of project-specific identity and unfinished features; design contexts for extraction without rewrites.
+
 ## Working Rules
 
-- Explain guide conflicts and their impact; propose compliant alternatives. Explicit rule revisions are intentional changes.
-- Limit work to the task and necessary related updates; exclude unrelated refactors, features, and tests.
-- Verify current behavior/structure claims against code/configuration; distinguish implementation from plans.
-- Write/update tests or run tests, type checks, builds, lint, or formatting only on explicit request; report verification and skipped checks.
-- After each change, assess `AGENTS.md` and `agent/`; retain only rules that prevent future decision errors. Omit code-obvious details, progress notes, and change history.
-- Guide edits: use the fewest words that preserve clarity and meaning; state each rule once in its owning section. Cross-reference when useful; use examples/rationale only to resolve ambiguity. Keep ESLint implementation details in configuration comments.
-
-## Commit Messages
-
-Use Conventional Commits:
-
-```text
-<type>(<scope>): <summary>
-
-<optional body>
-
-Refs #<issue>
-```
-
-- Keep issue numbers out of the subject, including trailing `(#N)` references.
-- Reference related issues in the footer with `Refs #N`.
-- Use `Fixes #N` or `Closes #N` only when the commit/merge will actually close the issue.
-
-## Purpose & Architecture
-
-Production-ready NestJS reference skeleton: strict DDD, Hexagonal Architecture, horizontal scalability, Lift-and-Shift microservice readiness. Correctness, security, and standards outrank convenience. Keep cloning free of project identity/unfinished features and contexts extractable without rewrites.
+- Explain conflicts with this guide and their impact; propose compliant alternatives. Explicitly approved rule revisions are intentional exceptions.
+- Stay within the requested scope and necessary related changes; avoid unrelated refactors, features, and tests.
+- Verify claims about current behavior and structure against code/configuration; distinguish implemented behavior from plans.
+- Write/update tests or run tests, type checks, builds, lint, or formatting only when explicitly requested. Report checks performed and skipped.
+- After changes, consider whether `AGENTS.md` or `agent/` needs updating. Keep guidance as short as possible without losing meaning; retain only rules that prevent future decision errors. Omit code-obvious facts, progress notes, and history. Keep each rule once in its owning location, reference related guidance instead of repeating it, and use examples or rationale only when needed for clarity. Leave ESLint implementation details in configuration comments.
 
 ## Reading the Guide
 
-This file and the topic guides in `agent/` form one project guide. Topic rules retain their full scope wherever the relevant behavior is implemented, including core, modules, bootstrap, configuration, and tests. Repository paths in the guides remain relative to the repository root; Markdown links are relative to their containing file.
+`AGENTS.md` and `agent/` form one guide. Topic rules apply wherever relevant, including core, modules, bootstrap, configuration, and tests. Paths mentioned in the guides are repository-root-relative; Markdown links are relative to their file.
 
-Before changing or reviewing a relevant area, read the guides selected below. For work spanning several areas, read each applicable guide. Follow cross-references for the rules and exceptions relevant to the task; expand the selection when the task reveals additional affected behavior. Read all topic guides for a repository-wide review or guide reorganization.
+Before changing or reviewing an area, read every applicable topic guide below. Follow relevant cross-references and expand the selection as affected behavior becomes clear. For repository-wide reviews or guide reorganization, read all topic guides.
 
-| Work area                                                                                                                                         | Required reading                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Source or test code: architecture, imports, placement, naming, barrels, module boundaries, DI, commands, queries, pipelines                       | [Architecture](agent/architecture.md)                                        |
-| Writing or reviewing code, JSDoc, types, signatures, environment variables, configuration, or route constants                                     | [Coding Conventions](agent/coding-conventions.md)                            |
-| Aggregates, mutations, persistence, schemas, migrations, readers/writers, database selection, concurrency, or caching                             | [Data & State](agent/data-and-state.md)                                      |
-| Jobs, queues, producers, consumers, cross-context mutations, reconciliation, or cache invalidation                                                | [Jobs & Messaging](agent/jobs-and-messaging.md)                              |
-| Authentication, authorization, principals, permissions, administration, passwords, sessions, tokens, Redis recovery, rate limiting, or email HTML | [Security & Sessions](agent/security-and-sessions.md)                        |
-| Validation or business refusals, exceptions, error propagation/translation, dependency failures, or HTTP error mapping                            | [Exceptions](agent/exceptions.md)                                            |
-| Endpoints, controllers, DTOs, validation decorators, responses, Swagger, HTTP caching, BFF forwarding, or health probes                           | [HTTP](agent/http.md)                                                        |
-| Logging, tracing, metrics, audit, telemetry/deployment configuration, dependency outages, or health checks                                        | [Observability](agent/observability.md)                                      |
-| Test changes/reviews, test configuration, fixtures, support, or verification design, including both `src/**/*.spec.ts` and `test/**`              | [Testing Rules](agent/testing.md) and the guides for the behavior under test |
+| Area | Required guide |
+| --- | --- |
+| Source/test architecture, boundaries, imports, placement, DI, CQRS | [Architecture](agent/architecture.md) |
+| Code style, naming, JSDoc, types, environment/configuration, route constants | [Coding Conventions](agent/coding-conventions.md) |
+| Aggregates, persistence, transactions, schemas, concurrency, caching | [Data & State](agent/data-and-state.md) |
+| Jobs, queues, cross-context mutations, reconciliation, cache invalidation | [Jobs & Messaging](agent/jobs-and-messaging.md) |
+| Authentication, authorization, administration, credentials, sessions, rate limiting, email HTML | [Security & Sessions](agent/security-and-sessions.md) |
+| Refusals, exceptions, dependency failures, error mapping | [Exceptions](agent/exceptions.md) |
+| Endpoints, controllers, DTOs, validation, responses, Swagger, HTTP caching, BFF, health | [HTTP](agent/http.md) |
+| Logs, tracing, metrics, audit, telemetry, outages, health checks | [Observability](agent/observability.md) |
+| Test code, fixtures, configuration, support, verification | [Testing](agent/testing.md) and guides for the behavior under test |
 
-Mutation evidence and durable delivery require both [Jobs & Messaging](agent/jobs-and-messaging.md) and [Audit](agent/observability.md#audit). Health and dependency availability work requires [HTTP](agent/http.md#health-probes), [Dependency Outages](agent/observability.md#dependency-outages), and the applicable data/session failure rules.
+For mutation evidence and durable delivery, read both [Jobs & Messaging](agent/jobs-and-messaging.md) and [Audit](agent/observability.md#audit). For health or dependency availability, read [Health Probes](agent/http.md#health-probes), [Dependency Outages](agent/observability.md#dependency-outages), and relevant data/session failure rules.
+
+## Commit Messages
+
+Use Conventional Commits: `<type>(<scope>): <summary>`; add an optional body and an issue footer (`Refs #N`) when applicable. Never put issue numbers in the subject, including `(#N)`. Use `Fixes #N` or `Closes #N` only when the commit/merge actually closes the issue.
 
 ## Reference Stack
 
-NestJS / SWC; Fastify; PostgreSQL / Drizzle (`pg`) / pg-boss; Redis (`ioredis`; rate limiting: `redis`/node-redis); Resend (`resend`); Argon2; class-validator / class-transformer; Sentry / Pino / OTel Collector / Grafana Cloud; Vitest / Supertest / Spectral / Schemathesis.
+NestJS (SWC, Fastify); PostgreSQL (Drizzle, pg-boss); Redis; Vitest. Verify specific packages, tooling, and versions against `package.json` and configuration rather than treating this list as exhaustive.
