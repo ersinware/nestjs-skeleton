@@ -25,6 +25,8 @@ import { AuditTrailAuditAction } from 'src/module/audit-trail/shared/audit-trail
 @ValidatorConstraint({ name: 'auditTrailTimeRange' })
 class TimeRangeConstraint implements ValidatorConstraintInterface {
     /**
+     * Checks that the lower bound does not exceed the upper bound.
+     *
      * @param from The requested lower bound
      * @param args The validation arguments carrying the sibling `to`
      * @returns True when either bound is absent or invalid, or `from` does not exceed `to`
@@ -46,6 +48,8 @@ class TimeRangeConstraint implements ValidatorConstraintInterface {
     }
 
     /**
+     * Returns the validation error message for an inverted time range.
+     *
      * @returns The validation failure message
      */
     defaultMessage(): string {
@@ -69,7 +73,7 @@ export class QueryAuditTrailDto extends QueryPaginationDto {
         type: String,
         required: false,
         minLength: 1,
-        description: 'The audit action to restrict the listing to.',
+        description: 'Filter by audit action.',
         example: AuditTrailAuditAction.AUDIT_TRAIL_ACCESSED,
     })
     readonly action?: string;

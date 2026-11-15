@@ -9,7 +9,7 @@ import { IsStrongPassword } from 'src/core/http';
 /**
  * Password-change payload: the current password authorizes the change, the new one replaces it.
  */
-@ApiSchema({ name: 'PatchUserPassword', description: 'Schema for changing user password' })
+@ApiSchema({ name: 'PatchUserPassword', description: 'Current and new user passwords.' })
 export class PatchUserPasswordDto {
     /**
      * The current plain-text password to authorize the change.

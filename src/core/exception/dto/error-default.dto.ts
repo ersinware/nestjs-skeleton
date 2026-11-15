@@ -11,7 +11,7 @@ import { Exclude, Expose } from 'class-transformer';
  * Standard error response schema for a failed HTTP request.
  */
 @Exclude()
-@ApiSchema({ name: 'ErrorDefault', description: 'Standard error response schema' })
+@ApiSchema({ name: 'ErrorDefault', description: 'Standard error response.' })
 export class ErrorDefaultDto {
     /**
      * The HTTP status code indicating the type of failure.
@@ -21,7 +21,7 @@ export class ErrorDefaultDto {
         type: 'integer',
         minimum: 400,
         maximum: 599,
-        description: 'HTTP Status Code',
+        description: 'HTTP status code.',
         example: 400,
     })
     readonly statusCode: HttpStatus;
@@ -34,7 +34,7 @@ export class ErrorDefaultDto {
         type: 'string',
         isArray: true,
         minItems: 1,
-        description: 'List of error messages detailing what went wrong',
+        description: 'Error messages.',
         example: ['This is an error message.', 'This is another error message.'],
     })
     readonly message: readonly string[];
@@ -47,7 +47,7 @@ export class ErrorDefaultDto {
         type: 'string',
         minLength: 1,
         maxLength: 255,
-        description: 'Short description of the error status',
+        description: 'HTTP status text.',
         example: 'Bad Request',
     })
     readonly statusText: string;

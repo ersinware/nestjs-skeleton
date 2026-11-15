@@ -27,7 +27,7 @@ export const DOC_LICENSE = {
 /**
  * Server entries rendered on every generated OpenAPI document.
  */
-export const DOC_SERVERS = [{ url: 'http://localhost:3000', description: 'Development server' }] as const;
+export const DOC_SERVERS = [{ url: 'http://localhost:3000', description: 'Development server.' }] as const;
 
 /**
  * Type representing allowed OpenAPI tag names.

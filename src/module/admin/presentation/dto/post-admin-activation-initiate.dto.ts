@@ -11,6 +11,6 @@ import { PostAdminActivationDto } from 'src/module/admin/presentation/dto/post-a
  */
 @ApiSchema({
     name: 'PostAdminActivationInitiate',
-    description: 'Account form and required avatar details for a fresh upload attempt.',
+    description: 'Account and avatar details for preparing an upload.',
 })
 export class PostAdminActivationInitiateDto extends OmitType(PostAdminActivationDto, ['uploadToken'] as const) {}

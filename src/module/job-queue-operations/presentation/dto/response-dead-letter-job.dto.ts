@@ -11,7 +11,7 @@ import { isUUID } from 'src/core/http';
  * Public dead-letter metadata without payloads or error output.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseDeadLetterJob', description: 'Sanitized metadata of one dead-letter job.' })
+@ApiSchema({ name: 'ResponseDeadLetterJob', description: 'Dead-letter job metadata.' })
 export class ResponseDeadLetterJobDto {
     /**
      * Dead-letter copy identifier.
@@ -24,14 +24,23 @@ export class ResponseDeadLetterJobDto {
      * Time the dead-letter copy was created.
      */
     @Expose()
-    @ApiProperty({ type: 'string', format: 'date-time', example: '2026-09-21T12:00:00.000Z' })
+    @ApiProperty({
+        type: 'string',
+        format: 'date-time',
+        description: 'Time the job entered the dead-letter queue.',
+        example: '2026-09-21T12:00:00.000Z',
+    })
     readonly createdOn!: Date;
 
     /**
      * Original queue name.
      */
     @Expose()
-    @ApiProperty({ type: 'string', example: 'admin-invite' })
+    @ApiProperty({
+        type: 'string',
+        description: 'Original queue name.',
+        example: 'admin-invite',
+    })
     readonly sourceName!: string;
 
     /**
@@ -45,14 +54,24 @@ export class ResponseDeadLetterJobDto {
      * Original job creation time.
      */
     @Expose()
-    @ApiProperty({ type: 'string', format: 'date-time', example: '2026-09-20T12:00:00.000Z' })
+    @ApiProperty({
+        type: 'string',
+        format: 'date-time',
+        description: 'Original job creation time.',
+        example: '2026-09-20T12:00:00.000Z',
+    })
     readonly sourceCreatedOn!: Date;
 
     /**
      * Original job retry count.
      */
     @Expose()
-    @ApiProperty({ type: 'integer', minimum: 0, example: 10 })
+    @ApiProperty({
+        type: 'integer',
+        minimum: 0,
+        description: 'Original job retry count.',
+        example: 10,
+    })
     readonly sourceRetryCount!: number;
 
     /**

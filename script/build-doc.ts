@@ -39,15 +39,13 @@ async function bootstrap() {
 
         ACTIVE_VERSIONS.forEach((version) => {
             const jsonFilename = `swagger-v${version}.json`,
-                htmlFilename = `docs-v${version}.html`;
+                htmlFilename = `docs-v${version}.html`,
+                specJson = JSON.stringify(createSwaggerDocument(app!, version), null, 2);
 
-            fs.writeFileSync(
-                path.join(docsDir, jsonFilename),
-                JSON.stringify(createSwaggerDocument(app!, version), null, 2),
-            );
+            fs.writeFileSync(path.join(docsDir, jsonFilename), specJson);
             fs.writeFileSync(
                 path.join(docsDir, htmlFilename),
-                generateStaticScalarHtml(jsonFilename, VERSION_CONFIG[version].title),
+                generateStaticScalarHtml(specJson, VERSION_CONFIG[version].title),
             );
 
             logger.log(

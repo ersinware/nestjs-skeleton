@@ -10,7 +10,7 @@ import { IsJwtToken } from 'src/core/http';
  * Validates the refresh token at the transport boundary; shared by the refresh and logout routes,
  * which act on the same single-token payload.
  */
-@ApiSchema({ name: 'PostRefreshToken', description: 'Refresh token payload for token rotation or session logout.' })
+@ApiSchema({ name: 'PostRefreshToken', description: 'Refresh token for token renewal or logout.' })
 export class PostRefreshTokenDto {
     /**
      * The refresh token to rotate or revoke.

@@ -51,8 +51,8 @@ export function IsPersonName(options: { readonly normalize?: boolean } = {}): Pr
             minLength: NAME_MIN_LENGTH,
             maxLength: NAME_MAX_LENGTH,
             description:
-                `${NAME_LABEL}; starts with a letter and allows letters, combining marks, spaces, periods, apostrophes, and hyphens.` +
-                (options.normalize === false ? '' : ' Trimmed and Unicode-normalized to NFC before validation.'),
+                `${NAME_LABEL}; starts with a letter and allows letters, marks, spaces, periods, apostrophes, and hyphens.` +
+                (options.normalize === false ? '' : ' Trimmed and NFC-normalized.'),
             example: 'John Doe',
         }),
     );

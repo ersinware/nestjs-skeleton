@@ -11,7 +11,7 @@ import { IsJwtToken } from 'src/core/http/validation/decorator/jwt-token.decorat
  * Client-visible PUT details; no signing credentials or provider response metadata are exposed.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseSignedUploadRequest', description: 'One signed PUT request with its fixed deadline.' })
+@ApiSchema({ name: 'ResponseSignedUploadRequest', description: 'Signed upload request.' })
 export class ResponseSignedUploadRequestDto {
     /**
      * Signed URL used verbatim by the browser.
@@ -20,7 +20,7 @@ export class ResponseSignedUploadRequestDto {
     @ApiProperty({
         type: String,
         format: 'uri',
-        description: 'Presigned PUT URL; use it without rewriting its host, path, or query.',
+        description: 'Upload URL. Use it exactly as provided.',
         example: 'https://storage.example.com/avatars/pending/avatar/user/018f43c3-6bb3-7d72-911e-848821a837c3',
     })
     readonly url!: string;
@@ -44,7 +44,7 @@ export class ResponseSignedUploadRequestDto {
     @ApiProperty({
         type: String,
         format: 'date-time',
-        description: 'Absolute URL expiration time; this plan cannot be refreshed.',
+        description: 'Upload URL expiration time. Request a new upload if it expires.',
         example: '2026-10-01T12:05:00.000Z',
     })
     readonly expiresAt!: Date;
@@ -56,7 +56,7 @@ export class ResponseSignedUploadRequestDto {
 @Exclude()
 @ApiSchema({
     name: 'ResponseSingleUploadInitiate',
-    description: 'One signed PUT request and its form-bound finalization proof.',
+    description: 'Upload request and token for completing the operation.',
 })
 export class ResponseSingleUploadInitiateDto {
     /**

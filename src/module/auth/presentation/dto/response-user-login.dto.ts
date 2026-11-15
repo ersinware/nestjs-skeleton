@@ -12,7 +12,7 @@ import { ResponseTokensDto } from 'src/module/auth/presentation/dto/response-tok
  * User login that opened a session and issued tokens.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseUserLoginSession', description: 'User authenticated and a session opened.' })
+@ApiSchema({ name: 'ResponseUserLoginSession', description: 'Successful user login.' })
 export class ResponseUserLoginSessionDto extends ResponseTokensDto {
     /**
      * Identifies the result carrying a token pair.
@@ -22,7 +22,7 @@ export class ResponseUserLoginSessionDto extends ResponseTokensDto {
         type: String,
         enum: [SessionOutcome.CREATED],
         example: SessionOutcome.CREATED,
-        description: 'A new session was created.',
+        description: 'Session tokens issued.',
     })
     readonly session!: SessionOutcome.CREATED;
 }
@@ -31,7 +31,7 @@ export class ResponseUserLoginSessionDto extends ResponseTokensDto {
  * Correct credentials for a user still awaiting email activation.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseUserLoginActivationRequired', description: 'Activate the account before signing in.' })
+@ApiSchema({ name: 'ResponseUserLoginActivationRequired', description: 'User login requiring account activation.' })
 export class ResponseUserLoginActivationRequiredDto {
     /**
      * Instructs the client to offer activation and resend without treating this as a session.

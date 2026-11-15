@@ -14,7 +14,7 @@ import { IsJwtToken } from 'src/core/http';
 @Exclude()
 @ApiSchema({
     name: 'ResponseTokens',
-    description: 'Output response schema containing access and refresh JWT tokens',
+    description: 'Access and refresh tokens.',
 })
 export class ResponseTokensDto {
     /**

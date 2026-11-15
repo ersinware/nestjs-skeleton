@@ -13,7 +13,7 @@ import type { Permission } from 'src/shared/domain/principal';
  * particular — can never reach a client.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseAdmin', description: 'Standard admin response schema.' })
+@ApiSchema({ name: 'ResponseAdmin', description: 'Admin profile details.' })
 export class ResponseAdminDto {
     /**
      * The unique identifier of the admin, used to address follow-up operations.
@@ -62,7 +62,7 @@ export class ResponseAdminDto {
     @Expose()
     @ApiProperty({
         type: Boolean,
-        description: 'Whether the admin account is currently banned',
+        description: 'Whether the admin account is currently banned.',
         example: false,
     })
     readonly isBanned!: boolean;
@@ -73,7 +73,7 @@ export class ResponseAdminDto {
     @Expose()
     @ApiProperty({
         type: Boolean,
-        description: 'Whether the admin account has been activated by setting its first password',
+        description: 'Whether the admin account is activated.',
         example: true,
     })
     readonly isActivated!: boolean;

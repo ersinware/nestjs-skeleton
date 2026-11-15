@@ -11,6 +11,6 @@ import { PostUserRegistrationDto } from 'src/module/user/presentation/dto/post-u
  */
 @ApiSchema({
     name: 'PostUserRegistrationInitiate',
-    description: 'Account form and required avatar details for a fresh upload attempt.',
+    description: 'Account and avatar details for preparing an upload.',
 })
 export class PostUserRegistrationInitiateDto extends OmitType(PostUserRegistrationDto, ['uploadToken'] as const) {}

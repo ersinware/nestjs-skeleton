@@ -12,7 +12,7 @@ import { PostUserRegistrationDto } from 'src/module/user/presentation/dto/post-u
 /**
  * Independent optional profile fields; omission preserves current values and null is rejected.
  */
-@ApiSchema({ name: 'PatchUser', description: 'Schema for updating the user name, avatar, or both.' })
+@ApiSchema({ name: 'PatchUser', description: 'User profile changes.' })
 export class PatchUserDto extends PartialType(PickType(PostUserRegistrationDto, ['name'] as const), {
     skipNullProperties: false,
 }) {

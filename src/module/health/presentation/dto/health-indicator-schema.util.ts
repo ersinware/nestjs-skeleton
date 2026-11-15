@@ -9,13 +9,13 @@ import { HealthIndicatorKey, HealthyIndicatorState } from 'src/module/health/app
  * Swagger description of each indicator; a new indicator fails compilation here until documented.
  */
 export const HealthIndicatorDescription = {
-    memory_heap: 'Heap memory usage indicator status.',
-    memory_rss: 'Resident set size memory usage indicator status.',
-    database: 'Database (primary) connection indicator status.',
-    database_replica: 'Database read-replica connection indicator status; the primary when no replica is configured.',
-    cache: 'Cache connection indicator status.',
-    session: 'Session store connection indicator status.',
-    rate_limit: 'Rate-limit store connection indicator status.',
+    memory_heap: 'Heap memory usage.',
+    memory_rss: 'Resident set size memory usage.',
+    database: 'Primary database connectivity.',
+    database_replica: 'Read-replica connectivity; uses the primary when no replica is configured.',
+    cache: 'Cache connectivity.',
+    session: 'Session store connectivity.',
+    rate_limit: 'Rate-limit store connectivity.',
 } as const satisfies Record<HealthIndicatorKey, string>;
 
 /**
@@ -49,7 +49,7 @@ function createHealthyIndicator(description: string): Record<string, unknown> {
         properties: {
             status: {
                 type: 'string',
-                description: 'Indicator status',
+                description: 'Indicator status.',
                 example: 'up',
                 enum: ['up'],
                 minLength: 2,

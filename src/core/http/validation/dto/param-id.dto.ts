@@ -24,7 +24,7 @@ export const ROUTE_PARAM_ID = `:${PARAM_ID}`;
  * Reusable schema for routes addressing a single resource by its identifier,
  * so each controller does not redeclare the same parameter validation.
  */
-@ApiSchema({ name: 'ParamId', description: 'Path parameter containing a unique UUID v7' })
+@ApiSchema({ name: 'ParamId', description: 'Resource UUID v7 path parameter.' })
 export class ParamIdDto {
     /**
      * The unique UUID v7 identifier of the resource.

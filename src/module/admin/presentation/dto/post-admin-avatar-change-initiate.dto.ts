@@ -11,7 +11,10 @@ import { PostAdminInviteDto } from 'src/module/admin/presentation/dto/post-admin
 /**
  * Required avatar descriptor and optional normalized name for a combined profile update.
  */
-@ApiSchema({ name: 'PostAdminAvatarChangeInitiate', description: 'Profile fields bound to a new avatar upload.' })
+@ApiSchema({
+    name: 'PostAdminAvatarChangeInitiate',
+    description: 'Profile and avatar details for preparing an upload.',
+})
 export class PostAdminAvatarChangeInitiateDto extends PartialType(PickType(PostAdminInviteDto, ['name'] as const), {
     skipNullProperties: false,
 }) {

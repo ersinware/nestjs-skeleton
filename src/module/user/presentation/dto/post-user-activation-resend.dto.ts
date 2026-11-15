@@ -9,7 +9,7 @@ import { IsEmailAddress } from 'src/core/http';
 /**
  * Email address supplied to request another activation link.
  */
-@ApiSchema({ name: 'PostUserActivationResend', description: 'Request another user activation email.' })
+@ApiSchema({ name: 'PostUserActivationResend', description: 'Email address for resending account activation.' })
 export class PostUserActivationResendDto {
     /**
      * The account email address; normalized before lookup.

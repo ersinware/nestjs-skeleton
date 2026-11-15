@@ -15,7 +15,7 @@ import type { Permission } from 'src/shared/domain/principal';
 @Exclude()
 @ApiSchema({
     name: 'ResponsePermissionCatalog',
-    description: 'The permissions a kind of principal may be granted.',
+    description: 'Grantable permissions.',
 })
 export class ResponsePermissionCatalogDto {
     /**

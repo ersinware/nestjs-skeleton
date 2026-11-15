@@ -83,7 +83,7 @@ export class AuthController {
     @ApiOperation({
         summary: 'Authenticate user',
         description:
-            'Validates credentials. Activated users receive a session; pending users with the correct password receive activation_required without tokens and can request another activation email. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
+            'Authenticates the user with email and password. Active accounts receive a session; pending accounts receive an activation-required response.',
     })
     @ApiExtraModels(ResponseUserLoginSessionDto, ResponseUserLoginActivationRequiredDto)
     @ApiIdempotencyKey()
@@ -151,8 +151,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Authenticate admin',
-        description:
-            'Validates admin credentials and issues a JWT access and refresh token pair. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Login replay skips password verification; current account eligibility and revocation checks still apply. Current authentication, authorization, and rate limits still apply.',
+        description: 'Authenticates the admin with email and password and returns access and refresh tokens.',
     })
     @ApiIdempotencyKey()
     @ApiOkResponse({ description: 'Successfully authenticated.', type: ResponseTokensDto })
@@ -203,8 +202,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Refresh session tokens',
-        description:
-            'Exchanges a valid refresh token for a new access and refresh token pair, invalidating the old refresh token. Reuse the same Idempotency-Key after an ambiguous outcome. For 120 seconds, retained Redis success reissues credentials from the original live session without another session open or rotation; closed or superseded sessions are never recreated. Retained same-request success can be replayed after the input refresh credential expires, provided its absolute session lifetime and the winning registration remain valid; without retained success, expired credentials cannot rotate. Current authentication, authorization, and rate limits still apply.',
+        description: 'Exchanges a refresh token for new access and refresh tokens.',
     })
     @ApiIdempotencyKey()
     @ApiOkResponse({ description: 'Tokens rotated successfully.', type: ResponseTokensDto })
@@ -234,7 +232,7 @@ export class AuthController {
      * Closes the session identified by a signed refresh credential, even after rotation or credential expiry.
      *
      * @param dto Refresh credential identifying the session; no access token is required.
-     * @throws {DependencyUnavailableException} When session closure or audit persistence is unavailable
+     * @throws {DependencyUnavailableException} When session closure is unavailable
      */
     @Post('logout')
     @RateLimit(RateLimitPolicy.DEFAULT)
@@ -242,10 +240,9 @@ export class AuthController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Log out a session',
-        description:
-            'Closes the refresh token session, including its access tokens. Accepts an expired refresh credential within the absolute session lifetime. Invalid or already-closed credentials return 204. No access token is required.',
+        description: 'Closes the session identified by the refresh token and revokes its access tokens.',
     })
-    @ApiNoContentResponse({ description: 'Logout processed; discard local credentials.' })
+    @ApiNoContentResponse({ description: 'Logout processed.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     async logout(@Body() dto: PostRefreshTokenDto) {
         await this.commandPipeline.execute(new LogoutCommand(dto.refreshToken));
@@ -269,11 +266,10 @@ export class AuthController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Log out all sessions',
-        description:
-            'Commits an account-wide revocation request and its audit record. The owning context processes it asynchronously; this response does not guarantee that all sessions are already revoked. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
+        description: 'Requests account-wide session revocation; sessions are revoked asynchronously.',
     })
     @ApiIdempotencyKey()
-    @ApiNoContentResponse({ description: 'Session revocation request and audit record committed.' })
+    @ApiNoContentResponse({ description: 'Session revocation requested.' })
     @ApiDefaultInvalidRequestResponse(InvalidInputMessage.IDEMPOTENCY_KEY)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultResourceConflictResponse()

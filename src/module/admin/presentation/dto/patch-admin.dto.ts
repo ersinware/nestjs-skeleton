@@ -12,7 +12,7 @@ import { PostAdminInviteDto } from 'src/module/admin/presentation/dto/post-admin
 /**
  * Independent optional profile fields; omission preserves current values and null is rejected.
  */
-@ApiSchema({ name: 'PatchAdmin', description: 'Schema for updating the admin name, avatar, or both.' })
+@ApiSchema({ name: 'PatchAdmin', description: 'Admin profile changes.' })
 export class PatchAdminDto extends PartialType(PickType(PostAdminInviteDto, ['name'] as const), {
     skipNullProperties: false,
 }) {

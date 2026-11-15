@@ -141,7 +141,7 @@ function createUnhealthyIndicator(key: HealthIndicatorKey): Record<string, unkno
                 enum: ['down'],
                 minLength: 4,
                 maxLength: 4,
-                description: 'Indicator status',
+                description: 'Indicator status.',
                 example: 'down',
             },
             message: {
@@ -226,7 +226,7 @@ function createHealthyOrUnhealthyIndicator(
                 enum: ['up', 'down'],
                 minLength: 2,
                 maxLength: 4,
-                description: 'Indicator status',
+                description: 'Indicator status.',
                 example: exampleStatus,
             },
             message: {

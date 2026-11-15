@@ -10,7 +10,7 @@ import { PostUserAvatarDto } from 'src/module/user/presentation/dto/post-user-av
 /**
  * Final registration form with the declared avatar and its workflow-bound upload proof.
  */
-@ApiSchema({ name: 'PostUserRegistration', description: 'Input for creating a pending user account.' })
+@ApiSchema({ name: 'PostUserRegistration', description: 'User registration details.' })
 export class PostUserRegistrationDto {
     /**
      * The unique email address to associate with the new account.

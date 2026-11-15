@@ -66,7 +66,7 @@ export class HealthController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Liveness probe',
-        description: 'Reports whether the process is alive. Checks no dependency; the status code is the whole answer.',
+        description: 'Reports whether the process is alive without checking dependencies.',
     })
     @ApiNoContentResponse({ description: 'The process is alive.' })
     checkLiveness() {}
@@ -84,8 +84,7 @@ export class HealthController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Readiness probe',
-        description:
-            'Reports whether the instance can serve traffic, checking readiness-critical dependencies. The status code is the whole answer; the failing dependency is never disclosed.',
+        description: 'Reports whether the instance is ready to serve traffic. Returns no response body.',
     })
     @ApiNoContentResponse({ description: 'The instance is ready to serve traffic.' })
     @ApiServiceUnavailableResponse({ description: DependencyUnavailableMessage.DEFAULT })
@@ -108,7 +107,7 @@ export class HealthController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Detailed health status',
-        description: `Returns the per-indicator health status of the service and its dependencies. Requires the '${Permission.HEALTH_DETAIL_READ}' permission. A 503 carries the indicator report below, except while a required session or rate-limit check is unavailable: admission then fails closed ahead of the check, and the 503 carries the standard error body instead.`,
+        description: `Returns per-indicator health details. A 503 response contains a health report or a standard error. Requires the '${Permission.HEALTH_DETAIL_READ}' permission.`,
     })
     @ApiOkResponse({
         description: 'Service is fully healthy.',

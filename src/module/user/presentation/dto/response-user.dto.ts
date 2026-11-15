@@ -13,7 +13,7 @@ import type { Permission } from 'src/shared/domain/principal';
  * particular — can never reach a client.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseUser', description: 'Standard user response schema.' })
+@ApiSchema({ name: 'ResponseUser', description: 'User profile details.' })
 export class ResponseUserDto {
     /**
      * The unique identifier of the user, used to address follow-up operations.
@@ -61,7 +61,7 @@ export class ResponseUserDto {
     @Expose()
     @ApiProperty({
         type: Boolean,
-        description: 'Whether the user account is currently banned',
+        description: 'Whether the user account is currently banned.',
         example: false,
     })
     readonly isBanned!: boolean;

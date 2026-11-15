@@ -15,7 +15,7 @@ const SEARCH_MIN_LENGTH = 1,
  * Extends pagination with an optional search term, so searchable list endpoints
  * share one input contract instead of redefining the field per module.
  */
-@ApiSchema({ name: 'QuerySearch', description: 'Generic query parameters for pagination and search.' })
+@ApiSchema({ name: 'QuerySearch', description: 'Pagination and search parameters.' })
 export class QuerySearchDto extends QueryPaginationDto {
     /**
      * The free-text term the endpoint matches against its searchable fields.

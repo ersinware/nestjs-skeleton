@@ -12,7 +12,7 @@ import { ResponseAuditTrailRecordDto } from 'src/module/audit-trail/presentation
  * schemas cannot drift.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseAuditTrailRecordSummary', description: 'One row of the audit trail listing.' })
+@ApiSchema({ name: 'ResponseAuditTrailRecordSummary', description: 'Audit trail summary.' })
 export class ResponseAuditTrailRecordSummaryDto extends PickType(ResponseAuditTrailRecordDto, [
     'id',
     'action',

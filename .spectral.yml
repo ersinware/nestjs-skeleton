@@ -25,10 +25,12 @@ rules:
         severity: error
         given: $..properties[*]
         then:
-            field: description
-            function: length
-            functionOptions:
-                min: 5
+            - field: description
+              function: truthy
+            - field: description
+              function: length
+              functionOptions:
+                  min: 5
     schema-property-type:
         description: Every property in schemas must have a type defined.
         severity: error

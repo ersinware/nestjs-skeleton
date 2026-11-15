@@ -47,6 +47,8 @@ Paths are version-neutral and relative to the global prefix.
 
 ### API Documentation
 
+- Keep Swagger text focused on client decisions: inputs, permissions, outcomes, and required next steps. Omit internal persistence, audit, and job mechanics; document shared behavior once and retain endpoint-specific limits and asynchronous completion when clients must account for them. Keep success response descriptions to the outcome; place necessary client actions in the operation description. State required permissions as `Requires the '<permission>' permission.`
+- Swagger text limits apply after interpolation: `@ApiOperation.summary` ≤ 80 characters, without a final period; `@ApiOperation.description` ≤ 200; all other descriptions (including DTO/schema, property, parameter, response, header, and tag) ≤ 150. End every description with a period.
 - Document endpoint tags, operations, authentication, and success/applicable error responses. Order response decorators by ascending HTTP status within each class or method. Reuse `src/core/doc/decorator/` when status/body contracts match; otherwise use raw Swagger decorators.
 - Standard error decorators accept `message: string`, defaulting to the corresponding shared `DEFAULT`, never module-specific enum types.
 - Error descriptions cover all causes: masked errors use public defaults ([Exceptions](exceptions.md#exceptions)); otherwise one cause uses its client-safe message, several use a generic description. Validation-only 400s use `RequestValidationMessage.PAYLOAD`/`PARAM`. No endpoint cause-enumeration enums; clients branch on status, not message text.

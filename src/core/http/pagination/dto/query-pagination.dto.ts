@@ -61,7 +61,7 @@ class PaginationWindowConstraint implements ValidatorConstraintInterface {
  * Shared input contract for offset-paginated list endpoints; both fields fall back
  * to their defaults when the client omits them.
  */
-@ApiSchema({ name: 'QueryPagination', description: 'Query parameters for pagination' })
+@ApiSchema({ name: 'QueryPagination', description: 'Query parameters for pagination.' })
 export class QueryPaginationDto {
     /**
      * The page number to retrieve.

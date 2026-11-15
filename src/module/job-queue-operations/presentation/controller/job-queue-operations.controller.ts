@@ -80,7 +80,7 @@ export class JobQueueOperationsController {
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'List dead-letter jobs',
-        description: `Lists sanitized dead-letter metadata newest first. Requires '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
+        description: `Lists dead-letter jobs newest first. Requires the '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
     })
     @ApiDefaultOkResponsePaginated({
         message: 'Dead-letter jobs successfully retrieved.',
@@ -112,7 +112,7 @@ export class JobQueueOperationsController {
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
         summary: 'List dead-letter redrives',
-        description: `Lists retained dead-letter redrives newest first. Requires '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
+        description: `Lists dead-letter redrives newest first. Requires the '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
     })
     @ApiDefaultOkResponsePaginated({
         message: 'Dead-letter redrives successfully retrieved.',
@@ -149,7 +149,7 @@ export class JobQueueOperationsController {
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiOperation({
         summary: 'Redrive dead-letter jobs',
-        description: `Starts an exclusive operation that returns eligible jobs to their original queues. Requires '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests replay 202 without enqueueing or auditing again. Authentication, authorization, and rate limiting apply on every retry.`,
+        description: `Asynchronously returns eligible dead-letter jobs to their original queues. Only one redrive can be queued or running at a time. Requires the '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission.`,
     })
     @ApiIdempotencyKey()
     @ApiAcceptedResponse({ description: 'Redrive operation accepted.' })
@@ -192,10 +192,10 @@ export class JobQueueOperationsController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Discard failed dead-letter redrives',
-        description: `Atomically discards the specified retained failed dead-letter redrives. Only redrives in FAILED status may be discarded. Requires '${Permission.JOB_DEAD_LETTER_DISCARD}' permission. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation or audit. Current authentication, authorization, and rate limits still apply.`,
+        description: `Discards the specified redrives in FAILED status. Either all are discarded or none are. Requires the '${Permission.JOB_DEAD_LETTER_DISCARD}' permission.`,
     })
     @ApiIdempotencyKey()
-    @ApiNoContentResponse({ description: 'Every requested failed dead-letter redrive was discarded.' })
+    @ApiNoContentResponse({ description: 'Failed dead-letter redrives discarded.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
@@ -241,10 +241,10 @@ export class JobQueueOperationsController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Discard dead-letter jobs',
-        description: `Atomically discards the specified dead-letter jobs. Requires '${Permission.JOB_DEAD_LETTER_DISCARD}' permission. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.`,
+        description: `Discards the specified dead-letter jobs. Either all are discarded or none are. Requires the '${Permission.JOB_DEAD_LETTER_DISCARD}' permission.`,
     })
     @ApiIdempotencyKey()
-    @ApiNoContentResponse({ description: 'Every requested dead-letter job was discarded.' })
+    @ApiNoContentResponse({ description: 'Dead-letter jobs discarded.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()

@@ -9,7 +9,7 @@ import { IsJwtToken } from 'src/core/http';
 /**
  * Emailed proof to consume for the account identified by the authenticated session.
  */
-@ApiSchema({ name: 'PostUserEmailChangeConfirm', description: 'Confirm the current user email change request.' })
+@ApiSchema({ name: 'PostUserEmailChangeConfirm', description: 'User email confirmation token.' })
 export class PostUserEmailChangeConfirmDto {
     /**
      * The confirmation token delivered to the pending address.

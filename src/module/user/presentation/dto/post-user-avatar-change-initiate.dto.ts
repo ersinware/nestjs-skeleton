@@ -9,7 +9,7 @@ import { PostUserRegistrationDto } from 'src/module/user/presentation/dto/post-u
 /**
  * Required avatar descriptor and optional normalized name for a combined profile update.
  */
-@ApiSchema({ name: 'PostUserAvatarChangeInitiate', description: 'Profile fields bound to a new avatar upload.' })
+@ApiSchema({ name: 'PostUserAvatarChangeInitiate', description: 'Profile and avatar details for preparing an upload.' })
 export class PostUserAvatarChangeInitiateDto extends IntersectionType(
     PickType(PostUserRegistrationDto, ['avatar'] as const),
     PartialType(PickType(PostUserRegistrationDto, ['name'] as const), {

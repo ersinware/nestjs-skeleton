@@ -10,7 +10,7 @@ import { IsEmailAddress, IsPersonName } from 'src/core/http';
  * Admin invitation payload. Carries no password: the account is created pending activation and its
  * owner chooses the password through the emailed invitation, so no human ever handles a credential.
  */
-@ApiSchema({ name: 'PostAdminInvite', description: 'Input validation schema for inviting a new admin.' })
+@ApiSchema({ name: 'PostAdminInvite', description: 'New admin invitation details.' })
 export class PostAdminInviteDto {
     /**
      * The unique email address the activation invitation is sent to.

@@ -22,8 +22,7 @@ export function ApiDefaultRateLimitedResponse(
         headers: {
             'Retry-After': {
                 required: true,
-                description:
-                    'Whole seconds remaining on the first blocking counter; admission after waiting is not guaranteed.',
+                description: 'Seconds to wait before retrying. Further requests may still be rate limited.',
                 schema: { type: 'integer', minimum: 1, example: 10 },
             },
         },

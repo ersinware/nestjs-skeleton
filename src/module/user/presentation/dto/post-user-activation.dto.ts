@@ -9,7 +9,7 @@ import { IsJwtToken, IsStrongPassword } from 'src/core/http';
 /**
  * Activation token and existing account password supplied by the owner.
  */
-@ApiSchema({ name: 'PostUserActivation', description: 'Input validation schema for user account activation.' })
+@ApiSchema({ name: 'PostUserActivation', description: 'User account activation details.' })
 export class PostUserActivationDto {
     /**
      * The activation token delivered to the account email address.

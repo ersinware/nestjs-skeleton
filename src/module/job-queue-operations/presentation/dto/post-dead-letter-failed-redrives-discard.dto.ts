@@ -16,7 +16,7 @@ const MAX_DISCARD_REDRIVES = 100;
  */
 @ApiSchema({
     name: 'PostDeadLetterFailedRedrivesDiscard',
-    description: 'Exact failed dead-letter redrive identifiers to discard.',
+    description: 'Failed dead-letter redrives to discard.',
 })
 export class PostDeadLetterFailedRedrivesDiscardDto {
     /**
@@ -36,7 +36,7 @@ export class PostDeadLetterFailedRedrivesDiscardDto {
         maxItems: MAX_DISCARD_REDRIVES,
         uniqueItems: true,
         format: 'uuid',
-        description: 'Exact retained failed dead-letter redrive identifiers.',
+        description: 'Failed dead-letter redrive identifiers.',
         example: ['b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f'],
     })
     readonly ids!: readonly string[];

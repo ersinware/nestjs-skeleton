@@ -124,8 +124,7 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Delete current user account',
-        description:
-            'Soft deletes the currently authenticated user account and revokes all active sessions. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests that pass authentication return 204 without repeating the deletion, audit, or jobs. Revoked credentials may be rejected before replay.',
+        description: 'Deletes the current user account and revokes its sessions asynchronously.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'User account successfully deleted.' })
@@ -217,7 +216,7 @@ export class UserController {
     @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'List all users',
+        summary: 'List users',
         description: `Retrieves user accounts with pagination and optional search. Requires the '${Permission.USER_ACCOUNT_READ}' permission.`,
     })
     @ApiDefaultOkResponsePaginated({ message: 'Users successfully retrieved.', model: ResponseUserDto })
@@ -282,7 +281,7 @@ export class UserController {
     @ApiOperation({
         summary: 'Update current user profile',
         description:
-            'Updates the current user name, avatar, or both. Avatar acceptance requires the same optional name and descriptor supplied at initiation. The response includes the selected pending key while its permanent copy is queued. Empty bodies are rejected.',
+            "Updates the current user's name, avatar, or both. Avatar updates require the same optional name and descriptor used at initiation. Empty bodies are rejected.",
     })
     @ApiOkResponse({ description: 'User successfully updated.', type: ResponseUserDto })
     @ApiDefaultInvalidRequestResponse()
@@ -305,6 +304,67 @@ export class UserController {
     }
 
     /**
+     * Changes the currently authenticated user's password; the current password must be verified so
+     * a hijacked session cannot take the account over.
+     *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
+     * @param principal The verified principal of the current request
+     * @param patchUserPasswordDto The payload carrying the current and new passwords
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
+     * @throws {ResourceNotFoundException} When the user does not exist
+     * @throws {AccessDeniedException} When the loaded account is banned
+     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
+     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
+     */
+    @Patch('me/password')
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
+    @PrincipalOnly(PrincipalType.USER)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Change current user password',
+        description: 'Changes the password and revokes sessions asynchronously. Sign in again with the new password.',
+    })
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Password successfully changed.',
+    })
+    // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
+    // share the status, so naming one cause would document the endpoint as if the others did not exist.
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse()
+    async changePasswordMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Body() patchUserPasswordDto: PatchUserPasswordDto,
+    ) {
+        await this.commandPipeline.execute(
+            new ChangeUserPasswordCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        patchUserPasswordDto.currentPassword,
+                        patchUserPasswordDto.newPassword,
+                    ]),
+                },
+                principal.id,
+                patchUserPasswordDto.currentPassword,
+                patchUserPasswordDto.newPassword,
+            ),
+        );
+    }
+
+    /**
      * Prepares a profile avatar upload without changing the authenticated account.
      *
      * @param principal Verified user selecting their own avatar
@@ -323,9 +383,9 @@ export class UserController {
     @ApiOperation({
         summary: 'Prepare current user avatar change',
         description:
-            'Prepares a conditional avatar PUT valid for up to five minutes and a profile proof valid for ten minutes. PATCH requires the same avatar descriptor and optional name. Initiation does not change the profile.',
+            'Returns an avatar upload request and token. Upload within five minutes, then PATCH within ten minutes using the token and the same avatar details and optional name.',
     })
-    @ApiOkResponse({ type: ResponseSingleUploadInitiateDto, description: 'Avatar upload request and profile proof.' })
+    @ApiOkResponse({ type: ResponseSingleUploadInitiateDto, description: 'Avatar upload request and token.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
@@ -364,11 +424,11 @@ export class UserController {
     @ApiOperation({
         summary: 'Initiate current user email change',
         description:
-            'Verifies the current password and queues a confirmation link to the new address. Each new keyed operation replaces the previous link, even for the same address; the current email and sessions remain unchanged. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
+            'Verifies the current password and emails a confirmation link to the new address, replacing any prior link. Current email and sessions stay unchanged.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({
-        description: 'Confirmation request and delivery job committed; email delivery is asynchronous.',
+        description: 'Confirmation email requested; delivery is asynchronous.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
@@ -423,11 +483,11 @@ export class UserController {
     @ApiOperation({
         summary: 'Confirm current user email change',
         description:
-            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, and queues a notice to the previous address. Returns 204 without a response body. Discard old tokens and sign in with the new email address and unchanged password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
+            'Changes the email address and revokes sessions asynchronously. Sign in again with the new email address.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({
-        description: 'Email changed. Discard old tokens and sign in with the new email address and unchanged password.',
+        description: 'Email successfully changed.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
@@ -458,68 +518,6 @@ export class UserController {
     }
 
     /**
-     * Changes the currently authenticated user's password; the current password must be verified so
-     * a hijacked session cannot take the account over.
-     *
-     * @param request HTTP method and matched route template.
-     * @param idempotencyKey Validated logical request UUID v4.
-     * @param principal The verified principal of the current request
-     * @param patchUserPasswordDto The payload carrying the current and new passwords
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
-     * @throws {ResourceNotFoundException} When the user does not exist
-     * @throws {AccessDeniedException} When the loaded account is banned
-     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
-     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
-     */
-    @Patch('me/password')
-    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
-    @PrincipalOnly(PrincipalType.USER)
-    @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiBearerAuth()
-    @ApiOperation({
-        summary: 'Change current user password',
-        description:
-            'Verifies the current password, changes it, and revokes existing sessions. Returns 204 without a response body. Discard old tokens and sign in with the new password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, password verification, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
-    })
-    @ApiIdempotencyKey()
-    @ApiNoContentResponse({
-        description: 'Password changed. Discard old tokens and sign in with the new password.',
-    })
-    // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
-    // share the status, so naming one cause would document the endpoint as if the others did not exist.
-    @ApiDefaultInvalidRequestResponse()
-    @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultAccessDeniedResponse()
-    @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse()
-    async changePasswordMe(
-        @Req() request: FastifyRequest,
-        @IdempotencyKey() idempotencyKey: string,
-        @CurrentPrincipal() principal: Principal,
-        @Body() patchUserPasswordDto: PatchUserPasswordDto,
-    ) {
-        await this.commandPipeline.execute(
-            new ChangeUserPasswordCommand(
-                {
-                    key: idempotencyKey,
-                    canonicalValue: JSON.stringify([
-                        request.method,
-                        request.routeOptions.url!,
-                        principal.id,
-                        patchUserPasswordDto.currentPassword,
-                        patchUserPasswordDto.newPassword,
-                    ]),
-                },
-                principal.id,
-                patchUserPasswordDto.currentPassword,
-                patchUserPasswordDto.newPassword,
-            ),
-        );
-    }
-
-    /**
      * Prepares the required avatar upload without persisting account state.
      *
      * @param postUserRegistrationInitiateDto Normalized registration form and avatar descriptor
@@ -535,11 +533,11 @@ export class UserController {
     @ApiOperation({
         summary: 'Prepare user registration',
         description:
-            'Prepares one conditional avatar PUT valid for five minutes and a form-bound registration proof valid for ten minutes. Registration requires the same form and uploaded avatar.',
+            'Returns an avatar upload request and token. Upload within five minutes, then register within ten minutes using the token and the same registration details.',
     })
     @ApiOkResponse({
         type: ResponseSingleUploadInitiateDto,
-        description: 'Avatar upload request and registration proof.',
+        description: 'Avatar upload request and token.',
     })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultResourceConflictResponse(ResourceConflictMessage.EMAIL_IN_USE)
@@ -578,10 +576,10 @@ export class UserController {
     @ApiOperation({
         summary: 'Register user',
         description:
-            'Verifies the registration proof, matching form, and uploaded avatar, then commits a pending account with activation and avatar finalization jobs. Sign-in requires email activation. An existing identity or email returns 409. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
+            'Creates an account using the registration details, uploaded avatar, and upload token. Email activation is required before signing in.',
     })
     @ApiIdempotencyKey()
-    @ApiNoContentResponse({ description: 'Pending account created, avatar attached, and delivery requests queued.' })
+    @ApiNoContentResponse({ description: 'Account created; activation pending.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceConflictResponse()
     async register(
@@ -634,11 +632,11 @@ export class UserController {
     @ApiOperation({
         summary: 'Activate user account',
         description:
-            'Verifies the emailed activation token and existing password, consumes the proof, and activates the account. Returns 204 without a response body; sign in with the existing password afterward. Expired links require another activation email. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key success returns 204 without rechecking the consumed proof or password, or repeating activation and audit. Rate limits still apply.',
+            'Activates the account using the emailed token and existing password. Request a new activation email if the link has expired.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({
-        description: 'Account activated. Sign in with the existing password.',
+        description: 'Account successfully activated.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultAccessDeniedResponse()
@@ -686,7 +684,7 @@ export class UserController {
     @ApiOperation({
         summary: 'Resend user activation email',
         description:
-            'Requests another activation email without revealing account status. Each new eligible keyed operation replaces the previous link and starts a new three-day deadline. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
+            'Requests a new activation email. The new link replaces earlier links and is valid for three days.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Request accepted regardless of account existence or activation status.' })
@@ -789,7 +787,7 @@ export class UserController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Replace user permissions',
-        description: `Replaces the user's permission set with the given one and retires its access tokens, so the next refresh carries the new set. Requires the '${Permission.USER_PERMISSION_MANAGE}' permission.`,
+        description: `Replaces the user's permissions; the affected user must refresh tokens to obtain the new set. Requires the '${Permission.USER_PERMISSION_MANAGE}' permission.`,
     })
     @ApiNoContentResponse({ description: 'Permissions successfully replaced.' })
     // Generic 400 on purpose: payload validation and a permission a user may not hold share the

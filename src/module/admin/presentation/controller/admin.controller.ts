@@ -126,7 +126,7 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Delete admin',
-        description: `Soft deletes an admin account. Requires the '${Permission.ADMIN_ACCOUNT_DELETE}' permission; the target may be neither the caller nor root, and a manager only when the caller is root. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests return 204 without repeating the deletion, audit, or jobs.`,
+        description: `Deletes an admin account. The target cannot be the caller or root; only root can delete managers. Requires the '${Permission.ADMIN_ACCOUNT_DELETE}' permission.`,
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Admin account successfully deleted.' })
@@ -201,7 +201,7 @@ export class AdminController {
     @Audited(PrincipalAuditAction.PERSONAL_DATA_ACCESSED)
     @ApiBearerAuth()
     @ApiOperation({
-        summary: 'List all admins',
+        summary: 'List admins',
         description: `Retrieves administrator accounts with pagination and optional search. Requires the '${Permission.ADMIN_ACCOUNT_READ}' permission.`,
     })
     @ApiDefaultOkResponsePaginated({ message: 'Admins successfully retrieved.', model: ResponseAdminDto })
@@ -292,7 +292,7 @@ export class AdminController {
     @ApiOperation({
         summary: 'Update current admin profile',
         description:
-            'Updates the current admin name, avatar, or both. Avatar acceptance requires the same optional name and descriptor supplied at initiation. The response includes the selected pending key while its permanent copy is queued. Empty bodies are rejected.',
+            "Updates the current admin's name, avatar, or both. Avatar updates require the same optional name and descriptor used at initiation. Empty bodies are rejected.",
     })
     @ApiOkResponse({ description: 'Admin successfully updated.', type: ResponseAdminDto })
     @ApiDefaultInvalidRequestResponse()
@@ -315,6 +315,67 @@ export class AdminController {
     }
 
     /**
+     * Changes the currently authenticated admin's password; the current password must be verified so
+     * a hijacked session cannot take the account over.
+     *
+     * @param request HTTP method and matched route template.
+     * @param idempotencyKey Validated logical request UUID v4.
+     * @param principal The verified principal of the current request
+     * @param patchAdminPasswordDto The payload carrying the current and new passwords
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
+     * @throws {ResourceNotFoundException} When the admin does not exist
+     * @throws {AccessDeniedException} When the loaded account is banned
+     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
+     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
+     */
+    @Patch('me/password')
+    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
+    @PrincipalOnly(PrincipalType.ADMIN)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: 'Change current admin password',
+        description: 'Changes the password and revokes sessions asynchronously. Sign in again with the new password.',
+    })
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({
+        description: 'Password successfully changed.',
+    })
+    // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
+    // share the status, so naming one cause would document the endpoint as if the others did not exist.
+    @ApiDefaultInvalidRequestResponse()
+    @ApiDefaultUnauthenticatedResponse()
+    @ApiDefaultAccessDeniedResponse()
+    @ApiDefaultResourceNotFoundResponse()
+    @ApiDefaultResourceConflictResponse()
+    async changePasswordMe(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Body() patchAdminPasswordDto: PatchAdminPasswordDto,
+    ) {
+        await this.commandPipeline.execute(
+            new ChangeAdminPasswordCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.id,
+                        patchAdminPasswordDto.currentPassword,
+                        patchAdminPasswordDto.newPassword,
+                    ]),
+                },
+                principal.id,
+                patchAdminPasswordDto.currentPassword,
+                patchAdminPasswordDto.newPassword,
+            ),
+        );
+    }
+
+    /**
      * Prepares a profile avatar upload without changing the authenticated account.
      *
      * @param principal Verified admin selecting their own avatar
@@ -333,9 +394,9 @@ export class AdminController {
     @ApiOperation({
         summary: 'Prepare current admin avatar change',
         description:
-            'Prepares a conditional avatar PUT valid for up to five minutes and a profile proof valid for ten minutes. PATCH requires the same avatar descriptor and optional name. Initiation does not change the profile.',
+            'Returns an avatar upload request and token. Upload within five minutes, then PATCH within ten minutes using the token and the same avatar details and optional name.',
     })
-    @ApiOkResponse({ type: ResponseSingleUploadInitiateDto, description: 'Avatar upload request and profile proof.' })
+    @ApiOkResponse({ type: ResponseSingleUploadInitiateDto, description: 'Avatar upload request and token.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PAYLOAD)
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
@@ -374,11 +435,11 @@ export class AdminController {
     @ApiOperation({
         summary: 'Initiate current admin email change',
         description:
-            'Verifies the current password and queues a confirmation link to the new address. Each new keyed operation replaces the previous link, even for the same address; the current email and sessions remain unchanged. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
+            'Verifies the current password and emails a confirmation link to the new address, replacing any prior link. Current email and sessions stay unchanged.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({
-        description: 'Confirmation request and delivery job committed; email delivery is asynchronous.',
+        description: 'Confirmation email requested; delivery is asynchronous.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
@@ -433,11 +494,11 @@ export class AdminController {
     @ApiOperation({
         summary: 'Confirm current admin email change',
         description:
-            'Requires a valid session for the account named by the emailed token. Confirms the new address, consumes the request, revokes existing sessions, and queues a notice to the previous address. Returns 204 without a response body. Discard old tokens and sign in with the new email address and unchanged password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
+            'Changes the email address and revokes sessions asynchronously. Sign in again with the new email address.',
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({
-        description: 'Email changed. Discard old tokens and sign in with the new email address and unchanged password.',
+        description: 'Email successfully changed.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
@@ -468,68 +529,6 @@ export class AdminController {
     }
 
     /**
-     * Changes the currently authenticated admin's password; the current password must be verified so
-     * a hijacked session cannot take the account over.
-     *
-     * @param request HTTP method and matched route template.
-     * @param idempotencyKey Validated logical request UUID v4.
-     * @param principal The verified principal of the current request
-     * @param patchAdminPasswordDto The payload carrying the current and new passwords
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
-     * @throws {ResourceNotFoundException} When the admin does not exist
-     * @throws {AccessDeniedException} When the loaded account is banned
-     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
-     * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
-     */
-    @Patch('me/password')
-    @RateLimit(RateLimitPolicy.CREDENTIAL_CHANGE)
-    @PrincipalOnly(PrincipalType.ADMIN)
-    @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiBearerAuth()
-    @ApiOperation({
-        summary: 'Change current admin password',
-        description:
-            'Verifies the current password, changes it, and revokes existing sessions. Returns 204 without a response body. Discard old tokens and sign in with the new password. Retry an ambiguous outcome with the same Idempotency-Key; an accepted same-key retry returns 204 without repeating the change, password verification, audit, or jobs. Authentication and rate limits still apply; revoked credentials may be rejected before replay. Session revocation propagates asynchronously.',
-    })
-    @ApiIdempotencyKey()
-    @ApiNoContentResponse({
-        description: 'Password changed. Discard old tokens and sign in with the new password.',
-    })
-    // Generic 400 on purpose: payload validation, a wrong current password, and password reuse all
-    // share the status, so naming one cause would document the endpoint as if the others did not exist.
-    @ApiDefaultInvalidRequestResponse()
-    @ApiDefaultUnauthenticatedResponse()
-    @ApiDefaultAccessDeniedResponse()
-    @ApiDefaultResourceNotFoundResponse()
-    @ApiDefaultResourceConflictResponse()
-    async changePasswordMe(
-        @Req() request: FastifyRequest,
-        @IdempotencyKey() idempotencyKey: string,
-        @CurrentPrincipal() principal: Principal,
-        @Body() patchAdminPasswordDto: PatchAdminPasswordDto,
-    ) {
-        await this.commandPipeline.execute(
-            new ChangeAdminPasswordCommand(
-                {
-                    key: idempotencyKey,
-                    canonicalValue: JSON.stringify([
-                        request.method,
-                        request.routeOptions.url!,
-                        principal.id,
-                        patchAdminPasswordDto.currentPassword,
-                        patchAdminPasswordDto.newPassword,
-                    ]),
-                },
-                principal.id,
-                patchAdminPasswordDto.currentPassword,
-                patchAdminPasswordDto.newPassword,
-            ),
-        );
-    }
-
-    /**
      * Invites a new admin by creating an account pending activation and emailing its owner. The
      * account starts with no permissions; they are granted separately once it exists.
      *
@@ -549,10 +548,10 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Invite admin',
-        description: `Invites a new admin by creating an account pending activation, with no permissions, and emailing its owner. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.`,
+        description: `Creates a pending admin account with no permissions and sends an invitation email. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission.`,
     })
     @ApiIdempotencyKey()
-    @ApiNoContentResponse({ description: 'Admin invitation queued; the account is pending activation.' })
+    @ApiNoContentResponse({ description: 'Admin invitation requested.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultUnauthenticatedResponse()
     @ApiDefaultAccessDeniedResponse()
@@ -600,11 +599,11 @@ export class AdminController {
     @ApiOperation({
         summary: 'Prepare admin activation',
         description:
-            'Prepares one conditional avatar PUT valid for up to five minutes and a form-bound activation proof valid for up to ten minutes. Both expire no later than the invitation. Activation requires the same password and avatar descriptor.',
+            'Returns an avatar upload URL (up to 5 minutes) and token (up to 10 minutes), capped by invitation expiry. Upload, then activate with the token and the same password and avatar details.',
     })
     @ApiOkResponse({
         type: ResponseSingleUploadInitiateDto,
-        description: 'Avatar upload request and activation proof.',
+        description: 'Avatar upload request and token.',
     })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceNotFoundResponse()
@@ -640,10 +639,10 @@ export class AdminController {
     @ApiOperation({
         summary: 'Activate admin account',
         description:
-            'Activates the invited account with its first password and verified uploaded avatar. Commits the pending key and avatar move job without opening a session. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.',
+            'Activates the invited account with its initial password and uploaded avatar without opening a session.',
     })
     @ApiIdempotencyKey()
-    @ApiNoContentResponse({ description: 'Account successfully activated; avatar finalization is queued.' })
+    @ApiNoContentResponse({ description: 'Account successfully activated.' })
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultAccessDeniedResponse()
     @ApiDefaultResourceNotFoundResponse()
@@ -696,7 +695,7 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Re-invite admin',
-        description: `Invalidates earlier invitations and emails a replacement for a pending admin account. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission and authority to administer the target. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation, audit, or jobs. Current authentication, authorization, and rate limits still apply.`,
+        description: `Replaces earlier invitation links for a pending admin. The target cannot be the caller or root; only root can re-invite managers. Requires the '${Permission.ADMIN_ACCOUNT_INVITE}' permission.`,
     })
     @ApiIdempotencyKey()
     @ApiNoContentResponse({ description: 'Invitation successfully re-issued.' })
@@ -748,7 +747,7 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Ban admin',
-        description: `Bans the account and revokes all active sessions. Requires the '${Permission.ADMIN_ACCOUNT_BAN}' permission; the target may be neither the caller nor root, and a manager only when the caller is root.`,
+        description: `Bans the account and revokes its sessions. The target cannot be the caller or root; only root can ban managers. Requires the '${Permission.ADMIN_ACCOUNT_BAN}' permission.`,
     })
     @ApiNoContentResponse({ description: 'Admin successfully banned.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -780,7 +779,7 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Unban admin',
-        description: `Lifts the ban on the account. Requires the '${Permission.ADMIN_ACCOUNT_BAN}' permission; the target may be neither the caller nor root, and a manager only when the caller is root.`,
+        description: `Lifts the account ban. The target cannot be the caller or root; only root can unban managers. Requires the '${Permission.ADMIN_ACCOUNT_BAN}' permission.`,
     })
     @ApiNoContentResponse({ description: 'Admin successfully unbanned.' })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
@@ -816,7 +815,7 @@ export class AdminController {
     @ApiBearerAuth()
     @ApiOperation({
         summary: 'Replace admin permissions',
-        description: `Replaces the admin's permission set with the given one and retires its access tokens, so the next refresh carries the new set. Requires the '${Permission.ADMIN_PERMISSION_MANAGE}' permission. Only root may grant or revoke '${Permission.ADMIN_PERMISSION_MANAGE}' or revoke from a manager; '${Permission.ADMIN_ROOT}' is never granted; the target may be neither the caller nor root.`,
+        description: `Replaces permissions; the target must refresh tokens. Cannot target caller or root, or grant '${Permission.ADMIN_ROOT}'. Only root manages managers. Requires the '${Permission.ADMIN_PERMISSION_MANAGE}' permission.`,
     })
     @ApiNoContentResponse({ description: 'Permissions successfully replaced.' })
     // Generic 400 on purpose: payload validation and a permission an admin may not hold share the

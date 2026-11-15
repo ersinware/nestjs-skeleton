@@ -12,7 +12,7 @@ import { PAGINATION_DEFAULT_LIMIT, PAGINATION_DEFAULT_PAGE } from 'src/shared/pa
  * so every list endpoint answers in the same shape.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponsePagination', description: 'Standard envelope for paginated list responses.' })
+@ApiSchema({ name: 'ResponsePagination', description: 'Paginated results.' })
 export class ResponsePaginationDto<T> {
     /**
      * The list of items on the current page. The generic item schema here is a placeholder:
@@ -34,7 +34,7 @@ export class ResponsePaginationDto<T> {
     @ApiProperty({
         type: 'integer',
         minimum: 0,
-        description: 'Total number of matching items in the database.',
+        description: 'Total number of matching items.',
         example: 100,
     })
     readonly total!: number;

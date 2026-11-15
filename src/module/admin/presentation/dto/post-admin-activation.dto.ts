@@ -10,7 +10,7 @@ import { PostAdminAvatarDto } from 'src/module/admin/presentation/dto/post-admin
 /**
  * Final activation form; invitation proof and avatar upload proof have distinct purposes.
  */
-@ApiSchema({ name: 'PostAdminActivation', description: 'Input validation schema for admin account activation.' })
+@ApiSchema({ name: 'PostAdminActivation', description: 'Admin account activation details.' })
 export class PostAdminActivationDto {
     /**
      * The invite token from the invitation email.

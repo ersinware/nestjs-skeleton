@@ -14,7 +14,7 @@ import type { DeadLetterRedriveStatus } from 'src/module/job-queue-operations/ap
 @Exclude()
 @ApiSchema({
     name: 'ResponseDeadLetterRedrive',
-    description: 'Retained dead-letter redrive summary.',
+    description: 'Dead-letter redrive summary.',
 })
 export class ResponseDeadLetterRedriveDto {
     /**
@@ -30,6 +30,7 @@ export class ResponseDeadLetterRedriveDto {
     @Expose()
     @ApiProperty({
         enum: ['ACCEPTED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] satisfies DeadLetterRedriveStatus[],
+        description: 'Current redrive status.',
         example: 'RUNNING' satisfies DeadLetterRedriveStatus,
     })
     readonly status!: DeadLetterRedriveStatus;
@@ -38,13 +39,24 @@ export class ResponseDeadLetterRedriveDto {
      * Time the operation was enqueued.
      */
     @Expose()
-    @ApiProperty({ type: 'string', format: 'date-time', example: '2026-09-21T12:00:00.000Z' })
+    @ApiProperty({
+        type: 'string',
+        format: 'date-time',
+        description: 'Time the operation was enqueued.',
+        example: '2026-09-21T12:00:00.000Z',
+    })
     readonly createdOn!: Date;
 
     /**
      * Terminal completion time, or null while queued or running.
      */
     @Expose()
-    @ApiProperty({ type: 'string', format: 'date-time', nullable: true, example: '2026-09-21T12:01:00.000Z' })
+    @ApiProperty({
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description: 'Completion time, or null while queued or running.',
+        example: '2026-09-21T12:01:00.000Z',
+    })
     readonly completedOn!: Date | null;
 }

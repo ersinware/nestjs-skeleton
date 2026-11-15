@@ -15,7 +15,7 @@ export function ApiIdempotencyKey(): MethodDecorator & ClassDecorator {
         name: 'Idempotency-Key',
         required: true,
         description:
-            'Random UUID v4. Reuse for retries of this logical request; use a new key for a new operation. A different fingerprint with the same key returns 409.',
+            'UUID v4. Reuse the key when retrying the same request; use a new key for a new operation. Reusing a key for a different request returns 409.',
         schema: {
             type: 'string',
             format: 'uuid',

@@ -13,7 +13,7 @@ import type { Permission } from 'src/shared/domain/principal';
  */
 @ApiSchema({
     name: 'PutUserPermissions',
-    description: "Input validation schema for replacing a user's permission set.",
+    description: 'Complete replacement permission set for the user.',
 })
 export class PutUserPermissionsDto {
     /**

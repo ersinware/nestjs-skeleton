@@ -16,7 +16,7 @@ import { PrincipalType } from 'src/shared/domain/principal';
  * without a verified actor.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseAuditTrailRecord', description: 'One record of the audit trail.' })
+@ApiSchema({ name: 'ResponseAuditTrailRecord', description: 'Audit trail record.' })
 export class ResponseAuditTrailRecordDto {
     /**
      * The unique identifier of the record; UUID v7, so id order is time order.
@@ -31,7 +31,7 @@ export class ResponseAuditTrailRecordDto {
     @Expose()
     @ApiProperty({
         type: String,
-        description: 'What happened.',
+        description: 'Audit action.',
         example: AuditTrailAuditAction.AUDIT_TRAIL_ACCESSED,
     })
     readonly action!: string;
@@ -42,7 +42,7 @@ export class ResponseAuditTrailRecordDto {
     @Expose()
     @ApiProperty({
         type: String,
-        description: 'Why a refusal happened; null on an action that cannot fail.',
+        description: 'Refusal reason, or null when not applicable.',
         example: null,
         nullable: true,
     })
@@ -56,7 +56,7 @@ export class ResponseAuditTrailRecordDto {
     @ApiProperty({
         type: 'object',
         additionalProperties: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
-        description: 'What the action changed, when the ids alone do not say; null otherwise.',
+        description: 'Additional action details, or null when not applicable.',
         example: null,
         nullable: true,
     })
@@ -83,7 +83,7 @@ export class ResponseAuditTrailRecordDto {
     @ApiProperty({
         type: String,
         enum: PrincipalType,
-        description: 'The kind of the verified principal who acted, naming the context that owns `actorId`.',
+        description: 'Principal type of the actor identified by `actorId`.',
         example: PrincipalType.ADMIN,
         nullable: true,
     })
@@ -143,7 +143,7 @@ export class ResponseAuditTrailRecordDto {
     @Expose()
     @ApiProperty({
         type: String,
-        description: 'The trace id active at write time.',
+        description: 'Trace identifier for the operation.',
         example: '4bf92f3577b34da6a3ce929d0e0e4736',
         nullable: true,
     })
@@ -156,7 +156,7 @@ export class ResponseAuditTrailRecordDto {
     @ApiProperty({
         type: 'string',
         format: 'date-time',
-        description: 'When the action happened.',
+        description: 'Time of the action.',
         example: '2026-01-01T12:00:00.000Z',
     })
     readonly occurredAt!: Date;
