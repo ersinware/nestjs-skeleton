@@ -11,6 +11,6 @@ export const CacheKeys = {
      * @returns The cache key
      */
     userById(id: string): string {
-        return `user:${id}`;
+        return `u:${id}`;
     },
 } as const;

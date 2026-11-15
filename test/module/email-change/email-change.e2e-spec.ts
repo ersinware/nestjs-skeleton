@@ -221,7 +221,7 @@ describe.each(CASES)('$route email change', (context) => {
                     const [next, keys] = await redis.scan(
                         cursor,
                         'MATCH',
-                        `auth:{${context.kind}:${id}}:*`,
+                        `${context.kind === PrincipalType.ADMIN ? 'a' : 'u'}:${id}:*`,
                         'COUNT',
                         100,
                     );

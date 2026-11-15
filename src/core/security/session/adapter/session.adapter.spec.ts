@@ -46,7 +46,7 @@ describe('SessionAdapter', () => {
     });
 
     describe.each(Object.values(PrincipalType))('%s namespace', (principalType) => {
-        it('passes the same complete principal hash tag to every Lua script', async () => {
+        it('passes the principal-scoped keys to every Lua script', async () => {
             const session: SessionRegistration = {
                 principalType,
                 sid: 'sid',
@@ -70,36 +70,26 @@ describe('SessionAdapter', () => {
             await adapter.isSessionActive('id', principalType, 'sid', 1);
             await adapter.setVersion('id', principalType, 2);
 
-            const prefix = `auth:{${principalType}:id}`;
+            const prefix = `${principalType === PrincipalType.ADMIN ? 'a' : 'u'}:id`;
             const keysByScript = redis.eval.mock.calls.map(([, count, ...args]) =>
                 args.slice(0, Number(count)).map(String),
             );
             expect(keysByScript).toEqual([
-                [expect.stringContaining(`${prefix}:idempotency:`), `${prefix}:version`, `${prefix}:sessions`],
-                [expect.stringContaining(`${prefix}:idempotency:`), `${prefix}:version`, `${prefix}:sessions`],
-                [
-                    expect.stringContaining(`${prefix}:idempotency:`),
-                    `${prefix}:version`,
-                    `${prefix}:sessions`,
-                    `${prefix}:rotated:sid:old-jti`,
-                ],
-                [`${prefix}:version`, `${prefix}:sessions`],
-                [`${prefix}:version`],
+                [expect.stringContaining(`${prefix}:i:`), `${prefix}:v`, `${prefix}:s`],
+                [expect.stringContaining(`${prefix}:i:`), `${prefix}:v`, `${prefix}:s`],
+                [expect.stringContaining(`${prefix}:i:`), `${prefix}:v`, `${prefix}:s`, `${prefix}:r:sid:old-jti`],
+                [`${prefix}:v`, `${prefix}:s`],
+                [`${prefix}:v`],
             ]);
-            for (const keys of keysByScript) {
-                // Redis Cluster hashes only the first non-empty {...} tag, so identical tags guarantee one slot.
-                expect(new Set(keys.map((key) => /\{([^{}]+)\}/u.exec(String(key))?.[1]))).toEqual(
-                    new Set([`${principalType}:id`]),
-                );
-            }
         });
 
         it('uses the principal namespace for direct version reads and logout deletion', async () => {
+            const prefix = `${principalType === PrincipalType.ADMIN ? 'a' : 'u'}:id`;
             redis.get.mockResolvedValueOnce(null);
             expect(await adapter.getVersion('id', principalType)).toBeNull();
-            expect(redis.get).toHaveBeenCalledWith(`auth:{${principalType}:id}:version`);
+            expect(redis.get).toHaveBeenCalledWith(`${prefix}:v`);
             await adapter.closeSession('id', principalType, 'sid');
-            expect(redis.hdel).toHaveBeenCalledWith(`auth:{${principalType}:id}:sessions`, 'sid');
+            expect(redis.hdel).toHaveBeenCalledWith(`${prefix}:s`, 'sid');
         });
     });
 
@@ -126,7 +116,7 @@ describe('SessionAdapter', () => {
             expect(result).toEqual({ outcome, session });
             expect(redis.eval).toHaveBeenCalledTimes(1);
             const [, count, ...args] = redis.eval.mock.calls[0]! as readonly unknown[];
-            expect(args[0]).toBe('auth:{user:id}:idempotency:request-key');
+            expect(args[0]).toBe('u:id:i:request-key');
             expect(args[Number(count)]).toBe('fingerprint');
             expect(args.at(-1)).toBe(120);
         });

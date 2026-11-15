@@ -1,4 +1,4 @@
-FROM node:lts-alpine@sha256:2867d550cf9d8bb50059a0fff528741f11a84d985c732e60e19e8e75c7239c43 AS base
+FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS base
 WORKDIR /app
 RUN apk update && apk upgrade && \
     apk add --no-cache libc6-compat tini

@@ -100,7 +100,7 @@ describe('Principal policies with production guards and Redis', () => {
                     const [next, keys] = await redis.scan(
                         cursor,
                         'MATCH',
-                        `auth:{${kinds.get(id)!}:${id}}:*`,
+                        `${kinds.get(id)! === PrincipalType.ADMIN ? 'a' : 'u'}:${id}:*`,
                         'COUNT',
                         100,
                     );

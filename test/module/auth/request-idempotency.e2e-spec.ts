@@ -43,7 +43,8 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
     let id: string;
     let email: string;
     const password = 'Idempotency-login!123',
-        table = type === PrincipalType.USER ? user : admin;
+        table = type === PrincipalType.USER ? user : admin,
+        principalPrefix = type === PrincipalType.ADMIN ? 'a' : 'u';
 
     beforeAll(async () => {
         app = await createTestApp();
@@ -79,7 +80,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         await database.delete(table).where(eq(table.id, id));
         let cursor = '0';
         do {
-            const [next, keys] = await redis.scan(cursor, 'MATCH', `auth:{${type}:${id}}:*`, 'COUNT', 100);
+            const [next, keys] = await redis.scan(cursor, 'MATCH', `${principalPrefix}:${id}:*`, 'COUNT', 100);
             cursor = next;
             for (const key of keys) {
                 await redis.del(key);
@@ -135,7 +136,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
                     error: { statusCode: 400, statusText: 'Bad Request', message: expect.any(Array) as unknown },
                 });
             }
-            expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(0);
+            expect(await redis.hlen(`${principalPrefix}:${id}:s`)).toBe(0);
         },
     );
 
@@ -150,7 +151,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         expect(await refreshTokens.verify<RefreshTokenPayload>(second.refreshToken, REFRESH_TOKEN_TYPE)).toEqual(
             await refreshTokens.verify<RefreshTokenPayload>(first.refreshToken, REFRESH_TOKEN_TYPE),
         );
-        expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(1);
+        expect(await redis.hlen(`${principalPrefix}:${id}:s`)).toBe(1);
         const verify = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'verifyPassword'),
             replay = await login(key);
         expect(replay.statusCode).toBe(200);
@@ -169,7 +170,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         const verify = vi.spyOn(app.get<IHashingPort>(TOKEN_HASHING_PORT), 'verifyPassword');
         expect((await login(key, 'Changed-password!123')).statusCode).toBe(409);
         expect(verify).not.toHaveBeenCalled();
-        expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(1);
+        expect(await redis.hlen(`${principalPrefix}:${id}:s`)).toBe(1);
     });
 
     it.each(['login', 'refresh'] as const)(
@@ -184,7 +185,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
             const pair = first.json<{ data: { accessToken: string; refreshToken: string } }>().data,
                 accessTokens = app.get<ITokenPort<typeof ACCESS_TOKEN_TYPE>>(TOKEN_AUTH_ACCESS_TOKEN_PORT),
                 claims = await accessTokens.verify<AccessTokenPayload>(pair.accessToken, ACCESS_TOKEN_TYPE),
-                registration = await redis.hgetall(`auth:{${type}:${id}}:sessions`),
+                registration = await redis.hgetall(`${principalPrefix}:${id}:s`),
                 refreshClaims = await refreshTokens.verify<RefreshTokenPayload>(pair.refreshToken, REFRESH_TOKEN_TYPE),
                 replayNow = Date.now() + 30_000;
             vi.spyOn(Date, 'now').mockReturnValue(replayNow);
@@ -200,7 +201,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
             });
             expect(replayClaims.exp).toBeGreaterThan(claims.exp);
             expect(replayPair.refreshToken).toBe(pair.refreshToken);
-            expect(await redis.hgetall(`auth:{${type}:${id}}:sessions`)).toEqual(registration);
+            expect(await redis.hgetall(`${principalPrefix}:${id}:s`)).toEqual(registration);
         },
     );
 
@@ -208,12 +209,12 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         const key = randomUUID(),
             sign = vi.spyOn(refreshTokens, 'sign').mockRejectedValueOnce(new Error('Lost credential response'));
         expect((await login(key)).statusCode).toBe(500);
-        const before = await redis.hgetall(`auth:{${type}:${id}}:sessions`);
+        const before = await redis.hgetall(`${principalPrefix}:${id}:s`);
         expect(Object.keys(before)).toHaveLength(1);
         expect((await login(key)).statusCode).toBe(200);
-        expect(await redis.hgetall(`auth:{${type}:${id}}:sessions`)).toEqual(before);
+        expect(await redis.hgetall(`${principalPrefix}:${id}:s`)).toEqual(before);
         expect(sign).toHaveBeenCalledTimes(2);
-        const retained = await redis.get(`auth:{${type}:${id}}:idempotency:${key}`);
+        const retained = await redis.get(`${principalPrefix}:${id}:i:${key}`);
         expect(JSON.parse(retained!) as unknown).toEqual({
             fingerprint: expect.any(String) as unknown,
             sid: expect.any(String) as unknown,
@@ -241,7 +242,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
         vi.spyOn(Date, 'now').mockReturnValue(now + 2000);
         expect((await refresh(shortenedRefreshToken, key)).statusCode).toBe(200);
         expect((await refresh(shortenedRefreshToken, randomUUID())).statusCode).toBe(401);
-        expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(1);
+        expect(await redis.hlen(`${principalPrefix}:${id}:s`)).toBe(1);
     });
 
     it('preserves refresh success outside grace, does not remediate reuse, and keeps logout repeat-safe without a key', async () => {
@@ -261,7 +262,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
                 REFRESH_TOKEN_TYPE,
             ),
         ).toEqual(winningClaims);
-        await redis.del(`auth:{${type}:${id}}:rotated:${originalClaims.sid}:${originalClaims.jti}`);
+        await redis.del(`${principalPrefix}:${id}:r:${originalClaims.sid}:${originalClaims.jti}`);
         expect((await refresh(original.refreshToken, key)).statusCode).toBe(200);
         // Reusing the same key with the winning credential changes semantic input.
         expect((await refresh(winning.refreshToken, key)).statusCode).toBe(409);
@@ -291,7 +292,7 @@ describe.each(Object.values(PrincipalType))('%s HTTP session request idempotency
             expect(logout.statusCode).toBe(204);
             expect(logout.body).toBe('');
         }
-        expect(await redis.hlen(`auth:{${type}:${id}}:sessions`)).toBe(0);
+        expect(await redis.hlen(`${principalPrefix}:${id}:s`)).toBe(0);
         expect((await refresh(original.refreshToken, key)).statusCode).toBe(401);
     });
 });

@@ -46,7 +46,7 @@ describe('RateLimitCounterAdapter', () => {
             .mockResolvedValue({ isBlocked: false, totalHits: 1, timeToExpire: 60, timeToBlockExpire: -1 });
         const { adapter } = setup();
         await expect(adapter.consume(attempt)).resolves.toEqual({ allowed: true });
-        expect(increment).toHaveBeenCalledWith(attempt.key, 60000, 2, 10000, 'test:api:rate-limit');
+        expect(increment).toHaveBeenCalledWith(attempt.key, 60000, 2, 10000, 'r');
         expect(vi.getTimerCount()).toBe(0);
     });
 

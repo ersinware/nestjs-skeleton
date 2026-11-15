@@ -25,18 +25,26 @@ import { PrincipalType } from 'src/shared/domain/principal';
 import { DependencyUnavailableException, DependencyUnavailableMessage, SystemException } from 'src/shared/exception';
 
 /**
- * The principal kind and identifier hash tag colocates keys used by each atomic operation.
+ * Short Redis key prefixes for each principal context.
+ */
+const PrincipalKeyPrefix = {
+    [PrincipalType.ADMIN]: 'a',
+    [PrincipalType.USER]: 'u',
+} as const satisfies Record<PrincipalType, string>;
+
+/**
+ * Redis keys for principal session state, version floor, request idempotency, and rotation grace.
  */
 const SessionKeys = {
     /**
-     * Colocates the request claim with the principal's session keys.
+     * Identifies the retained request idempotency claim for a principal.
      *
      * @param id Principal identifier.
      * @param type Owning context.
      * @param key Logical request identity.
-     * @returns Slot-compatible request key.
+     * @returns Redis key for the retained request claim.
      */
-    idempotency: (id: string, type: PrincipalType, key: string): string => `auth:{${type}:${id}}:idempotency:${key}`,
+    idempotency: (id: string, type: PrincipalType, key: string): string => `${PrincipalKeyPrefix[type]}:${id}:i:${key}`,
 
     /**
      * Identifies the account-wide minimum accepted access-token version.
@@ -45,7 +53,7 @@ const SessionKeys = {
      * @param type Owning principal context
      * @returns Redis key for the principal access floor
      */
-    version: (id: string, type: PrincipalType): string => `auth:{${type}:${id}}:version`,
+    version: (id: string, type: PrincipalType): string => `${PrincipalKeyPrefix[type]}:${id}:v`,
 
     /**
      * Holds independently expiring registrations as SID-indexed hash fields.
@@ -55,7 +63,7 @@ const SessionKeys = {
      * @param type Owning context.
      * @returns Principal-scoped session hash.
      */
-    sessions: (id: string, type: PrincipalType): string => `auth:{${type}:${id}}:sessions`,
+    sessions: (id: string, type: PrincipalType): string => `${PrincipalKeyPrefix[type]}:${id}:s`,
 
     /**
      * Identifies the grace marker for a consumed refresh credential.
@@ -67,7 +75,7 @@ const SessionKeys = {
      * @returns Redis key for the credential rotation grace marker
      */
     tombstone: (id: string, type: PrincipalType, sid: string, jti: string): string =>
-        `auth:{${type}:${id}}:rotated:${sid}:${jti}`,
+        `${PrincipalKeyPrefix[type]}:${id}:r:${sid}:${jti}`,
 };
 
 /**

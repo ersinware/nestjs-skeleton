@@ -189,26 +189,17 @@ describe('Rate limiting with production wiring and real Redis', () => {
         }
     });
 
-    it('isolates identical logical keys by service and environment while sharing between replicas', async () => {
+    it('shares logical keys between replicas using the fixed throttler namespace', async () => {
         const redis = app.get<RedisClientType>(TOKEN_RATE_LIMIT_CONNECTION);
-        const service = `namespace-${randomUUID()}`;
-        const make = (environment: string, name: string): RateLimitCounterAdapter =>
-            new RateLimitCounterAdapter(
-                redis,
-                new ConfigService({ NODE_ENV: environment, SERVICE_NAME: name, REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 1 }),
-            );
-        const first = make('test', service);
-        const replica = make('test', service);
-        const otherService = make('test', `${service}-other`);
-        const otherEnvironment = make('production', service);
+        const make = (): RateLimitCounterAdapter =>
+            new RateLimitCounterAdapter(redis, new ConfigService({ REDIS_RATE_LIMIT_COMMAND_TIMEOUT: 1 }));
+        const first = make();
+        const replica = make();
         const attempt = { key: `namespace:${randomUUID()}`, limit: 1, windowSeconds: 60, blockDurationSeconds: 60 };
         expect((await first.consume(attempt)).allowed).toBe(true);
         expect((await replica.consume(attempt)).allowed).toBe(false);
-        expect((await otherService.consume(attempt)).allowed).toBe(true);
-        expect((await otherEnvironment.consume(attempt)).allowed).toBe(true);
         const keys = await redis.keys(`*${attempt.key}*`);
-        expect(keys.some((key) => key.includes(`:test:${service}:rate-limit`))).toBe(true);
-        expect(keys.some((key) => key.includes(`:production:${service}:rate-limit`))).toBe(true);
+        expect(keys.some((key) => key.includes(`{${attempt.key}}:r`))).toBe(true);
     });
 
     it('retains counts across limit changes and preserves an already active block', async () => {

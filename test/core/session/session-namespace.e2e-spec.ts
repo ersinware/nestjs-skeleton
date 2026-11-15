@@ -58,6 +58,17 @@ describe('Principal-scoped Redis sessions', () => {
     });
 
     /**
+     * Formats the short Redis prefix for a principal context.
+     *
+     * @param principalType Owning context.
+     * @param id Principal identifier.
+     * @returns Principal-scoped Redis key prefix.
+     */
+    function principalPrefix(principalType: PrincipalType, id: string): string {
+        return `${principalType === PrincipalType.ADMIN ? 'a' : 'u'}:${id}`;
+    }
+
+    /**
      * Supplies a new logical fixture operation and tracks its bounded Redis claim for cleanup.
      *
      * @param id Principal identifier.
@@ -66,7 +77,7 @@ describe('Principal-scoped Redis sessions', () => {
      */
     function request(id: string, principalType: PrincipalType): SessionRequestIdentity {
         const key = randomUUID();
-        keys.add(`auth:{${principalType}:${id}}:idempotency:${key}`);
+        keys.add(`${principalPrefix(principalType, id)}:i:${key}`);
         return { key, fingerprint: 'session-fixture' };
     }
 
@@ -83,12 +94,12 @@ describe('Principal-scoped Redis sessions', () => {
         principalType: PrincipalType,
         version: number,
     ): Promise<SessionRegistration> {
-        const prefix = `auth:{${principalType}:${id}}`;
-        keys.add(`${prefix}:version`);
-        keys.add(`${prefix}:sessions`);
+        const prefix = principalPrefix(principalType, id);
+        keys.add(`${prefix}:v`);
+        keys.add(`${prefix}:s`);
         const { outcome, session } = await sessions.openSession(request(id, principalType), id, principalType, version);
         expect(outcome).toBe(OpenSessionOutcome.OPENED);
-        keys.add(`${prefix}:rotated:${session!.sid}:${session!.refreshCredentialId}`);
+        keys.add(`${prefix}:r:${session!.sid}:${session!.refreshCredentialId}`);
         return session!;
     }
 
@@ -155,14 +166,14 @@ describe('Principal-scoped Redis sessions', () => {
             ),
         ).toMatchObject({ outcome: RotateSessionOutcome.CONCURRENT_REPLAY });
         expect(
-            await redis.exists(`auth:{${otherType}:${id}}:rotated:${session.sid}:${session.refreshCredentialId}`),
+            await redis.exists(`${principalPrefix(otherType, id)}:r:${session.sid}:${session.refreshCredentialId}`),
         ).toBe(0);
         expect(
             await sessions.rotateSession(request(id, other.principalType), id, other.refreshCredentialId, other),
         ).toMatchObject({ outcome: RotateSessionOutcome.ROTATED });
 
         // Expire only this principal's grace marker to exercise reuse outside grace without a timed wait.
-        await redis.del(`auth:{${type}:${id}}:rotated:${session.sid}:${session.refreshCredentialId}`);
+        await redis.del(`${principalPrefix(type, id)}:r:${session.sid}:${session.refreshCredentialId}`);
         expect(
             await sessions.rotateSession(
                 request(id, replacement.principalType),
@@ -209,7 +220,7 @@ describe('Principal-scoped Redis sessions', () => {
         const session = await registration(id, PrincipalType.ADMIN, 1);
         expect(await sessions.getVersion(id, PrincipalType.USER)).toBeNull();
         expect(await sessions.isSessionActive(id, PrincipalType.USER, session.sid, 1)).toBe(false);
-        await redis.del(`auth:{${PrincipalType.ADMIN}:${id}}:version`);
+        await redis.del(`${principalPrefix(PrincipalType.ADMIN, id)}:v`);
         expect(await sessions.isSessionActive(id, PrincipalType.ADMIN, session.sid, 1)).toBe(false);
     });
     describe.each(Object.values(PrincipalType))('%s request coordination', (type) => {
@@ -219,7 +230,7 @@ describe('Principal-scoped Redis sessions', () => {
                 const id = randomUUID(),
                     original = await registration(id, type, 1),
                     input = request(id, type),
-                    prefix = `auth:{${type}:${id}}`,
+                    prefix = principalPrefix(type, id),
                     mutate = (value = input) =>
                         operation === 'open'
                             ? sessions.openSession(value, id, type, 1)
@@ -235,15 +246,15 @@ describe('Principal-scoped Redis sessions', () => {
                 for (const result of results) {
                     expect(result.session).toEqual(winner!.session);
                 }
-                expect(await redis.hlen(`${prefix}:sessions`)).toBe(operation === 'open' ? 2 : 1);
-                const before = await redis.hgetall(`${prefix}:sessions`);
+                expect(await redis.hlen(`${prefix}:s`)).toBe(operation === 'open' ? 2 : 1);
+                const before = await redis.hgetall(`${prefix}:s`);
                 expect(await mutate({ ...input, fingerprint: 'different semantics' })).toMatchObject({
                     outcome: ReplaySessionOutcome.CONFLICT,
                     session: null,
                 });
-                expect(await redis.hgetall(`${prefix}:sessions`)).toEqual(before);
+                expect(await redis.hgetall(`${prefix}:s`)).toEqual(before);
                 // Even outside rotation grace, retained success must win over reuse remediation.
-                await redis.del(`${prefix}:rotated:${original.sid}:${original.refreshCredentialId}`);
+                await redis.del(`${prefix}:r:${original.sid}:${original.refreshCredentialId}`);
                 expect(await mutate()).toMatchObject({
                     outcome: ReplaySessionOutcome.REPLAYED,
                     session: winner!.session,
@@ -258,8 +269,8 @@ describe('Principal-scoped Redis sessions', () => {
                 const id = randomUUID(),
                     original = await registration(id, type, 1),
                     input = request(id, type),
-                    prefix = `auth:{${type}:${id}}`,
-                    requestKey = `${prefix}:idempotency:${input.key}`,
+                    prefix = principalPrefix(type, id),
+                    requestKey = `${prefix}:i:${input.key}`,
                     mutate = () =>
                         operation === 'open'
                             ? sessions.openSession(input, id, type, 1)
@@ -273,8 +284,8 @@ describe('Principal-scoped Redis sessions', () => {
                 const deadlines = async () =>
                         Promise.all([
                             redis.pexpiretime(requestKey),
-                            redis.pexpiretime(`${prefix}:version`),
-                            redis.call('HPEXPIRETIME', `${prefix}:sessions`, 'FIELDS', 1, sid),
+                            redis.pexpiretime(`${prefix}:v`),
+                            redis.call('HPEXPIRETIME', `${prefix}:s`, 'FIELDS', 1, sid),
                         ]),
                     before = await deadlines();
                 expect(await sessions.findSessionRequestReplay(input, id, type)).toMatchObject({
@@ -286,7 +297,7 @@ describe('Principal-scoped Redis sessions', () => {
                     session: first.session,
                 });
                 expect(await deadlines()).toEqual(before);
-                expect(await redis.call('HEXPIRETIME', `${prefix}:sessions`, 'FIELDS', 1, sid)).toEqual([
+                expect(await redis.call('HEXPIRETIME', `${prefix}:s`, 'FIELDS', 1, sid)).toEqual([
                     first.session!.refreshExpiresAt,
                 ]);
                 await redis.pexpireat(requestKey, Date.now() - 1);
@@ -304,7 +315,7 @@ describe('Principal-scoped Redis sessions', () => {
                 const id = randomUUID(),
                     original = await registration(id, type, 1),
                     input = request(id, type),
-                    prefix = `auth:{${type}:${id}}`,
+                    prefix = principalPrefix(type, id),
                     evalCommand = redis.eval.bind(redis),
                     evaluate = vi
                         .spyOn(redis, 'eval')
@@ -318,10 +329,10 @@ describe('Principal-scoped Redis sessions', () => {
                             : sessions.rotateSession(input, id, original.refreshCredentialId, original);
                 await expect(mutate()).rejects.toBeInstanceOf(DependencyUnavailableException);
                 expect(evaluate).toHaveBeenCalledTimes(1);
-                const before = await redis.hgetall(`${prefix}:sessions`),
+                const before = await redis.hgetall(`${prefix}:s`),
                     replay = await mutate();
                 expect(replay.outcome).toBe(ReplaySessionOutcome.REPLAYED);
-                expect(await redis.hgetall(`${prefix}:sessions`)).toEqual(before);
+                expect(await redis.hgetall(`${prefix}:s`)).toEqual(before);
                 expect(Object.keys(before)).toHaveLength(operation === 'open' ? 2 : 1);
             },
         );
@@ -331,7 +342,7 @@ describe('Principal-scoped Redis sessions', () => {
                 first = await registration(id, type, 1),
                 input = request(id, type),
                 second = await sessions.openSession(input, id, type, 1),
-                hash = `auth:{${type}:${id}}:sessions`;
+                hash = `${principalPrefix(type, id)}:s`;
             await redis.call('HPEXPIREAT', hash, Date.now() - 1, 'FIELDS', 1, first.sid);
             expect(await sessions.isSessionActive(id, type, first.sid, 1)).toBe(false);
             expect(await sessions.isSessionActive(id, type, second.session!.sid, 1)).toBe(true);
@@ -350,7 +361,7 @@ describe('Principal-scoped Redis sessions', () => {
                 const id = randomUUID(),
                     original = await registration(id, type, 1),
                     input = request(id, type),
-                    prefix = `auth:{${type}:${id}}`;
+                    prefix = principalPrefix(type, id);
                 await sessions.setVersion(id, type, 2);
                 const rejected =
                     operation === 'open'
@@ -363,7 +374,7 @@ describe('Principal-scoped Redis sessions', () => {
                             : RotateSessionOutcome.VERSION_SUPERSEDED,
                     session: null,
                 });
-                expect(await redis.exists(`${prefix}:idempotency:${input.key}`)).toBe(0);
+                expect(await redis.exists(`${prefix}:i:${input.key}`)).toBe(0);
                 const accepted =
                     operation === 'open'
                         ? await sessions.openSession(input, id, type, 2)
@@ -383,7 +394,7 @@ describe('Principal-scoped Redis sessions', () => {
                 const id = randomUUID(),
                     original = await registration(id, type, 1),
                     input = request(id, type),
-                    prefix = `auth:{${type}:${id}}`;
+                    prefix = principalPrefix(type, id);
                 let expected: RotateSessionOutcome;
                 switch (scenario) {
                     case 'closed':
@@ -391,14 +402,14 @@ describe('Principal-scoped Redis sessions', () => {
                         expected = RotateSessionOutcome.SESSION_CLOSED;
                         break;
                     case 'missing-version':
-                        await redis.del(`${prefix}:version`);
+                        await redis.del(`${prefix}:v`);
                         expected = RotateSessionOutcome.SESSION_UNAVAILABLE;
                         break;
                     case 'within-grace':
                     case 'reuse':
                         await sessions.rotateSession(request(id, type), id, original.refreshCredentialId, original);
                         if (scenario === 'reuse') {
-                            await redis.del(`${prefix}:rotated:${original.sid}:${original.refreshCredentialId}`);
+                            await redis.del(`${prefix}:r:${original.sid}:${original.refreshCredentialId}`);
                         }
                         expected =
                             scenario === 'reuse'
@@ -410,7 +421,7 @@ describe('Principal-scoped Redis sessions', () => {
                     outcome: expected,
                     session: null,
                 });
-                expect(await redis.exists(`${prefix}:idempotency:${input.key}`)).toBe(0);
+                expect(await redis.exists(`${prefix}:i:${input.key}`)).toBe(0);
                 expect(await sessions.isSessionActive(id, type, original.sid, 1)).toBe(scenario === 'within-grace');
             },
         );
@@ -422,17 +433,17 @@ describe('Principal-scoped Redis sessions', () => {
                 await registration(id, type, 1);
                 const input = request(id, type),
                     first = await sessions.openSession(input, id, type, 1),
-                    prefix = `auth:{${type}:${id}}`;
+                    prefix = principalPrefix(type, id);
                 if (scenario === 'revoked') {
                     await sessions.setVersion(id, type, 2);
                 } else if (scenario === 'missing-version') {
-                    await redis.del(`${prefix}:version`);
+                    await redis.del(`${prefix}:v`);
                 } else {
                     const rotationInput = request(id, type);
-                    keys.add(`${prefix}:rotated:${first.session!.sid}:${first.session!.refreshCredentialId}`);
+                    keys.add(`${prefix}:r:${first.session!.sid}:${first.session!.refreshCredentialId}`);
                     await sessions.rotateSession(rotationInput, id, first.session!.refreshCredentialId, first.session!);
                 }
-                const before = await redis.hgetall(`${prefix}:sessions`),
+                const before = await redis.hgetall(`${prefix}:s`),
                     expected =
                         scenario === 'revoked'
                             ? ReplaySessionOutcome.VERSION_SUPERSEDED
@@ -444,14 +455,14 @@ describe('Principal-scoped Redis sessions', () => {
                     session: null,
                 });
                 expect(await sessions.openSession(input, id, type, 1)).toEqual({ outcome: expected, session: null });
-                expect(await redis.hgetall(`${prefix}:sessions`)).toEqual(before);
+                expect(await redis.hgetall(`${prefix}:s`)).toEqual(before);
             },
         );
 
         it('keeps version updates monotonic without shortening existing retention on repeated or older writes', async () => {
             const id = randomUUID();
             await registration(id, type, 1);
-            const key = `auth:{${type}:${id}}:version`;
+            const key = `${principalPrefix(type, id)}:v`;
             await redis.expire(key, 2_000_000);
             const deadline = await redis.pexpiretime(key);
             await Promise.all([

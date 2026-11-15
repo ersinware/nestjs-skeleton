@@ -31,39 +31,29 @@ type DeadLetterSample = {
 };
 
 /**
- * Resources allocated only on the instance assigned to monitoring.
- */
-type DeadLetterMonitoring = {
-    /**
-     * Configured delay between completed samples, converted for Node timers.
-     */
-    readonly sampleIntervalMs: number;
-
-    /**
-     * Meter that owns the dead-letter instruments.
-     */
-    readonly meter: Meter;
-
-    /**
-     * Gauges registered together for cached observations.
-     */
-    readonly instruments: ObservableGauge[];
-
-    /**
-     * Exposes cached values without database I/O during collection.
-     */
-    readonly observe: BatchObservableCallback;
-};
-
-/**
  * Keeps database sampling outside OpenTelemetry collection and reports monitor failures.
  */
 @Injectable()
 export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestroy {
     /**
-     * Absent when monitoring is disabled, so no telemetry resources are allocated.
+     * Configured delay between completed samples, converted for Node timers.
      */
-    private readonly monitoring: DeadLetterMonitoring | null = null;
+    private readonly sampleIntervalMs: number = 0;
+
+    /**
+     * Meter that owns the dead-letter instruments when monitoring is enabled.
+     */
+    private readonly meter: Meter | undefined;
+
+    /**
+     * Gauges registered together for cached observations when monitoring is enabled.
+     */
+    private readonly instruments: ObservableGauge[] | undefined;
+
+    /**
+     * Exposes cached values without database I/O during collection when monitoring is enabled.
+     */
+    private readonly observe: BatchObservableCallback | undefined;
 
     /**
      * The last complete sample, absent until the first successful read.
@@ -114,23 +104,23 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
             return;
         }
 
-        const meter = metrics.getMeter('job-queue'),
-            readyCountGauge = meter.createObservableGauge('job_queue_dlq_ready_count'),
-            monitorUpGauge = meter.createObservableGauge('job_queue_dlq_monitor_up'),
-            redriveFailedGauge = meter.createObservableGauge('job_queue_redrive_failed_count');
+        this.meter = metrics.getMeter('job-queue');
 
-        this.monitoring = {
-            sampleIntervalMs: configService.getOrThrow<number>(ENV.JOB_QUEUE_DLQ_SAMPLE_INTERVAL) * 1000,
-            meter,
-            instruments: [readyCountGauge, monitorUpGauge, redriveFailedGauge],
-            observe: (result) => {
-                result.observe(monitorUpGauge, this.monitorUp ? 1 : 0);
+        this.sampleIntervalMs = configService.getOrThrow<number>(ENV.JOB_QUEUE_DLQ_SAMPLE_INTERVAL) * 1000;
 
-                if (this.sample !== null) {
-                    result.observe(readyCountGauge, this.sample.readyCount);
-                    result.observe(redriveFailedGauge, this.sample.redriveFailedCount);
-                }
-            },
+        const readyCountGauge = this.meter.createObservableGauge('job_queue_dlq_ready_count'),
+            monitorUpGauge = this.meter.createObservableGauge('job_queue_dlq_monitor_up'),
+            redriveFailedGauge = this.meter.createObservableGauge('job_queue_redrive_failed_count');
+
+        this.instruments = [readyCountGauge, monitorUpGauge, redriveFailedGauge];
+
+        this.observe = (result) => {
+            result.observe(monitorUpGauge, this.monitorUp ? 1 : 0);
+
+            if (this.sample !== null) {
+                result.observe(readyCountGauge, this.sample.readyCount);
+                result.observe(redriveFailedGauge, this.sample.redriveFailedCount);
+            }
         };
     }
 
@@ -138,11 +128,11 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
      * Registers gauges and samples immediately before scheduling periodic reads.
      */
     async onApplicationBootstrap(): Promise<void> {
-        if (this.monitoring === null) {
+        if (this.meter === undefined || this.instruments === undefined || this.observe === undefined) {
             return;
         }
 
-        this.monitoring.meter.addBatchObservableCallback(this.monitoring.observe, this.monitoring.instruments);
+        this.meter.addBatchObservableCallback(this.observe, this.instruments);
 
         await this.refresh();
 
@@ -153,7 +143,7 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
      * Stops sampling and unregisters callbacks before database pools close.
      */
     async onModuleDestroy(): Promise<void> {
-        if (this.monitoring === null) {
+        if (this.meter === undefined || this.instruments === undefined || this.observe === undefined) {
             return;
         }
 
@@ -163,7 +153,7 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
             clearTimeout(this.timer);
         }
 
-        this.monitoring.meter.removeBatchObservableCallback(this.monitoring.observe, this.monitoring.instruments);
+        this.meter.removeBatchObservableCallback(this.observe, this.instruments);
         await this.inFlight;
     }
 
@@ -260,7 +250,7 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
      * Schedules the next read only after the current one settles.
      */
     private schedule(): void {
-        if (this.stopped || this.monitoring === null) {
+        if (this.stopped) {
             return;
         }
 
@@ -271,7 +261,7 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
                 this.inFlight = undefined;
                 this.schedule();
             });
-        }, this.monitoring.sampleIntervalMs);
+        }, this.sampleIntervalMs);
 
         this.timer.unref();
     }
