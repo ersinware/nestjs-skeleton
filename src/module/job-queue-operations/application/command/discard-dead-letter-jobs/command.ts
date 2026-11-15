@@ -14,11 +14,11 @@ export class DiscardDeadLetterJobsCommand extends Command<void> {
      * Initializes the exact job identifiers to discard.
      *
      * @param idempotencyRequest Validated client key and canonical endpoint semantics
-     * @param jobIds Non-empty, unique pg-boss job identifiers
+     * @param ids Non-empty, unique pg-boss job identifiers
      */
     constructor(
         readonly idempotencyRequest: IdempotencyRequest,
-        readonly jobIds: readonly string[],
+        readonly ids: readonly string[],
     ) {
         super();
     }

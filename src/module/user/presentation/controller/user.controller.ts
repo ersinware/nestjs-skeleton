@@ -242,7 +242,7 @@ export class UserController {
      *
      * @returns The grantable user catalog
      */
-    @Get('permissions')
+    @Get('permission')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.USER_PERMISSION_MANAGE)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
@@ -782,7 +782,7 @@ export class UserController {
      * @throws {ResourceConflictException} When persistence rejects a concurrent modification
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
      */
-    @Put(`${ROUTE_PARAM_ID}/permissions`)
+    @Put(`${ROUTE_PARAM_ID}/permission`)
     @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.USER_PERMISSION_MANAGE)
     @HttpCode(HttpStatus.NO_CONTENT)

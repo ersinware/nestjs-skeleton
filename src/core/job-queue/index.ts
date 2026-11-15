@@ -18,6 +18,7 @@ export {
     type IJobQueueDeadLetterMetricsPort,
 } from 'src/core/job-queue/port/job-queue-dead-letter-metrics.port';
 export {
+    RedriveDiscardOutcome,
     TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT,
     type IJobQueueDeadLetterOperatorPort,
 } from 'src/core/job-queue/port/job-queue-dead-letter-operator.port';
@@ -25,7 +26,8 @@ export {
     TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT,
     type DeadLetterJob,
     type DeadLetterJobPage,
-    type DeadLetterRedriveOperation,
+    type DeadLetterRedrive,
+    type DeadLetterRedrivePage,
     type IJobQueueDeadLetterReaderPort,
 } from 'src/core/job-queue/port/job-queue-dead-letter-reader.port';
 export { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';

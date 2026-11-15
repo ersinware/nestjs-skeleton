@@ -25,11 +25,6 @@ type DeadLetterSample = {
     readonly readyCount: number;
 
     /**
-     * Age in seconds of the oldest retained dead-letter copy, or zero when none exists.
-     */
-    readonly oldestAgeSeconds: number;
-
-    /**
      * Terminally failed redrive orchestration jobs in the last complete sample.
      */
     readonly redriveFailedCount: number;
@@ -104,7 +99,7 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
      * Initializes the sampler with the existing queue metrics and error-reporting ports.
      *
      * @param configService Supplies monitoring enablement and interval
-     * @param metricsPort Reads pg-boss statistics and oldest creation time
+     * @param metricsPort Reads pg-boss statistics
      * @param errorReporterPort Reports monitoring failures
      * @param loggerPort Records dependency outage and recovery transitions
      */
@@ -121,20 +116,18 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
 
         const meter = metrics.getMeter('job-queue'),
             readyCountGauge = meter.createObservableGauge('job_queue_dlq_ready_count'),
-            oldestAgeGauge = meter.createObservableGauge('job_queue_dlq_oldest_age_seconds'),
             monitorUpGauge = meter.createObservableGauge('job_queue_dlq_monitor_up'),
             redriveFailedGauge = meter.createObservableGauge('job_queue_redrive_failed_count');
 
         this.monitoring = {
             sampleIntervalMs: configService.getOrThrow<number>(ENV.JOB_QUEUE_DLQ_SAMPLE_INTERVAL) * 1000,
             meter,
-            instruments: [readyCountGauge, oldestAgeGauge, monitorUpGauge, redriveFailedGauge],
+            instruments: [readyCountGauge, monitorUpGauge, redriveFailedGauge],
             observe: (result) => {
                 result.observe(monitorUpGauge, this.monitorUp ? 1 : 0);
 
                 if (this.sample !== null) {
                     result.observe(readyCountGauge, this.sample.readyCount);
-                    result.observe(oldestAgeGauge, this.sample.oldestAgeSeconds);
                     result.observe(redriveFailedGauge, this.sample.redriveFailedCount);
                 }
             },
@@ -197,18 +190,16 @@ export class DeadLetterMonitor implements OnApplicationBootstrap, OnModuleDestro
     /**
      * Builds a complete snapshot before replacing the last successful one.
      *
-     * @returns Current dead-letter counts and oldest age
+     * @returns Current dead-letter and failed-redrive counts
      */
     private async readSample(): Promise<DeadLetterSample> {
-        const [readyCount, oldest, redriveFailedCount] = await Promise.all([
+        const [readyCount, redriveFailedCount] = await Promise.all([
             this.metricsPort.getDeadLetterReadyCount(),
-            this.metricsPort.getOldestDeadLetterCreatedOn(),
             this.metricsPort.getDeadLetterRedriveFailedCount(),
         ]);
 
         return {
             readyCount,
-            oldestAgeSeconds: oldest === null ? 0 : Math.max(0, (Date.now() - oldest.getTime()) / 1000),
             redriveFailedCount,
         };
     }

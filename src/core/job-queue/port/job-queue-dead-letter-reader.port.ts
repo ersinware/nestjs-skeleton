@@ -11,21 +11,6 @@ import type { PaginationParams } from 'src/shared/pagination';
 export const TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT = Symbol();
 
 /**
- * One bounded page of sanitized dead-letter jobs.
- */
-export type DeadLetterJobPage = {
-    /**
-     * Jobs in the requested page, ordered newest first.
-     */
-    readonly data: readonly DeadLetterJob[];
-
-    /**
-     * Total number of matching jobs across all pages.
-     */
-    readonly total: number;
-};
-
-/**
  * Sanitized internal view of one job stored in the shared dead-letter queue.
  */
 export type DeadLetterJob = {
@@ -71,9 +56,24 @@ export type DeadLetterJob = {
 };
 
 /**
+ * One bounded page of sanitized dead-letter jobs.
+ */
+export type DeadLetterJobPage = {
+    /**
+     * Jobs in the requested page, ordered newest first.
+     */
+    readonly data: readonly DeadLetterJob[];
+
+    /**
+     * Total number of matching jobs across all pages.
+     */
+    readonly total: number;
+};
+
+/**
  * Persisted status view of one dead-letter redrive operation.
  */
-export type DeadLetterRedriveOperation = {
+export type DeadLetterRedrive = {
     /**
      * Operation job identifier.
      */
@@ -96,6 +96,21 @@ export type DeadLetterRedriveOperation = {
 };
 
 /**
+ * One bounded page of retained dead-letter redrive operations.
+ */
+export type DeadLetterRedrivePage = {
+    /**
+     * Redrives in the requested page, ordered newest first.
+     */
+    readonly data: readonly DeadLetterRedrive[];
+
+    /**
+     * Total number of matching redrives across all pages.
+     */
+    readonly total: number;
+};
+
+/**
  * Reads sanitized dead-letter jobs and redrive operation state.
  */
 export interface IJobQueueDeadLetterReaderPort {
@@ -110,21 +125,12 @@ export interface IJobQueueDeadLetterReaderPort {
     listDeadLetterJobs(params: PaginationParams): Promise<DeadLetterJobPage>;
 
     /**
-     * Loads one job from the shared dead-letter queue.
+     * Lists one newest-first page from the redrive orchestration queue.
      *
-     * @param id Dead-letter job identifier
-     * @returns The job view, or null when it does not exist in the shared queue
+     * @param params Shared page and limit parameters
+     * @returns Sanitized page and matching operation count
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted job provenance or identifiers are missing or invalid
+     * @throws {SystemException} When persisted operation fields or page count are invalid
      */
-    getDeadLetterJob(id: string): Promise<DeadLetterJob | null>;
-
-    /**
-     * Loads one redrive operation status.
-     *
-     * @param operationId Redrive operation identifier
-     * @returns The operation view, or null when it is not retained in the orchestration queue
-     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     */
-    getDeadLetterRedrive(operationId: string): Promise<DeadLetterRedriveOperation | null>;
+    listDeadLetterRedrives(params: PaginationParams): Promise<DeadLetterRedrivePage>;
 }

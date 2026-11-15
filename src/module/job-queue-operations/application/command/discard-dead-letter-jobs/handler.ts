@@ -41,15 +41,15 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
      */
     async execute(command: DiscardDeadLetterJobsCommand) {
         await this.idempotencyPort.execute(command.idempotencyRequest, async () => {
-            const affected = await this.operatorPort.discardDeadLetterJobs(command.jobIds);
+            const affected = await this.operatorPort.discardDeadLetterJobs(command.ids);
 
-            if (affected !== command.jobIds.length) {
+            if (affected !== command.ids.length) {
                 throw new ResourceNotFoundException();
             }
 
             await this.auditPort.record({
                 action: JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED,
-                detail: { jobIds: command.jobIds, count: String(affected) },
+                detail: { ids: command.ids, count: String(affected) },
             });
 
             return { replayResultId: null };

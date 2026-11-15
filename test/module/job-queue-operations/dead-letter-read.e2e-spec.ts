@@ -33,7 +33,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 /**
  * Versioned route containing the operator-only DLQ job views.
  */
-const JOBS_PATH = '/api/v1/job-operations/dead-letter/jobs';
+const JOBS_PATH = '/api/v1/job-operation/dead-letter/job';
+
+/**
+ * Versioned route containing the operator-only retained redrive views.
+ */
+const REDRIVES_PATH = '/api/v1/job-operation/dead-letter/redrive';
 
 /**
  * Test-owned actor used to remove disclosure audit rows after each case.
@@ -61,7 +66,7 @@ describe('Dead-letter reads and metrics', () => {
     /**
      * Tracks failed orchestration jobs created only for metric verification.
      */
-    const operationIds = new Set<string>();
+    const redriveIds = new Set<string>();
 
     /**
      * Fails a real source job so pg-boss supplies authentic DLQ provenance.
@@ -129,10 +134,10 @@ describe('Dead-letter reads and metrics', () => {
     });
 
     afterEach(async () => {
-        for (const id of operationIds) {
+        for (const id of redriveIds) {
             await boss.deleteJob(JOB_QUEUE_DEAD_LETTER_REDRIVE, id);
         }
-        operationIds.clear();
+        redriveIds.clear();
 
         for (const id of deadLetterIds) {
             await boss.deleteJob(JOB_QUEUE_DEAD_LETTER, id);
@@ -184,27 +189,9 @@ describe('Dead-letter reads and metrics', () => {
         expect(JSON.stringify(first.body)).not.toContain('payload-must-not-appear');
         expect(JSON.stringify(first.body)).not.toContain('failure-must-not-appear');
         expect((await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id: ids[0] }))[0]?.state).toBe('created');
-
-        const detail = await request(app.getHttpServer())
-            .get(`${JOBS_PATH}/${ids[0]}`)
-            .auth('read', { type: 'bearer' })
-            .expect(200);
-        const body = JSON.stringify(detail.body);
-        expect(body).not.toContain('payload-must-not-appear');
-        expect(body).not.toContain('failure-must-not-appear');
-        expect(Object.keys((detail.body as { data: Record<string, unknown> }).data).sort()).toStrictEqual([
-            'aggregateId',
-            'createdOn',
-            'deliveryId',
-            'id',
-            'sourceCreatedOn',
-            'sourceId',
-            'sourceName',
-            'sourceRetryCount',
-        ]);
     });
 
-    it('masks invalid persisted provenance in both detail and list responses', async () => {
+    it('masks invalid persisted provenance in list responses', async () => {
         const id = await createDeadLetterJob();
         for (const mutation of [
             sql`UPDATE pgboss.job SET source_name = NULL WHERE name = ${JOB_QUEUE_DEAD_LETTER} AND id = ${id}`,
@@ -216,31 +203,121 @@ describe('Dead-letter reads and metrics', () => {
         ]) {
             await database.execute(mutation);
 
-            for (const path of [`${JOBS_PATH}/${id}`, JOBS_PATH]) {
-                const response = await request(app.getHttpServer())
-                    .get(path)
-                    .auth('read', { type: 'bearer' })
-                    .expect(500);
-                const body = JSON.stringify(response.body);
-                expect(body).not.toContain('payload-must-not-appear');
-                expect(body).not.toContain('failure-must-not-appear');
-                expect(body).not.toContain('source_name');
-                expect(body).not.toContain('invalid-uuid');
-            }
+            const response = await request(app.getHttpServer())
+                .get(JOBS_PATH)
+                .auth('read', { type: 'bearer' })
+                .expect(500);
+            const body = JSON.stringify(response.body);
+            expect(body).not.toContain('payload-must-not-appear');
+            expect(body).not.toContain('failure-must-not-appear');
+            expect(body).not.toContain('source_name');
+            expect(body).not.toContain('invalid-uuid');
         }
     });
 
-    it('requires authentication and the read permission for list and detail', async () => {
-        const id = await createDeadLetterJob();
-        for (const path of [JOBS_PATH, `${JOBS_PATH}/${id}`]) {
-            await request(app.getHttpServer()).get(path).expect(401);
-            await request(app.getHttpServer()).get(path).auth('none', { type: 'bearer' }).expect(403);
+    it('requires authentication and the read permission for list', async () => {
+        await request(app.getHttpServer()).get(JOBS_PATH).expect(401);
+        await request(app.getHttpServer()).get(JOBS_PATH).auth('none', { type: 'bearer' }).expect(403);
+        await request(app.getHttpServer()).get(REDRIVES_PATH).expect(401);
+        await request(app.getHttpServer()).get(REDRIVES_PATH).auth('none', { type: 'bearer' }).expect(403);
+    });
+
+    it('returns bounded newest-first pages of retained redrives with mapped statuses', async () => {
+        const count = await database.execute<{ total: string }>(sql`
+            SELECT count(*)::text AS total FROM pgboss.job WHERE name = ${JOB_QUEUE_DEAD_LETTER_REDRIVE}
+        `);
+        const baseline = Number(count.rows[0]?.total);
+
+        const future = new Date(Date.now() + 3_600_000);
+        // Exclusive queue: settle terminal jobs before enqueueing the next one.
+        const failedId = await boss.send(
+            JOB_QUEUE_DEAD_LETTER_REDRIVE,
+            { secret: 'redrive-payload-must-not-appear' },
+            { retryLimit: 0, startAfter: future },
+        );
+        if (!failedId) {
+            throw new Error('The test failed redrive operation was not accepted.');
         }
-        await request(app.getHttpServer()).get(`${JOBS_PATH}/not-a-uuid`).auth('read', { type: 'bearer' }).expect(400);
-        await request(app.getHttpServer())
-            .get(`${JOBS_PATH}/${randomUUID()}`)
+        redriveIds.add(failedId);
+        await boss.fail(JOB_QUEUE_DEAD_LETTER_REDRIVE, failedId, { secret: 'redrive-failure-must-not-appear' });
+
+        const completedId = await boss.send(
+            JOB_QUEUE_DEAD_LETTER_REDRIVE,
+            { secret: 'redrive-payload-must-not-appear' },
+            { retryLimit: 0, startAfter: future },
+        );
+        if (!completedId) {
+            throw new Error('The test completed redrive operation was not accepted.');
+        }
+        redriveIds.add(completedId);
+        // pg-boss complete() requires an active job; mark completed directly to avoid worker races.
+        await database.execute(sql`
+            UPDATE pgboss.job
+            SET state = 'completed', completed_on = now(), output = ${JSON.stringify({ secret: 'redrive-output-must-not-appear' })}::jsonb
+            WHERE name = ${JOB_QUEUE_DEAD_LETTER_REDRIVE} AND id = ${completedId}
+        `);
+
+        const createdId = await boss.send(
+            JOB_QUEUE_DEAD_LETTER_REDRIVE,
+            { secret: 'redrive-payload-must-not-appear' },
+            { retryLimit: 0, startAfter: future },
+        );
+        if (!createdId) {
+            throw new Error('The test created redrive operation was not accepted.');
+        }
+        redriveIds.add(createdId);
+
+        const orderedIds = [createdId, failedId, completedId] as const;
+        for (const [index, id] of orderedIds.entries()) {
+            await database.execute(sql`
+                UPDATE pgboss.job SET created_on = now() + ${3 - index} * interval '1 minute'
+                WHERE name = ${JOB_QUEUE_DEAD_LETTER_REDRIVE} AND id = ${id}
+            `);
+        }
+
+        const first = await request(app.getHttpServer())
+            .get(`${REDRIVES_PATH}?page=1&limit=2`)
             .auth('read', { type: 'bearer' })
-            .expect(404);
+            .expect(200);
+        const second = await request(app.getHttpServer())
+            .get(`${REDRIVES_PATH}?page=2&limit=2`)
+            .auth('read', { type: 'bearer' })
+            .expect(200);
+
+        const firstPage = first.body as {
+            data: {
+                items: { id: string; status: string; createdOn: string; completedOn: string | null }[];
+                total: number;
+                page: number;
+                limit: number;
+            };
+        };
+        const secondPage = second.body as {
+            data: {
+                items: { id: string; status: string; createdOn: string; completedOn: string | null }[];
+                total: number;
+                page: number;
+                limit: number;
+            };
+        };
+
+        expect(firstPage.data.items.map(({ id }) => id)).toStrictEqual([createdId, failedId]);
+        expect(firstPage.data.items[0]).toMatchObject({ id: createdId, status: 'ACCEPTED', completedOn: null });
+        expect(firstPage.data.items[1]).toMatchObject({ id: failedId, status: 'FAILED' });
+        expect(firstPage.data.items[1]?.completedOn).toEqual(expect.any(String));
+        expect(secondPage.data.items[0]).toMatchObject({ id: completedId, status: 'COMPLETED' });
+        expect(secondPage.data.items[0]?.completedOn).toEqual(expect.any(String));
+        expect(firstPage.data).toMatchObject({ total: baseline + 3, page: 1, limit: 2 });
+        expect(secondPage.data).toMatchObject({ total: baseline + 3, page: 2, limit: 2 });
+        expect(Object.keys(firstPage.data.items[0]!).sort()).toStrictEqual([
+            'completedOn',
+            'createdOn',
+            'id',
+            'status',
+        ]);
+        expect(JSON.stringify(first.body)).not.toContain('redrive-payload-must-not-appear');
+        expect(JSON.stringify(first.body)).not.toContain('redrive-failure-must-not-appear');
+        expect(JSON.stringify(second.body)).not.toContain('redrive-output-must-not-appear');
     });
 
     it('keeps liveness and readiness healthy while a dead-letter job awaits an operator', async () => {
@@ -264,7 +341,7 @@ describe('Dead-letter reads and metrics', () => {
         }
     });
 
-    it('reads live ready count and oldest creation time from pg-boss state', async () => {
+    it('reads live ready count from pg-boss state', async () => {
         // The queue-table stats cache can lag persisted jobs for up to one minute even with force:true.
         await database.execute(sql`
             UPDATE pgboss.queue SET monitor_on = NULL WHERE name = ${JOB_QUEUE_DEAD_LETTER}
@@ -275,18 +352,8 @@ describe('Dead-letter reads and metrics', () => {
         await database.execute(sql`
             UPDATE pgboss.queue SET monitor_on = NULL WHERE name = ${JOB_QUEUE_DEAD_LETTER}
         `);
-        const row = await database.execute<{ created_on: string }>(sql`
-            SELECT created_on FROM pgboss.job WHERE name = ${JOB_QUEUE_DEAD_LETTER} AND id = ${id}
-        `);
-        const createdOn = row.rows[0]?.created_on;
-        if (!createdOn) {
-            throw new Error('The dead-letter job creation time is missing.');
-        }
 
         expect(await metricsPort.getDeadLetterReadyCount()).toBe(readyBefore + 1);
-        expect((await metricsPort.getOldestDeadLetterCreatedOn())?.getTime()).toBeLessThanOrEqual(
-            Date.parse(createdOn),
-        );
 
         await boss.deleteJob(JOB_QUEUE_DEAD_LETTER, id);
         deadLetterIds.delete(id);
@@ -301,57 +368,26 @@ describe('Dead-letter reads and metrics', () => {
             UPDATE pgboss.queue SET monitor_on = NULL WHERE name = ${JOB_QUEUE_DEAD_LETTER_REDRIVE}
         `);
         const failedBefore = await metricsPort.getDeadLetterRedriveFailedCount();
-        const operationId = await boss.send(
+        const redriveId = await boss.send(
             JOB_QUEUE_DEAD_LETTER_REDRIVE,
             {},
             { retryLimit: 0, startAfter: new Date(Date.now() + 3_600_000) },
         );
-        if (!operationId) {
+        if (!redriveId) {
             throw new Error('The test redrive operation was not accepted.');
         }
-        operationIds.add(operationId);
-        await boss.fail(JOB_QUEUE_DEAD_LETTER_REDRIVE, operationId, { message: 'Intentional test failure.' });
+        redriveIds.add(redriveId);
+        await boss.fail(JOB_QUEUE_DEAD_LETTER_REDRIVE, redriveId, { message: 'Intentional test failure.' });
         await database.execute(sql`
             UPDATE pgboss.queue SET monitor_on = NULL WHERE name = ${JOB_QUEUE_DEAD_LETTER_REDRIVE}
         `);
 
-        expect((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId }))[0]?.state).toBe('failed');
+        expect((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: redriveId }))[0]?.state).toBe('failed');
         expect(await metricsPort.getDeadLetterRedriveFailedCount()).toBe(failedBefore + 1);
-        const status = await request(app.getHttpServer())
-            .get(`/api/v1/job-operations/dead-letter/redrive/${operationId}`)
-            .auth('read', { type: 'bearer' })
-            .expect(200);
-        expect((status.body as { data: { status: string } }).data.status).toBe('FAILED');
-        expect(JSON.stringify(status.body)).not.toContain('Intentional test failure.');
         const copies = await database.execute<{ total: string }>(sql`
             SELECT count(*)::text AS total FROM pgboss.job
-            WHERE name = ${JOB_QUEUE_DEAD_LETTER} AND source_id = ${operationId}
+            WHERE name = ${JOB_QUEUE_DEAD_LETTER} AND source_id = ${redriveId}
         `);
         expect(Number(copies.rows[0]?.total)).toBe(0);
-    });
-
-    it('returns a cancelled orchestration operation without exposing pg-boss output', async () => {
-        const operationId = await boss.send(
-            JOB_QUEUE_DEAD_LETTER_REDRIVE,
-            {},
-            { startAfter: new Date(Date.now() + 3_600_000) },
-        );
-        if (!operationId) {
-            throw new Error('The test redrive operation was not accepted.');
-        }
-        operationIds.add(operationId);
-        await boss.cancel(JOB_QUEUE_DEAD_LETTER_REDRIVE, operationId);
-
-        const response = await request(app.getHttpServer())
-            .get(`/api/v1/job-operations/dead-letter/redrive/${operationId}`)
-            .auth('read', { type: 'bearer' })
-            .expect(200);
-        expect((response.body as { data: { status: string } }).data.status).toBe('CANCELLED');
-        expect(Object.keys((response.body as { data: Record<string, unknown> }).data).sort()).toStrictEqual([
-            'completedOn',
-            'createdOn',
-            'operationId',
-            'status',
-        ]);
     });
 });

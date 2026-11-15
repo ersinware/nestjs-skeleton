@@ -3,15 +3,8 @@
  * @description Restricted HTTP access to dead-letter jobs and redrive operations.
  */
 
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
-import {
-    ApiAcceptedResponse,
-    ApiBearerAuth,
-    ApiNoContentResponse,
-    ApiOkResponse,
-    ApiOperation,
-    ApiTags,
-} from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req } from '@nestjs/common';
+import { ApiAcceptedResponse, ApiBearerAuth, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import type { FastifyRequest } from 'fastify';
 import { VERSION_1 } from 'src/core/config';
@@ -39,23 +32,21 @@ import {
 import { CurrentPrincipal, Permissions } from 'src/core/security/auth';
 import { RateLimit, RateLimitPolicy } from 'src/core/security/rate-limiting';
 import { DiscardDeadLetterJobsCommand } from 'src/module/job-queue-operations/application/command/discard-dead-letter-jobs/command';
+import { DiscardFailedDeadLetterRedrivesCommand } from 'src/module/job-queue-operations/application/command/discard-failed-dead-letter-redrives/command';
 import { StartDeadLetterRedriveCommand } from 'src/module/job-queue-operations/application/command/start-dead-letter-redrive/command';
-import { GetDeadLetterJobQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-job/query';
-import { GetDeadLetterRedriveStatusQuery } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/query';
 import { ListDeadLetterJobsQuery } from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/query';
-import { ParamDeadLetterJobIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-job-id.dto';
-import { ParamDeadLetterRedriveOperationIdDto } from 'src/module/job-queue-operations/presentation/dto/param-dead-letter-redrive-operation-id.dto';
-import { PostDeadLetterDiscardDto } from 'src/module/job-queue-operations/presentation/dto/post-dead-letter-discard.dto';
+import { ListDeadLetterRedrivesQuery } from 'src/module/job-queue-operations/application/query/list-dead-letter-redrives/query';
+import { PostDeadLetterFailedRedrivesDiscardDto } from 'src/module/job-queue-operations/presentation/dto/post-dead-letter-failed-redrives-discard.dto';
+import { PostDeadLetterJobDiscardDto } from 'src/module/job-queue-operations/presentation/dto/post-dead-letter-job-discard.dto';
 import { ResponseDeadLetterJobDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-job.dto';
-import { ResponseDeadLetterRedriveAcceptedDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive-accepted.dto';
-import { ResponseDeadLetterRedriveStatusDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive-status.dto';
+import { ResponseDeadLetterRedriveDto } from 'src/module/job-queue-operations/presentation/dto/response-dead-letter-redrive.dto';
 import { Permission, type Principal } from 'src/shared/domain/principal';
 import { InvalidInputMessage } from 'src/shared/exception';
 
 /**
  * Gives authorized operators sanitized dead-letter views, exact discard, and redrive control.
  */
-@Controller({ path: 'job-operations/dead-letter', version: VERSION_1 })
+@Controller({ path: 'job-operation/dead-letter', version: VERSION_1 })
 @ApiTags('job-queue-operations')
 @ApiBearerAuth()
 @ApiDefaultUnauthenticatedResponse()
@@ -83,7 +74,7 @@ export class JobQueueOperationsController {
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
      * @throws {SystemException} When persisted job metadata or the returned page count is invalid
      */
-    @Get('jobs')
+    @Get('job')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
@@ -96,7 +87,7 @@ export class JobQueueOperationsController {
         model: ResponseDeadLetterJobDto,
     })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
-    async list(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<ResponseDeadLetterJobDto>> {
+    async listJobs(@Query() query: QueryPaginationDto): Promise<ResponsePaginationDto<ResponseDeadLetterJobDto>> {
         const { data, total } = await this.queryPipeline.execute(new ListDeadLetterJobsQuery(query));
 
         return new ResponsePaginationDto(
@@ -108,29 +99,36 @@ export class JobQueueOperationsController {
     }
 
     /**
-     * Reads one dead-letter job by ID.
+     * Lists retained dead-letter redrive operations newest first in bounded pages.
      *
-     * @param params Validated job identifier
-     * @returns Sanitized dead-letter job
-     * @throws {ResourceNotFoundException} When the job is absent from the shared queue
+     * @param query Pagination parameters
+     * @returns Sanitized redrive operations and pagination metadata
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted job provenance, identifiers, or timestamps are invalid
+     * @throws {SystemException} When persisted job identifiers, states, or the returned page count is invalid
      */
-    @Get('jobs/:id')
+    @Get('redrive')
     @RateLimit(RateLimitPolicy.DEFAULT)
     @Permissions(Permission.JOB_DEAD_LETTER_READ)
     @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
     @ApiOperation({
-        summary: 'Get dead-letter job',
-        description: `Reads sanitized metadata for one dead-letter job. Requires '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
+        summary: 'List dead-letter redrives',
+        description: `Lists retained dead-letter redrives newest first. Requires '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
     })
-    @ApiOkResponse({ description: 'Dead-letter job successfully retrieved.', type: ResponseDeadLetterJobDto })
+    @ApiDefaultOkResponsePaginated({
+        message: 'Dead-letter redrives successfully retrieved.',
+        model: ResponseDeadLetterRedriveDto,
+    })
     @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
-    @ApiDefaultResourceNotFoundResponse()
-    async getById(@Param() params: ParamDeadLetterJobIdDto): Promise<ResponseDeadLetterJobDto> {
-        return plainToInstance(
-            ResponseDeadLetterJobDto,
-            await this.queryPipeline.execute(new GetDeadLetterJobQuery(params.id)),
+    async listRedrives(
+        @Query() query: QueryPaginationDto,
+    ): Promise<ResponsePaginationDto<ResponseDeadLetterRedriveDto>> {
+        const { data, total } = await this.queryPipeline.execute(new ListDeadLetterRedrivesQuery(query));
+
+        return new ResponsePaginationDto(
+            plainToInstance(ResponseDeadLetterRedriveDto, [...data]),
+            total,
+            query.page,
+            query.limit,
         );
     }
 
@@ -140,7 +138,6 @@ export class JobQueueOperationsController {
      * @param request HTTP request providing the method and matched route template
      * @param idempotencyKey Validated UUID v4 identifying this logical request
      * @param principal Current authenticated and authorized operator
-     * @returns Identifier of the accepted operation
      * @throws {InvalidInputException} When Idempotency-Key is absent or invalid
      * @throws {ResourceConflictException} When the key belongs to a different request or another redrive is queued or active
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
@@ -152,18 +149,18 @@ export class JobQueueOperationsController {
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiOperation({
         summary: 'Redrive dead-letter jobs',
-        description: `Starts an exclusive operation that returns eligible jobs to their original queues. Requires '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests return the original operationId without enqueueing or auditing again. Authentication, authorization, and rate limiting apply on every retry.`,
+        description: `Starts an exclusive operation that returns eligible jobs to their original queues. Requires '${Permission.JOB_DEAD_LETTER_REDRIVE}' permission. Retry an ambiguous outcome with the same Idempotency-Key; retained same-key requests replay 202 without enqueueing or auditing again. Authentication, authorization, and rate limiting apply on every retry.`,
     })
     @ApiIdempotencyKey()
-    @ApiAcceptedResponse({ description: 'Redrive operation accepted.', type: ResponseDeadLetterRedriveAcceptedDto })
+    @ApiAcceptedResponse({ description: 'Redrive operation accepted.' })
     @ApiDefaultInvalidRequestResponse(InvalidInputMessage.IDEMPOTENCY_KEY)
     @ApiDefaultResourceConflictResponse()
     async redrive(
         @Req() request: FastifyRequest,
         @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
-    ): Promise<ResponseDeadLetterRedriveAcceptedDto> {
-        const operationId = await this.commandPipeline.execute(
+    ) {
+        await this.commandPipeline.execute(
             new StartDeadLetterRedriveCommand({
                 key: idempotencyKey,
                 canonicalValue: JSON.stringify([
@@ -174,35 +171,54 @@ export class JobQueueOperationsController {
                 ]),
             }),
         );
-
-        return plainToInstance(ResponseDeadLetterRedriveAcceptedDto, { operationId });
     }
 
     /**
-     * Reads the retained status of one redrive operation.
+     * Discards an exact set of retained failed dead-letter redrive operations as one audited mutation.
      *
-     * @param params Validated redrive operation identifier
-     * @returns Current operation state and timestamps
-     * @throws {ResourceNotFoundException} When the operation is absent or no longer retained
-     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
+     * @param request HTTP request providing the method and matched route template
+     * @param idempotencyKey Validated UUID v4 identifying this logical request
+     * @param principal Current authenticated and authorized operator
+     * @param body Validated redrive operation identifiers
+     * @throws {InvalidInputException} When Idempotency-Key or request validation fails
+     * @throws {ResourceNotFoundException} When any requested operation is absent or no longer retained
+     * @throws {ResourceConflictException} When the key belongs to a different request or any requested operation is not failed
+     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the queue returns an unknown or invalid mutation outcome
      */
-    @Get('redrive/:operationId')
-    @RateLimit(RateLimitPolicy.DEFAULT)
-    @Permissions(Permission.JOB_DEAD_LETTER_READ)
-    @HttpCache(HttpCachePolicy.PRIVATE_REVALIDATE)
+    @Post('redrive/discard')
+    @RateLimit(RateLimitPolicy.JOB_QUEUE_MUTATION)
+    @Permissions(Permission.JOB_DEAD_LETTER_DISCARD)
+    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Get dead-letter redrive status',
-        description: `Reads the status of one retained redrive operation. Requires '${Permission.JOB_DEAD_LETTER_READ}' permission.`,
+        summary: 'Discard failed dead-letter redrives',
+        description: `Atomically discards the specified retained failed dead-letter redrives. Only redrives in FAILED status may be discarded. Requires '${Permission.JOB_DEAD_LETTER_DISCARD}' permission. Reuse the same Idempotency-Key after an ambiguous outcome; retained same-key requests replay 204 without repeating the mutation or audit. Current authentication, authorization, and rate limits still apply.`,
     })
-    @ApiOkResponse({ description: 'Redrive operation status retrieved.', type: ResponseDeadLetterRedriveStatusDto })
-    @ApiDefaultInvalidRequestResponse(RequestValidationMessage.PARAM)
+    @ApiIdempotencyKey()
+    @ApiNoContentResponse({ description: 'Every requested failed dead-letter redrive was discarded.' })
+    @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceNotFoundResponse()
-    async getRedriveStatus(
-        @Param() params: ParamDeadLetterRedriveOperationIdDto,
-    ): Promise<ResponseDeadLetterRedriveStatusDto> {
-        return plainToInstance(
-            ResponseDeadLetterRedriveStatusDto,
-            await this.queryPipeline.execute(new GetDeadLetterRedriveStatusQuery(params.operationId)),
+    @ApiDefaultResourceConflictResponse()
+    async discardFailedRedrives(
+        @Req() request: FastifyRequest,
+        @IdempotencyKey() idempotencyKey: string,
+        @CurrentPrincipal() principal: Principal,
+        @Body() body: PostDeadLetterFailedRedrivesDiscardDto,
+    ) {
+        await this.commandPipeline.execute(
+            new DiscardFailedDeadLetterRedrivesCommand(
+                {
+                    key: idempotencyKey,
+                    canonicalValue: JSON.stringify([
+                        request.method,
+                        request.routeOptions.url!,
+                        principal.type,
+                        principal.id,
+                        [...body.ids].sort(),
+                    ]),
+                },
+                body.ids,
+            ),
         );
     }
 
@@ -219,7 +235,7 @@ export class JobQueueOperationsController {
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the queue returns an invalid mutation result
      */
-    @Post('discard')
+    @Post('job/discard')
     @RateLimit(RateLimitPolicy.JOB_QUEUE_MUTATION)
     @Permissions(Permission.JOB_DEAD_LETTER_DISCARD)
     @HttpCode(HttpStatus.NO_CONTENT)
@@ -232,11 +248,11 @@ export class JobQueueOperationsController {
     @ApiDefaultInvalidRequestResponse()
     @ApiDefaultResourceNotFoundResponse()
     @ApiDefaultResourceConflictResponse()
-    async discard(
+    async discardJobs(
         @Req() request: FastifyRequest,
         @IdempotencyKey() idempotencyKey: string,
         @CurrentPrincipal() principal: Principal,
-        @Body() body: PostDeadLetterDiscardDto,
+        @Body() body: PostDeadLetterJobDiscardDto,
     ) {
         await this.commandPipeline.execute(
             new DiscardDeadLetterJobsCommand(
@@ -247,10 +263,10 @@ export class JobQueueOperationsController {
                         request.routeOptions.url!,
                         principal.type,
                         principal.id,
-                        [...body.jobIds].sort(),
+                        [...body.ids].sort(),
                     ]),
                 },
-                body.jobIds,
+                body.ids,
             ),
         );
     }

@@ -55,7 +55,7 @@ When an endpoint changes, re-evaluate:
 | `POST /user/activation/resend`     | PostgreSQL activation identity + audit + delivery job                              | No                   | Yes, same key               | Yes               | Same key replays `204`; no-op outcomes are retained.                                             | —          |
 | `POST /user/:id/ban`               | PostgreSQL ban + audit + jobs; best-effort Redis version update                    | Yes                  | Yes                         | **No**            | Repeated ban is a no-op and returns `204`.                                                       | —          |
 | `POST /user/:id/unban`             | PostgreSQL unban + audit + cache invalidation job                                  | Yes                  | Yes                         | No                | Repeated unban is a no-op and returns `204`.                                                     | —          |
-| `PUT /user/:id/permissions`        | PostgreSQL permission replacement + audit + jobs; best-effort Redis version update | Yes                  | Yes                         | **No**            | Reapplying the same permission set is a no-op and returns `204`.                                 | —          |
+| `PUT /user/:id/permission`         | PostgreSQL permission replacement + audit + jobs; best-effort Redis version update | Yes                  | Yes                         | **No**            | Reapplying the same permission set is a no-op and returns `204`.                                 | —          |
 
 ### Admin
 
@@ -73,14 +73,15 @@ When an endpoint changes, re-evaluate:
 | `POST /admin/:id/re-invite`       | PostgreSQL invitation identity + audit + delivery job                              | No                   | Yes, same key               | Yes               | Same key replays `204`.                                                                    | —          |
 | `POST /admin/:id/ban`             | PostgreSQL ban + audit + jobs; best-effort Redis version update                    | Yes                  | Yes                         | **No**            | Repeated ban is a no-op and returns `204`.                                                 | —          |
 | `POST /admin/:id/unban`           | PostgreSQL unban + audit                                                           | Yes                  | Yes                         | No                | Repeated unban is a no-op and returns `204`.                                               | —          |
-| `PUT /admin/:id/permissions`      | PostgreSQL permission replacement + audit + jobs; best-effort Redis version update | Yes                  | Yes                         | **No**            | Reapplying the same permission set is a no-op and returns `204`.                           | —          |
+| `PUT /admin/:id/permission`       | PostgreSQL permission replacement + audit + jobs; best-effort Redis version update | Yes                  | Yes                         | **No**            | Reapplying the same permission set is a no-op and returns `204`.                           | —          |
 
 ### Job Queue Operations
 
-| Endpoint                                   | Mutation                                     | Naturally idempotent | Retry-safe    | `Idempotency-Key` | Replay behavior                                         | Tracked by |
-| ------------------------------------------ | -------------------------------------------- | -------------------- | ------------- | ----------------- | ------------------------------------------------------- | ---------- |
-| `POST /job-operations/dead-letter/redrive` | PostgreSQL/pg-boss redrive operation + audit | No                   | Yes, same key | Yes               | Same key replays `202` with the original `operationId`. | —          |
-| `POST /job-operations/dead-letter/discard` | PostgreSQL dead-letter deletion + audit      | Effect-idempotent    | Yes, same key | Yes               | Same key replays `204`.                                 | —          |
+| Endpoint                                          | Mutation                                           | Naturally idempotent | Retry-safe    | `Idempotency-Key` | Replay behavior         | Tracked by |
+| ------------------------------------------------- | -------------------------------------------------- | -------------------- | ------------- | ----------------- | ----------------------- | ---------- |
+| `POST /job-operation/dead-letter/redrive`         | PostgreSQL/pg-boss redrive + audit                 | No                   | Yes, same key | Yes               | Same key replays `202`. | —          |
+| `POST /job-operation/dead-letter/redrive/discard` | PostgreSQL/pg-boss failed redrive deletion + audit | Effect-idempotent    | Yes, same key | Yes               | Same key replays `204`. | —          |
+| `POST /job-operation/dead-letter/job/discard`     | PostgreSQL dead-letter deletion + audit            | Effect-idempotent    | Yes, same key | Yes               | Same key replays `204`. | —          |
 
 ## Maintenance rules
 

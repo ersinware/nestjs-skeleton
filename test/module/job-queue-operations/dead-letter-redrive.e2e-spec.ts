@@ -33,7 +33,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 /**
  * Versioned redrive route shared by start and status checks.
  */
-const REDRIVE_PATH = '/api/v1/job-operations/dead-letter/redrive';
+const REDRIVE_PATH = '/api/v1/job-operation/dead-letter/redrive';
 
 /**
  * Isolated operator identity for all audit assertions and cleanup.
@@ -55,7 +55,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
      */
     const sourceQueues = new Set<string>();
     const deadLetterIds = new Set<string>();
-    const operationIds = new Set<string>();
+    const redriveIds = new Set<string>();
 
     /**
      * Creates a source queue that routes terminal failures into the shared DLQ.
@@ -105,33 +105,36 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     }
 
     /**
-     * Starts an operation and captures its identifier for status checks and cleanup.
+     * Starts an operation and captures its pg-boss identifier for lifecycle assertions and cleanup.
      *
      * @param key Client request identity
      * @returns Accepted operation identifier
      */
     async function startRedrive(key: string = randomUUID()): Promise<string> {
+        const before = new Set((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id));
         const response = await request(app.getHttpServer())
             .post(REDRIVE_PATH)
             .set('Idempotency-Key', key)
             .auth('redrive', { type: 'bearer' })
             .expect(202);
-        const body = response.body as { data: { operationId: string } };
-        const operationId = body.data.operationId;
-        expect(body.data).toStrictEqual({ operationId });
-        operationIds.add(operationId);
-        return operationId;
+        expect(response.body).toStrictEqual({ data: null });
+        const created = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).find((job) => !before.has(job.id));
+        if (!created) {
+            throw new Error('The test redrive operation was not found in pg-boss.');
+        }
+        redriveIds.add(created.id);
+        return created.id;
     }
 
     /**
      * Waits for the real worker to settle without producing disclosure-audit polling records.
      *
-     * @param operationId Accepted operation identifier
+     * @param redriveId Accepted operation identifier
      * @param state Expected pg-boss lifecycle state
      */
-    async function waitForOperation(operationId: string, state: string): Promise<void> {
+    async function waitForOperation(redriveId: string, state: string): Promise<void> {
         await expect
-            .poll(async () => (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId }))[0]?.state, {
+            .poll(async () => (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: redriveId }))[0]?.state, {
                 timeout: 40_000,
                 interval: 100,
             })
@@ -156,17 +159,17 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     /**
      * Reads durable redrive request audit for an accepted operation.
      *
-     * @param operationId Accepted operation identifier
+     * @param redriveId Accepted operation identifier
      * @returns Matching audit records
      */
-    async function requestAudit(operationId: string) {
+    async function requestAudit(redriveId: string) {
         return database
             .select()
             .from(audit)
             .where(
                 and(
                     eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_REDRIVE_REQUESTED),
-                    sql`${audit.detail} ->> 'operationId' = ${operationId}`,
+                    sql`${audit.detail} ->> 'redriveId' = ${redriveId}`,
                 ),
             );
     }
@@ -208,10 +211,10 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     });
 
     afterEach(async () => {
-        for (const id of operationIds) {
+        for (const id of redriveIds) {
             await boss.deleteJob(JOB_QUEUE_DEAD_LETTER_REDRIVE, id);
         }
-        operationIds.clear();
+        redriveIds.clear();
 
         for (const id of deadLetterIds) {
             await boss.deleteJob(JOB_QUEUE_DEAD_LETTER, id);
@@ -231,15 +234,25 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         }
     });
 
-    it('returns the original operationId after completion without another orchestration job or request audit', async () => {
+    it('replays 202 after completion without another orchestration job or request audit', async () => {
         const key = randomUUID();
         try {
+            const before = new Set((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id));
             const id = await startRedrive(key);
             await waitForOperation(id, 'completed');
-            expect(await startRedrive(key)).toBe(id);
+            const replay = await request(app.getHttpServer())
+                .post(REDRIVE_PATH)
+                .set('Idempotency-Key', key)
+                .auth('redrive', { type: 'bearer' })
+                .expect(202);
+            expect(replay.body).toStrictEqual({ data: null });
+            const createdAfter = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).filter(
+                (job) => !before.has(job.id),
+            );
+            expect(createdAfter.map((job) => job.id)).toStrictEqual([id]);
             expect(await requestAudit(id)).toHaveLength(1);
             const retained = await database.select().from(operation).where(eq(operation.key, key));
-            expect(retained).toMatchObject([{ replayResultId: id }]);
+            expect(retained).toMatchObject([{ replayResultId: null }]);
             const requests = await database
                 .select()
                 .from(audit)
@@ -255,30 +268,17 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         }
     });
 
-    it('commits an exclusive request and audit, then exposes a sanitized completed status', async () => {
-        const operationId = await startRedrive();
-        await waitForOperation(operationId, 'completed');
+    it('commits an exclusive request and audit', async () => {
+        const redriveId = await startRedrive();
+        await waitForOperation(redriveId, 'completed');
 
-        const records = await requestAudit(operationId);
+        const records = await requestAudit(redriveId);
         expect(records).toHaveLength(1);
         expect(records[0]).toMatchObject({
             actorId: ACTOR_ID,
             actorType: PrincipalType.ADMIN,
-            detail: { operationId },
+            detail: { redriveId },
         });
-
-        const response = await request(app.getHttpServer())
-            .get(`${REDRIVE_PATH}/${operationId}`)
-            .auth('read', { type: 'bearer' })
-            .expect(200);
-        const body = response.body as {
-            data: { operationId: string; status: string; createdOn: string; completedOn: string };
-        };
-        expect(body.data.operationId).toBe(operationId);
-        expect(body.data.status).toBe('COMPLETED');
-        expect(Number.isNaN(Date.parse(body.data.createdOn))).toBe(false);
-        expect(Number.isNaN(Date.parse(body.data.completedOn))).toBe(false);
-        expect(Object.keys(body.data).sort()).toStrictEqual(['completedOn', 'createdOn', 'operationId', 'status']);
     });
 
     it('allows only one queued or running operation and no audit for a rejected request', async () => {
@@ -290,8 +290,8 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         vi.spyOn(operatorPort, 'redriveDeadLetterJobs').mockReturnValueOnce(heldBatch);
 
         try {
-            const operationId = await startRedrive();
-            await waitForOperation(operationId, 'active');
+            const redriveId = await startRedrive();
+            await waitForOperation(redriveId, 'active');
 
             secondApp = await createTestApp({
                 overrides: [
@@ -322,11 +322,11 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             release(0);
         }
 
-        const [operationId] = operationIds;
-        if (!operationId) {
+        const [redriveId] = redriveIds;
+        if (!redriveId) {
             throw new Error('The accepted operation ID is missing.');
         }
-        await waitForOperation(operationId, 'completed');
+        await waitForOperation(redriveId, 'completed');
     });
 
     it('rolls back the orchestration job when its audit insert fails', async () => {
@@ -366,8 +366,8 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         await boss.deleteQueue(orphan);
         sourceQueues.delete(orphan);
 
-        const operationId = await startRedrive();
-        await waitForOperation(operationId, 'completed');
+        const redriveId = await startRedrive();
+        await waitForOperation(redriveId, 'completed');
 
         expect(await countRedriven(first, firstMarker)).toBe(1);
         expect(await countRedriven(second, secondMarker)).toBe(1);
@@ -378,24 +378,26 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         expect((await boss.findJobs(second, { id: secondJob.sourceId }))[0]?.state).toBe('failed');
     });
 
-    it('lists and reads real DLQ provenance without exposing the payload or failure output', async () => {
+    it('lists real DLQ provenance without exposing the payload or failure output', async () => {
         const source = await createSourceQueue();
         const aggregateId = randomUUID();
         const { sourceId, deadLetterId } = await sendFailed(source, aggregateId);
 
-        const detail = await request(app.getHttpServer())
-            .get(`/api/v1/job-operations/dead-letter/jobs/${deadLetterId}`)
+        const list = await request(app.getHttpServer())
+            .get('/api/v1/job-operation/dead-letter/job')
             .auth('read', { type: 'bearer' })
             .expect(200);
-        const body = detail.body as { data: Record<string, unknown> };
-        expect(body.data).toMatchObject({
+        const page = list.body as { data: { items: Record<string, unknown>[] } };
+        const listed = page.data.items.find((item) => item['id'] === deadLetterId);
+        expect(listed).toBeDefined();
+        expect(listed).toMatchObject({
             id: deadLetterId,
             sourceName: source,
             sourceId,
             sourceRetryCount: 0,
             aggregateId,
         });
-        expect(Object.keys(body.data).sort()).toStrictEqual([
+        expect(Object.keys(listed!).sort()).toStrictEqual([
             'aggregateId',
             'createdOn',
             'deliveryId',
@@ -405,13 +407,6 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             'sourceName',
             'sourceRetryCount',
         ]);
-
-        const list = await request(app.getHttpServer())
-            .get('/api/v1/job-operations/dead-letter/jobs')
-            .auth('read', { type: 'bearer' })
-            .expect(200);
-        const page = list.body as { data: { items: Record<string, unknown>[] } };
-        expect(page.data.items).toContainEqual(body.data);
     });
 
     it('drains more than one internal batch without a public limit parameter', async () => {
@@ -432,8 +427,8 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         expect(copies.rows).toHaveLength(101);
         copies.rows.forEach(({ id }) => deadLetterIds.add(id));
 
-        const operationId = await startRedrive();
-        await waitForOperation(operationId, 'completed');
+        const redriveId = await startRedrive();
+        await waitForOperation(redriveId, 'completed');
 
         expect(await countRedriven(source, marker)).toBe(101);
         const remaining = await database.execute<{ total: string }>(sql`
@@ -454,10 +449,10 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             throw new Error('Intentional interruption after one committed batch.');
         });
 
-        const operationId = await startRedrive();
-        await waitForOperation(operationId, 'retry');
+        const redriveId = await startRedrive();
+        await waitForOperation(redriveId, 'retry');
         await expect
-            .poll(async () => (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: operationId }))[0]?.state, {
+            .poll(async () => (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE, { id: redriveId }))[0]?.state, {
                 // Allow retry backoff followed by another production polling interval.
                 timeout: 70_000,
                 interval: 200,
@@ -472,7 +467,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
         expect(Number(remaining.rows[0]?.total)).toBe(0);
     }, 120_000);
 
-    it('enforces permissions and validates status IDs without starting or disclosing an operation', async () => {
+    it('enforces permissions without starting an operation', async () => {
         const before = (await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort();
         await request(app.getHttpServer()).post(REDRIVE_PATH).set('Idempotency-Key', randomUUID()).expect(401);
         await request(app.getHttpServer())
@@ -486,22 +481,5 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             .auth('none', { type: 'bearer' })
             .expect(403);
         expect((await boss.findJobs(JOB_QUEUE_DEAD_LETTER_REDRIVE)).map((job) => job.id).sort()).toEqual(before);
-
-        await request(app.getHttpServer())
-            .get(`${REDRIVE_PATH}/not-a-uuid`)
-            .auth('read', { type: 'bearer' })
-            .expect(400);
-        await request(app.getHttpServer())
-            .get(`${REDRIVE_PATH}/${randomUUID()}`)
-            .auth('read', { type: 'bearer' })
-            .expect(404);
-
-        const operationId = await startRedrive();
-        await waitForOperation(operationId, 'completed');
-        await request(app.getHttpServer()).get(`${REDRIVE_PATH}/${operationId}`).expect(401);
-        await request(app.getHttpServer())
-            .get(`${REDRIVE_PATH}/${operationId}`)
-            .auth('redrive', { type: 'bearer' })
-            .expect(403);
     });
 });

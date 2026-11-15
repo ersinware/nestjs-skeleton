@@ -55,7 +55,7 @@ export class JobQueueWriterAdapter implements IJobQueueWriterPort {
             for (const [queueName, jobs] of queues.entries()) {
                 await runInJobProducerSpan(queueName, async () => {
                     const traceparent = captureJobTraceparent(),
-                        jobIds = await this.boss.insert(
+                        ids = await this.boss.insert(
                             queueName,
                             jobs.map((job) => ({
                                 id: uuidv7(),
@@ -64,7 +64,7 @@ export class JobQueueWriterAdapter implements IJobQueueWriterPort {
                             { db: fromDrizzle(this.database, sql), returnId: true },
                         );
 
-                    if (jobIds === null || jobIds.length !== jobs.length) {
+                    if (ids === null || ids.length !== jobs.length) {
                         throw new SystemException('The jobs were not all accepted by the queue.', {
                             context: { class: this.constructor.name, method: this.enqueue.name },
                         });

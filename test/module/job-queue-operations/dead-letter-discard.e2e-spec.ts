@@ -28,7 +28,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 /**
  * Route under the production versioned API prefix.
  */
-const DISCARD_PATH = '/api/v1/job-operations/dead-letter/discard';
+const DISCARD_PATH = '/api/v1/job-operation/dead-letter/job/discard';
 
 /**
  * Unique operator identity keeps test audit rows separate from other suites.
@@ -84,7 +84,7 @@ describe('Dead-letter discard', () => {
             .where(
                 and(
                     eq(audit.action, JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED),
-                    sql`${audit.detail} -> 'jobIds' @> ${JSON.stringify([jobId])}::jsonb`,
+                    sql`${audit.detail} -> 'ids' @> ${JSON.stringify([jobId])}::jsonb`,
                 ),
             );
     }
@@ -149,19 +149,19 @@ describe('Dead-letter discard', () => {
         const untouched = await sendJob();
         const key = randomUUID();
         try {
-            for (const jobIds of [ids, [...ids].reverse()]) {
+            for (const orderedIds of [ids, [...ids].reverse()]) {
                 await request(app.getHttpServer())
                     .post(DISCARD_PATH)
                     .set('Idempotency-Key', key)
                     .auth('discard', { type: 'bearer' })
-                    .send({ jobIds })
+                    .send({ ids: orderedIds })
                     .expect(204, {});
             }
             await request(app.getHttpServer())
                 .post(DISCARD_PATH)
                 .set('Idempotency-Key', key)
                 .auth('discard', { type: 'bearer' })
-                .send({ jobIds: [untouched] })
+                .send({ ids: [untouched] })
                 .expect(409);
             expect(await discardAudit(ids[0]!)).toHaveLength(1);
             expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id: untouched })).toHaveLength(1);
@@ -180,7 +180,7 @@ describe('Dead-letter discard', () => {
                         .post(DISCARD_PATH)
                         .set('Idempotency-Key', key)
                         .auth('discard', { type: 'bearer' })
-                        .send({ jobIds: [id] }),
+                        .send({ ids: [id] }),
                 ),
             );
             expect(responses.map(({ status }) => status)).toStrictEqual([204, 204]);
@@ -199,18 +199,18 @@ describe('Dead-letter discard', () => {
                 .post(DISCARD_PATH)
                 .set('Idempotency-Key', key)
                 .auth('discard', { type: 'bearer' })
-                .send({ jobIds: [id] })
+                .send({ ids: [id] })
                 .expect(204);
             await request(app.getHttpServer())
                 .post(DISCARD_PATH)
                 .set('Idempotency-Key', key)
-                .send({ jobIds: [id] })
+                .send({ ids: [id] })
                 .expect(401);
             await request(app.getHttpServer())
                 .post(DISCARD_PATH)
                 .set('Idempotency-Key', key)
                 .auth('read', { type: 'bearer' })
-                .send({ jobIds: [id] })
+                .send({ ids: [id] })
                 .expect(403);
             const claims = await tokenPort.verify<AccessTokenPayload>('discard', ACCESS_TOKEN_TYPE);
             const otherPrincipalClaims: AccessTokenPayload = { ...claims, sub: randomUUID() };
@@ -219,7 +219,7 @@ describe('Dead-letter discard', () => {
                 .post(DISCARD_PATH)
                 .set('Idempotency-Key', key)
                 .auth('discard', { type: 'bearer' })
-                .send({ jobIds: [id] })
+                .send({ ids: [id] })
                 .expect(409);
             expect(await discardAudit(id)).toHaveLength(1);
         } finally {
@@ -235,7 +235,7 @@ describe('Dead-letter discard', () => {
             if (key !== undefined) {
                 call.set('Idempotency-Key', key);
             }
-            await call.send({ jobIds: [id] }).expect(400);
+            await call.send({ ids: [id] }).expect(400);
             expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id })).toHaveLength(1);
             expect(await discardAudit(id)).toHaveLength(0);
         },
@@ -248,7 +248,7 @@ describe('Dead-letter discard', () => {
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('discard', { type: 'bearer' })
-            .send({ jobIds: [id] })
+            .send({ ids: [id] })
             .expect(204, {});
 
         expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id })).toHaveLength(0);
@@ -258,13 +258,8 @@ describe('Dead-letter discard', () => {
             action: JobQueueOperationsAuditAction.JOB_DEAD_LETTER_DISCARDED,
             actorId: ACTOR_ID,
             actorType: PrincipalType.ADMIN,
-            detail: { jobIds: [id], count: '1' },
+            detail: { ids: [id], count: '1' },
         });
-
-        await request(app.getHttpServer())
-            .get(`/api/v1/job-operations/dead-letter/jobs/${id}`)
-            .auth('read', { type: 'bearer' })
-            .expect(404);
     });
 
     it('discards a bulk selection while preserving an unselected DLQ job', async () => {
@@ -275,7 +270,7 @@ describe('Dead-letter discard', () => {
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('discard', { type: 'bearer' })
-            .send({ jobIds: ids })
+            .send({ ids: ids })
             .expect(204);
 
         for (const id of ids) {
@@ -285,7 +280,7 @@ describe('Dead-letter discard', () => {
         expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id: untouched })).toHaveLength(1);
         const records = await discardAudit(ids[0]);
         expect(records).toHaveLength(1);
-        expect(records[0]?.detail).toStrictEqual({ jobIds: ids, count: '2' });
+        expect(records[0]?.detail).toStrictEqual({ ids: ids, count: '2' });
     });
 
     it('rolls back the whole deletion when any requested DLQ ID is missing', async () => {
@@ -295,7 +290,7 @@ describe('Dead-letter discard', () => {
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('discard', { type: 'bearer' })
-            .send({ jobIds: [existing, randomUUID()] })
+            .send({ ids: [existing, randomUUID()] })
             .expect(404, { error: { statusCode: 404, message: ['Not found.'], statusText: 'Not Found' } });
 
         expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id: existing })).toHaveLength(1);
@@ -309,7 +304,7 @@ describe('Dead-letter discard', () => {
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('discard', { type: 'bearer' })
-            .send({ jobIds: [other] })
+            .send({ ids: [other] })
             .expect(404);
 
         expect(await boss.findJobs(OTHER_QUEUE, { id: other })).toHaveLength(1);
@@ -324,7 +319,7 @@ describe('Dead-letter discard', () => {
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('discard', { type: 'bearer' })
-            .send({ jobIds: [id] })
+            .send({ ids: [id] })
             .expect(500);
 
         expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id })).toHaveLength(1);
@@ -339,7 +334,7 @@ describe('Dead-letter discard', () => {
                     .post(DISCARD_PATH)
                     .set('Idempotency-Key', randomUUID())
                     .auth('discard', { type: 'bearer' })
-                    .send({ jobIds: [id] }),
+                    .send({ ids: [id] }),
             ),
         );
 
@@ -350,10 +345,10 @@ describe('Dead-letter discard', () => {
 
     it.each([
         ['missing field', {}],
-        ['empty list', { jobIds: [] }],
-        ['non-array', { jobIds: randomUUID() }],
-        ['duplicate IDs', { jobIds: ['b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f', 'b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f'] }],
-        ['invalid UUID', { jobIds: ['not-a-uuid'] }],
+        ['empty list', { ids: [] }],
+        ['non-array', { ids: randomUUID() }],
+        ['duplicate IDs', { ids: ['b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f', 'b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f'] }],
+        ['invalid UUID', { ids: ['not-a-uuid'] }],
     ])('rejects %s without changing jobs or audit', async (_label, body) => {
         const id = await sendJob();
 
@@ -374,19 +369,19 @@ describe('Dead-letter discard', () => {
         await request(app.getHttpServer())
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
-            .send({ jobIds: [id] })
+            .send({ ids: [id] })
             .expect(401);
         await request(app.getHttpServer())
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('read', { type: 'bearer' })
-            .send({ jobIds: [id] })
+            .send({ ids: [id] })
             .expect(403);
         await request(app.getHttpServer())
             .post(DISCARD_PATH)
             .set('Idempotency-Key', randomUUID())
             .auth('none', { type: 'bearer' })
-            .send({ jobIds: [id] })
+            .send({ ids: [id] })
             .expect(403);
 
         expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id })).toHaveLength(1);

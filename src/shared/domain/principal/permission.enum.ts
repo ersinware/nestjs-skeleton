@@ -53,7 +53,7 @@ export enum Permission {
     HEALTH_DETAIL_READ = 'health:detail:read',
 
     /**
-     * Read dead-letter job metadata and redrive status.
+     * Read dead-letter job metadata and retained redrive operations.
      */
     JOB_DEAD_LETTER_READ = 'job-queue:dead-letter:read',
 
@@ -63,7 +63,7 @@ export enum Permission {
     JOB_DEAD_LETTER_REDRIVE = 'job-queue:dead-letter:redrive',
 
     /**
-     * Discard exact dead-letter job identifiers.
+     * Discard exact dead-letter jobs or retained failed redrive operations.
      */
     JOB_DEAD_LETTER_DISCARD = 'job-queue:dead-letter:discard',
 

@@ -18,4 +18,9 @@ export const JobQueueOperationsAuditAction = {
      * An operator durably requested a shared dead-letter redrive operation.
      */
     JOB_DEAD_LETTER_REDRIVE_REQUESTED: defineAuditAction('JOB_DEAD_LETTER_REDRIVE_REQUESTED'),
+
+    /**
+     * An operator discarded a failed dead-letter redrive operation.
+     */
+    JOB_DEAD_LETTER_REDRIVE_DISCARDED: defineAuditAction('JOB_DEAD_LETTER_REDRIVE_DISCARDED'),
 } as const;

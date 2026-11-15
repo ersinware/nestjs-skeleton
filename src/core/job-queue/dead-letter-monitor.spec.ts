@@ -32,7 +32,6 @@ describe('DeadLetterMonitor', () => {
     const port = {
         getDeadLetterReadyCount: vi.fn<() => Promise<number>>(),
         getDeadLetterRedriveFailedCount: vi.fn<() => Promise<number>>(),
-        getOldestDeadLetterCreatedOn: vi.fn<() => Promise<Date | null>>(),
     };
     const reporter = { report: vi.fn() };
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -77,7 +76,6 @@ describe('DeadLetterMonitor', () => {
         vi.spyOn(metrics, 'getMeter').mockReturnValue(provider.getMeter('monitor-test'));
         port.getDeadLetterReadyCount.mockResolvedValue(2);
         port.getDeadLetterRedriveFailedCount.mockResolvedValue(1);
-        port.getOldestDeadLetterCreatedOn.mockResolvedValue(new Date('2026-09-20T23:59:00Z'));
     });
 
     afterEach(async () => {
@@ -95,7 +93,6 @@ describe('DeadLetterMonitor', () => {
         expect(await observe()).toEqual({});
         expect(port.getDeadLetterReadyCount).not.toHaveBeenCalled();
         expect(port.getDeadLetterRedriveFailedCount).not.toHaveBeenCalled();
-        expect(port.getOldestDeadLetterCreatedOn).not.toHaveBeenCalled();
         expect(vi.getTimerCount()).toBe(0);
     });
 
@@ -105,7 +102,6 @@ describe('DeadLetterMonitor', () => {
         const snapshot = {
             job_queue_dlq_monitor_up: 1,
             job_queue_dlq_ready_count: 2,
-            job_queue_dlq_oldest_age_seconds: 60,
             job_queue_redrive_failed_count: 1,
         };
         expect(await observe()).toEqual(snapshot);
@@ -113,10 +109,14 @@ describe('DeadLetterMonitor', () => {
         expect(await observe()).toEqual(snapshot);
         expect(port.getDeadLetterReadyCount).toHaveBeenCalledTimes(1);
         expect(port.getDeadLetterRedriveFailedCount).toHaveBeenCalledTimes(1);
-        expect(port.getOldestDeadLetterCreatedOn).toHaveBeenCalledTimes(1);
 
+        port.getDeadLetterReadyCount.mockResolvedValueOnce(5);
         await vi.advanceTimersByTimeAsync(1);
-        expect((await observe())['job_queue_dlq_oldest_age_seconds']).toBe(120);
+        expect(await observe()).toEqual({
+            job_queue_dlq_monitor_up: 1,
+            job_queue_dlq_ready_count: 5,
+            job_queue_redrive_failed_count: 1,
+        });
         expect(port.getDeadLetterReadyCount).toHaveBeenCalledTimes(2);
 
         await monitor.onModuleDestroy();
@@ -134,19 +134,16 @@ describe('DeadLetterMonitor', () => {
         expect(await observe()).toEqual({
             job_queue_dlq_monitor_up: 0,
             job_queue_dlq_ready_count: 2,
-            job_queue_dlq_oldest_age_seconds: 60,
             job_queue_redrive_failed_count: 1,
         });
         expect(logger.warn).toHaveBeenCalledTimes(1);
         expect(reporter.report).not.toHaveBeenCalled();
 
         port.getDeadLetterReadyCount.mockResolvedValue(0);
-        port.getOldestDeadLetterCreatedOn.mockResolvedValue(null);
         await vi.advanceTimersByTimeAsync(60_000);
         expect(await observe()).toEqual({
             job_queue_dlq_monitor_up: 1,
             job_queue_dlq_ready_count: 0,
-            job_queue_dlq_oldest_age_seconds: 0,
             job_queue_redrive_failed_count: 9,
         });
         expect(logger.info).toHaveBeenCalledTimes(1);
@@ -171,7 +168,6 @@ describe('DeadLetterMonitor', () => {
         expect(await observe()).toEqual({
             job_queue_dlq_monitor_up: 1,
             job_queue_dlq_ready_count: 2,
-            job_queue_dlq_oldest_age_seconds: 180,
             job_queue_redrive_failed_count: 1,
         });
         expect(logger.info).toHaveBeenCalledTimes(1);

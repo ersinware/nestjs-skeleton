@@ -1,5 +1,5 @@
 /**
- * @file post-dead-letter-discard.dto.ts
+ * @file post-dead-letter-job-discard.dto.ts
  * @description Validates an exact set of pg-boss dead-letter job identifiers for discard.
  */
 
@@ -14,8 +14,8 @@ const MAX_DISCARD_JOBS = 100;
 /**
  * A non-empty, duplicate-free set of dead-letter jobs to discard atomically.
  */
-@ApiSchema({ name: 'PostDeadLetterDiscard', description: 'Exact dead-letter job identifiers to discard.' })
-export class PostDeadLetterDiscardDto {
+@ApiSchema({ name: 'PostDeadLetterJobDiscard', description: 'Exact dead-letter job identifiers to discard.' })
+export class PostDeadLetterJobDiscardDto {
     /**
      * Pg-boss job UUIDs, which are not necessarily application UUID v7 identifiers.
      */
@@ -34,5 +34,5 @@ export class PostDeadLetterDiscardDto {
         description: 'Exact shared dead-letter job identifiers.',
         example: ['b33c6898-66cd-4e12-a8c8-bd20ec7c7f8f'],
     })
-    readonly jobIds!: readonly string[];
+    readonly ids!: readonly string[];
 }

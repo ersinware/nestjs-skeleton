@@ -1,25 +1,28 @@
 /**
- * @file response-dead-letter-redrive-status.dto.ts
- * @description Public lifecycle view of a retained redrive operation.
+ * @file response-dead-letter-redrive.dto.ts
+ * @description Public lifecycle view of one retained redrive.
  */
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 import { isUUID } from 'src/core/http';
-import type { DeadLetterRedriveStatus } from 'src/module/job-queue-operations/application/query/get-dead-letter-redrive-status/query';
+import type { DeadLetterRedriveStatus } from 'src/module/job-queue-operations/application/query/list-dead-letter-redrives/query';
 
 /**
- * Sanitized redrive status without job payloads or speculative progress counts.
+ * Sanitized redrive summary without internal payloads or speculative progress counts.
  */
 @Exclude()
-@ApiSchema({ name: 'ResponseDeadLetterRedriveStatus', description: 'Status of a retained dead-letter redrive.' })
-export class ResponseDeadLetterRedriveStatusDto {
+@ApiSchema({
+    name: 'ResponseDeadLetterRedrive',
+    description: 'Retained dead-letter redrive summary.',
+})
+export class ResponseDeadLetterRedriveDto {
     /**
-     * Identifier returned when the operation was accepted.
+     * Identifier of the retained redrive operation.
      */
     @Expose()
     @isUUID('The operation ID', { version: 'all' })
-    readonly operationId!: string;
+    readonly id!: string;
 
     /**
      * Current pg-boss orchestration lifecycle state.

@@ -5,7 +5,8 @@
 
 import { DynamicModule, Module, type ModuleMetadata, Type } from '@nestjs/common';
 import { DatabaseModule } from 'src/core/database';
-import { JobQueueOperationsAdapter } from 'src/core/job-queue/adapter/job-queue-operations.adapter';
+import { JobQueueDeadLetterOperatorAdapter } from 'src/core/job-queue/adapter/job-queue-dead-letter-operator.adapter';
+import { JobQueueDeadLetterReaderAdapter } from 'src/core/job-queue/adapter/job-queue-dead-letter-reader.adapter';
 import { JobQueueWriterAdapter } from 'src/core/job-queue/adapter/job-queue-writer.adapter';
 import { DeadLetterMonitor } from 'src/core/job-queue/dead-letter-monitor';
 import { type IJobConsumer } from 'src/core/job-queue/job-consumer.interface';
@@ -26,18 +27,18 @@ import { LoggerModule } from 'src/core/observability/logger';
     providers: [
         DeadLetterMonitor,
         { provide: TOKEN_JOB_QUEUE_WRITER_PORT, useClass: JobQueueWriterAdapter },
-        JobQueueOperationsAdapter,
+        JobQueueDeadLetterReaderAdapter,
         {
             provide: TOKEN_JOB_QUEUE_DEAD_LETTER_METRICS_PORT,
-            useExisting: JobQueueOperationsAdapter,
+            useExisting: JobQueueDeadLetterReaderAdapter,
         },
         {
             provide: TOKEN_JOB_QUEUE_DEAD_LETTER_OPERATOR_PORT,
-            useExisting: JobQueueOperationsAdapter,
+            useClass: JobQueueDeadLetterOperatorAdapter,
         },
         {
             provide: TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT,
-            useExisting: JobQueueOperationsAdapter,
+            useExisting: JobQueueDeadLetterReaderAdapter,
         },
     ],
     exports: [

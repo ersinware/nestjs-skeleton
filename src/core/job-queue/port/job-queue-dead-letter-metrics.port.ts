@@ -29,13 +29,4 @@ export interface IJobQueueDeadLetterMetricsPort {
      * @throws {SystemException} When pg-boss returns no queue snapshot
      */
     getDeadLetterRedriveFailedCount(): Promise<number>;
-
-    /**
-     * Reads the creation time of the oldest retained shared dead-letter job.
-     *
-     * @returns Oldest creation time, or null when the queue is empty
-     * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When the result row is missing or the persisted timestamp is invalid
-     */
-    getOldestDeadLetterCreatedOn(): Promise<Date | null>;
 }

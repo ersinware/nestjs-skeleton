@@ -5,10 +5,7 @@
 
 import { Inject } from '@nestjs/common';
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import {
-    TOKEN_LIST_DEAD_LETTER_JOBS_PORT,
-    type IListDeadLetterJobsPort,
-} from 'src/module/job-queue-operations/application/query/list-dead-letter-jobs/port';
+import { TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT, type IJobQueueDeadLetterReaderPort } from 'src/core/job-queue';
 import {
     ListDeadLetterJobsQuery,
     type ListDeadLetterJobsResult,
@@ -23,11 +20,13 @@ export class ListDeadLetterJobsQueryHandler implements IQueryHandler<
     ListDeadLetterJobsResult
 > {
     /**
-     * Initializes the handler with its purpose-specific read port.
+     * Initializes the handler with the shared dead-letter read port.
      *
-     * @param port Dead-letter listing port
+     * @param port Dead-letter reader port
      */
-    constructor(@Inject(TOKEN_LIST_DEAD_LETTER_JOBS_PORT) private readonly port: IListDeadLetterJobsPort) {}
+    constructor(
+        @Inject(TOKEN_JOB_QUEUE_DEAD_LETTER_READER_PORT) private readonly port: IJobQueueDeadLetterReaderPort,
+    ) {}
 
     /**
      * Executes the listing query.
@@ -38,6 +37,6 @@ export class ListDeadLetterJobsQueryHandler implements IQueryHandler<
      * @throws {SystemException} When persisted job metadata or the returned page count is invalid
      */
     async execute(query: ListDeadLetterJobsQuery): Promise<ListDeadLetterJobsResult> {
-        return this.port.listJobs(query.params);
+        return this.port.listDeadLetterJobs(query.params);
     }
 }

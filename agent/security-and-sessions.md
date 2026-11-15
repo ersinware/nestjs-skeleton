@@ -31,7 +31,7 @@
 - Operation permissions remain required ([Authentication & Authorization](security-and-sessions.md#authentication--authorization)); tiers never grant them implicitly. Admin administrative mutations forbid self/root targets; manager targets require root. Self/root/tier refusals throw `AccessDeniedException` with domain audit action/reason ([Exceptions](exceptions.md#exceptions)). Ordinary targets require no actor tier beyond operation permissions. Self-service profile/password changes are separate.
 - ROOT = `admin:root`; MANAGER = `admin:permission:manage`; others are ordinary. Only root may appoint/dismiss managers; root is never API-granted. The partial unique index permits at most one root.
 - Bootstrap is unimplemented: provision the first root via SQL with admin-holdable permissions. Transfer root only through an atomic SQL operation preserving permission/session/audit rules; the root marker alone grants no operation permissions.
-- `PUT …/:id/permissions` replaces the full permission set. Unchanged sets cause no writes/jobs/audit/session updates; real changes audit `granted`/`revoked` ([Audit](observability.md#audit)) and retire access tokens only ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)).
+- `PUT …/:id/permission` replaces the full permission set. Unchanged sets cause no writes/jobs/audit/session updates; real changes audit `granted`/`revoked` ([Audit](observability.md#audit)) and retire access tokens only ([Session Versions & Failure Semantics](security-and-sessions.md#session-versions--failure-semantics)).
 
 ### Session Versions & Failure Semantics
 

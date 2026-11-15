@@ -367,7 +367,7 @@ describe('Principal policies with production guards and Redis', () => {
         const execute = vi.spyOn(app.get(CommandPipeline), 'execute');
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/job-operations/dead-letter/discard',
+            url: '/api/v1/job-operation/dead-letter/job/discard',
             headers: { authorization: `Bearer ${account.accessToken}` },
             payload: {},
         });
@@ -411,7 +411,7 @@ describe('Principal policies with production guards and Redis', () => {
         const execute = vi.spyOn(app.get(CommandPipeline), 'execute');
         const response = await app.inject({
             method: 'POST',
-            url: '/api/v1/job-operations/dead-letter/discard',
+            url: '/api/v1/job-operation/dead-letter/job/discard',
             headers: { authorization: `Bearer ${account.accessToken}` },
             payload: { jobIds: Array.from({ length: 101 }, () => uuidv7()) },
         });
@@ -439,12 +439,12 @@ describe('Principal policies with production guards and Redis', () => {
         const account = await caller(PrincipalType.ADMIN, uuidv7(), []);
         const headers = { authorization: `Bearer ${account.accessToken}` };
         const execute = vi.spyOn(app.get(CommandPipeline), 'execute');
-        for (const action of ['redrive', 'discard', 'redrive']) {
+        for (const action of ['redrive', 'job/discard', 'redrive']) {
             expect(
                 (
                     await app.inject({
                         method: 'POST',
-                        url: `/api/v1/job-operations/dead-letter/${action}`,
+                        url: `/api/v1/job-operation/dead-letter/${action}`,
                         headers,
                         payload: {},
                     })
@@ -455,7 +455,7 @@ describe('Principal policies with production guards and Redis', () => {
             (
                 await app.inject({
                     method: 'POST',
-                    url: '/api/v1/job-operations/dead-letter/discard',
+                    url: '/api/v1/job-operation/dead-letter/job/discard',
                     headers,
                     payload: {},
                 })

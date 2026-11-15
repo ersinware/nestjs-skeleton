@@ -99,10 +99,10 @@ describe('Rate limiting with production wiring and real Redis', () => {
         for (let i = 0; i < limiter.limit; i++) {
             expect((await counter.consume({ ...limiter, key: `${limiter.budget}:${ip}` })).allowed).toBe(true);
         }
-        for (const action of ['redrive', 'discard']) {
+        for (const action of ['redrive', 'job/discard']) {
             const response = await app.inject({
                 method: 'POST',
-                url: `/api/v1/job-operations/dead-letter/${action}`,
+                url: `/api/v1/job-operation/dead-letter/${action}`,
                 remoteAddress: ip,
                 payload: {},
             });
