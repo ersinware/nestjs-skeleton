@@ -1,43 +1,42 @@
 # Coding Conventions
 
-- Before implementing, inspect analogous code and follow its structure, naming, and style; diverge only when requirements differ.
-
-### Blocks
-
+- Before implementing, inspect analogous code and follow established structure, naming, and style; diverge only when requirements differ.
 - Always use braces for control-flow bodies.
 
-### JSDoc
+## JSDoc
 
-- Use multiline JSDoc (`/**`, ` * ...`, ` */` on separate lines); separate the summary from tags with an empty ` *` line.
-- Files start with matching `@file` + `@description`; classes/interfaces/methods/functions and variables or fields declared outside function/method bodies require purpose/rationale JSDoc.
-- Every property in an interface or type, including nested objects and union variants, requires JSDoc, except inline parameter types and temporary inline types in function bodies (casts, type arguments, local annotations).
-- Document inline object parameter fields with `@param name.field`, omitting the parent `@param name`; use a descriptive object name for destructured parameters. Do not put field JSDoc inside these inline types; named contract declarations retain property documentation.
-- Do not add JSDoc to inline callbacks; document named functions, methods and constructors instead. Keep necessary callback rationale in ordinary comments.
-- Comments explain current rationale briefly; no filler/history/code narration.
-- DI token JSDoc links to its represented contract, behavior, or client with `{@link ...}`.
-- Document contract failures with `@throws {ExceptionType}` at their declaration (interface methods, facades, etc.), not again in implementations: taxonomy, health/cleaner failures and caller-caught library errors, including propagation and async rejection. Omit universal unexpected-error tags.
-- Require `@param` for each parameter without TS types (object fields follow the rule above), and `@returns` except for `void` / `Promise<void>` (omit it). Describe return meaning, including decorator factories, not raw types.
+- Use multiline JSDoc. Files start with matching `@file` and `@description`. Classes, interfaces, constructors, methods, functions, and variables/fields declared outside function or method bodies require purpose/rationale JSDoc.
+- Separate summaries from tags with an empty ` *` line. Comments explain current rationale briefly; do not add filler, history, or code narration.
+- Document every property of named interfaces/types, including nested objects and union variants. Inline parameter types and temporary local types are exempt.
+- For inline object parameters, document fields with `@param name.field`, omit the parent `@param name`, and use a descriptive name for destructured parameters. Do not add field JSDoc inside inline parameter types.
+- Do not add JSDoc to inline callbacks; when non-obvious callback logic needs explanation, use a brief ordinary comment.
+- DI-token JSDoc links to the represented contract, behavior, or client with `{@link ...}`.
+- Document expected failures with `@throws {ExceptionType}` on the contract declaration when one exists; do not repeat them in its implementations. If no contract declaration exists, document them on the implementation callable that owns the behavior. Include taxonomy exceptions, health/cleaner failures, and caller-handled library failures; omit universal unexpected errors.
+- Document every parameter with `@param` without repeating TypeScript type syntax. Use `@returns` for non-`void` results, including factories; omit it for `void` / `Promise<void>`.
 
-### Types, Signatures & Variables
+## Types, Signatures & Variables
 
-- Use `interface` for behavior contracts; `type` for data shapes and type compositions.
-- Data-shape properties and exposed collection views are `readonly` unless their owner deliberately mutates them.
-- Do not repeat TypeScript guarantees as runtime checks for typed internal values; validate external input and invariants not enforced by types.
-- Give class members the narrowest visibility: `private` for implementation details, `protected` only for subclass contracts, and public only for consumers or framework contracts. A parameter used only while the constructor runs remains a plain parameter; retained dependencies are `private readonly`, while retained public command/query data is `readonly`.
-- Keep `exactOptionalPropertyTypes`; ban `?: X | undefined`. Omit absent keys via conditional spread, never conditional `undefined`. Test absence explicitly when valid values can be falsy; truthy checks are for enabled/non-empty semantics. For `unknown`, use an explicit boolean check before spreading. Drizzle update-set column exclusion is exempt (`id: undefined`, `createdAt: undefined`).
-- Explicitly type all function/method returns except `void` / `Promise<void>`, which implementations infer; interface returns are always explicit.
-- Exhaust enum/union decisions: switch defaults call a local `never` guard throwing `SystemException`; maps use `satisfies Record<Enum, T>`. Only ternaries dispatching by enum/union member require closed two-member types.
+- Use `interface` for behavior contracts; use `type` for data shapes and type composition.
+- Data-shape properties and exposed collection views are `readonly` unless their owner intentionally mutates them.
+- Validate external input and invariants, not guarantees already provided by TypeScript for typed internal values.
+- Give class members the narrowest visibility: `private` for implementation details, `protected` only for subclass contracts, and public only for consumers/framework contracts. Constructor-only values stay plain parameters; retained dependencies are `private readonly`; retained public command/query data is `readonly`.
+- Respect `exactOptionalPropertyTypes`: use `?: X`, never `?: X | undefined`; omit absent keys instead of assigning `undefined`. Check absence explicitly when falsy values are valid. For `unknown`, use an explicit boolean check before spreading. Drizzle update-set column exclusion is the intentional exception (`id: undefined`, `createdAt: undefined`).
+- Explicitly type function/method returns except implementation `void` / `Promise<void>`; interface returns are always explicit.
+- Exhaust enum/union decisions: switch defaults use a local `never` guard that throws `SystemException`; exhaustive maps use `satisfies Record<Enum, T>`. Use a ternary to branch on an enum/union member only when the discriminant type has exactly two members.
 - Used once → inline; reused → named variable, unless each use requires a fresh read.
-- Group consecutive local `const` declarations into one declaration with comma-separated declarators.
-- Diagnostic class names: `this.constructor.name` for the current instance, `instance.constructor.name` for others; class/function `.name` without an instance.
+- Group consecutive local declarations of the same kind (`const` or `let`) into one declaration with comma-separated declarators.
+- For diagnostic class names, use `this.constructor.name` for the current instance, `instance.constructor.name` for another instance, and class/function `.name` when no instance exists.
 
-### Environment & Route Constants
+## Environment & Configuration
 
-- Numeric app duration env values use seconds; convert at library boundaries. String TTLs require `s`/`m`/`h`/`d`.
-- Keep environment validation in `env.validation.ts`; consumers and conversion utilities must not repeat it.
-- Keep shared keys in the same order across application `.env` files, `ENV`, and `EnvironmentVariables`.
-- Boot-validate app env in `EnvironmentVariables`: explicit number/boolean conversion, no implicit conversion or blank/boolean-to-number coercion. Match consumer formats, choices, integer requirements and bounds; allow fractional durations where supported. Preserve intentional empty values; enforce technical limits, not arbitrary capacity caps.
-- Read through `ConfigService` + `ENV`: typed `getOrThrow` for required values, `get` for optional ones. Optional env uses `?:` and `@IsOptional()`; where empty means unset, use `@Transform(emptyToUndefined)` and handle `''` in readers because raw-env fallback may restore it.
-- Within a provider, read keys used at multiple code sites once into constructor-initialized `private readonly` fields.
-- Direct `process.env` reads are limited to pre-DI instrumentation/tracing and `core/config` trust-proxy/env-file resolvers. Interpret safely without duplicating boot validation.
-- Keep reused route fragments with their owner ([Placement & Naming](architecture.md#placement--naming)). `core/config` owns app mounts (`GLOBAL_PREFIX`, `VERSION_PREFIX`, `ROUTE_HEALTH*`, `ROUTE_DOCS`) and derived `PATH_HEALTH*`, allowing health controller/filter agreement without core importing a module. Keep `PARAM_ID` / `ROUTE_PARAM_ID` beside `ParamIdDto`, with the parameter key checked by `satisfies`.
+- Numeric application duration environment values use seconds and convert at library boundaries; string TTLs require explicit `s`/`m`/`h`/`d` suffixes.
+- `EnvironmentVariables` owns application environment validation and conversion. Use explicit number/boolean conversion, keep implicit conversion disabled, preserve intentional empty values, match consumer constraints, allow fractional durations where supported, and enforce technical bounds rather than arbitrary capacity caps.
+- Keep application environment keys in the same order across `.env` files, `ENV`, and `EnvironmentVariables`.
+- Read application configuration through `ConfigService` + `ENV`: typed `getOrThrow` for required values and `get` for optional values. Optional environment fields use `?:` + `@IsOptional()`; when empty means unset, normalize with `@Transform(emptyToUndefined)` and account for raw `''` fallback in pre-validation readers.
+- Within a provider, read configuration keys used at multiple code sites once into constructor-initialized `private readonly` fields.
+- Direct `process.env` reads are limited to pre-DI instrumentation/tracing and `core/config` env-file/trust-proxy resolution. Interpret them fail-safe without duplicating boot validation.
+
+## Route Constants
+
+- Keep reused route/path fragments with their owner ([Placement & Naming](architecture.md#placement--naming)).
+- `core/config` owns application-wide/version/health/docs fragments needed by composition-root and core consumers. Keep route-parameter constants beside the DTO they describe. When a constant names a DTO property, bind it with `satisfies keyof <Dto>` so renaming the property fails at compile time.
