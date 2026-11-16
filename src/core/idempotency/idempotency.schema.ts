@@ -13,8 +13,8 @@ export const idempotencySchema = pgSchema('idempotency');
 /**
  * A visible row represents committed success; unsuccessful claims roll back with the mutation.
  */
-export const operation = idempotencySchema.table(
-    'operation',
+export const idempotency = idempotencySchema.table(
+    'idempotency',
     {
         /**
          * Global UUID v4 supplied by the client, shared across endpoints and principals.
@@ -36,5 +36,5 @@ export const operation = idempotencySchema.table(
          */
         createdAt: timestamp('created_at').notNull().defaultNow(),
     },
-    (table) => [index('idempotency_operation_created_at_idx').on(table.createdAt)],
+    (table) => [index('idempotency_idempotency_created_at_idx').on(table.createdAt)],
 );

@@ -9,7 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import {
     JOB_QUEUE_DEAD_LETTER,
     JOB_QUEUE_DEAD_LETTER_REDRIVE,
@@ -157,7 +157,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
     }
 
     /**
-     * Reads durable redrive request audit for an accepted operation.
+     * Reads durable redrive request audit for an accepted idempotency.
      *
      * @param redriveId Accepted operation identifier
      * @returns Matching audit records
@@ -251,7 +251,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
             );
             expect(createdAfter.map((job) => job.id)).toStrictEqual([id]);
             expect(await requestAudit(id)).toHaveLength(1);
-            const retained = await database.select().from(operation).where(eq(operation.key, key));
+            const retained = await database.select().from(idempotency).where(eq(idempotency.key, key));
             expect(retained).toMatchObject([{ replayResultId: null }]);
             const requests = await database
                 .select()
@@ -264,7 +264,7 @@ describe('Dead-letter redrive', { timeout: 45_000 }, () => {
                 );
             expect(requests).toHaveLength(1);
         } finally {
-            await database.delete(operation).where(eq(operation.key, key));
+            await database.delete(idempotency).where(eq(idempotency.key, key));
         }
     });
 
