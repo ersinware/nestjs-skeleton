@@ -68,6 +68,7 @@ export interface IJobConsumer {
      * Processes one claimed job.
      *
      * @param job Job payload
+     * @throws {TerminalJobException} When an unrecoverable payload or state error prevents delivery; only non-transactional consumers bypass retries
      */
     consume(job: Job): Promise<void>;
 }

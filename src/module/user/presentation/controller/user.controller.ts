@@ -155,7 +155,7 @@ export class UserController {
      *
      * @param principal The verified principal of the current request
      * @returns The serialized profile of the current user
-     * @throws {ResourceNotFoundException} When no active user exists with the given ID
+     * @throws {ResourceNotFoundException} When no non-deleted user exists with the given ID
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get('me')
@@ -180,7 +180,7 @@ export class UserController {
      *
      * @param params The path parameters carrying the target user ID
      * @returns The serialized profile of the requested user
-     * @throws {ResourceNotFoundException} When no active user exists with the given ID
+     * @throws {ResourceNotFoundException} When no non-deleted user exists with the given ID
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get(ROUTE_PARAM_ID)
@@ -267,10 +267,10 @@ export class UserController {
      * @param principal The verified principal of the current request
      * @param patchUserDto Optional display name and/or uploaded avatar with its proof
      * @returns The updated, serialized profile of the current user
-     * @throws {ResourceNotFoundException} When no active user exists with the given ID
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceNotFoundException} When no non-deleted user exists with the given ID
+     * @throws {DependencyUnavailableException} When storage or a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When the upload proof is replayed or persistence rejects a concurrent modification
-     * @throws {SystemException} When the loaded account is deleted or pending activation, or verified upload keys violate invariants
+     * @throws {SystemException} When the loaded account is deleted or pending activation, verified upload keys violate invariants, storage configuration or metadata is invalid, or required jobs are not accepted
      * @throws {AccessDeniedException} When the upload proof belongs to another account or the account is banned
      * @throws {InvalidInputException} When the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */
@@ -311,10 +311,9 @@ export class UserController {
      * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal of the current request
      * @param patchUserPasswordDto The payload carrying the current and new passwords
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid, the current password is wrong, or the new password is unchanged
      * @throws {ResourceNotFoundException} When the user does not exist
      * @throws {AccessDeniedException} When the loaded account is banned
-     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
@@ -372,8 +371,8 @@ export class UserController {
      * @returns Signed PUT and profile upload proof
      * @throws {ResourceNotFoundException} When the account is missing or deleted
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {DependencyUnavailableException} When database or storage is unavailable
-     * @throws {SystemException} When the account is inactive or the storage plan violates the contract
+     * @throws {DependencyUnavailableException} When database, storage, or audit persistence is unavailable
+     * @throws {SystemException} When the account is pending activation, storage configuration or authorization fails, or the storage plan violates the contract
      */
     @Post('me/avatar/initiate')
     @RateLimit(RateLimitPolicy.AVATAR_UPLOAD_INITIATE)
@@ -410,7 +409,7 @@ export class UserController {
      * @param principal The verified principal requesting the change
      * @param postUserEmailChangeInitiateDto The new address and current password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
-     * @throws {SystemException} When a deleted account reaches this authenticated flow, or the queue does not accept every required job
+     * @throws {SystemException} When a deleted or pending account reaches this authenticated flow, or the queue does not accept every required job
      * @throws {InvalidInputException} When the idempotency key is absent or invalid, or the password is wrong or the address is unchanged
      * @throws {ResourceConflictException} When the key belongs to a different request or the address is in use or the loaded account changed
      * @throws {AccessDeniedException} When the account is banned
@@ -467,8 +466,7 @@ export class UserController {
      * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal confirming the change
      * @param postUserEmailChangeConfirmDto The token delivered to the pending address
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
-     * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid, or the proof or pending request is invalid, revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
      * @throws {ResourceNotFoundException} When the authenticated account no longer exists
      * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
@@ -617,8 +615,7 @@ export class UserController {
      * @param request HTTP method and matched route template.
      * @param idempotencyKey Validated logical request UUID v4.
      * @param postUserActivationDto The activation token and existing password
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
-     * @throws {InvalidInputException} When the proof or password is invalid or expired
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid, the proof is invalid or expired, or the password is wrong
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceNotFoundException} When the verified proof refers to a missing account
      * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.

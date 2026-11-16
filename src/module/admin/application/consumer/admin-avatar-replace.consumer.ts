@@ -41,7 +41,6 @@ export class AdminAvatarReplaceConsumer implements IJobConsumer {
      * Validates the cleanup fact before dispatching the replacement delivery.
      *
      * @param job Profile avatar replacement delivery
-     * @throws {TerminalJobException} When the previous avatar identity is missing or invalid
      */
     async consume(job: Job) {
         const previousAvatarId = job.payload?.['previousAvatarId'];

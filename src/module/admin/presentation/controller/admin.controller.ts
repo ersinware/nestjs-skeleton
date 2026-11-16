@@ -165,7 +165,7 @@ export class AdminController {
      *
      * @param params The path parameters carrying the target admin id
      * @returns The serialized profile of the requested admin
-     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get(ROUTE_PARAM_ID)
@@ -226,7 +226,7 @@ export class AdminController {
      *
      * @param principal The verified principal of the current request
      * @returns The serialized profile of the current admin
-     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     @Get('me')
@@ -278,10 +278,10 @@ export class AdminController {
      * @param principal The verified principal of the current request
      * @param patchAdminDto Optional display name and/or uploaded avatar with its proof
      * @returns The updated, serialized profile of the current admin
-     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
+     * @throws {DependencyUnavailableException} When storage or a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When the upload proof is replayed or persistence rejects a concurrent modification
-     * @throws {SystemException} When the loaded account is deleted or inactive, or verified upload keys violate invariants
+     * @throws {SystemException} When the loaded account is deleted or inactive, verified upload keys violate invariants, storage configuration or metadata is invalid, or required jobs are not accepted
      * @throws {AccessDeniedException} When the upload proof belongs to another account or the account is banned
      * @throws {InvalidInputException} When the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */
@@ -322,10 +322,9 @@ export class AdminController {
      * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal of the current request
      * @param patchAdminPasswordDto The payload carrying the current and new passwords
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid, the current password is wrong, or the new password is unchanged
      * @throws {ResourceNotFoundException} When the admin does not exist
      * @throws {AccessDeniedException} When the loaded account is banned
-     * @throws {InvalidInputException} When the current password is invalid or the new password is the same
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
      * @throws {SystemException} When the loaded account violates the mutation contract or required jobs are not accepted
@@ -383,8 +382,8 @@ export class AdminController {
      * @returns Signed PUT and profile upload proof
      * @throws {ResourceNotFoundException} When the account is missing or deleted
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {DependencyUnavailableException} When database or storage is unavailable
-     * @throws {SystemException} When the account is inactive or the storage plan violates the contract
+     * @throws {DependencyUnavailableException} When database, storage, or audit persistence is unavailable
+     * @throws {SystemException} When the account is inactive, storage configuration or authorization fails, or the storage plan violates the contract
      */
     @Post('me/avatar/initiate')
     @RateLimit(RateLimitPolicy.AVATAR_UPLOAD_INITIATE)
@@ -478,8 +477,7 @@ export class AdminController {
      * @param idempotencyKey Validated logical request UUID v4.
      * @param principal The verified principal confirming the change
      * @param postAdminEmailChangeConfirmDto The token delivered to the pending address
-     * @throws {InvalidInputException} When the idempotency key or payload is invalid.
-     * @throws {InvalidInputException} When the proof is invalid or its pending request is revoked, mismatched, consumed, or expired
+     * @throws {InvalidInputException} When the idempotency key or payload is invalid, or the proof or pending request is invalid, revoked, mismatched, consumed, or expired
      * @throws {AccessDeniedException} When the token belongs to another principal or the account is banned
      * @throws {ResourceNotFoundException} When the authenticated account no longer exists
      * @throws {ResourceConflictException} When the key belongs to a different request, or the operation conflicts with current state.
@@ -589,8 +587,8 @@ export class AdminController {
      * @throws {ResourceNotFoundException} When the account is missing or deleted
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceConflictException} When the account is already active
-     * @throws {DependencyUnavailableException} When database or storage is unavailable
-     * @throws {SystemException} When invitation identity or the storage plan violates the contract
+     * @throws {DependencyUnavailableException} When database, storage, or audit persistence is unavailable
+     * @throws {SystemException} When invitation identity or account state violates activation invariants, storage configuration or authorization fails, or the storage plan violates the contract
      */
     @Public()
     @Post('activation/initiate')
@@ -629,8 +627,8 @@ export class AdminController {
      * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
      * @throws {ResourceConflictException} When the key belongs to a different request or the account is already active or changed concurrently
-     * @throws {SystemException} When the loaded account is deleted or differs from the verified subject
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {SystemException} When the loaded account violates activation invariants, storage configuration or metadata is invalid, or required jobs are not accepted
+     * @throws {DependencyUnavailableException} When storage or a required database operation, including audit persistence, is unavailable
      */
     @Public()
     @Post('activation/complete')

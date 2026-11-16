@@ -21,7 +21,6 @@ export interface IListDeadLetterRedrivesPort {
      * @param params Page and limit
      * @returns Sanitized page and matching count
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted job identifiers, states, or counts are invalid
      */
     listDeadLetterRedrives(params: PaginationParams): Promise<ListDeadLetterRedrivesResult>;
 }

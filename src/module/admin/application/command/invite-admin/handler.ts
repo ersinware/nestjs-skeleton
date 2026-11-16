@@ -39,7 +39,7 @@ export class InviteAdminCommandHandler implements ICommandHandler<InviteAdminCom
      * Executes the admin invitation command.
      *
      * @param command The command payload
-     * @throws {ResourceConflictException} When the email address is already in use
+     * @throws {ResourceConflictException} When the key belongs to a different request or the email address is already in use
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the delivery queue does not accept every required job
      */

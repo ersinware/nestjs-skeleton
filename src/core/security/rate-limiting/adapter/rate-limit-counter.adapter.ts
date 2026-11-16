@@ -107,7 +107,7 @@ export class RateLimitCounterAdapter implements IRateLimitCounterPort {
     /**
      * Preserves actionable connection setup faults while failing closed on ordinary outages.
      *
-     * @throws {DependencyUnavailableException} When the counter connection is not ready.
+     * @throws {DependencyUnavailableException} When the counter connection is not ready and no non-availability connection fault is known.
      */
     private requireReady() {
         if (!this.redis.isReady) {

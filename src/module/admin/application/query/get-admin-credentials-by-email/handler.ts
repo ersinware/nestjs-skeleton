@@ -35,7 +35,7 @@ export class GetAdminCredentialsByEmailQueryHandler implements IQueryHandler<
      *
      * @param query The query parameters
      * @returns The credentials read-model
-     * @throws {ResourceNotFoundException} When no active admin exists with the given email.
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given email
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetAdminCredentialsByEmailQuery): Promise<GetAdminCredentialsByEmailResult> {

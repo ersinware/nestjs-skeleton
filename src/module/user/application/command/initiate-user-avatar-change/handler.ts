@@ -64,7 +64,7 @@ export class InitiateUserAvatarChangeCommandHandler implements ICommandHandler<
      * @throws {ResourceNotFoundException} When the account is missing or deleted
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When database, storage, or audit persistence is unavailable
-     * @throws {SystemException} When the account is pending activation or the storage plan violates the contract
+     * @throws {SystemException} When the account is pending activation, storage configuration or authorization fails, or the storage plan violates the contract
      */
     async execute(command: InitiateUserAvatarChangeCommand): Promise<InitiateUserAvatarChangeResult> {
         const user: User = await this.loadUser(command.id);

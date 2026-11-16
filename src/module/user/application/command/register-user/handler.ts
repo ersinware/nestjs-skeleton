@@ -65,7 +65,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<RegisterUserC
      *
      * @param command The command payload
      * @throws {InvalidInputException} When the upload proof is invalid or expired, or the form or uploaded object differs from the proof
-     * @throws {ResourceConflictException} When the identity or email address already exists
+     * @throws {ResourceConflictException} When the key belongs to a different request or the identity or email address already exists
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
      * @throws {SystemException} When verified upload claims violate registration invariants, storage authorization fails, or the queue does not accept every job
      */

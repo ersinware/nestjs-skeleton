@@ -39,7 +39,7 @@ export class ResendUserActivationCommandHandler implements ICommandHandler<Resen
      * concurrent writes and infrastructure failures still propagate.
      *
      * @param command The email address to look up
-     * @throws {ResourceConflictException} When the account changed concurrently
+     * @throws {ResourceConflictException} When the key belongs to a different request or the account changed concurrently
      * @throws {DependencyUnavailableException} When database, queue, or audit persistence is unavailable
      * @throws {SystemException} When account metadata is incomplete or required jobs are not accepted
      */

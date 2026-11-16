@@ -108,7 +108,7 @@ export class RefreshTokensCommandHandler implements ICommandHandler<RefreshToken
      * @throws {UnauthenticatedException} When the token is invalid, the account is inactive, the session was superseded, or refresh-token reuse is detected.
      * @throws {ResourceConflictException} When the request key conflicts or the token was already rotated within grace.
      * @throws {DependencyUnavailableException} When identity lookup, session rotation, job persistence, or audit persistence is unavailable.
-     * @throws {SystemException} When a session outcome is unexpected
+     * @throws {SystemException} When a session outcome is unsupported or the remediation job is not accepted
      */
     async execute(command: RefreshTokensCommand): Promise<RefreshTokensResult> {
         let payload: RefreshTokenPayload;

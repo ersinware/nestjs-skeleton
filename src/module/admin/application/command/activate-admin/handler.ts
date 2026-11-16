@@ -76,9 +76,9 @@ export class ActivateAdminCommandHandler implements ICommandHandler<ActivateAdmi
      * @throws {InvalidInputException} When the invitation or upload proof is invalid or expired, or the form binding or uploaded metadata does not match
      * @throws {ResourceNotFoundException} When the verified invitation refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {ResourceConflictException} When the account is already active or changed concurrently
-     * @throws {SystemException} When the loaded account is deleted or differs from the verified subject
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceConflictException} When the key belongs to a different request or the account is already active or changed concurrently
+     * @throws {SystemException} When the loaded account violates activation invariants, storage configuration or metadata is invalid, or required jobs are not accepted
+     * @throws {DependencyUnavailableException} When storage or a required database operation, including audit persistence, is unavailable
      */
     async execute(command: ActivateAdminCommand) {
         await this.idempotencyPort.executePrepared(

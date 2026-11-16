@@ -85,8 +85,8 @@ export class InitiateAdminActivationCommandHandler implements ICommandHandler<
      * @throws {ResourceNotFoundException} When the account is missing or deleted
      * @throws {ResourceConflictException} When the account is already active
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {DependencyUnavailableException} When database or storage is unavailable
-     * @throws {SystemException} When invitation identity or the storage plan violates the contract
+     * @throws {DependencyUnavailableException} When database, storage, or audit persistence is unavailable
+     * @throws {SystemException} When invitation identity or account state violates activation invariants, storage configuration or authorization fails, or the storage plan violates the contract
      */
     async execute(command: InitiateAdminActivationCommand): Promise<InitiateAdminActivationResult> {
         let payload: InviteTokenPayload;

@@ -38,7 +38,6 @@ export class StartDeadLetterRedriveCommandHandler implements ICommandHandler<Sta
      * @param command Validated logical request identity
      * @throws {ResourceConflictException} When the key belongs to a different request or another redrive is queued or active
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {SystemException} When the queue returns an invalid mutation result
      */
     async execute(command: StartDeadLetterRedriveCommand) {
         await this.idempotencyPort.execute(command.idempotencyRequest, async () => {

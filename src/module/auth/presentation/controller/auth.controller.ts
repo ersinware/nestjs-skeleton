@@ -73,7 +73,7 @@ export class AuthController {
      * @returns A new session with tokens, or an activation-required outcome without tokens
      * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {ResourceConflictException} When the key belongs to a different request.
-     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is banned, or the winning session is unavailable or superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
     @Public()
@@ -142,7 +142,7 @@ export class AuthController {
      * @returns The generated access and refresh token pair
      * @throws {InvalidInputException} When the idempotency key or payload is invalid.
      * @throws {ResourceConflictException} When the key belongs to a different request.
-     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or the winning session is unavailable or superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      */
     @Public()

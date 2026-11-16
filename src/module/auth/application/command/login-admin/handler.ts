@@ -58,7 +58,7 @@ export class LoginAdminCommandHandler implements ICommandHandler<LoginAdminComma
      * @param command The login admin command parameters
      * @returns The generated access and refresh tokens
      * @throws {ResourceConflictException} When the key belongs to a different request.
-     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or session registration is superseded.
+     * @throws {UnauthenticatedException} When credentials are invalid, the account is inactive, or the winning session is unavailable or superseded.
      * @throws {DependencyUnavailableException} When identity lookup, session registration, or audit persistence is unavailable
      * @throws {SystemException} When the login flow returns an unexpected session outcome for an admin
      */

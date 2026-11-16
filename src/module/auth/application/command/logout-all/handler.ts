@@ -48,6 +48,7 @@ export class LogoutAllCommandHandler implements ICommandHandler<LogoutAllCommand
      * Redis session records expire by TTL; sweeping them could delete a concurrent new login.
      *
      * @param command The logout all command parameters
+     * @throws {ResourceConflictException} When the key belongs to a different request
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the revocation job is not accepted
      */

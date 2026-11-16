@@ -887,7 +887,6 @@ export class Admin extends PrincipalAggregateRoot {
      * Enforces self, root, and permission-manager administration restrictions.
      *
      * @param actor The verified principal performing the administration
-     * @throws {SystemException} When a non-admin actor reaches the mutation
      * @throws {AccessDeniedException} When the actor cannot administer the target
      */
     protected override assertAdministrableBy(actor: Principal) {

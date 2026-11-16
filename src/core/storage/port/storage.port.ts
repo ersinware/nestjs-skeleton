@@ -254,9 +254,9 @@ export interface IStoragePort {
      *
      * @param request Server-owned object details and deadline.
      * @returns Upload mode and either one signed PUT or all numbered part requests.
-     * @throws {InvalidInputException} When the object size exceeds S3 limits.
+     * @throws {InvalidInputException} When the object size is invalid or exceeds S3 limits, or the upload deadline has expired.
      * @throws {DependencyUnavailableException} When storage is unavailable.
-     * @throws {SystemException} When storage configuration or authorization fails.
+     * @throws {SystemException} When storage configuration or authorization fails, or the provider omits the multipart upload ID.
      */
     initiateUpload(request: StorageUploadRequest): Promise<StorageUploadPlan>;
 
@@ -267,7 +267,7 @@ export interface IStoragePort {
      * @returns Object metadata.
      * @throws {ResourceNotFoundException} When the object is missing.
      * @throws {DependencyUnavailableException} When storage is unavailable.
-     * @throws {SystemException} When storage authorization fails.
+     * @throws {SystemException} When storage configuration or authorization fails, or object metadata is incomplete.
      */
     headObject(key: string): Promise<StorageObject>;
 
@@ -280,7 +280,7 @@ export interface IStoragePort {
      * @throws {ResourceConflictException} On 409 (restart required) or 412 (key occupied); cause retains the provider code.
      * @throws {ResourceNotFoundException} When the session was aborted, completed, or does not exist.
      * @throws {DependencyUnavailableException} When storage is unavailable.
-     * @throws {SystemException} When storage authorization fails.
+     * @throws {SystemException} When storage configuration or authorization fails.
      */
     completeMultipart(request: StorageCompleteMultipartRequest): Promise<void>;
 
@@ -290,7 +290,7 @@ export interface IStoragePort {
      * @param request Authorized session identity.
      * @throws {ResourceNotFoundException} When the session no longer exists; completed objects remain intact.
      * @throws {DependencyUnavailableException} When storage is unavailable.
-     * @throws {SystemException} When storage authorization fails.
+     * @throws {SystemException} When storage configuration or authorization fails.
      */
     abortMultipart(request: StorageAbortMultipartRequest): Promise<void>;
 
@@ -302,7 +302,7 @@ export interface IStoragePort {
      * @throws {ResourceNotFoundException} When the source object is missing.
      * @throws {ResourceConflictException} When the source no longer matches or the destination is occupied.
      * @throws {DependencyUnavailableException} When storage is unavailable.
-     * @throws {SystemException} When storage authorization fails.
+     * @throws {SystemException} When storage configuration or authorization fails, or source metadata is incomplete.
      */
     copyObject(request: StorageCopyRequest): Promise<void>;
 
@@ -311,7 +311,7 @@ export interface IStoragePort {
      *
      * @param key Server-owned object key.
      * @throws {DependencyUnavailableException} When storage is unavailable.
-     * @throws {SystemException} When storage authorization fails.
+     * @throws {SystemException} When storage configuration or authorization fails.
      */
     deleteObject(key: string): Promise<void>;
 }

@@ -32,7 +32,7 @@ export class AdminFacade {
      *
      * @param email The email address of the target admin
      * @returns The admin credential read model
-     * @throws {ResourceNotFoundException} When no active admin exists with the given email.
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given email
      * @throws {DependencyUnavailableException} When the database is unreachable
      */
     async getCredentialsByEmail(email: string): Promise<GetAdminCredentialsByEmailResult> {

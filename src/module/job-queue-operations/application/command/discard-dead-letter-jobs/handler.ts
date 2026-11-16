@@ -35,6 +35,7 @@ export class DiscardDeadLetterJobsCommandHandler implements ICommandHandler<Disc
      * Deletes every requested job or rolls back the entire operation.
      *
      * @param command Exact dead-letter job identifiers
+     * @throws {ResourceConflictException} When the key belongs to a different request
      * @throws {ResourceNotFoundException} When any requested job is missing from the shared dead-letter queue
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When the queue returns an invalid mutation result

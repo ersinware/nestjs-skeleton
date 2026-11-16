@@ -27,7 +27,7 @@ export class GetAdminByIdQueryHandler implements IQueryHandler<GetAdminByIdQuery
      *
      * @param query The query parameters containing the ID
      * @returns The admin profile read model
-     * @throws {ResourceNotFoundException} When no active admin exists with the given ID
+     * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
      * @throws {DependencyUnavailableException} When the account database is unavailable
      */
     async execute(query: GetAdminByIdQuery): Promise<GetAdminByIdResult> {

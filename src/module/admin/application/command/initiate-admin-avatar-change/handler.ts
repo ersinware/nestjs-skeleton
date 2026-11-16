@@ -67,7 +67,7 @@ export class InitiateAdminAvatarChangeCommandHandler implements ICommandHandler<
      * @throws {ResourceNotFoundException} When the account is missing or deleted
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When database, storage, or audit persistence is unavailable
-     * @throws {SystemException} When the account is inactive or the storage plan violates the contract
+     * @throws {SystemException} When the account is inactive, storage configuration or authorization fails, or the storage plan violates the contract
      */
     async execute(command: InitiateAdminAvatarChangeCommand): Promise<InitiateAdminAvatarChangeResult> {
         const admin: Admin = await this.loadAdmin(command.id);

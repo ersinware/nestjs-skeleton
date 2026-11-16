@@ -72,7 +72,7 @@ export class JobQueueOperationsController {
      * @param query Pagination parameters
      * @returns Sanitized jobs and pagination metadata
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted job metadata or the returned page count is invalid
+     * @throws {SystemException} When persisted job provenance or identifiers are missing or invalid
      */
     @Get('job')
     @RateLimit(RateLimitPolicy.DEFAULT)
@@ -104,7 +104,6 @@ export class JobQueueOperationsController {
      * @param query Pagination parameters
      * @returns Sanitized redrive operations and pagination metadata
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted job identifiers, states, or the returned page count is invalid
      */
     @Get('redrive')
     @RateLimit(RateLimitPolicy.DEFAULT)
@@ -141,7 +140,6 @@ export class JobQueueOperationsController {
      * @throws {InvalidInputException} When Idempotency-Key is absent or invalid
      * @throws {ResourceConflictException} When the key belongs to a different request or another redrive is queued or active
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
-     * @throws {SystemException} When the queue returns an invalid mutation result
      */
     @Post('redrive')
     @RateLimit(RateLimitPolicy.JOB_QUEUE_MUTATION)

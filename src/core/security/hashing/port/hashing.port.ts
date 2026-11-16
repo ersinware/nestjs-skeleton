@@ -26,7 +26,6 @@ export interface IHashingPort {
      * @param hash The hash to verify against.
      * @param plainText The plain text to verify.
      * @returns Whether the plain text matches the hash — a mismatch resolves to false, never throws.
-     * @throws {Error} The raw driver error when the stored hash is not a valid encoding.
      */
     verifyPassword(hash: string, plainText: string): Promise<boolean>;
 

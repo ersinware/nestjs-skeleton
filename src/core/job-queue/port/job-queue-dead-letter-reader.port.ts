@@ -130,7 +130,6 @@ export interface IJobQueueDeadLetterReaderPort {
      * @param params Shared page and limit parameters
      * @returns Sanitized page and matching operation count
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted operation fields or page count are invalid
      */
     listDeadLetterRedrives(params: PaginationParams): Promise<DeadLetterRedrivePage>;
 }

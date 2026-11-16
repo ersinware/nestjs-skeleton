@@ -55,9 +55,9 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
      * @throws {ResourceConflictException} When concurrent state prevents attachment or the copy cannot be reconciled
      * @throws {TerminalJobException} When no avatar is attached or the attached permanent object is missing
      * @throws {ResourceNotFoundException} When the expected source is missing; retries re-read account state
-     * @throws {InvalidInputException} When delivery keys violate aggregate identity invariants
+     * @throws {InvalidInputException} When the source object exceeds the storage single-copy limit
      * @throws {DependencyUnavailableException} When storage or required database persistence is unavailable
-     * @throws {SystemException} When storage metadata or authorization fails, the loaded aggregate is deleted, or delivery acceptance fails
+     * @throws {SystemException} When storage configuration, metadata, or authorization fails, or the loaded aggregate is deleted
      */
     async execute(command: FinalizeAdminAvatarCommand) {
         const admin = await this.adminWriterPort.load(command.id);
@@ -167,7 +167,6 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
      * Rejects unhandled delivery states when the domain vocabulary changes.
      *
      * @param state Exhausted delivery state
-     * @throws {SystemException} When an unsupported delivery state reaches the handler
      */
     private assertNeverDeliveryState(state: never): never {
         throw new SystemException(`Unhandled avatar delivery state: ${String(state)}.`, {
@@ -181,7 +180,7 @@ export class FinalizeAdminAvatarCommandHandler implements ICommandHandler<Finali
      * @param key Object key selected by the owner
      * @returns Stored metadata, or null when the object is missing
      * @throws {DependencyUnavailableException} When storage is unavailable
-     * @throws {SystemException} When storage metadata is incomplete or authorization fails
+     * @throws {SystemException} When storage configuration or authorization fails, or object metadata is incomplete
      */
     private async findObject(key: string): Promise<StorageObject | null> {
         try {

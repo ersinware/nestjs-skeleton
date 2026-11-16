@@ -38,7 +38,6 @@ export class ListDeadLetterRedrivesQueryHandler implements IQueryHandler<
      * @param query Pagination request
      * @returns Sanitized page and total count
      * @throws {DependencyUnavailableException} When PostgreSQL is unavailable
-     * @throws {SystemException} When persisted job metadata or the returned page count is invalid
      */
     async execute(query: ListDeadLetterRedrivesQuery): Promise<ListDeadLetterRedrivesResult> {
         return this.port.listDeadLetterRedrives(query.params);

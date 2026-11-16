@@ -58,7 +58,7 @@ export class ActivateUserCommandHandler implements ICommandHandler<ActivateUserC
      * @throws {InvalidInputException} When the proof is invalid, expired, revoked, or the password is wrong
      * @throws {ResourceNotFoundException} When the verified proof refers to a missing account
      * @throws {AccessDeniedException} When the account is banned
-     * @throws {ResourceConflictException} When the key belongs to a different request or persistence rejects a conflicting mutation.
+     * @throws {ResourceConflictException} When the key belongs to a different request, the account is already active, or persistence rejects a conflicting mutation.
      * @throws {SystemException} When the loaded account is deleted or differs from the verified subject
      * @throws {DependencyUnavailableException} When required database or audit persistence is unavailable
      */

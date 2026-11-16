@@ -60,10 +60,10 @@ export class UpdateUserCommandHandler implements ICommandHandler<UpdateUserComma
      * Executes the update user command.
      *
      * @param command The command payload
-     * @throws {ResourceNotFoundException} When no active user exists with the given ID
-     * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
+     * @throws {ResourceNotFoundException} When no non-deleted user exists with the given ID
+     * @throws {DependencyUnavailableException} When storage or a required database operation, including audit persistence, is unavailable
      * @throws {ResourceConflictException} When the avatar proof is replayed or persistence rejects a concurrent modification
-     * @throws {SystemException} When the loaded account is deleted or pending activation, or verified upload keys violate invariants
+     * @throws {SystemException} When the loaded account is deleted or pending activation, verified upload keys violate invariants, storage configuration or metadata is invalid, or required jobs are not accepted
      * @throws {AccessDeniedException} When the avatar proof belongs to another account or the account is banned
      * @throws {InvalidInputException} When no update is supplied, the avatar descriptor and proof are not supplied together, the upload proof is invalid or expired, or the profile binding or uploaded metadata does not match
      */

@@ -47,9 +47,9 @@ export class InitiateUserEmailChangeCommandHandler implements ICommandHandler<In
      *
      * @param command The authenticated account and password proof
      * @throws {ResourceNotFoundException} When the account no longer exists
-     * @throws {SystemException} When a deleted account reaches this authenticated flow, or the queue does not accept every required job
+     * @throws {SystemException} When a deleted or pending account reaches this authenticated flow, or the queue does not accept every required job
      * @throws {InvalidInputException} When the password is wrong or the address is unchanged
-     * @throws {ResourceConflictException} When the address is in use or the loaded account changed
+     * @throws {ResourceConflictException} When the key belongs to a different request, the address is in use, or the loaded account changed
      * @throws {AccessDeniedException} When the account is banned
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      */

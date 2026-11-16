@@ -39,7 +39,7 @@ export class ReInviteAdminCommandHandler implements ICommandHandler<ReInviteAdmi
      *
      * @param command The command payload
      * @throws {ResourceNotFoundException} When no non-deleted admin exists with the given ID
-     * @throws {ResourceConflictException} When the account is active, banned, or concurrently modified
+     * @throws {ResourceConflictException} When the key belongs to a different request or the account is active, banned, or concurrently modified
      * @throws {AccessDeniedException} When the actor cannot administer the target
      * @throws {DependencyUnavailableException} When a required database operation, including audit persistence, is unavailable
      * @throws {SystemException} When an account or actor invariant is violated, or required jobs are not accepted
