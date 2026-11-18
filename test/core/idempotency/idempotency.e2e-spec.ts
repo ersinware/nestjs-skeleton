@@ -6,6 +6,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
@@ -202,9 +203,10 @@ describe('PostgreSQL request idempotency', () => {
         });
         expect(retained?.createdAt).toBeInstanceOf(Date);
         expect(JSON.stringify(retained)).not.toMatch(/password-secret|token-secret|private|payload/);
-        const columns = await database.execute<{ column_name: string }>(
-            sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'idempotency' AND table_name = 'operation' ORDER BY column_name`,
-        );
+        const { schema, name } = getTableConfig(idempotency),
+            columns = await database.execute<{ column_name: string }>(
+                sql`SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = ${name} ORDER BY column_name`,
+            );
         expect(columns.rows.map((row) => row.column_name)).toStrictEqual([
             'created_at',
             'fingerprint',
