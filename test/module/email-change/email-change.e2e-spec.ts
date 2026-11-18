@@ -15,7 +15,7 @@ import { symbols, type DestinationStream } from 'pino';
 import { TOKEN_CACHE_PORT, type ICachePort } from 'src/core/cache';
 import { TOKEN_DATABASE_CLIENT, TOKEN_TRANSACTION_PORT, type ITransactionPort } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import {
     JOB_QUEUE_DEAD_LETTER,
     TOKEN_JOB_QUEUE_WRITER_PORT,
@@ -233,7 +233,7 @@ describe.each(CASES)('$route email change', (context) => {
             }
         }
         for (const key of idempotencyKeys) {
-            await database.delete(operation).where(eq(operation.key, key));
+            await database.delete(idempotency).where(eq(idempotency.key, key));
         }
         await app.close();
     }, 30_000);
@@ -755,7 +755,7 @@ describe.each(CASES)('$route email change', (context) => {
             expect(await evidence(action)).toEqual(beforeAudit);
             expect(beforeAudit).toHaveLength(1);
             expect(beforeJobs).toHaveLength(1);
-            const [retained] = await database.select().from(operation).where(eq(operation.key, key));
+            const [retained] = await database.select().from(idempotency).where(eq(idempotency.key, key));
             expect(retained?.replayResultId).toBeNull();
             // Retained success does not bypass guard admission after mirror propagation.
             await sessionPort.setVersion(account.id, context.kind, 1);

@@ -14,7 +14,7 @@ import { TOKEN_CACHE_PORT, type ICachePort } from 'src/core/cache';
 import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
@@ -342,7 +342,7 @@ describe('User registration and activation', () => {
                 (await actions(row!.id)).filter((entry) => entry.action === String(UserAuditAction.USER_REGISTERED)),
             ).toHaveLength(1);
         } finally {
-            await database.delete(operation).where(eq(operation.key, key));
+            await database.delete(idempotency).where(eq(idempotency.key, key));
         }
     });
 

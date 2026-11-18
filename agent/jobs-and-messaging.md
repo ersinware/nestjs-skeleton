@@ -1,37 +1,55 @@
 # Jobs & Messaging
 
-- Durable asynchronous delivery uses `core/job-queue`, backed by pg-boss.
-- Development/test startup may migrate the pg-boss schema. Production startup sets `migrate: false` and rejects a missing or mismatched schema.
-- Aggregate writers persist state and accumulated jobs; commands enqueue command-owned jobs directly. All enqueueing uses the primary Drizzle proxy, so jobs commit with surrounding writes and mutation audit ([Audit](observability.md#audit)). pg-boss owns its `pgboss` schema; exclude it from Drizzle discovery and schema filters.
-- Delivery is at-least-once with bounded retries/backoff, not guaranteed eventual success or exactly-once execution. Attempts can outlive expiry and overlap retries; claims do not make external effects exclusive.
-- Use `TerminalJobException` only when retries cannot recover: non-transactional workers skip retries; transactional workers roll back and retry normally. Transactional callbacks must propagate failures; returning `deadletter` would commit their writes.
-- Normal queues route exhausted/terminal failures with payload and provenance to the shared DLQ. Technical queues opt out with `disableDeadLetter: true`; exhausted jobs remain failed. The DLQ has no worker or notifications.
-- Routing changes do not backfill already queued jobs or historical source failures.
-- `job-queue-operations` reads require authorization, not audit; atomic exact-ID discard, failed-redrive discard, and exclusive, retryable redrive require audit. Redrive commits bounded batches to recorded source queues with current options and fresh retry budgets; retries resume remaining rows. Missing source queues leave jobs in the DLQ; pg-boss retention bounds jobs and retained redrive operations.
-- Declare `transactional: true` for short PostgreSQL work requiring atomic mutation, success audit, follow-up jobs, and completion. Handlers use `join()` ([Data & State](data-and-state.md#data--state)); pg-boss commits after the consumer returns. Callback/completion failure rolls back shared work.
-- Transactional consumer paths, including handlers and pipeline behaviors, perform no external business effects; persist follow-up jobs instead. Diagnostic telemetry is allowed; refusal audit follows [Audit](observability.md#audit).
-- External-effect consumers are non-transactional; handlers own related DB commits with `start()`. Preparatory I/O must be reconcilable. Completion is separate: retries must resume committed work/cleanup using durable identities and idempotent, deduplicated, or explicitly repeat-tolerant effects.
-- When callers need different transaction ownership, separate orchestration and share business logic.
-- Configure `IJobConsumer.workerOptions` by latency, workload duration, backlog, DB/pool pressure, and dependency capacity. Budget concurrency across queues and peak replicas, including deployment overlap; worker limits do not enforce provider rate limits.
-- Use `useListenNotify: true` and queue `notify: true` for immediately runnable work. Notifications wake listening nodes; PostgreSQL claims, not notifications, assign attempts.
-- Configure only `notifyPollingIntervalSeconds` through `profile`: `critical: 5s` (security-critical), `high: 10s` (prompt reconciliation), `medium: 30s` (interactive), `low: 60s` (deferred/maintenance). Native backstop polling covers retries, delayed jobs, redrive, and missed notifications, including listener outages; accept that delay without custom polling timers. Reconnect even after initial LISTEN failure, with capped backoff and worker wake-up on recovery. Reserve one session-pinned queue connection per process, including through proxies.
-- `batchSize` controls fetch/settlement, not concurrency. Process batches sequentially; non-transactional workers settle per job. Bound parallelism with `localConcurrency`, not generic batch `Promise.all()`. Justify larger batches by cheap, repeat-safe work; the entire batch, including settlement, must finish before expiry. Transactional consumers require `batchSize: 1`.
-- Keep total transactional concurrency below the queue pool limit, reserving capacity for polling, completion, and maintenance.
-- Stop DLQ sampling before pg-boss workers, and workers before database pools.
-- `deliveryId` identifies logical work across retries/DLQ/redrive; physical IDs change on DLQ copy/redrive and serve queue operations/diagnostics. Use logical identity for reconciliation, follow-ups, audit, and provider idempotency. Distinct enqueues can share it without deduplication; new logical work needs a new identity.
-- Re-read authoritative state for current eligibility; skip stale work when required. Preserve unrecoverable delivery facts in immutable records or optional JSON `payload`, never whole snapshots or secrets; consumers validate payloads. Recipient rules: [Email Change State](security-and-sessions.md#email-change-state), [Session Versions](security-and-sessions.md#session-versions--failure-semantics).
-- Pass queue name and `deliveryId` through email commands to `IEmailerPort`; provider key is `${queueName}/${deliveryId}`, never a content hash. Keep the full request stable across retries/redrive, including sender, recipient, subject, body, and tokens; template/config/signing changes must preserve this contract. Never generate a new identity to hide payload drift.
-- Resend 409 `invalid_idempotent_request` maps to `ResourceConflictException`, then `TerminalJobException` at queued email handlers (no normal retries); 409 `concurrent_idempotent_requests` maps to retryable `DependencyUnavailableException`.
-- Email deduplication and payload-conflict detection are provider-retention-bound. No permanent send ledger or retention-based redrive cutoff exists: delayed retries/redrive retain the key but may send duplicate emails. Do not claim exactly-once sending or recipient receipt.
-- Persist only optional W3C `traceparent` with job data, not baggage or vendor trace state. Retries, DLQ copies, and redrive retain it; domain jobs and older payloads need no trace field.
-- Cross-context producers depend on owner-defined shared job contracts, never another module's domain enum. Keep queue names and payloads compatible with queued work and concurrently running versions.
-- Runtime provisioning creates missing queues, verifies immutable policy/partitioning, and reconciles mutable options. Change immutable options through an explicit operational migration.
-- Durable job consumers use `application/consumer/`; network ingress uses `presentation/listener/`. Thin listeners and consumers await commands through pipelines; cache eviction may call its port directly.
-- Pipeline and durable-job cache eviction share `<module>-cache-key.util.ts`; neither prevents concurrent stale cache fills. Failure semantics: [Adapters](data-and-state.md#adapters).
+## Delivery Guarantees
 
-### Deployment
+- Durable asynchronous work uses pg-boss and provides at-least-once delivery with bounded retries. Never assume eventual success, exactly-once execution, or exactly-once external effects.
+- pg-boss prevents two workers from owning the same active attempt. However, expiration or heartbeat loss can make an attempt stale and start a retry while the original handler is still running in its process. The stale handler no longer owns the claim, but external effects it already performed cannot be rolled back. Consumers must therefore tolerate replay and, where external effects are involved, possible overlapping attempts.
+- Exhausted application failures are retained in the shared DLQ unless a technical queue intentionally opts out. Failed work must remain recoverable or explicitly discarded; never silently drop it.
 
-- Before rollout, run `npm run deploy:migrate` once in a migration job with dev dependencies. It runs Drizzle migration, pg-boss migration, then drift check. Do not use `db:push` against deployment databases or mutate them from pull-request CI.
-- Drizzle reads `DATABASE_URL`; the pg-boss CLI reads `PGBOSS_DATABASE_URL`. Both must target the runtime's logical primary database. The CLI variable may alias the migration job's `DATABASE_URL`; a second stored secret is optional. Local `act` receives the CLI variable through `.secrets`.
-- Use separate migration and runtime database roles. Keep migration credentials out of the application. Grant runtime schema usage, required table DML, sequence usage, and routine execution; configure future-object default privileges. Verify existing grants as the runtime role before rollout.
-- At first rollout, assign the three DLQ permissions to intended operator admins. Verify source queues route to `application-dead-letter` and the redrive queue opts out. For rollback to code without DLQ routing, clear persisted source `dead_letter` settings before or with the old code; retain the DLQ and its jobs.
+## Producing Jobs
+
+- When application state, mutation audit, and follow-up jobs form one logical mutation, persist them in the same PostgreSQL transaction.
+- Aggregate-owned jobs are raised by aggregates and persisted with aggregate state. Command-owned orchestration jobs may enqueue directly when the command owns that workflow.
+- Cross-context producers depend only on contracts owned and exposed by the target context. Do not couple producers to another context's internal domain types.
+
+## Consumer Transactions
+
+- Use transactional consumers only for short PostgreSQL-only work when application writes and job completion must commit atomically. Transactional consumer paths must not perform external business effects.
+- Transactional consumers cannot currently short-circuit `TerminalJobException` to terminal settlement safely. pg-boss does not expose a supported rollback-safe terminal settlement path for transactional workers; in particular, `transactional` workers cannot use `perJobResults`, which is the supported terminal/dead-letter result mechanism. This limitation is tracked in [issue #27](https://github.com/ersinware/nestjs-skeleton/issues/27). Propagate the failure so application writes roll back, then let pg-boss apply its normal retry/DLQ policy.
+- Consumers that perform external business effects must be non-transactional. Commit required database state first, then perform the effect, and make retries resume from durable authoritative state.
+- External effects must be idempotent, deduplicated, or explicitly safe to repeat. Re-read authoritative state before acting when eligibility may have changed.
+- Use `TerminalJobException` only for failures that another attempt cannot recover from. Non-transactional consumers may bypass remaining retries for it; transactional consumers follow the limitation above.
+
+## Concurrency & Execution
+
+- Treat worker concurrency as local to a process unless the queue policy explicitly provides a distributed guarantee. Budget total concurrency across all queues, replicas, and deployment overlap.
+- Do not use worker concurrency as a provider rate limiter. Hard downstream limits require an appropriate distributed coordination or provider-aware mechanism.
+- Batching is not concurrency. Avoid implicit or unbounded parallelism inside a fetched batch.
+- A transactional consumer processes one job per transaction.
+
+## Dead-letter Recovery
+
+- DLQ redrive is recovery of the same logical work, not creation of new logical work. Preserve its logical delivery identity even when pg-boss creates new physical queue records.
+- Redrive and discard are explicit operator actions. Redrive must leave work recoverable when it cannot be restored safely; discard is the intentional terminal removal path.
+- Redrive and discard mutations require durable audit evidence.
+
+## Delivery Identity & Payloads
+
+- `deliveryId` identifies logical work across retries, DLQ transitions, and redrive. pg-boss job IDs identify physical queue records and may change across those transitions.
+- Reusing a `deliveryId` does not itself deduplicate queue inserts. New logical work requires a new delivery identity.
+- Use logical delivery identity for reconciliation, follow-up correlation, audit correlation, and external idempotency.
+- Persist only immutable delivery facts that cannot be recovered from authoritative state. Do not place aggregate snapshots or secrets in job payloads; consumers must validate persisted facts before use.
+
+## Email Delivery
+
+- Queued email is an external effect and follows the non-transactional consumer rules above.
+- Derive provider idempotency from the stable logical delivery identity and keep the complete provider request stable across retries and redrive. Do not create a new identity merely to hide payload drift.
+- Provider idempotency is retention-bounded and is not a permanent send ledger. Delayed retries or redrive may therefore send again; never claim exactly-once email sending or recipient receipt.
+- Treat provider payload/idempotency conflicts as terminal. Treat recognized transient availability, locking, concurrency, and rate-limit failures as retryable.
+
+## Deployment
+
+- Production application startup must not migrate the pg-boss schema. Apply job-queue schema changes explicitly before rollout.
+- pg-boss owns its schema; application migration tooling must not manage pg-boss-owned objects.
+- Application and pg-boss migrations must target the same logical primary database.
+- Keep migration privileges separate from runtime application privileges.

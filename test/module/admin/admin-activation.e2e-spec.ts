@@ -12,7 +12,7 @@ import type { PgBoss } from 'pg-boss';
 import { CommandPipeline } from 'src/core/cqrs';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_EMAILER_PORT, type IEmailerPort } from 'src/core/email';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort, type Job } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
@@ -335,7 +335,7 @@ describe('Admin invitation with avatar', () => {
         expect(openSession).not.toHaveBeenCalled();
         expect(await evidence(prepared.id, AdminAuditAction.ADMIN_ACTIVATED)).toHaveLength(1);
         expect(await jobs(prepared.id)).toHaveLength(1);
-        await database.delete(operation).where(eq(operation.key, idempotencyKey));
+        await database.delete(idempotency).where(eq(idempotency.key, idempotencyKey));
         const login = await app.inject({
             method: 'POST',
             url: '/api/v1/auth/admin/login',

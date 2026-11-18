@@ -12,7 +12,7 @@ import {
     translateConnectionFailure,
     type ITransactionPort,
 } from 'src/core/database';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import type {
     IIdempotencyPort,
     IdempotencyRequest,
@@ -62,9 +62,9 @@ export class IdempotencyAdapter implements IIdempotencyPort {
 
         try {
             [existing] = await this.database
-                .select({ fingerprint: operation.fingerprint, replayResultId: operation.replayResultId })
-                .from(operation)
-                .where(eq(operation.key, idempotencyRequest.key));
+                .select({ fingerprint: idempotency.fingerprint, replayResultId: idempotency.replayResultId })
+                .from(idempotency)
+                .where(eq(idempotency.key, idempotencyRequest.key));
         } catch (error) {
             throw translateConnectionFailure(error);
         }
@@ -112,16 +112,16 @@ export class IdempotencyAdapter implements IIdempotencyPort {
 
         return this.transactionPort.start(async () => {
             const [claimed] = await this.database
-                .insert(operation)
+                .insert(idempotency)
                 .values({ key: idempotencyRequest.key, fingerprint })
-                .onConflictDoNothing({ target: operation.key })
-                .returning({ key: operation.key });
+                .onConflictDoNothing({ target: idempotency.key })
+                .returning({ key: idempotency.key });
 
             if (!claimed) {
                 const [existing] = await this.database
-                    .select({ fingerprint: operation.fingerprint, replayResultId: operation.replayResultId })
-                    .from(operation)
-                    .where(eq(operation.key, idempotencyRequest.key));
+                    .select({ fingerprint: idempotency.fingerprint, replayResultId: idempotency.replayResultId })
+                    .from(idempotency)
+                    .where(eq(idempotency.key, idempotencyRequest.key));
 
                 if (!existing) {
                     throw new SystemException('The conflicting idempotency operation is missing.', {
@@ -140,9 +140,9 @@ export class IdempotencyAdapter implements IIdempotencyPort {
 
             if (result.replayResultId !== null) {
                 await this.database
-                    .update(operation)
+                    .update(idempotency)
                     .set({ replayResultId: result.replayResultId })
-                    .where(eq(operation.key, idempotencyRequest.key));
+                    .where(eq(idempotency.key, idempotencyRequest.key));
             }
 
             return result;

@@ -6,11 +6,12 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
 import { TOKEN_IDEMPOTENCY_PORT, type IdempotencyRequest, type IIdempotencyPort } from 'src/core/idempotency';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_JOB_QUEUE_WRITER_PORT, type IJobQueueWriterPort } from 'src/core/job-queue/port/job-queue-writer.port';
 import { audit, TOKEN_AUDIT_PORT, type IAuditPort } from 'src/core/observability/audit';
@@ -88,7 +89,7 @@ describe('PostgreSQL request idempotency', () => {
             sql`SELECT id FROM pgboss.job WHERE name = ${QUEUE} AND data ->> 'aggregateId' = ${key}`,
         );
         expect(deliveries.rows).toHaveLength(count);
-        expect(await database.select().from(operation).where(eq(operation.key, key))).toHaveLength(count);
+        expect(await database.select().from(idempotency).where(eq(idempotency.key, key))).toHaveLength(count);
     }
 
     beforeAll(async () => {
@@ -109,7 +110,7 @@ describe('PostgreSQL request idempotency', () => {
 
     afterEach(async () => {
         if (keys.length) {
-            await database.delete(operation).where(inArray(operation.key, keys));
+            await database.delete(idempotency).where(inArray(idempotency.key, keys));
             await database.delete(audit).where(inArray(audit.targetId, keys));
             await database.execute(
                 sql`DELETE FROM public.idempotency_probe WHERE id IN (${sql.join(
@@ -193,7 +194,7 @@ describe('PostgreSQL request idempotency', () => {
         const hmac = vi.spyOn(hashing, 'hmacSha256');
         await port.execute(input, () => mutate(input.key));
         expect(hmac).toHaveBeenCalledWith('postgres:idempotency-fingerprint', input.canonicalValue);
-        const [retained] = await database.select().from(operation).where(eq(operation.key, input.key));
+        const [retained] = await database.select().from(idempotency).where(eq(idempotency.key, input.key));
         expect(retained).toStrictEqual({
             key: input.key,
             fingerprint: hashing.hmacSha256('postgres:idempotency-fingerprint', input.canonicalValue),
@@ -202,9 +203,10 @@ describe('PostgreSQL request idempotency', () => {
         });
         expect(retained?.createdAt).toBeInstanceOf(Date);
         expect(JSON.stringify(retained)).not.toMatch(/password-secret|token-secret|private|payload/);
-        const columns = await database.execute<{ column_name: string }>(
-            sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'idempotency' AND table_name = 'operation' ORDER BY column_name`,
-        );
+        const { schema, name } = getTableConfig(idempotency),
+            columns = await database.execute<{ column_name: string }>(
+                sql`SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = ${name} ORDER BY column_name`,
+            );
         expect(columns.rows.map((row) => row.column_name)).toStrictEqual([
             'created_at',
             'fingerprint',

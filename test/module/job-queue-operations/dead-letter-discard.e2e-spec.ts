@@ -9,7 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { TOKEN_DATABASE_CLIENT } from 'src/core/database';
-import { operation } from 'src/core/idempotency/idempotency.schema';
+import { idempotency } from 'src/core/idempotency/idempotency.schema';
 import { JOB_QUEUE_DEAD_LETTER } from 'src/core/job-queue';
 import { TOKEN_JOB_QUEUE_CLIENT } from 'src/core/job-queue/job-queue-client.token';
 import { TOKEN_AUDIT_PORT, audit, type IAuditPort } from 'src/core/observability/audit';
@@ -166,7 +166,7 @@ describe('Dead-letter discard', () => {
             expect(await discardAudit(ids[0]!)).toHaveLength(1);
             expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id: untouched })).toHaveLength(1);
         } finally {
-            await database.delete(operation).where(eq(operation.key, key));
+            await database.delete(idempotency).where(eq(idempotency.key, key));
         }
     });
 
@@ -187,7 +187,7 @@ describe('Dead-letter discard', () => {
             expect(await discardAudit(id)).toHaveLength(1);
             expect(await boss.findJobs(JOB_QUEUE_DEAD_LETTER, { id })).toHaveLength(0);
         } finally {
-            await database.delete(operation).where(eq(operation.key, key));
+            await database.delete(idempotency).where(eq(idempotency.key, key));
         }
     });
 
@@ -223,7 +223,7 @@ describe('Dead-letter discard', () => {
                 .expect(409);
             expect(await discardAudit(id)).toHaveLength(1);
         } finally {
-            await database.delete(operation).where(eq(operation.key, key));
+            await database.delete(idempotency).where(eq(idempotency.key, key));
         }
     });
 

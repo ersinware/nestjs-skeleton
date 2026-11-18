@@ -1,57 +1,47 @@
 # HTTP
 
-### Mutation Retry Safety
+## Mutation Retry Safety
 
-- Explicit idempotency endpoints require a single UUID v4 `Idempotency-Key` via `@IdempotencyKey()`. Build fixed-order fingerprints after validation from `request.method`, matched `request.routeOptions.url` (never the raw URL or a manually assembled path), and semantic fields, including verified actor identity where applicable; preserve UUID values without changing case. Same-key/same-fingerprint success replays without mutation; conflicting fingerprints return 409. Replay retains current guards and rate limits; document the header with `@ApiIdempotencyKey()`.
-- Timeout/connection/response loss after a write means outcome unknown, not rollback. Never automatically retry an ambiguous mutation; clients retry protected endpoints with the same key, using a new key only for new work.
-- Keep the [mutation inventory](../docs/idempotency-retry-inventory.md) current when endpoints or retry behavior change. Separate implemented behavior, planned protection, and downstream delivery safety; mutation retry safety does not require identical responses.
+- Design mutation endpoints to be retry-safe: either naturally idempotent or protected by request idempotency. A timeout, connection loss, or lost response does not prove failure; treat the outcome as unknown and, when retrying a protected request, reuse the same idempotency key for the same logical request.
+- Require a UUID v4 `Idempotency-Key` when repeating the same logical request could apply another mutation or create another durable effect. Reuse the same key for the same logical request and use a new key for new work; reusing a key for a different semantic request must fail with a conflict.
+- Build idempotency fingerprints from the canonical endpoint identity and validated semantic input, including verified actor identity when it changes the meaning of the request. Do not fingerprint raw URLs or incidental transport representation.
+- Keep natural idempotency, HTTP request retry-safety, and downstream job/external-effect safety distinct. Request idempotency does not provide exactly-once downstream delivery. Keep the [idempotency and retry-safety inventory](../docs/idempotency-retry-inventory.md) current when mutation semantics change.
 
-### Health Probes
+## Health Probes
 
-Paths are version-neutral and relative to the global prefix.
+- `/health/live` is a public, bodyless liveness signal and checks no dependency. Dependency outages must not make liveness request process replacement.
+- `/health/ready` is a public, bodyless traffic-eligibility signal. Dependencies required for correct request handling must gate readiness; degradable cache failure does not. Readiness is neither cached nor rate-limited.
+- `/health/status` is the authorized detailed diagnostic view. It may expose dependency-level health that public probes must not disclose.
+- Keep liveness, readiness, and detailed diagnostics semantically separate. Health failure transport behavior follows [Exceptions](exceptions.md#exceptions), while dependency outage reporting follows [Observability](observability.md#dependency-outages).
 
-- `/health/live`: public, bodyless 204; no checks or dispatch.
-- `/health/ready`: public, bodyless 204 when readiness indicators pass, 503 on their failure; never disclose topology.
-- `/health/status`: requires `Permission.HEALTH_DETAIL_READ`; returns indicator details with 200/503.
-- Checks are uncached. Readiness includes fail-closed session/rate-limit stores; cache failure must not remove an otherwise ready instance. Dependency checks must not consume rate-limit budgets. Replica probe reuse: [Dependency Outages](observability.md#dependency-outages).
-- Use readiness for traffic eligibility and liveness for restart/replacement decisions. Verify platform health-check consequences, including load-balancer checks; dependency outages must not restart healthy processes.
-- Preserve Terminus `ServiceUnavailableException`: the filter makes readiness 503 bodyless and preserves detailed indicator reports under `error`. Other failures follow [Exceptions](exceptions.md#exceptions); required session or rate-limit checks can produce a standard guard 503 before detailed checks run.
-- Bound check execution within deployment probe timeouts. DB probes use the application's pool acquisition, server statement, and client query timeouts; allow response margin beyond the statement limit and deployment margin beyond acquisition + query waits. HTTP cache policy: [HTTP Caching](http.md#http-caching).
+## Client Address
 
-### Client Access
+- Security, rate limiting, and audit decisions that depend on client IP must use the server's trusted, proxy-resolved address. Ingress must sanitize client-supplied forwarding headers, and proxy trust must be limited to actual trusted proxies.
 
-- Support web access through a BFF and direct mobile access through the API ingress. Both paths require trusted IP forwarding: ingress sanitizes client-supplied forwarded headers, the BFF propagates the trusted browser IP, and `TRUST_PROXY` identifies actual proxy IPs/CIDRs. Verify both paths after deployment; limiters use Fastify's resolved `request.ip`.
+## HTTP Caching
 
-### HTTP Caching
+- Every GET/HEAD handler declares its cache policy at method level. Do not place cache-policy metadata on controller classes or non-GET/HEAD methods. Other methods and error responses are `no-store`.
+- Identity-scoped or audited responses must revalidate before reuse. Shared caching is only for identity-free, shareable data; freshness that can bypass the server requires an explicit decision and must not be used where guards or audit must run on every access.
+- ETags validate the serialized representation and may save response transfer, but they do not skip handler execution, authorization, audit, or application reads. Do not treat HTTP validation as application caching.
+- `204` and `304` responses remain bodyless.
 
-- GET/HEAD handlers require method-level `@HttpCache(HttpCachePolicy.X)`; forbid it on classes/other methods. Missing GET/HEAD or misplaced non-GET/HEAD policies throw `SystemException`; other methods use `no-store`.
-- Use `NO_STORE` for probes, tokens, and non-storable data; prefer `PRIVATE_REVALIDATE` for identity-scoped reads. Reserve `PUBLIC_REVALIDATE` for identity-free, shareable data.
-- Require revalidation before reuse, preserving guards/audit; allow freshness only by explicit design for identity-free, non-audited public data.
-- Bind `IHashingPort` at bootstrap to Fastify `onSend`: storable GET/HEAD 200 responses use weak ETags over serialized text/bytes with context `http-etag`; matching `If-None-Match` returns bodyless 304. Errors/missing cache policy headers use `no-store`.
-- ETags save response transfer, not handler execution ([CQRS](architecture.md#cqrs)).
-- Disable BFF fetch caching; forward the browser's `If-None-Match` upstream and `ETag`/`Cache-Control`/304 downstream. Preserve the representation when forwarding its ETag; the browser owns the validator.
+## Request & Response Contracts
 
-### DTOs & Responses
+- Name body DTOs with the HTTP-method prefix (`post-`, `put-`, `patch-`, etc.); use `param-`, `query-`, `response-`, and `error-` for the corresponding transport roles. Class names mirror the file role in PascalCase.
+- HTTP DTOs are transport contracts. Keep presentation types at the HTTP edge; application and domain layers must not depend on them.
+- Every DTO declares `@ApiSchema({ name, description })`: the schema name is the class name without `Dto`, and the description states its purpose. Response DTOs use `@Exclude()` with field-level `@Expose()`; input DTOs use neither so unknown fields remain visible to global whitelist rejection. Do not enable `excludeExtraneousValues`. Mapped DTOs redeclare applicable class-level metadata and inherit unchanged field metadata.
+- Treat omission and `null` independently. `@IsOptional()` skips both; when only omission is allowed, use `PartialType(..., { skipNullProperties: false })` or `@ValidateIf` that checks only `undefined`. OpenAPI metadata and composed validators must preserve the same distinction.
+- Validate external input at the boundary and reject unknown fields rather than silently accepting client mistakes. Normalize text only when normalization is part of the field contract; preserve credentials, tokens, machine identifiers, and other values whose exact representation is meaningful.
+- Response DTOs expose only intended client-safe fields. Map read models/results to response DTOs explicitly at the HTTP edge; TypeScript return annotations alone do not filter runtime data.
+- Keep OpenAPI schemas aligned with runtime contracts, including required/optional/null semantics, bounds, formats, patterns, and response alternatives.
+- Publish validation regex `.source` as the OpenAPI `pattern`. `script/spectral-unicode.mjs` preserves built-in Spectral example validation while adapting Unicode patterns; other regex flags require separate handling.
+- Successful response bodies use the shared `{ data }` envelope; document payload schemas without manually adding that envelope. Error transport contracts are owned by [Exceptions](exceptions.md#exceptions).
 
-- Body DTOs use HTTP-method prefixes (`post-user-registration.dto.ts` / `PostUserRegistrationDto`); path/query/output/error DTOs use `param-`/`query-`/`response-`/`error-`.
-- Every DTO declares `@ApiSchema({ name, description })`: name = class minus `Dto`; description = purpose. Response DTOs use `@Exclude()` and field-level `@Expose()`. Input DTOs use neither `@Exclude()` nor `@Expose()`; preserve unknown fields for global whitelist rejection and never enable `excludeExtraneousValues`. Mapped DTOs redeclare applicable class decorators and inherit unchanged field metadata. Property JSDoc explains meaning ([JSDoc](coding-conventions.md#jsdoc)).
-- Every DTO field requires a schema-valid `example`, declared directly or inherited through mapped DTOs/composed decorators.
-- Reuse matching decorators from `src/core/http/validation/decorator/`; override labels only when needed. `isUUID` defaults to UUID v7; use `{ version: 'all' }` for pg-boss IDs, with `nullable` distinct from `optional`. One-off fields use raw validators + `@ApiProperty`; compose on the second use of the same field contract and migrate both uses.
-- Keep OpenAPI constraints aligned with field contracts. HTTP validation errors need field-label-based custom messages, supplied by decorators or constraints.
-- Opt into `Trim()` for text fields; name/email decorators include it, names also use NFC. Preserve credentials, machine identifiers, and interior whitespace; never turn blank strings into missing values. Response name/email decorators require `{ normalize: false }`: `toClassOnly` includes response `plainToInstance` calls.
-- Publish regex `.source` as OpenAPI `pattern`; `script/spectral-unicode.mjs` preserves built-in Spectral example checks while adapting Unicode patterns. Other regex flags need separate handling.
-- Treat omission and null independently: `@IsOptional()` skips both; when only omission is allowed, use `PartialType(..., { skipNullProperties: false })` or `@ValidateIf` checking only undefined. Composed validators and OpenAPI must preserve that distinction. Responses add no raw validators; document constraints through `@ApiProperty` or existing composed field decorators.
-- Properties are `readonly`; use `?` for optional fields and `!` for required fields without initialization. Preserve applicable exposure, documentation, and input validation.
-- Convert read-models to response DTOs at HTTP edges with `plainToInstance` or explicit DTO construction; return annotations alone do not filter fields ([CQRS](architecture.md#cqrs)).
-- `ResponseInterceptor` alone adds the success `{ data }` envelope; keep 204/304 bodyless. Errors: [Exceptions](exceptions.md#exceptions). Pagination uses `QueryPaginationDto` and `ResponsePaginationDto`.
+## API Documentation
 
-### API Documentation
-
-- Keep Swagger text focused on client decisions: inputs, permissions, outcomes, and required next steps. Omit internal persistence, audit, and job mechanics; document shared behavior once and retain endpoint-specific limits and asynchronous completion when clients must account for them. Keep success response descriptions to the outcome; place necessary client actions in the operation description. State required permissions as `Requires the '<permission>' permission.`
-- Swagger text limits apply after interpolation: `@ApiOperation.summary` ≤ 80 characters, without a final period; `@ApiOperation.description` ≤ 200; all other descriptions (including DTO/schema, property, parameter, response, header, and tag) ≤ 150. End every description with a period.
-- Document endpoint tags, operations, authentication, and success/applicable error responses. Order response decorators by ascending HTTP status within each class or method. Reuse `src/core/doc/decorator/` when status/body contracts match; otherwise use raw Swagger decorators.
-- Standard error decorators accept `message: string`, defaulting to the corresponding shared `DEFAULT`, never module-specific enum types.
-- Error descriptions cover all causes: masked errors use public defaults ([Exceptions](exceptions.md#exceptions)); otherwise one cause uses its client-safe message, several use a generic description. Validation-only 400s use `RequestValidationMessage.PAYLOAD`/`PARAM`. No endpoint cause-enumeration enums; clients branch on status, not message text.
-- Declare payload schemas without outer envelopes; `swagger-document.factory.ts` adds `data`/`error`. Document bodyless responses without body schemas. DTO metadata: [DTOs & Responses](http.md#dtos--responses); 304 metadata: `@HttpCache` ([HTTP Caching](http.md#http-caching)).
-- Document response alternatives with `oneOf`; register referenced DTOs with `@ApiExtraModels`. Object unions declare `type: 'object'`; tagged unions require a discriminator mapping and a required, distinct literal field in each DTO. Derived envelope examples use the first alternative, never merge branches.
-- Keep controller tags aligned with `APITag` in `src/core/doc/doc.config.ts`; add `VERSION_CONFIG` descriptions for every new tag/version.
+- Swagger text limits apply after interpolation: `@ApiOperation.summary` ≤ 80 characters and has no final period; `@ApiOperation.description` ≤ 200; all other descriptions, including DTO/schema, property, parameter, response, header, and tag descriptions, are ≤ 150. End every description except summaries with a period.
+- Order response decorators by ascending HTTP status within each class or method.
+- Document the API for client decisions: required input, authentication/permissions, outcomes, retry or asynchronous behavior, and required next steps. Do not expose persistence, audit, queue, or other internal implementation mechanics.
+- Keep documented success and error contracts consistent with runtime behavior. Clients should branch on status and schema, not message wording.
+- Document response alternatives with `oneOf` and register referenced DTOs with `@ApiExtraModels`. Object unions declare `type: 'object'`; tagged unions require a discriminator mapping and a required, distinct literal field in each DTO. Derived envelope examples use the first alternative and never merge branches.
+- Represent alternative response shapes accurately and document bodyless responses as bodyless.

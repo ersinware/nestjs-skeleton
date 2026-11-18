@@ -2,5 +2,122 @@
     "high": true,
     "show-found": true,
     "show-not-found": true,
-    "allowlist": []
+    // Temporary risk acceptance for the current development-only picomatch paths.
+    // Remove these entries when a patched upstream release is available.
+    "allowlist": [
+        {
+            "GHSA-fc5q-39xc-vjpf|@angular-devkit/core>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@angular-devkit/schematics>@angular-devkit/core>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@nestjs/cli>@angular-devkit/schematics-cli>@angular-devkit/schematics>@angular-devkit/core>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@nestjs/schematics>@angular-devkit/schematics>@angular-devkit/core>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@stoplight/spectral-cli>@stoplight/spectral-ruleset-bundler>@rollup/plugin-commonjs>@rollup/pluginutils>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@swc/cli>tinyglobby>fdir>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/typescript-estree>tinyglobby>fdir>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@typescript-eslint/typescript-estree>tinyglobby>fdir>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@typescript-eslint/utils>@typescript-eslint/typescript-estree>tinyglobby>fdir>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|@vitest/coverage-v8>vitest>tinyglobby>fdir>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|eslint-import-resolver-typescript>tinyglobby>fdir>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|eslint-plugin-boundaries>@boundaries/elements>micromatch>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|fast-glob>micromatch>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|micromatch>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|typescript-eslint>@typescript-eslint/parser>@typescript-eslint/typescript-estree>tinyglobby>fdir>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|unplugin-swc>@rollup/pluginutils>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|unplugin>picomatch>": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        },
+        {
+            "GHSA-fc5q-39xc-vjpf|vite>tinyglobby>fdir>picomatch": {
+                "active": true,
+                "expiry": "2026-11-25T15:00:00+03:00"
+            }
+        }
+    ]
 }
