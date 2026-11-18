@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Production-ready NestJS reference skeleton: strict DDD, Hexagonal Architecture, horizontal scalability, and Lift-and-Shift microservice readiness. Prioritize correctness, security, and standards over convenience. Keep the skeleton free of project-specific identity and unfinished features; design contexts for extraction without rewrites.
+Production-ready NestJS reference skeleton: strict DDD, Hexagonal Architecture, horizontal scalability, and Lift-and-Shift microservice readiness. The project should aim for the highest practical security bar and an architecture with clear, robust boundaries and minimal structural compromise. Prioritize correctness, security, and standards over convenience. Keep the skeleton free of project-specific identity and unfinished features; design contexts for extraction without rewrites.
 
 ## Working Rules
 
@@ -10,7 +10,18 @@ Production-ready NestJS reference skeleton: strict DDD, Hexagonal Architecture, 
 - Stay within the requested scope and necessary related changes; avoid unrelated refactors, features, and tests.
 - Verify claims about current behavior and structure against code/configuration; distinguish implemented behavior from plans.
 - Write/update tests or run tests, type checks, builds, lint, or formatting only when explicitly requested. Report checks performed and skipped.
-- After changes, consider whether `AGENTS.md` or `agent/` needs updating. Keep guidance as short as possible without losing meaning; retain only rules that prevent future decision errors. Omit code-obvious facts, progress notes, and history. Keep each rule once in its owning location, reference related guidance instead of repeating it, and use examples or rationale only when needed for clarity. Leave ESLint implementation details in configuration comments.
+
+## Critical Note — Updating the Guides
+
+When a new feature, rule, or engineering approach is introduced, evaluate whether `AGENTS.md` or the relevant `agent/*.md` guide must be updated.
+
+Use this test:
+
+> **Would not knowing this make a future human or AI agent meaningfully more likely to make the wrong engineering decision?**
+
+If yes, document it.
+
+Keep recurring engineering rules, invariants, and project-specific architecture, security, reliability, or scalability decisions that must guide future changes. Keep each rule in its owning guide, avoid duplication, and keep the guidance concise. Do not add code-obvious facts, implementation narration, history/progress notes, or technical details that do not affect future decisions; leave tool-specific implementation details such as ESLint mechanics in configuration comments.
 
 ## Reading the Guide
 
