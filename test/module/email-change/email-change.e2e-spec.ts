@@ -1049,15 +1049,20 @@ describe.each(CASES)('$route email change', (context) => {
             expect(id).not.toBeNull();
             const failure = new Error('Simulated email provider outage');
             sendEmail.mockRejectedValue(failure);
-            await boss.work<Job>(queue, { batchSize: 1, pollingIntervalSeconds: 0.5 }, async (batch) => {
-                for (const job of batch) {
-                    if (delivery === 'confirmation') {
-                        await deliver(job.data);
-                    } else {
-                        await notify(job.data);
+            // pg-boss requeues failed attempts without NOTIFY, so the listener backstop must also fit the test timeout.
+            await boss.work<Job>(
+                queue,
+                { batchSize: 1, pollingIntervalSeconds: 0.5, notifyPollingIntervalSeconds: 0.5 },
+                async (batch) => {
+                    for (const job of batch) {
+                        if (delivery === 'confirmation') {
+                            await deliver(job.data);
+                        } else {
+                            await notify(job.data);
+                        }
                     }
-                }
-            });
+                },
+            );
             try {
                 await vi.waitFor(
                     async () => {
