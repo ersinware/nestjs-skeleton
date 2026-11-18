@@ -31,11 +31,11 @@ Before changing or reviewing an area, read every applicable topic guide below. F
 
 | Area | Required guide |
 | --- | --- |
-| Source/test architecture, boundaries, imports, placement, DI, CQRS | [Architecture](agent/architecture.md) |
+| Source/test architecture, boundaries, imports, placement, DI, CQRS, object-storage ownership | [Architecture](agent/architecture.md) |
 | Code style, naming, JSDoc, types, environment/configuration, route constants | [Coding Conventions](agent/coding-conventions.md) |
-| Aggregates, persistence, transactions, schemas, concurrency, caching | [Data & State](agent/data-and-state.md) |
+| Aggregates, persistence, transactions, schemas, concurrency, caching, object-storage identity/lifecycle | [Data & State](agent/data-and-state.md) |
 | Jobs, queues, cross-context mutations, reconciliation, cache invalidation | [Jobs & Messaging](agent/jobs-and-messaging.md) |
-| Authentication, authorization, administration, credentials, sessions, rate limiting, email HTML | [Security & Sessions](agent/security-and-sessions.md) |
+| Authentication, authorization, administration, credentials, sessions, rate limiting, email HTML, protected-object access | [Security & Sessions](agent/security-and-sessions.md) |
 | Refusals, exceptions, dependency failures, error mapping | [Exceptions](agent/exceptions.md) |
 | Endpoints, controllers, DTOs, validation, responses, Swagger, HTTP caching, BFF, health | [HTTP](agent/http.md) |
 | Logs, tracing, metrics, audit, telemetry, outages, health checks | [Observability](agent/observability.md) |

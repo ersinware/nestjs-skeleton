@@ -18,6 +18,10 @@
 - Credential login must resist account enumeration and timing distinctions: unknown, banned, passwordless, and wrong-password attempts expose the same credential refusal and perform comparable password-verification work. A pending user may receive an activation-required outcome only after correct password proof.
 - Invalid access/refresh credentials remain authentication failures. Invalid invitation, activation, email-confirmation, or upload proofs are request-input failures after cryptographic verification; unrelated dependency/system failures must propagate unchanged.
 
+## Protected Object Access
+
+- Cache metadata or delivery configuration never grants authorization. Protected objects require access control and caching/delivery semantics compatible with access revocation.
+
 ## Administration
 
 - User account deletion is owner-only; administrators cannot delete user accounts.

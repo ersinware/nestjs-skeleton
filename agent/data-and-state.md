@@ -28,6 +28,13 @@
 - `executePrepared()` checks replay before proof/password/external reads. Preparation stays read-only outside the transaction; mutation callbacks are database-only. The final claim settles races even after preparation failure; prepared aggregates retain optimistic-version checks.
 - Fingerprints use `IHashingPort.hmacSha256` with storage-specific purpose contexts ([Hashing](security-and-sessions.md#hashing)). Preserve compatibility for deployed fingerprints across context/canonicalization changes. Persist no raw request, credentials, or response blobs; retention and endpoint metadata live in the [idempotency inventory](../docs/idempotency-retry-inventory.md#implemented-request-coordination).
 
+## Object Storage
+
+- Persist and return object keys rather than CDN URLs; frontend configuration owns CDN URL construction.
+- Presigned upload URLs may be reused while they remain valid; never assume they are single-use. Do not rewrite signed URLs or required signed headers, and return all required headers to the client.
+- Permanent objects are immutable: replacements use new version keys, while retries of the same logical replacement reuse the same key.
+- Cleanup/orphan reconciliation must preserve objects still referenced by authoritative state. Do not infer physical deletion or orphanhood from an incomplete or filtered read/writer result.
+
 ## Adapters
 
 - For read-model queries, filter eligibility in SQL unless rejected state is required for a distinct response or audit. Order applicable predicates as lookup key, soft-delete scope, then eligibility.

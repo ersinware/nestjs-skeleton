@@ -15,6 +15,10 @@
 - Cross-context mutations use durable jobs with owner-defined shared contracts ([Jobs & Messaging](jobs-and-messaging.md#jobs--messaging)).
 - Do not use `forwardRef()`; redesign cyclic dependencies.
 
+## Object Storage
+
+- `core/storage` is technical infrastructure only. Owning workflows authorize uploads and define object keys, file limits, and cache policy; do not expose a standalone upload/signing API.
+
 ## Dependency Injection
 
 - DI tokens use `Symbol()` without arguments; Redis connection tokens may use descriptions to distinguish connections in outage logs. Bind tokens with their owning contracts; consumers use `@Inject(TOKEN)`.
