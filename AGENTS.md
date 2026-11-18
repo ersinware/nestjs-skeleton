@@ -29,17 +29,17 @@ Keep recurring engineering rules, invariants, and project-specific architecture,
 
 Before changing or reviewing an area, read every applicable topic guide below. Follow relevant cross-references and expand the selection as affected behavior becomes clear. For repository-wide reviews or guide reorganization, read all topic guides.
 
-| Area | Required guide |
-| --- | --- |
-| Source/test architecture, boundaries, imports, placement, DI, CQRS, object-storage ownership | [Architecture](agent/architecture.md) |
-| Code style, naming, JSDoc, types, environment/configuration, route constants | [Coding Conventions](agent/coding-conventions.md) |
-| Aggregates, persistence, transactions, schemas, concurrency, caching, object-storage identity/lifecycle | [Data & State](agent/data-and-state.md) |
-| Jobs, queues, cross-context mutations, reconciliation, cache invalidation | [Jobs & Messaging](agent/jobs-and-messaging.md) |
-| Authentication, authorization, administration, credentials, sessions, rate limiting, email HTML, protected-object access | [Security & Sessions](agent/security-and-sessions.md) |
-| Refusals, exceptions, dependency failures, error mapping | [Exceptions](agent/exceptions.md) |
-| Endpoints, controllers, DTOs, validation, responses, Swagger, HTTP caching, BFF, health | [HTTP](agent/http.md) |
-| Logs, tracing, metrics, audit, telemetry, outages, health checks | [Observability](agent/observability.md) |
-| Test code, fixtures, configuration, support, verification | [Testing](agent/testing.md) and guides for the behavior under test |
+| Area                                                                                                                     | Required guide                                                     |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Source/test architecture, boundaries, imports, placement, DI, CQRS, object-storage ownership                             | [Architecture](agent/architecture.md)                              |
+| Code style, naming, JSDoc, types, environment/configuration, route constants                                             | [Coding Conventions](agent/coding-conventions.md)                  |
+| Aggregates, persistence, transactions, schemas, concurrency, caching, object-storage identity/lifecycle                  | [Data & State](agent/data-and-state.md)                            |
+| Jobs, queues, cross-context mutations, reconciliation, cache invalidation                                                | [Jobs & Messaging](agent/jobs-and-messaging.md)                    |
+| Authentication, authorization, administration, credentials, sessions, rate limiting, email HTML, protected-object access | [Security & Sessions](agent/security-and-sessions.md)              |
+| Refusals, exceptions, dependency failures, error mapping                                                                 | [Exceptions](agent/exceptions.md)                                  |
+| Endpoints, controllers, DTOs, validation, responses, Swagger, HTTP caching, BFF, health                                  | [HTTP](agent/http.md)                                              |
+| Logs, tracing, metrics, audit, telemetry, outages, health checks                                                         | [Observability](agent/observability.md)                            |
+| Test code, fixtures, configuration, support, verification                                                                | [Testing](agent/testing.md) and guides for the behavior under test |
 
 For mutation evidence and durable delivery, read both [Jobs & Messaging](agent/jobs-and-messaging.md) and [Audit](agent/observability.md#audit). For health or dependency availability, read [Health Probes](agent/http.md#health-probes), [Dependency Outages](agent/observability.md#dependency-outages), and relevant data/session failure rules.
 
